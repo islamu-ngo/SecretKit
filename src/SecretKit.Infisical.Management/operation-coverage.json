@@ -1,0 +1,1943 @@
+{
+  "observedAt": "2026-10-09",
+  "sourceRegistry": "../../docs/internal/providers/infisical-operations.json",
+  "contractPolicy": "Typed projections and supported request subsets are not complete operation implementation or provider conformance.",
+  "transport": "Refit 16.3.0 handwritten Task<HttpRequestMessage> request builders; host-owned controlled HttpClient",
+  "operations": [
+    {
+      "operationId": "infisical.delete.v1.additional.privilege.identity",
+      "method": "DELETE",
+      "path": "/api/v1/additional-privilege/identity",
+      "family": "IdentityPrivileges",
+      "availability": "EstablishedNotImplemented",
+      "factory": null,
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/identity-specific-privilege/v1/delete.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": [
+        "response:privilege.permissions[].conditions"
+      ],
+      "gap": "Established native route is not implemented in this package increment; no callable stub is exposed."
+    },
+    {
+      "operationId": "infisical.get.v1.additional.privilege.identity",
+      "method": "GET",
+      "path": "/api/v1/additional-privilege/identity",
+      "family": "IdentityPrivileges",
+      "availability": "EstablishedNotImplemented",
+      "factory": null,
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/identity-specific-privilege/v1/list.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": [
+        "response:privileges[].permissions[].conditions"
+      ],
+      "gap": "Established native route is not implemented in this package increment; no callable stub is exposed."
+    },
+    {
+      "operationId": "infisical.patch.v1.additional.privilege.identity",
+      "method": "PATCH",
+      "path": "/api/v1/additional-privilege/identity",
+      "family": "IdentityPrivileges",
+      "availability": "EstablishedNotImplemented",
+      "factory": null,
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/identity-specific-privilege/v1/update.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": [
+        "response:privilege.permissions[].conditions"
+      ],
+      "gap": "Handwritten typed request variant and validated result are not implemented. No raw payload escape hatch is exposed."
+    },
+    {
+      "operationId": "infisical.get.v1.additional.privilege.identity.by.privilegeSlug",
+      "method": "GET",
+      "path": "/api/v1/additional-privilege/identity/{privilegeSlug}",
+      "family": "IdentityPrivileges",
+      "availability": "EstablishedNotImplemented",
+      "factory": null,
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/identity-specific-privilege/v1/find-by-slug.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": [
+        "response:privilege.permissions[].conditions"
+      ],
+      "gap": "Established native route is not implemented in this package increment; no callable stub is exposed."
+    },
+    {
+      "operationId": "infisical.post.v1.additional.privilege.identity.permanent",
+      "method": "POST",
+      "path": "/api/v1/additional-privilege/identity/permanent",
+      "family": "IdentityPrivileges",
+      "availability": "EstablishedNotImplemented",
+      "factory": null,
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/identity-specific-privilege/v1/create-permanent.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": [
+        "response:privilege.permissions[].conditions"
+      ],
+      "gap": "Handwritten typed request variant and validated result are not implemented. No raw payload escape hatch is exposed."
+    },
+    {
+      "operationId": "infisical.post.v1.additional.privilege.identity.temporary",
+      "method": "POST",
+      "path": "/api/v1/additional-privilege/identity/temporary",
+      "family": "IdentityPrivileges",
+      "availability": "EstablishedNotImplemented",
+      "factory": null,
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/identity-specific-privilege/v1/create-temporary.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": [
+        "response:privilege.permissions[].conditions"
+      ],
+      "gap": "Handwritten typed request variant and validated result are not implemented. No raw payload escape hatch is exposed."
+    },
+    {
+      "operationId": "infisical.post.v1.events.subscribe.project.events",
+      "method": "POST",
+      "path": "/api/v1/events/subscribe/project-events",
+      "family": "Governance",
+      "availability": "MissingContract",
+      "factory": null,
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/events/project-events.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": [],
+      "gap": "No published response framing, completion, resume, or streaming lifetime contract."
+    },
+    {
+      "operationId": "infisical.get.v1.groups",
+      "method": "GET",
+      "path": "/api/v1/groups",
+      "family": "ScopedAccess",
+      "availability": "TypedProjection",
+      "factory": "ScopedAccessOperations.ListGroups",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/groups/get.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": []
+    },
+    {
+      "operationId": "infisical.post.v1.groups",
+      "method": "POST",
+      "path": "/api/v1/groups",
+      "family": "ScopedAccess",
+      "availability": "TypedProjection",
+      "factory": "ScopedAccessOperations.CreateGroup",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/groups/create.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": []
+    },
+    {
+      "operationId": "infisical.delete.v1.groups.by.id",
+      "method": "DELETE",
+      "path": "/api/v1/groups/{id}",
+      "family": "ScopedAccess",
+      "availability": "TypedProjection",
+      "factory": "ScopedAccessOperations.DeleteGroup",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/groups/delete.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": []
+    },
+    {
+      "operationId": "infisical.get.v1.groups.by.id",
+      "method": "GET",
+      "path": "/api/v1/groups/{id}",
+      "family": "ScopedAccess",
+      "availability": "TypedProjection",
+      "factory": "ScopedAccessOperations.GetGroup",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/groups/get-by-id.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": []
+    },
+    {
+      "operationId": "infisical.patch.v1.groups.by.id",
+      "method": "PATCH",
+      "path": "/api/v1/groups/{id}",
+      "family": "ScopedAccess",
+      "availability": "TypedProjection",
+      "factory": "ScopedAccessOperations.UpdateGroup",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/groups/update.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": []
+    },
+    {
+      "operationId": "infisical.get.v1.groups.by.id.machine.identities",
+      "method": "GET",
+      "path": "/api/v1/groups/{id}/machine-identities",
+      "family": "ScopedAccess",
+      "availability": "TypedProjection",
+      "factory": "ScopedAccessOperations.ListGroupIdentities",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/groups/list-group-machine-identities.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": []
+    },
+    {
+      "operationId": "infisical.delete.v1.groups.by.id.machine.identities.by.machineIdentityId",
+      "method": "DELETE",
+      "path": "/api/v1/groups/{id}/machine-identities/{machineIdentityId}",
+      "family": "ScopedAccess",
+      "availability": "TypedProjection",
+      "factory": "ScopedAccessOperations.RemoveGroupIdentity",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/groups/remove-group-machine-identity.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": []
+    },
+    {
+      "operationId": "infisical.post.v1.groups.by.id.machine.identities.by.machineIdentityId",
+      "method": "POST",
+      "path": "/api/v1/groups/{id}/machine-identities/{machineIdentityId}",
+      "family": "ScopedAccess",
+      "availability": "TypedProjection",
+      "factory": "ScopedAccessOperations.AddGroupIdentity",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/groups/add-group-machine-identity.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": []
+    },
+    {
+      "operationId": "infisical.get.v1.groups.by.id.members",
+      "method": "GET",
+      "path": "/api/v1/groups/{id}/members",
+      "family": "ScopedAccess",
+      "availability": "TypedProjection",
+      "factory": "ScopedAccessOperations.ListGroupMembers",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/groups/list-group-members.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": [],
+      "gap": "Established native route is not implemented in this package increment; no callable stub is exposed."
+    },
+    {
+      "operationId": "infisical.get.v1.groups.by.id.projects",
+      "method": "GET",
+      "path": "/api/v1/groups/{id}/projects",
+      "family": "Projects",
+      "availability": "TypedProjection",
+      "factory": "ScopedAccessOperations.ListGroupProjects",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/groups/list-group-projects.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": [],
+      "gap": "Established native route is not implemented in this package increment; no callable stub is exposed."
+    },
+    {
+      "operationId": "infisical.get.v1.groups.by.id.users",
+      "method": "GET",
+      "path": "/api/v1/groups/{id}/users",
+      "family": "ScopedAccess",
+      "availability": "TypedProjection",
+      "factory": "ScopedAccessOperations.ListGroupUsers",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/groups/list-group-users.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": []
+    },
+    {
+      "operationId": "infisical.delete.v1.groups.by.id.users.by.username",
+      "method": "DELETE",
+      "path": "/api/v1/groups/{id}/users/{username}",
+      "family": "ScopedAccess",
+      "availability": "TypedProjection",
+      "factory": "ScopedAccessOperations.RemoveGroupUser",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/groups/remove-group-user.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": []
+    },
+    {
+      "operationId": "infisical.post.v1.groups.by.id.users.by.username",
+      "method": "POST",
+      "path": "/api/v1/groups/{id}/users/{username}",
+      "family": "ScopedAccess",
+      "availability": "TypedProjection",
+      "factory": "ScopedAccessOperations.AddGroupUser",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/groups/add-group-user.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": []
+    },
+    {
+      "operationId": "infisical.get.v1.identities",
+      "method": "GET",
+      "path": "/api/v1/identities",
+      "family": "Identities",
+      "availability": "TypedProjection",
+      "factory": "IdentityOperations.ListOrganizationIdentities",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/identities/list.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": [
+        "response:identities[].customRole.permissions"
+      ]
+    },
+    {
+      "operationId": "infisical.post.v1.identities",
+      "method": "POST",
+      "path": "/api/v1/identities",
+      "family": "Identities",
+      "availability": "TypedProjection",
+      "factory": "IdentityOperations.CreateOrganizationIdentity",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/identities/create.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": []
+    },
+    {
+      "operationId": "infisical.delete.v1.identities.by.identityId",
+      "method": "DELETE",
+      "path": "/api/v1/identities/{identityId}",
+      "family": "Identities",
+      "availability": "TypedProjection",
+      "factory": "IdentityOperations.DeleteOrganizationIdentity",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/identities/delete.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": []
+    },
+    {
+      "operationId": "infisical.get.v1.identities.by.identityId",
+      "method": "GET",
+      "path": "/api/v1/identities/{identityId}",
+      "family": "Identities",
+      "availability": "TypedProjection",
+      "factory": "IdentityOperations.GetOrganizationIdentity",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/identities/get-by-id.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": [
+        "response:identity.customRole.permissions"
+      ]
+    },
+    {
+      "operationId": "infisical.patch.v1.identities.by.identityId",
+      "method": "PATCH",
+      "path": "/api/v1/identities/{identityId}",
+      "family": "Identities",
+      "availability": "TypedProjection",
+      "factory": "IdentityOperations.UpdateOrganizationIdentity",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/identities/update.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": []
+    },
+    {
+      "operationId": "infisical.get.v1.identities.details",
+      "method": "GET",
+      "path": "/api/v1/identities/details",
+      "family": "Identities",
+      "availability": "TypedProjection",
+      "factory": "IdentityOperations.GetSelectedIdentityOrganization",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/identities/details.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": []
+    },
+    {
+      "operationId": "infisical.get.v1.identity.templates",
+      "method": "GET",
+      "path": "/api/v1/identity-templates",
+      "family": "Identities",
+      "availability": "EstablishedNotImplemented",
+      "factory": null,
+      "liveVerified": false,
+      "evidenceKind": "PublicMetadataOnly",
+      "sources": [
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": [],
+      "gap": "Typed authentication-template variants and their usage lifecycle have not been implemented; published union facts are not absent endpoints."
+    },
+    {
+      "operationId": "infisical.post.v1.identity.templates",
+      "method": "POST",
+      "path": "/api/v1/identity-templates",
+      "family": "Identities",
+      "availability": "EstablishedNotImplemented",
+      "factory": null,
+      "liveVerified": false,
+      "evidenceKind": "PublicMetadataOnly",
+      "sources": [
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": [],
+      "gap": "Typed authentication-template variants and their usage lifecycle have not been implemented; published union facts are not absent endpoints."
+    },
+    {
+      "operationId": "infisical.delete.v1.identity.templates.by.templateId",
+      "method": "DELETE",
+      "path": "/api/v1/identity-templates/{templateId}",
+      "family": "Identities",
+      "availability": "EstablishedNotImplemented",
+      "factory": null,
+      "liveVerified": false,
+      "evidenceKind": "PublicMetadataOnly",
+      "sources": [
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": [],
+      "gap": "Typed authentication-template variants and their usage lifecycle have not been implemented; published union facts are not absent endpoints."
+    },
+    {
+      "operationId": "infisical.get.v1.identity.templates.by.templateId",
+      "method": "GET",
+      "path": "/api/v1/identity-templates/{templateId}",
+      "family": "Identities",
+      "availability": "EstablishedNotImplemented",
+      "factory": null,
+      "liveVerified": false,
+      "evidenceKind": "PublicMetadataOnly",
+      "sources": [
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": [],
+      "gap": "Typed authentication-template variants and their usage lifecycle have not been implemented; published union facts are not absent endpoints."
+    },
+    {
+      "operationId": "infisical.patch.v1.identity.templates.by.templateId",
+      "method": "PATCH",
+      "path": "/api/v1/identity-templates/{templateId}",
+      "family": "Identities",
+      "availability": "EstablishedNotImplemented",
+      "factory": null,
+      "liveVerified": false,
+      "evidenceKind": "PublicMetadataOnly",
+      "sources": [
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": [],
+      "gap": "Typed authentication-template variants and their usage lifecycle have not been implemented; published union facts are not absent endpoints."
+    },
+    {
+      "operationId": "infisical.post.v1.identity.templates.by.templateId.delete.usage",
+      "method": "POST",
+      "path": "/api/v1/identity-templates/{templateId}/delete-usage",
+      "family": "Identities",
+      "availability": "EstablishedNotImplemented",
+      "factory": null,
+      "liveVerified": false,
+      "evidenceKind": "PublicMetadataOnly",
+      "sources": [
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": [],
+      "gap": "Typed authentication-template variants and their usage lifecycle have not been implemented; published union facts are not absent endpoints."
+    },
+    {
+      "operationId": "infisical.get.v1.identity.templates.by.templateId.usage",
+      "method": "GET",
+      "path": "/api/v1/identity-templates/{templateId}/usage",
+      "family": "Identities",
+      "availability": "EstablishedNotImplemented",
+      "factory": null,
+      "liveVerified": false,
+      "evidenceKind": "PublicMetadataOnly",
+      "sources": [
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": [],
+      "gap": "Typed authentication-template variants and their usage lifecycle have not been implemented; published union facts are not absent endpoints."
+    },
+    {
+      "operationId": "infisical.get.v1.identity.templates.search",
+      "method": "GET",
+      "path": "/api/v1/identity-templates/search",
+      "family": "Identities",
+      "availability": "EstablishedNotImplemented",
+      "factory": null,
+      "liveVerified": false,
+      "evidenceKind": "PublicMetadataOnly",
+      "sources": [
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": [],
+      "gap": "Typed authentication-template variants and their usage lifecycle have not been implemented; published union facts are not absent endpoints."
+    },
+    {
+      "operationId": "infisical.get.v1.organization.audit.log.settings",
+      "method": "GET",
+      "path": "/api/v1/organization/audit-log-settings",
+      "family": "Governance",
+      "availability": "TypedProjection",
+      "factory": "GovernanceOperations.GetOrganizationAuditSettings",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/audit-logs/get-organization-audit-log-settings.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": []
+    },
+    {
+      "operationId": "infisical.put.v1.organization.audit.log.settings",
+      "method": "PUT",
+      "path": "/api/v1/organization/audit-log-settings",
+      "family": "Governance",
+      "availability": "TypedProjection",
+      "factory": "GovernanceOperations.SetOrganizationAuditSettings",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/audit-logs/update-organization-audit-log-settings.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": []
+    },
+    {
+      "operationId": "infisical.get.v1.organization.audit.logs",
+      "method": "GET",
+      "path": "/api/v1/organization/audit-logs",
+      "family": "Governance",
+      "availability": "TypedProjection",
+      "factory": "GovernanceOperations.ReadAudit",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/audit-logs/export-audit-log.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": [
+        "response:auditLogs[].actor.metadata",
+        "response:auditLogs[].event.metadata"
+      ]
+    },
+    {
+      "operationId": "infisical.get.v1.organization.available.groups",
+      "method": "GET",
+      "path": "/api/v1/organization/available-groups",
+      "family": "ScopedAccess",
+      "availability": "TypedProjection",
+      "factory": "ScopedAccessOperations.AvailableGroups",
+      "liveVerified": false,
+      "evidenceKind": "PublicMetadataOnly",
+      "sources": [
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": []
+    },
+    {
+      "operationId": "infisical.get.v1.organization.available.identities",
+      "method": "GET",
+      "path": "/api/v1/organization/available-identities",
+      "family": "ScopedAccess",
+      "availability": "TypedProjection",
+      "factory": "ScopedAccessOperations.AvailableIdentities",
+      "liveVerified": false,
+      "evidenceKind": "PublicMetadataOnly",
+      "sources": [
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": []
+    },
+    {
+      "operationId": "infisical.get.v1.organization.roles",
+      "method": "GET",
+      "path": "/api/v1/organization/roles",
+      "family": "ScopedAccess",
+      "availability": "TypedProjection",
+      "factory": "ScopedAccessOperations.ListOrganizationRoles",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/organization-roles/list.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": []
+    },
+    {
+      "operationId": "infisical.post.v1.organization.roles",
+      "method": "POST",
+      "path": "/api/v1/organization/roles",
+      "family": "ScopedAccess",
+      "availability": "EstablishedNotImplemented",
+      "factory": null,
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/organization-roles/create.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": [
+        "response:role.permissions[].conditions"
+      ],
+      "gap": "Handwritten typed request variant and validated result are not implemented. No raw payload escape hatch is exposed."
+    },
+    {
+      "operationId": "infisical.delete.v1.organization.roles.by.roleId",
+      "method": "DELETE",
+      "path": "/api/v1/organization/roles/{roleId}",
+      "family": "ScopedAccess",
+      "availability": "TypedProjection",
+      "factory": "ScopedAccessOperations.DeleteOrganizationRole",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/organization-roles/delete.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": [
+        "response:role.permissions[].conditions"
+      ]
+    },
+    {
+      "operationId": "infisical.get.v1.organization.roles.by.roleId",
+      "method": "GET",
+      "path": "/api/v1/organization/roles/{roleId}",
+      "family": "ScopedAccess",
+      "availability": "TypedProjection",
+      "factory": "ScopedAccessOperations.GetOrganizationRole",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/organization-roles/get.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": [
+        "response:role.permissions[].conditions"
+      ]
+    },
+    {
+      "operationId": "infisical.patch.v1.organization.roles.by.roleId",
+      "method": "PATCH",
+      "path": "/api/v1/organization/roles/{roleId}",
+      "family": "ScopedAccess",
+      "availability": "EstablishedNotImplemented",
+      "factory": null,
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/organization-roles/update.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": [
+        "response:role.permissions[].conditions"
+      ],
+      "gap": "Handwritten typed request variant and validated result are not implemented. No raw payload escape hatch is exposed."
+    },
+    {
+      "operationId": "infisical.get.v1.organization.roles.slug.by.roleSlug",
+      "method": "GET",
+      "path": "/api/v1/organization/roles/slug/{roleSlug}",
+      "family": "ScopedAccess",
+      "availability": "TypedProjection",
+      "factory": "ScopedAccessOperations.GetOrganizationRoleBySlug",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/organization-roles/get-by-slug.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": [
+        "response:role.permissions[].conditions"
+      ]
+    },
+    {
+      "operationId": "infisical.get.v1.organizations.memberships.groups",
+      "method": "GET",
+      "path": "/api/v1/organizations/memberships/groups",
+      "family": "ScopedAccess",
+      "availability": "TypedProjection",
+      "factory": "MembershipOperations.ListOrganizationGroups",
+      "liveVerified": false,
+      "evidenceKind": "PublicMetadataOnly",
+      "sources": [
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": []
+    },
+    {
+      "operationId": "infisical.delete.v1.organizations.memberships.groups.by.groupId",
+      "method": "DELETE",
+      "path": "/api/v1/organizations/memberships/groups/{groupId}",
+      "family": "ScopedAccess",
+      "availability": "TypedProjection",
+      "factory": "MembershipOperations.RemoveOrganizationGroup",
+      "liveVerified": false,
+      "evidenceKind": "PublicMetadataOnly",
+      "sources": [
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": []
+    },
+    {
+      "operationId": "infisical.get.v1.organizations.memberships.groups.by.groupId",
+      "method": "GET",
+      "path": "/api/v1/organizations/memberships/groups/{groupId}",
+      "family": "ScopedAccess",
+      "availability": "TypedProjection",
+      "factory": "MembershipOperations.GetOrganizationGroup",
+      "liveVerified": false,
+      "evidenceKind": "PublicMetadataOnly",
+      "sources": [
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": []
+    },
+    {
+      "operationId": "infisical.patch.v1.organizations.memberships.groups.by.groupId",
+      "method": "PATCH",
+      "path": "/api/v1/organizations/memberships/groups/{groupId}",
+      "family": "ScopedAccess",
+      "availability": "TypedProjection",
+      "factory": "MembershipOperations.UpdateOrganizationGroupRoles",
+      "liveVerified": false,
+      "evidenceKind": "PublicMetadataOnly",
+      "sources": [
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": []
+    },
+    {
+      "operationId": "infisical.post.v1.organizations.memberships.groups.by.groupId",
+      "method": "POST",
+      "path": "/api/v1/organizations/memberships/groups/{groupId}",
+      "family": "ScopedAccess",
+      "availability": "TypedProjection",
+      "factory": "MembershipOperations.AddOrganizationGroup",
+      "liveVerified": false,
+      "evidenceKind": "PublicMetadataOnly",
+      "sources": [
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": []
+    },
+    {
+      "operationId": "infisical.get.v1.project.templates",
+      "method": "GET",
+      "path": "/api/v1/project-templates",
+      "family": "Projects",
+      "availability": "TypedProjection",
+      "factory": "ProjectTemplateOperations.ListProjectTemplates",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/project-templates/list.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": [
+        "response:projectTemplates[].roles[].permissions[].conditions"
+      ],
+      "gap": "Typed type-filtered metadata projection only; template configuration and unfiltered all-type listing are not exposed."
+    },
+    {
+      "operationId": "infisical.post.v1.project.templates",
+      "method": "POST",
+      "path": "/api/v1/project-templates",
+      "family": "Projects",
+      "availability": "TypedProjection",
+      "factory": "ProjectTemplateOperations.CreateProjectTemplate",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/project-templates/create.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": [
+        "body:roles[].permissions[].conditions.*",
+        "response:projectTemplate.roles[].permissions[].conditions"
+      ],
+      "gap": "Typed name/type/description input and metadata projection only; roles, environments and principal provisioning configuration are not exposed."
+    },
+    {
+      "operationId": "infisical.delete.v1.project.templates.by.templateId",
+      "method": "DELETE",
+      "path": "/api/v1/project-templates/{templateId}",
+      "family": "Projects",
+      "availability": "TypedProjection",
+      "factory": "ProjectTemplateOperations.DeleteProjectTemplate",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/project-templates/delete.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": [
+        "response:projectTemplate.roles[].permissions[].conditions"
+      ],
+      "gap": "Typed metadata projection only; returned template configuration is not exposed."
+    },
+    {
+      "operationId": "infisical.get.v1.project.templates.by.templateId",
+      "method": "GET",
+      "path": "/api/v1/project-templates/{templateId}",
+      "family": "Projects",
+      "availability": "TypedProjection",
+      "factory": "ProjectTemplateOperations.GetProjectTemplate",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/project-templates/get-by-id.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": [
+        "response:projectTemplate.roles[].permissions[].conditions"
+      ],
+      "gap": "Typed metadata projection only; returned template configuration is not exposed."
+    },
+    {
+      "operationId": "infisical.patch.v1.project.templates.by.templateId",
+      "method": "PATCH",
+      "path": "/api/v1/project-templates/{templateId}",
+      "family": "Projects",
+      "availability": "TypedProjection",
+      "factory": "ProjectTemplateOperations.UpdateProjectTemplate",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/project-templates/update.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": [
+        "body:roles[].permissions[].conditions.*",
+        "response:projectTemplate.roles[].permissions[].conditions"
+      ],
+      "gap": "Typed name/description input and metadata projection only; roles, environments and principal provisioning configuration are not exposed."
+    },
+    {
+      "operationId": "infisical.get.v1.projects",
+      "method": "GET",
+      "path": "/api/v1/projects",
+      "family": "Projects",
+      "availability": "TypedProjection",
+      "factory": "ProjectOperations.ListProjects",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/projects/list-projects.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": [
+        "response:projects[].roles[].permissions"
+      ]
+    },
+    {
+      "operationId": "infisical.post.v1.projects",
+      "method": "POST",
+      "path": "/api/v1/projects",
+      "family": "Projects",
+      "availability": "TypedProjection",
+      "factory": "ProjectOperations.CreateProject",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/projects/create-project.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": []
+    },
+    {
+      "operationId": "infisical.delete.v1.projects.by.projectId",
+      "method": "DELETE",
+      "path": "/api/v1/projects/{projectId}",
+      "family": "Projects",
+      "availability": "TypedProjection",
+      "factory": "ProjectOperations.DeleteProject",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/projects/delete-project.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": []
+    },
+    {
+      "operationId": "infisical.get.v1.projects.by.projectId",
+      "method": "GET",
+      "path": "/api/v1/projects/{projectId}",
+      "family": "Projects",
+      "availability": "TypedProjection",
+      "factory": "ProjectOperations.GetProject",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/projects/get-project.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": []
+    },
+    {
+      "operationId": "infisical.patch.v1.projects.by.projectId",
+      "method": "PATCH",
+      "path": "/api/v1/projects/{projectId}",
+      "family": "Projects",
+      "availability": "TypedProjection",
+      "factory": "ProjectOperations.UpdateProject",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/projects/update-project.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": []
+    },
+    {
+      "operationId": "infisical.get.v1.projects.by.projectId.audit.log.settings",
+      "method": "GET",
+      "path": "/api/v1/projects/{projectId}/audit-log-settings",
+      "family": "Governance",
+      "availability": "TypedProjection",
+      "factory": "GovernanceOperations.GetProjectAuditSettings",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/audit-logs/get-project-audit-log-settings.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": []
+    },
+    {
+      "operationId": "infisical.put.v1.projects.by.projectId.audit.log.settings",
+      "method": "PUT",
+      "path": "/api/v1/projects/{projectId}/audit-log-settings",
+      "family": "Governance",
+      "availability": "TypedProjection",
+      "factory": "GovernanceOperations.SetProjectAuditSettings",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/audit-logs/update-project-audit-log-settings.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": []
+    },
+    {
+      "operationId": "infisical.get.v1.projects.by.projectId.authorizations",
+      "method": "GET",
+      "path": "/api/v1/projects/{projectId}/authorizations",
+      "family": "Projects",
+      "availability": "EstablishedNotImplemented",
+      "factory": null,
+      "liveVerified": false,
+      "evidenceKind": "PublicMetadataOnly",
+      "sources": [
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": [
+        "response:authorizations[].metadata"
+      ],
+      "gap": "Established native route is not implemented in this package increment; no callable stub is exposed."
+    },
+    {
+      "operationId": "infisical.post.v1.projects.by.projectId.environments",
+      "method": "POST",
+      "path": "/api/v1/projects/{projectId}/environments",
+      "family": "Projects",
+      "availability": "TypedProjection",
+      "factory": "ProjectOperations.CreateEnvironment",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/environments/create.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": []
+    },
+    {
+      "operationId": "infisical.get.v1.projects.by.projectId.environments.by.envId",
+      "method": "GET",
+      "path": "/api/v1/projects/{projectId}/environments/{envId}",
+      "family": "Projects",
+      "availability": "TypedProjection",
+      "factory": "ProjectOperations.GetEnvironment",
+      "liveVerified": false,
+      "evidenceKind": "PublicMetadataOnly",
+      "sources": [
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": []
+    },
+    {
+      "operationId": "infisical.delete.v1.projects.by.projectId.environments.by.id",
+      "method": "DELETE",
+      "path": "/api/v1/projects/{projectId}/environments/{id}",
+      "family": "Projects",
+      "availability": "TypedProjection",
+      "factory": "ProjectOperations.DeleteEnvironment",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/environments/delete.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": []
+    },
+    {
+      "operationId": "infisical.patch.v1.projects.by.projectId.environments.by.id",
+      "method": "PATCH",
+      "path": "/api/v1/projects/{projectId}/environments/{id}",
+      "family": "Projects",
+      "availability": "TypedProjection",
+      "factory": "ProjectOperations.UpdateEnvironment",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/environments/update.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": []
+    },
+    {
+      "operationId": "infisical.post.v1.projects.by.projectId.environments.by.id.restore",
+      "method": "POST",
+      "path": "/api/v1/projects/{projectId}/environments/{id}/restore",
+      "family": "Projects",
+      "availability": "TypedProjection",
+      "factory": "ProjectOperations.RestoreEnvironment",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/environments/restore.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": []
+    },
+    {
+      "operationId": "infisical.get.v1.projects.by.projectId.environments.slug.by.envSlug",
+      "method": "GET",
+      "path": "/api/v1/projects/{projectId}/environments/slug/{envSlug}",
+      "family": "Projects",
+      "availability": "TypedProjection",
+      "factory": "ProjectOperations.GetEnvironmentBySlug",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/environments/get.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": []
+    },
+    {
+      "operationId": "infisical.get.v1.projects.by.projectId.identities",
+      "method": "GET",
+      "path": "/api/v1/projects/{projectId}/identities",
+      "family": "Identities",
+      "availability": "TypedProjection",
+      "factory": "IdentityOperations.ListProjectIdentities",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/project-identities/list-identity.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": []
+    },
+    {
+      "operationId": "infisical.post.v1.projects.by.projectId.identities",
+      "method": "POST",
+      "path": "/api/v1/projects/{projectId}/identities",
+      "family": "Identities",
+      "availability": "TypedProjection",
+      "factory": "IdentityOperations.CreateProjectIdentity",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/project-identities/add-identity.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": []
+    },
+    {
+      "operationId": "infisical.delete.v1.projects.by.projectId.identities.by.identityId",
+      "method": "DELETE",
+      "path": "/api/v1/projects/{projectId}/identities/{identityId}",
+      "family": "Identities",
+      "availability": "TypedProjection",
+      "factory": "IdentityOperations.DeleteProjectIdentity",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/project-identities/delete-identity.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": []
+    },
+    {
+      "operationId": "infisical.get.v1.projects.by.projectId.identities.by.identityId",
+      "method": "GET",
+      "path": "/api/v1/projects/{projectId}/identities/{identityId}",
+      "family": "Identities",
+      "availability": "TypedProjection",
+      "factory": "IdentityOperations.GetProjectIdentity",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/project-identities/get-by-id.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": []
+    },
+    {
+      "operationId": "infisical.patch.v1.projects.by.projectId.identities.by.identityId",
+      "method": "PATCH",
+      "path": "/api/v1/projects/{projectId}/identities/{identityId}",
+      "family": "Identities",
+      "availability": "TypedProjection",
+      "factory": "IdentityOperations.UpdateProjectIdentity",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/project-identities/update-identity.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": []
+    },
+    {
+      "operationId": "infisical.get.v1.projects.by.projectId.integrations",
+      "method": "GET",
+      "path": "/api/v1/projects/{projectId}/integrations",
+      "family": "Projects",
+      "availability": "EstablishedNotImplemented",
+      "factory": null,
+      "liveVerified": false,
+      "evidenceKind": "PublicMetadataOnly",
+      "sources": [
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": [
+        "response:integrations[].metadata"
+      ],
+      "gap": "Established native route is not implemented in this package increment; no callable stub is exposed."
+    },
+    {
+      "operationId": "infisical.delete.v1.projects.by.projectId.memberships",
+      "method": "DELETE",
+      "path": "/api/v1/projects/{projectId}/memberships",
+      "family": "Projects",
+      "availability": "EstablishedNotImplemented",
+      "factory": null,
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/project-users/remove-member-from-project.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": [],
+      "gap": "Established native route is not implemented in this package increment; no callable stub is exposed."
+    },
+    {
+      "operationId": "infisical.get.v1.projects.by.projectId.memberships",
+      "method": "GET",
+      "path": "/api/v1/projects/{projectId}/memberships",
+      "family": "Projects",
+      "availability": "EstablishedNotImplemented",
+      "factory": null,
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/project-users/memberships.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": [],
+      "gap": "Established native route is not implemented in this package increment; no callable stub is exposed."
+    },
+    {
+      "operationId": "infisical.post.v1.projects.by.projectId.memberships",
+      "method": "POST",
+      "path": "/api/v1/projects/{projectId}/memberships",
+      "family": "Projects",
+      "availability": "EstablishedNotImplemented",
+      "factory": null,
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/project-users/invite-member-to-project.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": []
+    },
+    {
+      "operationId": "infisical.patch.v1.projects.by.projectId.memberships.by.membershipId",
+      "method": "PATCH",
+      "path": "/api/v1/projects/{projectId}/memberships/{membershipId}",
+      "family": "Projects",
+      "availability": "EstablishedNotImplemented",
+      "factory": null,
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/project-users/update-membership.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": []
+    },
+    {
+      "operationId": "infisical.get.v1.projects.by.projectId.memberships.available.identities",
+      "method": "GET",
+      "path": "/api/v1/projects/{projectId}/memberships/available-identities",
+      "family": "Projects",
+      "availability": "EstablishedNotImplemented",
+      "factory": null,
+      "liveVerified": false,
+      "evidenceKind": "PublicMetadataOnly",
+      "sources": [
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": [],
+      "gap": "Established native route is not implemented in this package increment; no callable stub is exposed."
+    },
+    {
+      "operationId": "infisical.post.v1.projects.by.projectId.memberships.details",
+      "method": "POST",
+      "path": "/api/v1/projects/{projectId}/memberships/details",
+      "family": "Projects",
+      "availability": "EstablishedNotImplemented",
+      "factory": null,
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/project-users/get-by-username.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": [],
+      "gap": "Handwritten typed request variant and validated result are not implemented. No raw payload escape hatch is exposed."
+    },
+    {
+      "operationId": "infisical.get.v1.projects.by.projectId.memberships.groups",
+      "method": "GET",
+      "path": "/api/v1/projects/{projectId}/memberships/groups",
+      "family": "Projects",
+      "availability": "TypedProjection",
+      "factory": "MembershipOperations.ListProjectGroups",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/project-group-memberships/list.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": []
+    },
+    {
+      "operationId": "infisical.delete.v1.projects.by.projectId.memberships.groups.by.groupId",
+      "method": "DELETE",
+      "path": "/api/v1/projects/{projectId}/memberships/groups/{groupId}",
+      "family": "Projects",
+      "availability": "TypedProjection",
+      "factory": "MembershipOperations.RemoveProjectGroup",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/project-group-memberships/delete.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": []
+    },
+    {
+      "operationId": "infisical.get.v1.projects.by.projectId.memberships.groups.by.groupId",
+      "method": "GET",
+      "path": "/api/v1/projects/{projectId}/memberships/groups/{groupId}",
+      "family": "Projects",
+      "availability": "TypedProjection",
+      "factory": "MembershipOperations.GetProjectGroup",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/project-group-memberships/get-by-id.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": []
+    },
+    {
+      "operationId": "infisical.patch.v1.projects.by.projectId.memberships.groups.by.groupId",
+      "method": "PATCH",
+      "path": "/api/v1/projects/{projectId}/memberships/groups/{groupId}",
+      "family": "Projects",
+      "availability": "TypedProjection",
+      "factory": "MembershipOperations.UpdateProjectGroupRoles",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/project-group-memberships/update",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": []
+    },
+    {
+      "operationId": "infisical.post.v1.projects.by.projectId.memberships.groups.by.groupId",
+      "method": "POST",
+      "path": "/api/v1/projects/{projectId}/memberships/groups/{groupId}",
+      "family": "Projects",
+      "availability": "TypedProjection",
+      "factory": "MembershipOperations.AddProjectGroup",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/project-group-memberships/create.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": []
+    },
+    {
+      "operationId": "infisical.get.v1.projects.by.projectId.memberships.identities",
+      "method": "GET",
+      "path": "/api/v1/projects/{projectId}/memberships/identities",
+      "family": "Identities",
+      "availability": "EstablishedNotImplemented",
+      "factory": null,
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/project-identities-membership/list-identity-memberships.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": [],
+      "gap": "Established native route is not implemented in this package increment; no callable stub is exposed."
+    },
+    {
+      "operationId": "infisical.delete.v1.projects.by.projectId.memberships.identities.by.identityId",
+      "method": "DELETE",
+      "path": "/api/v1/projects/{projectId}/memberships/identities/{identityId}",
+      "family": "Identities",
+      "availability": "TypedProjection",
+      "factory": "MembershipOperations.RemoveProjectIdentity",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/project-identities-membership/delete-identity-membership.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": []
+    },
+    {
+      "operationId": "infisical.get.v1.projects.by.projectId.memberships.identities.by.identityId",
+      "method": "GET",
+      "path": "/api/v1/projects/{projectId}/memberships/identities/{identityId}",
+      "family": "Identities",
+      "availability": "TypedProjection",
+      "factory": "MembershipOperations.GetProjectIdentityMembership",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/project-identities-membership/get-by-id.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": []
+    },
+    {
+      "operationId": "infisical.patch.v1.projects.by.projectId.memberships.identities.by.identityId",
+      "method": "PATCH",
+      "path": "/api/v1/projects/{projectId}/memberships/identities/{identityId}",
+      "family": "Identities",
+      "availability": "TypedProjection",
+      "factory": "MembershipOperations.UpdateProjectIdentityRoles",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/project-identities-membership/update-identity-membership.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": []
+    },
+    {
+      "operationId": "infisical.post.v1.projects.by.projectId.memberships.identities.by.identityId",
+      "method": "POST",
+      "path": "/api/v1/projects/{projectId}/memberships/identities/{identityId}",
+      "family": "Identities",
+      "availability": "TypedProjection",
+      "factory": "MembershipOperations.AddProjectIdentity",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/project-identities-membership/add-identity-membership.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": []
+    },
+    {
+      "operationId": "infisical.get.v1.projects.by.projectId.roles",
+      "method": "GET",
+      "path": "/api/v1/projects/{projectId}/roles",
+      "family": "Projects",
+      "availability": "TypedProjection",
+      "factory": "ProjectOperations.ListProjectRoles",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/project-roles/list.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": []
+    },
+    {
+      "operationId": "infisical.post.v1.projects.by.projectId.roles",
+      "method": "POST",
+      "path": "/api/v1/projects/{projectId}/roles",
+      "family": "Projects",
+      "availability": "EstablishedNotImplemented",
+      "factory": null,
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/project-roles/create.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": [
+        "body:permissions[].conditions.*",
+        "response:role.permissions[].conditions"
+      ],
+      "gap": "Handwritten typed request variant and validated result are not implemented. No raw payload escape hatch is exposed."
+    },
+    {
+      "operationId": "infisical.delete.v1.projects.by.projectId.roles.by.roleId",
+      "method": "DELETE",
+      "path": "/api/v1/projects/{projectId}/roles/{roleId}",
+      "family": "Projects",
+      "availability": "TypedProjection",
+      "factory": "ProjectOperations.DeleteProjectRole",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/project-roles/delete.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": [
+        "response:role.permissions[].conditions"
+      ]
+    },
+    {
+      "operationId": "infisical.patch.v1.projects.by.projectId.roles.by.roleId",
+      "method": "PATCH",
+      "path": "/api/v1/projects/{projectId}/roles/{roleId}",
+      "family": "Projects",
+      "availability": "EstablishedNotImplemented",
+      "factory": null,
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/project-roles/update.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": [
+        "body:permissions[].conditions.*",
+        "response:role.permissions[].conditions"
+      ],
+      "gap": "Handwritten typed request variant and validated result are not implemented. No raw payload escape hatch is exposed."
+    },
+    {
+      "operationId": "infisical.get.v1.projects.by.projectId.roles.slug.by.roleSlug",
+      "method": "GET",
+      "path": "/api/v1/projects/{projectId}/roles/slug/{roleSlug}",
+      "family": "Projects",
+      "availability": "TypedProjection",
+      "factory": "ProjectOperations.GetProjectRoleBySlug",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/project-roles/get-by-slug.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": [
+        "response:role.permissions[].conditions"
+      ]
+    },
+    {
+      "operationId": "infisical.get.v1.projects.by.projectId.tags",
+      "method": "GET",
+      "path": "/api/v1/projects/{projectId}/tags",
+      "family": "Projects",
+      "availability": "TypedProjection",
+      "factory": "ProjectOperations.ListTags",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/secret-tags/list.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": []
+    },
+    {
+      "operationId": "infisical.post.v1.projects.by.projectId.tags",
+      "method": "POST",
+      "path": "/api/v1/projects/{projectId}/tags",
+      "family": "Projects",
+      "availability": "TypedProjection",
+      "factory": "ProjectOperations.CreateTag",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/secret-tags/create.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": []
+    },
+    {
+      "operationId": "infisical.delete.v1.projects.by.projectId.tags.by.tagId",
+      "method": "DELETE",
+      "path": "/api/v1/projects/{projectId}/tags/{tagId}",
+      "family": "Projects",
+      "availability": "TypedProjection",
+      "factory": "ProjectOperations.DeleteTag",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/secret-tags/delete.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": []
+    },
+    {
+      "operationId": "infisical.get.v1.projects.by.projectId.tags.by.tagId",
+      "method": "GET",
+      "path": "/api/v1/projects/{projectId}/tags/{tagId}",
+      "family": "Projects",
+      "availability": "TypedProjection",
+      "factory": "ProjectOperations.GetTag",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/secret-tags/get-by-id.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": []
+    },
+    {
+      "operationId": "infisical.patch.v1.projects.by.projectId.tags.by.tagId",
+      "method": "PATCH",
+      "path": "/api/v1/projects/{projectId}/tags/{tagId}",
+      "family": "Projects",
+      "availability": "TypedProjection",
+      "factory": "ProjectOperations.UpdateTag",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/secret-tags/update.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": []
+    },
+    {
+      "operationId": "infisical.get.v1.projects.by.projectId.tags.slug.by.tagSlug",
+      "method": "GET",
+      "path": "/api/v1/projects/{projectId}/tags/slug/{tagSlug}",
+      "family": "Projects",
+      "availability": "TypedProjection",
+      "factory": "ProjectOperations.GetTagBySlug",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/secret-tags/get-by-slug.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": []
+    },
+    {
+      "operationId": "infisical.get.v1.projects.roles.by.roleId",
+      "method": "GET",
+      "path": "/api/v1/projects/roles/{roleId}",
+      "family": "Projects",
+      "availability": "TypedProjection",
+      "factory": "ProjectOperations.GetProjectRole",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/project-roles/get-by-id.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": [
+        "response:role.permissions[].conditions"
+      ]
+    },
+    {
+      "operationId": "infisical.get.v1.projects.slug.by.slug",
+      "method": "GET",
+      "path": "/api/v1/projects/slug/{slug}",
+      "family": "Projects",
+      "availability": "TypedProjection",
+      "factory": "ProjectOperations.GetProjectBySlug",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/projects/get-project-by-slug.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": []
+    },
+    {
+      "operationId": "infisical.get.v1.shared.secrets",
+      "method": "GET",
+      "path": "/api/v1/shared-secrets",
+      "family": "Governance",
+      "availability": "TypedProjection",
+      "factory": "SharingOperations.ListShares",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/shared-secrets/list.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": [
+        "response:secrets[].authorizedEmails"
+      ]
+    },
+    {
+      "operationId": "infisical.post.v1.shared.secrets",
+      "method": "POST",
+      "path": "/api/v1/shared-secrets",
+      "family": "Governance",
+      "availability": "TypedProjection",
+      "factory": "SharingOperations.CreateShare",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/shared-secrets/create.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": [
+        "response:authorizedEmails"
+      ]
+    },
+    {
+      "operationId": "infisical.delete.v1.shared.secrets.by.id",
+      "method": "DELETE",
+      "path": "/api/v1/shared-secrets/{id}",
+      "family": "Governance",
+      "availability": "TypedProjection",
+      "factory": "SharingOperations.DeleteShare",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/shared-secrets/delete.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": [
+        "response:authorizedEmails"
+      ]
+    },
+    {
+      "operationId": "infisical.get.v1.shared.secrets.by.id",
+      "method": "GET",
+      "path": "/api/v1/shared-secrets/{id}",
+      "family": "Governance",
+      "availability": "TypedProjection",
+      "factory": "SharingOperations.GetShare",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/shared-secrets/get-by-id.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": []
+    },
+    {
+      "operationId": "infisical.post.v1.shared.secrets.by.id.access",
+      "method": "POST",
+      "path": "/api/v1/shared-secrets/{id}/access",
+      "family": "Governance",
+      "availability": "TypedProjection",
+      "factory": "SharingOperations.AccessShare",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/shared-secrets/access.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": [
+        "response:authorizedEmails"
+      ]
+    },
+    {
+      "operationId": "infisical.post.v2.identities.search",
+      "method": "POST",
+      "path": "/api/v2/identities/search",
+      "family": "Identities",
+      "availability": "EstablishedNotImplemented",
+      "factory": null,
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/identities/search.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": [],
+      "gap": "Handwritten typed request variant and validated result are not implemented. No raw payload escape hatch is exposed."
+    },
+    {
+      "operationId": "infisical.post.v2.identities.search.count",
+      "method": "POST",
+      "path": "/api/v2/identities/search/count",
+      "family": "Identities",
+      "availability": "EstablishedNotImplemented",
+      "factory": null,
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/identities/search-count.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": [],
+      "gap": "Handwritten typed request variant and validated result are not implemented. No raw payload escape hatch is exposed."
+    },
+    {
+      "operationId": "infisical.get.v2.identity.project.additional.privilege",
+      "method": "GET",
+      "path": "/api/v2/identity-project-additional-privilege",
+      "family": "IdentityPrivileges",
+      "availability": "TypedProjection",
+      "factory": "IdentityPrivilegeOperations.ListProjectPrivileges",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/identity-specific-privilege/v2/list.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": []
+    },
+    {
+      "operationId": "infisical.post.v2.identity.project.additional.privilege",
+      "method": "POST",
+      "path": "/api/v2/identity-project-additional-privilege",
+      "family": "IdentityPrivileges",
+      "availability": "EstablishedNotImplemented",
+      "factory": null,
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/identity-specific-privilege/v2/create.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": [
+        "body:permissions[].conditions.*",
+        "response:privilege.permissions[].conditions"
+      ],
+      "gap": "Handwritten typed request variant and validated result are not implemented. No raw payload escape hatch is exposed."
+    },
+    {
+      "operationId": "infisical.delete.v2.identity.project.additional.privilege.by.id",
+      "method": "DELETE",
+      "path": "/api/v2/identity-project-additional-privilege/{id}",
+      "family": "IdentityPrivileges",
+      "availability": "TypedProjection",
+      "factory": "IdentityPrivilegeOperations.DeleteProjectPrivilege",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/identity-specific-privilege/v2/delete.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": [
+        "response:privilege.permissions[].conditions"
+      ]
+    },
+    {
+      "operationId": "infisical.get.v2.identity.project.additional.privilege.by.id",
+      "method": "GET",
+      "path": "/api/v2/identity-project-additional-privilege/{id}",
+      "family": "IdentityPrivileges",
+      "availability": "TypedProjection",
+      "factory": "IdentityPrivilegeOperations.GetProjectPrivilege",
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/identity-specific-privilege/v2/find-by-id.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": [
+        "response:privilege.permissions[].conditions"
+      ]
+    },
+    {
+      "operationId": "infisical.patch.v2.identity.project.additional.privilege.by.id",
+      "method": "PATCH",
+      "path": "/api/v2/identity-project-additional-privilege/{id}",
+      "family": "IdentityPrivileges",
+      "availability": "EstablishedNotImplemented",
+      "factory": null,
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/identity-specific-privilege/v2/update.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": [
+        "body:permissions[].conditions.*",
+        "response:privilege.permissions[].conditions"
+      ],
+      "gap": "Handwritten typed request variant and validated result are not implemented. No raw payload escape hatch is exposed."
+    },
+    {
+      "operationId": "infisical.get.v2.identity.project.additional.privilege.slug.by.privilegeSlug",
+      "method": "GET",
+      "path": "/api/v2/identity-project-additional-privilege/slug/{privilegeSlug}",
+      "family": "IdentityPrivileges",
+      "availability": "EstablishedNotImplemented",
+      "factory": null,
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/identity-specific-privilege/v2/find-by-slug.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": [
+        "response:privilege.permissions[].conditions"
+      ],
+      "gap": "Established native route is not implemented in this package increment; no callable stub is exposed."
+    },
+    {
+      "operationId": "infisical.delete.v2.organizations.by.organizationId.memberships",
+      "method": "DELETE",
+      "path": "/api/v2/organizations/{organizationId}/memberships",
+      "family": "ScopedAccess",
+      "availability": "EstablishedNotImplemented",
+      "factory": null,
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/organizations/bulk-delete-memberships.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": [],
+      "gap": "Established native route is not implemented in this package increment; no callable stub is exposed."
+    },
+    {
+      "operationId": "infisical.get.v2.organizations.by.organizationId.memberships",
+      "method": "GET",
+      "path": "/api/v2/organizations/{organizationId}/memberships",
+      "family": "ScopedAccess",
+      "availability": "EstablishedNotImplemented",
+      "factory": null,
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/organizations/memberships.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": [],
+      "gap": "Established native route is not implemented in this package increment; no callable stub is exposed."
+    },
+    {
+      "operationId": "infisical.delete.v2.organizations.by.organizationId.memberships.by.membershipId",
+      "method": "DELETE",
+      "path": "/api/v2/organizations/{organizationId}/memberships/{membershipId}",
+      "family": "ScopedAccess",
+      "availability": "EstablishedNotImplemented",
+      "factory": null,
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/organizations/delete-membership.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": [],
+      "gap": "Established native route is not implemented in this package increment; no callable stub is exposed."
+    },
+    {
+      "operationId": "infisical.patch.v2.organizations.by.organizationId.memberships.by.membershipId",
+      "method": "PATCH",
+      "path": "/api/v2/organizations/{organizationId}/memberships/{membershipId}",
+      "family": "ScopedAccess",
+      "availability": "EstablishedNotImplemented",
+      "factory": null,
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/organizations/update-membership.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": [],
+      "gap": "Handwritten typed request variant and validated result are not implemented. No raw payload escape hatch is exposed."
+    },
+    {
+      "operationId": "infisical.get.v2.organizations.by.orgId.identity.memberships",
+      "method": "GET",
+      "path": "/api/v2/organizations/{orgId}/identity-memberships",
+      "family": "ScopedAccess",
+      "availability": "EstablishedNotImplemented",
+      "factory": null,
+      "liveVerified": false,
+      "evidenceKind": "CurrentReferenceAndPublicMetadata",
+      "sources": [
+        "https://infisical.com/docs/api-reference/endpoints/organizations/list-identity-memberships.md",
+        "https://app.infisical.com/api/docs/json"
+      ],
+      "untypedNodes": [
+        "response:identityMemberships[].customRole.permissions"
+      ],
+      "gap": "Established native route is not implemented in this package increment; no callable stub is exposed."
+    }
+  ]
+}
