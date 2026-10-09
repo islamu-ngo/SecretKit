@@ -12,6 +12,9 @@
 [Dd]ebugPublic/
 [Rr]elease/
 [Rr]eleases/
+# Canonical source release contracts, not build outputs or private task notes.
+!docs/internal/releases/
+!docs/internal/releases/**
 x64/
 x86/
 [Ww][Ii][Nn]32/
