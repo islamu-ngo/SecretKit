@@ -1,0 +1,513 @@
+{
+  "name": "Protected exact-artifact publication",
+  "on": {
+    "workflow_dispatch": {
+      "inputs": {
+        "source_run_id": {
+          "description": "Successful trusted verify.yml run ID",
+          "required": true,
+          "type": "string"
+        },
+        "artifact_id": {
+          "description": "Immutable verified family artifact ID",
+          "required": true,
+          "type": "string"
+        },
+        "manifest_sha256": {
+          "description": "Reviewed manifest SHA-256, also required in protected variables",
+          "required": true,
+          "type": "string"
+        },
+        "execute": {
+          "description": "Authorize native publication after all protected gates",
+          "required": true,
+          "type": "boolean",
+          "default": false
+        },
+        "journal_run_id": {
+          "description": "Previous publication run for approved checkpoint (empty only for new family)",
+          "required": false,
+          "type": "string"
+        },
+        "journal_artifact_id": {
+          "description": "Latest approved immutable journal artifact ID",
+          "required": false,
+          "type": "string"
+        }
+      }
+    }
+  },
+  "permissions": {
+    "contents": "read",
+    "actions": "read"
+  },
+  "concurrency": {
+    "group": "secretkit-nuget-publication",
+    "cancel-in-progress": false
+  },
+  "jobs": {
+    "verify": {
+      "runs-on": "ubuntu-24.04",
+      "timeout-minutes": 20,
+      "outputs": {
+        "runner_artifact_id": "${{ steps.runner_upload.outputs.artifact-id }}",
+        "runner_sha256": "${{ steps.runner_hash.outputs.sha256 }}"
+      },
+      "steps": [
+        {
+          "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "with": {
+            "ref": "${{ github.sha }}",
+            "persist-credentials": false
+          }
+        },
+        {
+          "uses": "actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9",
+          "with": {
+            "dotnet-version": "10.0.302"
+          }
+        },
+        {
+          "name": "Locked restore and focused build",
+          "run": "dotnet restore tests/SecretKit.Release.Tests/SecretKit.Release.Tests.csproj --locked-mode\ndotnet build tests/SecretKit.Release.Tests/SecretKit.Release.Tests.csproj --configuration Release --no-restore"
+        },
+        {
+          "name": "Test and validate actual workflow machine values",
+          "run": "dotnet tests/SecretKit.Release.Tests/bin/Release/net10.0/SecretKit.Release.Tests.dll --minimum-expected-tests 1\ndotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll workflow-check .github/workflows/publish.yml\ndotnet format tools/SecretKit.Release/SecretKit.Release.csproj --verify-no-changes --no-restore --verbosity quiet\ndotnet format tests/SecretKit.Release.Tests/SecretKit.Release.Tests.csproj --verify-no-changes --no-restore --verbosity quiet"
+        },
+        {
+          "id": "runner_hash",
+          "name": "Freeze verified release runner without rebuilding packages",
+          "run": "tar -C tools/SecretKit.Release/bin/Release/net10.0 -cf runner.tar .\nread -r digest _ < <(sha256sum runner.tar)\nprintf \"sha256=%s\\n\" \"$digest\" >> \"$GITHUB_OUTPUT\""
+        },
+        {
+          "id": "runner_upload",
+          "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
+          "with": {
+            "name": "release-runner-${{ github.run_id }}-${{ github.run_attempt }}",
+            "path": "runner.tar",
+            "if-no-files-found": "error"
+          }
+        }
+      ],
+      "defaults": {
+        "run": {
+          "shell": "bash"
+        }
+      }
+    },
+    "publish": {
+      "needs": "verify",
+      "if": "${{ inputs.execute && github.repository == 'islamu-ngo/SecretKit' && github.ref == 'refs/heads/main' && github.ref_protected }}",
+      "environment": "release",
+      "runs-on": "ubuntu-24.04",
+      "timeout-minutes": 45,
+      "permissions": {
+        "contents": "read",
+        "actions": "read",
+        "id-token": "write"
+      },
+      "env": {
+        "SECRETKIT_APPROVED_MANIFEST_SHA256": "${{ vars.SECRETKIT_APPROVED_MANIFEST_SHA256 }}",
+        "SECRETKIT_APPROVED_SOURCE_COMMIT": "${{ vars.SECRETKIT_APPROVED_SOURCE_COMMIT }}",
+        "SECRETKIT_APPROVED_VERSION": "${{ vars.SECRETKIT_APPROVED_VERSION }}",
+        "SECRETKIT_APPROVED_SOURCE_RUN_ID": "${{ vars.SECRETKIT_APPROVED_SOURCE_RUN_ID }}",
+        "SECRETKIT_APPROVED_ARTIFACT_ID": "${{ vars.SECRETKIT_APPROVED_ARTIFACT_ID }}",
+        "SECRETKIT_APPROVED_ARTIFACT_DIGEST": "${{ vars.SECRETKIT_APPROVED_ARTIFACT_DIGEST }}",
+        "SECRETKIT_APPROVED_SCOPE_SHA256": "${{ vars.SECRETKIT_APPROVED_SCOPE_SHA256 }}",
+        "SECRETKIT_NUGET_USER": "${{ vars.SECRETKIT_NUGET_USER }}",
+        "SECRETKIT_NUGET_OWNER": "${{ vars.SECRETKIT_NUGET_OWNER }}",
+        "SECRETKIT_NUGET_REPOSITORY_CERT_SHA256": "${{ vars.SECRETKIT_NUGET_REPOSITORY_CERT_SHA256 }}",
+        "SECRETKIT_APPROVED_JOURNAL_HEAD": "${{ vars.SECRETKIT_APPROVED_JOURNAL_HEAD }}",
+        "SECRETKIT_ENVIRONMENT_PROTECTED": "${{ vars.SECRETKIT_ENVIRONMENT_PROTECTED }}",
+        "SECRETKIT_ENVIRONMENT": "release",
+        "SECRETKIT_EXECUTE": "${{ inputs.execute }}"
+      },
+      "steps": [
+        {
+          "id": "input_gate",
+          "name": "Bind inputs to protected approvals",
+          "env": {
+            "SOURCE_RUN": "${{ inputs.source_run_id }}",
+            "ARTIFACT": "${{ inputs.artifact_id }}",
+            "MANIFEST": "${{ inputs.manifest_sha256 }}",
+            "JOURNAL_RUN": "${{ inputs.journal_run_id }}",
+            "JOURNAL_ARTIFACT": "${{ inputs.journal_artifact_id }}"
+          },
+          "run": "[[ \"$SOURCE_RUN\" =~ ^[1-9][0-9]*$ && \"$ARTIFACT\" =~ ^[1-9][0-9]*$ ]]\n[[ \"$SOURCE_RUN\" == \"$SECRETKIT_APPROVED_SOURCE_RUN_ID\" && \"$ARTIFACT\" == \"$SECRETKIT_APPROVED_ARTIFACT_ID\" && \"$MANIFEST\" == \"$SECRETKIT_APPROVED_MANIFEST_SHA256\" ]]\n[[ \"$SECRETKIT_ENVIRONMENT_PROTECTED\" == true ]]\nif [[ \"$SECRETKIT_APPROVED_JOURNAL_HEAD\" == new ]]; then\n  [[ -z \"$JOURNAL_RUN\" && -z \"$JOURNAL_ARTIFACT\" ]]\nelse\n  [[ \"$SECRETKIT_APPROVED_JOURNAL_HEAD\" =~ ^[0-9a-f]{64}$ && \"$JOURNAL_RUN\" =~ ^[1-9][0-9]*$ && \"$JOURNAL_ARTIFACT\" =~ ^[1-9][0-9]*$ ]]\nfi"
+        },
+        {
+          "uses": "actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9",
+          "with": {
+            "dotnet-version": "10.0.302"
+          }
+        },
+        {
+          "id": "runner_download",
+          "uses": "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093",
+          "with": {
+            "artifact-ids": "${{ needs.verify.outputs.runner_artifact_id }}",
+            "path": "runner-artifact",
+            "merge-multiple": true
+          }
+        },
+        {
+          "id": "runner_integrity",
+          "env": {
+            "RUNNER_HASH": "${{ needs.verify.outputs.runner_sha256 }}"
+          },
+          "run": "[[ \"$RUNNER_HASH\" =~ ^[0-9a-f]{64}$ ]]\nprintf \"%s  runner-artifact/runner.tar\\n\" \"$RUNNER_HASH\" | sha256sum --check --status\nmkdir runner\ntar -xf runner-artifact/runner.tar -C runner"
+        },
+        {
+          "id": "artifact_download",
+          "uses": "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093",
+          "with": {
+            "artifact-ids": "${{ inputs.artifact_id }}",
+            "run-id": "${{ inputs.source_run_id }}",
+            "github-token": "${{ github.token }}",
+            "repository": "islamu-ngo/SecretKit",
+            "path": "bundle",
+            "merge-multiple": true
+          }
+        },
+        {
+          "id": "artifact_metadata",
+          "env": {
+            "GH_TOKEN": "${{ github.token }}",
+            "SOURCE_RUN": "${{ inputs.source_run_id }}",
+            "ARTIFACT": "${{ inputs.artifact_id }}",
+            "SOURCE_COMMIT": "${{ vars.SECRETKIT_APPROVED_SOURCE_COMMIT }}"
+          },
+          "run": "gh api \"repos/islamu-ngo/SecretKit/actions/artifacts/$ARTIFACT\" > bundle/artifact-metadata.json\ngh api \"repos/islamu-ngo/SecretKit/actions/runs/$SOURCE_RUN\" > bundle/run-metadata.json\n[[ \"$SOURCE_COMMIT\" =~ ^[0-9a-f]{40}$ ]]\ngh api -H \"Accept: application/vnd.github.raw+json\" \"repos/islamu-ngo/SecretKit/contents/docs/internal/providers/infisical-operations.json?ref=$SOURCE_COMMIT\" > bundle/infisical-operations.json\ngh api -H \"Accept: application/vnd.github.raw+json\" \"repos/islamu-ngo/SecretKit/contents/docs/internal/providers/azure-key-vault-operations.json?ref=$SOURCE_COMMIT\" > bundle/azure-key-vault-operations.json"
+        },
+        {
+          "id": "verify_artifacts",
+          "run": "dotnet runner/SecretKit.Release.dll verify bundle"
+        },
+        {
+          "id": "journal_download",
+          "if": "${{ vars.SECRETKIT_APPROVED_JOURNAL_HEAD != 'new' }}",
+          "uses": "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093",
+          "with": {
+            "artifact-ids": "${{ inputs.journal_artifact_id }}",
+            "run-id": "${{ inputs.journal_run_id }}",
+            "github-token": "${{ github.token }}",
+            "repository": "islamu-ngo/SecretKit",
+            "path": "journal",
+            "merge-multiple": true
+          }
+        },
+        {
+          "id": "initialize",
+          "run": "dotnet runner/SecretKit.Release.dll initialize bundle journal"
+        },
+        {
+          "name": "Persist immutable publication checkpoint",
+          "id": "initial_journal",
+          "if": "${{ always() && steps.initialize.outcome != 'skipped' }}",
+          "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
+          "with": {
+            "name": "journal-${{ github.run_id }}-${{ github.run_attempt }}-initial",
+            "path": "journal/",
+            "if-no-files-found": "error",
+            "retention-days": 90
+          }
+        },
+        {
+          "id": "login",
+          "uses": "NuGet/login@8d196754b4036150537f80ac539e15c2f1028841",
+          "with": {
+            "user": "${{ vars.SECRETKIT_NUGET_USER }}"
+          }
+        },
+        {
+          "id": "prepare_0",
+          "run": "dotnet runner/SecretKit.Release.dll prepare bundle journal SecretKit.Core"
+        },
+        {
+          "name": "Persist immutable publication checkpoint",
+          "id": "before_0",
+          "if": "${{ steps.prepare_0.outputs.ready == 'true' }}",
+          "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
+          "with": {
+            "name": "journal-${{ github.run_id }}-${{ github.run_attempt }}-before-0",
+            "path": "journal/",
+            "if-no-files-found": "error",
+            "retention-days": 90
+          }
+        },
+        {
+          "id": "dispatch_0",
+          "if": "${{ steps.prepare_0.outputs.ready == 'true' }}",
+          "env": {
+            "NUGET_API_KEY": "${{ steps.login.outputs.NUGET_API_KEY }}",
+            "SECRETKIT_CHECKPOINT_ARTIFACT_ID": "${{ steps.before_0.outputs.artifact-id }}",
+            "SECRETKIT_CHECKPOINT_HEAD": "${{ steps.prepare_0.outputs.head }}"
+          },
+          "run": "dotnet runner/SecretKit.Release.dll dispatch bundle journal SecretKit.Core --execute"
+        },
+        {
+          "name": "Persist immutable publication checkpoint",
+          "id": "after_0",
+          "if": "${{ always() && steps.dispatch_0.outcome != 'skipped' }}",
+          "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
+          "with": {
+            "name": "journal-${{ github.run_id }}-${{ github.run_attempt }}-after-0",
+            "path": "journal/",
+            "if-no-files-found": "error",
+            "retention-days": 90
+          }
+        },
+        {
+          "id": "prepare_1",
+          "run": "dotnet runner/SecretKit.Release.dll prepare bundle journal SecretKit.Infisical"
+        },
+        {
+          "name": "Persist immutable publication checkpoint",
+          "id": "before_1",
+          "if": "${{ steps.prepare_1.outputs.ready == 'true' }}",
+          "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
+          "with": {
+            "name": "journal-${{ github.run_id }}-${{ github.run_attempt }}-before-1",
+            "path": "journal/",
+            "if-no-files-found": "error",
+            "retention-days": 90
+          }
+        },
+        {
+          "id": "dispatch_1",
+          "if": "${{ steps.prepare_1.outputs.ready == 'true' }}",
+          "env": {
+            "NUGET_API_KEY": "${{ steps.login.outputs.NUGET_API_KEY }}",
+            "SECRETKIT_CHECKPOINT_ARTIFACT_ID": "${{ steps.before_1.outputs.artifact-id }}",
+            "SECRETKIT_CHECKPOINT_HEAD": "${{ steps.prepare_1.outputs.head }}"
+          },
+          "run": "dotnet runner/SecretKit.Release.dll dispatch bundle journal SecretKit.Infisical --execute"
+        },
+        {
+          "name": "Persist immutable publication checkpoint",
+          "id": "after_1",
+          "if": "${{ always() && steps.dispatch_1.outcome != 'skipped' }}",
+          "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
+          "with": {
+            "name": "journal-${{ github.run_id }}-${{ github.run_attempt }}-after-1",
+            "path": "journal/",
+            "if-no-files-found": "error",
+            "retention-days": 90
+          }
+        },
+        {
+          "id": "prepare_2",
+          "run": "dotnet runner/SecretKit.Release.dll prepare bundle journal SecretKit.AzureKeyVault"
+        },
+        {
+          "name": "Persist immutable publication checkpoint",
+          "id": "before_2",
+          "if": "${{ steps.prepare_2.outputs.ready == 'true' }}",
+          "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
+          "with": {
+            "name": "journal-${{ github.run_id }}-${{ github.run_attempt }}-before-2",
+            "path": "journal/",
+            "if-no-files-found": "error",
+            "retention-days": 90
+          }
+        },
+        {
+          "id": "dispatch_2",
+          "if": "${{ steps.prepare_2.outputs.ready == 'true' }}",
+          "env": {
+            "NUGET_API_KEY": "${{ steps.login.outputs.NUGET_API_KEY }}",
+            "SECRETKIT_CHECKPOINT_ARTIFACT_ID": "${{ steps.before_2.outputs.artifact-id }}",
+            "SECRETKIT_CHECKPOINT_HEAD": "${{ steps.prepare_2.outputs.head }}"
+          },
+          "run": "dotnet runner/SecretKit.Release.dll dispatch bundle journal SecretKit.AzureKeyVault --execute"
+        },
+        {
+          "name": "Persist immutable publication checkpoint",
+          "id": "after_2",
+          "if": "${{ always() && steps.dispatch_2.outcome != 'skipped' }}",
+          "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
+          "with": {
+            "name": "journal-${{ github.run_id }}-${{ github.run_attempt }}-after-2",
+            "path": "journal/",
+            "if-no-files-found": "error",
+            "retention-days": 90
+          }
+        },
+        {
+          "id": "prepare_3",
+          "run": "dotnet runner/SecretKit.Release.dll prepare bundle journal SecretKit.Extensions.Configuration"
+        },
+        {
+          "name": "Persist immutable publication checkpoint",
+          "id": "before_3",
+          "if": "${{ steps.prepare_3.outputs.ready == 'true' }}",
+          "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
+          "with": {
+            "name": "journal-${{ github.run_id }}-${{ github.run_attempt }}-before-3",
+            "path": "journal/",
+            "if-no-files-found": "error",
+            "retention-days": 90
+          }
+        },
+        {
+          "id": "dispatch_3",
+          "if": "${{ steps.prepare_3.outputs.ready == 'true' }}",
+          "env": {
+            "NUGET_API_KEY": "${{ steps.login.outputs.NUGET_API_KEY }}",
+            "SECRETKIT_CHECKPOINT_ARTIFACT_ID": "${{ steps.before_3.outputs.artifact-id }}",
+            "SECRETKIT_CHECKPOINT_HEAD": "${{ steps.prepare_3.outputs.head }}"
+          },
+          "run": "dotnet runner/SecretKit.Release.dll dispatch bundle journal SecretKit.Extensions.Configuration --execute"
+        },
+        {
+          "name": "Persist immutable publication checkpoint",
+          "id": "after_3",
+          "if": "${{ always() && steps.dispatch_3.outcome != 'skipped' }}",
+          "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
+          "with": {
+            "name": "journal-${{ github.run_id }}-${{ github.run_attempt }}-after-3",
+            "path": "journal/",
+            "if-no-files-found": "error",
+            "retention-days": 90
+          }
+        },
+        {
+          "id": "prepare_4",
+          "run": "dotnet runner/SecretKit.Release.dll prepare bundle journal SecretKit.Extensions.Hosting"
+        },
+        {
+          "name": "Persist immutable publication checkpoint",
+          "id": "before_4",
+          "if": "${{ steps.prepare_4.outputs.ready == 'true' }}",
+          "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
+          "with": {
+            "name": "journal-${{ github.run_id }}-${{ github.run_attempt }}-before-4",
+            "path": "journal/",
+            "if-no-files-found": "error",
+            "retention-days": 90
+          }
+        },
+        {
+          "id": "dispatch_4",
+          "if": "${{ steps.prepare_4.outputs.ready == 'true' }}",
+          "env": {
+            "NUGET_API_KEY": "${{ steps.login.outputs.NUGET_API_KEY }}",
+            "SECRETKIT_CHECKPOINT_ARTIFACT_ID": "${{ steps.before_4.outputs.artifact-id }}",
+            "SECRETKIT_CHECKPOINT_HEAD": "${{ steps.prepare_4.outputs.head }}"
+          },
+          "run": "dotnet runner/SecretKit.Release.dll dispatch bundle journal SecretKit.Extensions.Hosting --execute"
+        },
+        {
+          "name": "Persist immutable publication checkpoint",
+          "id": "after_4",
+          "if": "${{ always() && steps.dispatch_4.outcome != 'skipped' }}",
+          "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
+          "with": {
+            "name": "journal-${{ github.run_id }}-${{ github.run_attempt }}-after-4",
+            "path": "journal/",
+            "if-no-files-found": "error",
+            "retention-days": 90
+          }
+        },
+        {
+          "id": "prepare_5",
+          "run": "dotnet runner/SecretKit.Release.dll prepare bundle journal SecretKit.Infisical.Management"
+        },
+        {
+          "name": "Persist immutable publication checkpoint",
+          "id": "before_5",
+          "if": "${{ steps.prepare_5.outputs.ready == 'true' }}",
+          "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
+          "with": {
+            "name": "journal-${{ github.run_id }}-${{ github.run_attempt }}-before-5",
+            "path": "journal/",
+            "if-no-files-found": "error",
+            "retention-days": 90
+          }
+        },
+        {
+          "id": "dispatch_5",
+          "if": "${{ steps.prepare_5.outputs.ready == 'true' }}",
+          "env": {
+            "NUGET_API_KEY": "${{ steps.login.outputs.NUGET_API_KEY }}",
+            "SECRETKIT_CHECKPOINT_ARTIFACT_ID": "${{ steps.before_5.outputs.artifact-id }}",
+            "SECRETKIT_CHECKPOINT_HEAD": "${{ steps.prepare_5.outputs.head }}"
+          },
+          "run": "dotnet runner/SecretKit.Release.dll dispatch bundle journal SecretKit.Infisical.Management --execute"
+        },
+        {
+          "name": "Persist immutable publication checkpoint",
+          "id": "after_5",
+          "if": "${{ always() && steps.dispatch_5.outcome != 'skipped' }}",
+          "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
+          "with": {
+            "name": "journal-${{ github.run_id }}-${{ github.run_attempt }}-after-5",
+            "path": "journal/",
+            "if-no-files-found": "error",
+            "retention-days": 90
+          }
+        },
+        {
+          "id": "prepare_6",
+          "run": "dotnet runner/SecretKit.Release.dll prepare bundle journal SecretKit.AzureKeyVault.Management"
+        },
+        {
+          "name": "Persist immutable publication checkpoint",
+          "id": "before_6",
+          "if": "${{ steps.prepare_6.outputs.ready == 'true' }}",
+          "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
+          "with": {
+            "name": "journal-${{ github.run_id }}-${{ github.run_attempt }}-before-6",
+            "path": "journal/",
+            "if-no-files-found": "error",
+            "retention-days": 90
+          }
+        },
+        {
+          "id": "dispatch_6",
+          "if": "${{ steps.prepare_6.outputs.ready == 'true' }}",
+          "env": {
+            "NUGET_API_KEY": "${{ steps.login.outputs.NUGET_API_KEY }}",
+            "SECRETKIT_CHECKPOINT_ARTIFACT_ID": "${{ steps.before_6.outputs.artifact-id }}",
+            "SECRETKIT_CHECKPOINT_HEAD": "${{ steps.prepare_6.outputs.head }}"
+          },
+          "run": "dotnet runner/SecretKit.Release.dll dispatch bundle journal SecretKit.AzureKeyVault.Management --execute"
+        },
+        {
+          "name": "Persist immutable publication checkpoint",
+          "id": "after_6",
+          "if": "${{ always() && steps.dispatch_6.outcome != 'skipped' }}",
+          "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
+          "with": {
+            "name": "journal-${{ github.run_id }}-${{ github.run_attempt }}-after-6",
+            "path": "journal/",
+            "if-no-files-found": "error",
+            "retention-days": 90
+          }
+        },
+        {
+          "id": "reconcile",
+          "run": "dotnet runner/SecretKit.Release.dll reconcile bundle journal"
+        },
+        {
+          "name": "Persist immutable publication checkpoint",
+          "id": "final_journal",
+          "if": "${{ always() && steps.initialize.outcome != 'skipped' }}",
+          "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
+          "with": {
+            "name": "journal-${{ github.run_id }}-${{ github.run_attempt }}-final",
+            "path": "journal/",
+            "if-no-files-found": "error",
+            "retention-days": 90
+          }
+        }
+      ],
+      "defaults": {
+        "run": {
+          "shell": "bash"
+        }
+      }
+    }
+  }
+}
