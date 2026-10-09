@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/SecretKit.Core/SecretKit.Core.csproj" />
+    <ProjectReference Include="../../src/SecretKit.Infisical/SecretKit.Infisical.csproj" />
+    <ProjectReference Include="../../src/SecretKit.AzureKeyVault/SecretKit.AzureKeyVault.csproj" />
+  </ItemGroup>
+</Project>
