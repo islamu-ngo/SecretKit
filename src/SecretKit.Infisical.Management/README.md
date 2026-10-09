@@ -1,15 +1,15 @@
 # SecretKit.Infisical.Management
 
-An optional, unpublished administrative package. It currently exposes **84 typed
+An optional, unpublished administrative package. It currently exposes **87 typed
 operation projections out of 122 admitted management operations**. It is not
 complete Infisical administration support. The exact, source-linked
-[operation inventory](operation-coverage.json) distinguishes 37 established
+[operation inventory](operation-coverage.json) distinguishes 34 established
 operations not implemented in this increment and one event-subscription response
 contract gap. There are no callable unsupported-operation stubs.
 
 | Registry family | Admitted | Callable typed projections |
 | --- | ---: | ---: |
-| ScopedAccess | 30 | 24 |
+| ScopedAccess | 30 | 27 |
 | Projects | 43 | 32 |
 | Identities | 26 | 15 |
 | IdentityPrivileges | 12 | 3 |
@@ -128,6 +128,15 @@ clearing on PATCH. Results retain protected metadata, not configuration or
 effective permissions. Optional roles/permissions, environments, users, groups,
 identities and project-managed identities are not exposed. A missing returned
 type remains unknown rather than being inferred from the request.
+
+Organization-user membership list/update/delete use the native v2 routes.
+Inventory is unpaginated and fails closed above 1,000 rows rather than inventing
+a continuation. Updates preserve omitted fields, `isActive: false` and empty
+metadata clearing as distinct inputs. Returned organization/membership IDs and
+present user-ID correspondence are checked. Protected projections omit project
+favorites, invitation/login history, verification flags, authentication methods
+and public keys; no effective permissions are inferred. Bulk deletion remains
+unimplemented.
 
 - `ManagementReceipt` is bound to one immutable request object and client.
   Reuse is rejected; there is no automatic replay, rollback, or transaction.

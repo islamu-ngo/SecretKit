@@ -1878,8 +1878,8 @@
       "method": "GET",
       "path": "/api/v2/organizations/{organizationId}/memberships",
       "family": "ScopedAccess",
-      "availability": "EstablishedNotImplemented",
-      "factory": null,
+      "availability": "TypedProjection",
+      "factory": "OrganizationMembershipOperations.ListOrganizationMemberships",
       "liveVerified": false,
       "evidenceKind": "CurrentReferenceAndPublicMetadata",
       "sources": [
@@ -1887,15 +1887,15 @@
         "https://app.infisical.com/api/docs/json"
       ],
       "untypedNodes": [],
-      "gap": "Established native route is not implemented in this package increment; no callable stub is exposed."
+      "gap": "Protected membership/user metadata projection only; project favorites, invitation/login history, verification, authentication methods and public keys are not exposed."
     },
     {
       "operationId": "infisical.delete.v2.organizations.by.organizationId.memberships.by.membershipId",
       "method": "DELETE",
       "path": "/api/v2/organizations/{organizationId}/memberships/{membershipId}",
       "family": "ScopedAccess",
-      "availability": "EstablishedNotImplemented",
-      "factory": null,
+      "availability": "TypedProjection",
+      "factory": "OrganizationMembershipOperations.DeleteOrganizationMembership",
       "liveVerified": false,
       "evidenceKind": "CurrentReferenceAndPublicMetadata",
       "sources": [
@@ -1903,15 +1903,15 @@
         "https://app.infisical.com/api/docs/json"
       ],
       "untypedNodes": [],
-      "gap": "Established native route is not implemented in this package increment; no callable stub is exposed."
+      "gap": "Protected membership metadata projection only; additional invitation/login fields are not exposed."
     },
     {
       "operationId": "infisical.patch.v2.organizations.by.organizationId.memberships.by.membershipId",
       "method": "PATCH",
       "path": "/api/v2/organizations/{organizationId}/memberships/{membershipId}",
       "family": "ScopedAccess",
-      "availability": "EstablishedNotImplemented",
-      "factory": null,
+      "availability": "TypedProjection",
+      "factory": "OrganizationMembershipOperations.UpdateOrganizationMembership",
       "liveVerified": false,
       "evidenceKind": "CurrentReferenceAndPublicMetadata",
       "sources": [
@@ -1919,7 +1919,7 @@
         "https://app.infisical.com/api/docs/json"
       ],
       "untypedNodes": [],
-      "gap": "Handwritten typed request variant and validated result are not implemented. No raw payload escape hatch is exposed."
+      "gap": "Typed role/isActive/metadata inputs and protected membership metadata projection; additional invitation/login fields are not exposed."
     },
     {
       "operationId": "infisical.get.v2.organizations.by.orgId.identity.memberships",

@@ -132,9 +132,10 @@ application readiness policy is introduced.
 
 ## Evidence boundary
 
-The optional Infisical administration package currently exposes 84 typed
+The optional Infisical administration package currently exposes 87 typed
 operation projections out of 122 admitted management operations, including
-bounded group inventories and project-template metadata CRUD. Supported input
+bounded group inventories, project-template metadata CRUD and organization-user
+membership list/update/delete. Supported input
 subsets are not complete native-operation coverage. The exact source-linked
 [management inventory](../../src/SecretKit.Infisical.Management/operation-coverage.json)
 retains optional configuration gaps and unestablished response contracts.
