@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "family": "SecretKit",
+  "version": "0.1.0-preview.1",
+  "sourceCommit": "",
+  "repository": "https://github.com/islamu-ngo/SecretKit",
+  "sourceRunId": 0,
+  "publisher": "UNREGISTERED",
+  "owner": "UNVERIFIED",
+  "prefix": "SecretKit.",
+  "environment": "release",
+  "noticesSha256": "",
+  "scope": {
+    "file": "scope.json",
+    "sha256": ""
+  },
+  "packages": [],
+  "gates": []
+}

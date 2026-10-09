@@ -1,0 +1,161 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SecretKit publication evidence manifest",
+  "description": "Describes evidence only. Schema validity grants no publishing authority, signer trust, namespace rights, or conformance. Protected independent hash approval and native verification remain mandatory.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "family",
+    "version",
+    "sourceCommit",
+    "repository",
+    "sourceRunId",
+    "publisher",
+    "owner",
+    "prefix",
+    "environment",
+    "noticesSha256",
+    "scope",
+    "packages",
+    "gates"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "family": {
+      "const": "SecretKit"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[a-z][a-z0-9-]*(\\.(0|[1-9][0-9]*|[a-z][a-z0-9-]*))*)?$"
+    },
+    "sourceCommit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "repository": {
+      "const": "https://github.com/islamu-ngo/SecretKit"
+    },
+    "sourceRunId": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "publisher": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,80}$"
+    },
+    "owner": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,80}$"
+    },
+    "prefix": {
+      "const": "SecretKit."
+    },
+    "environment": {
+      "const": "release"
+    },
+    "noticesSha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "scope": {
+      "$ref": "#/$defs/fileDigest"
+    },
+    "packages": {
+      "type": "array",
+      "minItems": 7,
+      "maxItems": 7,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "file",
+          "sha256"
+        ],
+        "properties": {
+          "id": {
+            "enum": [
+              "SecretKit.Core",
+              "SecretKit.Infisical",
+              "SecretKit.AzureKeyVault",
+              "SecretKit.Extensions.Configuration",
+              "SecretKit.Extensions.Hosting",
+              "SecretKit.Infisical.Management",
+              "SecretKit.AzureKeyVault.Management"
+            ]
+          },
+          "file": {
+            "type": "string",
+            "pattern": "^SecretKit\\.[A-Za-z.]+\\.[0-9A-Za-z.-]+\\.nupkg$"
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        }
+      }
+    },
+    "gates": {
+      "type": "array",
+      "minItems": 9,
+      "maxItems": 9,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "file",
+          "sha256"
+        ],
+        "properties": {
+          "kind": {
+            "enum": [
+              "native-operations",
+              "live-conformance",
+              "compatibility-install",
+              "provenance",
+              "notices",
+              "namespace-rights",
+              "publisher-rights",
+              "oidc-registration",
+              "protected-environment"
+            ]
+          },
+          "file": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,180}$"
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "fileDigest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "file",
+        "sha256"
+      ],
+      "properties": {
+        "file": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,180}$"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    }
+  }
+}
