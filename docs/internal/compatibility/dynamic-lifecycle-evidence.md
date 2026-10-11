@@ -1,6 +1,7 @@
 # Native dynamic lifecycle evidence
 
-Observed 2026-10-09 in the validated SecretKit `main` checkout. This is an
+Observed 2026-10-09; optional-input matrix updated 2026-10-10 in the validated
+SecretKit `main` checkout. This is an
 independently authored offline native lifecycle slice, not full Infisical
 coverage, live conformance, edition availability, permission evidence or
 cross-provider support. No Core promotion, official Infisical SDK, automatic
@@ -8,6 +9,24 @@ leases, replay, cache, persistence, fallback, background maintenance or implicit
 remote cleanup is involved. Parent integration owns the project graph and registry.
 
 ## Authority and transport
+
+### Owned native gate observed 2026-10-11
+
+The separate native SQL scenario compiled and passed formatting, but its
+actual owned v0.166.3 run failed at definition creation with HTTP400/Rejected:
+"Failed to create dynamic secret due to plan restriction. Upgrade plan to
+create dynamic secret." Separate generated PostgreSQL backend TCP readiness,
+database/schema setup succeeded. No platform database was used.
+Credential acquisition, backend use, role-expiry renewal, revoke denial and
+committed-acquisition fault assertions therefore remain unrun. No skip, replay
+or inferred downstream pass replaces this entitlement gate.
+
+Current-public OpenAPI and pinned documentation research still leave all27
+non-SQL material variants unestablished. Optional unconstrained `data` and
+nullable untyped `lease.config` are not credential models. Pinned documentation
+references the unversioned live specification. OAuth2/Tailscale output labels
+do not establish HTTP paths/types/nullability; Kubernetes token lifetime remains
+fixed and lease deletion is not JWT revocation.
 
 `InfisicalDynamicClient` requires one immutable trusted origin, host-selected
 token source and exact `InfisicalDynamicScope`. The scope requires the expected
@@ -57,7 +76,7 @@ All operations below refer to admitted `DynamicSecrets` registry rows and
 | Native operation | Implementation | Exact boundary or gap |
 | --- | --- | --- |
 | `GET /api/v1/dynamic-secrets` | `ListDefinitionsAsync` | Bounded metadata projection for all 28 admitted types; no input credential export or issuance |
-| `POST /api/v1/dynamic-secrets` | `CreateDefinitionAsync` | 28 independently typed templates; common default/max TTL, username template and protected metadata; profile option gaps below |
+| `POST /api/v1/dynamic-secrets` | `CreateDefinitionAsync` | 28 independently typed templates; common default/max TTL, username template and protected metadata; bounded profile options below |
 | `GET /api/v1/dynamic-secrets/{name}` | `InspectDefinitionAsync` | Validated metadata, never lease issuance; unspecified `inputs` not exposed |
 | `PATCH /api/v1/dynamic-secrets/{name}` | `UpdateDefinitionAsync`, `UpdateDefinitionPolicyAsync` | Typed inputs matching existing provider, rename, default/max policy, explicit max/template clearing, protected metadata; no arbitrary `data.inputs` |
 | `DELETE /api/v1/dynamic-secrets/{name}` | `DeleteDefinitionAsync` | Typed receipt and validated definition response; forced record removal distinguished; external credential deletion not certified |
@@ -66,7 +85,7 @@ All operations below refer to admitted `DynamicSecrets` registry rows and
 | `POST /api/v1/dynamic-secrets/leases` | `AcquireDatabaseAsync`: supported SQL subset | Only `sql-database` material acquisition is implemented. Other 27 profiles return `ContractNotEstablished` before dispatch; `data`/optional `config` are unspecified in the registry, and exact output field/primitive variants are not established |
 | `POST /api/v1/dynamic-secrets/leases/{leaseId}/renew` | `RenewAsync`, `RenewLeaseAsync` | Explicit database-owned-material renewal or metadata-only renewal for any observed profile; actual returned expiry/version; no replacement credential issuance, forced renewal or replay |
 | `DELETE /api/v1/dynamic-secrets/leases/{leaseId}` | `RevokeAsync`, `RevokeLeaseAsync` | Explicit material-handle cleanup or retained-reference cleanup after local disposal, for any observed profile; force is record removal, not proof of external revocation |
-| `POST /api/v1/dynamic-secrets/leases/kubernetes` | **Unimplemented, no callable placeholder** | Namespace request field is established, but independently typed returned credential/config primitives remain unspecified; no unsafe material-free issuance substitute |
+| `POST /api/v1/dynamic-secrets/leases/kubernetes` | **ContractNotEstablished, no callable placeholder** | Request fields are established; public `response.data` is an unconstrained `{}` schema and nullable `lease.config` has no shape. Credential field names/types/nullability and namespace echo remain unspecified; no guessed JWT field or material-free issuance substitute |
 
 ## Profile matrix
 
@@ -75,40 +94,41 @@ authentication alternatives. Definition creation/inspection/update can use
 these types; that does not establish material acquisition for that provider.
 Only SQL material output has established exact public field names in the
 retrieved documentation. No credential dictionary substitutes for other outputs.
-Optional fields not exposed below are **implementation gaps**, not claims that
-the provider lacks those options. Peer-verification bypass is deliberately not
-exposed. Optional omitted fields retain native server policy, not an SDK promise.
+Established optional definition fields are exposed through the named bounded
+profiles/options below. This covers field alternatives, not every native numeric,
+string or duration value. Peer-verification bypass is deliberately not exposed.
+Optional omitted fields retain native server policy, not an SDK promise.
 
 | Registry template | Independent public profile | Implemented variants and exact remaining input gaps |
 | --- | --- | --- |
-| `sql-database` | `NativeSqlDefinitionProfile` | postgres/mysql2/oracledb/mssql/sap-ase/vertica, statements including renew; missing `ca`, `sslEnabled`, `gatewayId`, `gatewayPoolId`, `passwordRequirements`; peer verification bypass excluded |
-| `clickhouse` | `NativeClickhouseDefinitionProfile` | Required inputs, CA and renew; missing `gatewayId`, `gatewayPoolId`, `passwordRequirements` |
+| `sql-database` | `NativeSqlDefinitionProfile` | postgres/mysql2/oracledb/mssql/sap-ase/vertica, statements including renew, protected CA, explicit TLS flag, selected/cleared gateway IDs and typed password requirements; peer verification bypass excluded |
+| `clickhouse` | `NativeClickhouseDefinitionProfile` | Required inputs, CA/renew, selected/cleared gateway IDs and password requirements |
 | `cassandra` | `NativeCassandraDefinitionProfile` | Required inputs, keyspace, CA, renew; peer verification bypass excluded |
 | `sap-ase` | `NativeSapAseDefinitionProfile` | All published input fields implemented |
-| `aws-iam` | `NativeAwsIamDefinitionProfile` | access-key/assume-role/irsa; iam-user/temporary-credentials; missing `awsPath`, `permissionBoundaryPolicyArn`, `policyArns`, `policyDocument`, `sessionPolicyArns`, `sessionPolicyDocument`, `userGroups`, `tags` |
+| `aws-iam` | `NativeAwsIamDefinitionProfile` | access-key/assume-role/irsa; iam-user/temporary-credentials; path, permission boundary, policy ARNs/document, groups and copied tags; session-policy fields restricted to assume-role |
 | `redis` | `NativeRedisDefinitionProfile` | Required inputs, optional password/CA/renew; peer verification bypass excluded |
 | `sap-hana` | `NativeSapHanaDefinitionProfile` | Required inputs, CA/renew; peer verification bypass excluded |
 | `aws-elasticache` | `NativeAwsElasticacheDefinitionProfile` | All published input fields implemented |
 | `aws-memorydb` | `NativeAwsMemorydbDefinitionProfile` | Published IAM authentication and all required input fields implemented |
 | `mongo-db-atlas` | `NativeAtlasDefinitionProfile` | All published input fields, independently typed roles/scopes including optional collection name |
-| `elastic-search` | `NativeElasticsearchDefinitionProfile` | user/api-key authentication and roles; CA on user branch; CA on api-key branch not exposed; peer verification bypass excluded |
-| `mongo-db` | `NativeMongoDefinitionProfile` | Required inputs, optional port/CA; explicit null port/CA not exposed; peer verification bypass excluded |
+| `elastic-search` | `NativeElasticsearchDefinitionProfile` | user/api-key authentication and roles; CA on both branches; peer verification bypass excluded |
+| `mongo-db` | `NativeMongoDefinitionProfile` | Required inputs, optional port/CA and explicit null clearing; contradictory value/clear selection rejected; peer verification bypass excluded |
 | `rabbit-mq` | `NativeRabbitDefinitionProfile` | Required inputs, typed vhost permissions, tags/CA; peer verification bypass excluded |
 | `azure-entra-id` | `NativeAzureEntraDefinitionProfile` | All published input fields implemented |
-| `azure-sql-database` | `NativeAzureSqlDefinitionProfile` | Required inputs, master database, CA/renew; missing `gatewayId`, `gatewayPoolId`, `passwordRequirements`, `sslEnabled`; peer verification bypass excluded |
+| `azure-sql-database` | `NativeAzureSqlDefinitionProfile` | Required inputs, master database, CA/renew, selected/cleared gateways, password requirements and omitted/false/true SSL; peer verification bypass excluded |
 | `ldap` | `NativeLdapDefinitionProfile` | dynamic/static accounts, required LDIF fields, rollback/CA; peer verification bypass excluded |
 | `snowflake` | `NativeSnowflakeDefinitionProfile` | All published input fields implemented, including renew |
 | `totp` | `NativeTotpDefinitionProfile` | manual/url, typed sha1/sha256/sha512, digits/period; positive integral local numeric budget is narrower than the unspecified published numeric policy |
-| `kubernetes` | `NativeKubernetesDefinitionProfile` | dynamic/static accounts, role/cluster-role, audiences, explicit API URL/token/CA; missing gateway auth mode, `gatewayId`, `gatewayPoolId`, `sslEnabled`, omission of explicit URL/token; peer verification bypass excluded |
-| `vertica` | `NativeVerticaDefinitionProfile` | Required inputs; missing `gatewayId`, `gatewayPoolId`, `passwordRequirements` |
+| `kubernetes` | `NativeKubernetesDefinitionProfile` | dynamic/static accounts, role/cluster-role, audiences, optional API URL/token/CA, API/gateway mode, selected/cleared gateway IDs and omitted/false/true SSL; peer verification bypass excluded |
+| `vertica` | `NativeVerticaDefinitionProfile` | Required inputs, selected/cleared gateways and password requirements |
 | `gcp-iam` | `NativeGcpIamDefinitionProfile` | Service-account email and token scopes; no implicit host cloud credential chain |
 | `github` | `NativeGithubDefinitionProfile` | Published required IDs and protected private key |
-| `couchbase` | `NativeCouchbaseDefinitionProfile` | Required API authority, coordinates and roles; missing string/structured `buckets` alternatives and `passwordRequirements` |
-| `milvus` | `NativeMilvusDefinitionProfile` | Required inputs, optional database/CA; missing `gatewayId`, `gatewayPoolId`, typed `privileges`; peer verification bypass excluded |
-| `ssh` | `NativeSshDefinitionProfile` | Principals; missing `keyAlgorithm`, `caKeyAlgorithm`; generic optional lease `config`/additional principals not established |
-| `ibm-api-connect` | `NativeIbmApiDefinitionProfile` | All required inputs; missing `gatewayId`, `gatewayPoolId` |
-| `tailscale` | `NativeTailscaleDefinitionProfile` | auth_keys/federated_keys/oauth_keys with api_key/oauth authorities; auth-key tailnet/reusable/preauthorized/tags/description; missing federated audience and tailnet/tags/description on factory-created alternatives |
-| `oauth2` | `NativeOauthDefinitionProfile` | client-credentials, client_secret_basic/client_secret_post, scope; missing typed `extraParams` |
+| `couchbase` | `NativeCouchbaseDefinitionProfile` | Required API authority/coordinates/roles; string or copied bucket/scope/collection arrays and provider-specific password requirements |
+| `milvus` | `NativeMilvusDefinitionProfile` | Required inputs, optional database/CA, selected/cleared gateways and copied privilege objects; peer verification bypass excluded |
+| `ssh` | `NativeSshDefinitionProfile` | Principals and both key algorithm selections (RSA 2048/4096, EC prime256v1/secp384r1, ED25519); acquisition `config`/additional principals remain unestablished |
+| `ibm-api-connect` | `NativeIbmApiDefinitionProfile` | Required inputs and selected/cleared gateways |
+| `tailscale` | `NativeTailscaleDefinitionProfile` | auth_keys/federated_keys/oauth_keys with api_key/oauth authorities; tailnet/tags/description on factory alternatives; reusable/preauthorized restricted to auth keys and audience to federated keys |
+| `oauth2` | `NativeOauthDefinitionProfile` | client-credentials, client_secret_basic/client_secret_post, scope and copied typed extra-parameter objects |
 
 Input constraints are explicitly local where the public facts are broad:
 positive integral ports 1..65535, bounded positive whole-second durations up to
@@ -116,6 +136,12 @@ one year, nonempty credential fields and bounded arrays. Not all native numeric,
 empty-string or duration grammar variants are supported. Definition TTL parsing
 accepts only positive integer `s`, `m`, `h`, `d` values within that local budget;
 unrecognized native policy evidence fails closed rather than fabricating a cap.
+`NativePasswordRequirements` admits whole-number length 1..250 and nonnegative
+character counts whose sum does not exceed that length; optional allowed symbols
+are bounded to 4,096 characters and excluded from default serialization.
+This is a typed server input, not a local password generator. SQL gateway omission
+and explicit null clearing are distinct; `sslEnabled: false` is retained rather
+than omitted. The server's certificate-verification default is not weakened.
 
 ## Material, expiry and uncertainty
 
@@ -177,6 +203,14 @@ Context7 official documentation established:
   retrieved facts do not establish exact wire keys/primitives for native mapping.
 - [Dynamic secrets overview](https://infisical.com/docs/documentation/platform/dynamic-secrets/overview):
   on-demand generated credentials are distinct from definition inspection.
+- [Dedicated Kubernetes acquisition](https://infisical.com/docs/api-reference/endpoints/dynamic-secrets/kubernetes/create-lease.md):
+  the request requires `dynamicSecretName`, `projectSlug` and `environmentSlug`;
+  `ttl`, `path` and nonempty `config.namespace` are optional. Rechecked against
+  the public schema on 2026-10-09: credential output and returned configuration
+  remain unconstrained rather than guaranteed empty.
+- [Kubernetes dynamic secrets](https://infisical.com/docs/documentation/platform/dynamic-secrets/kubernetes.md):
+  issued service-account JWTs have fixed expiration; deleting a lease does not
+  revoke its token. Product behavior does not establish credential wire fields.
 
 Tavily extracted official lifecycle pages/overview; guessed `_llms` page URLs
 returned 404 and a subsequent extraction was rate limited. These failures did
@@ -186,6 +220,12 @@ documentation prose is included in these owned files. Parent selected and
 verified Refit provenance/dependencies; this worker edits no root/package files.
 
 ## Offline verification
+
+R6 optional inputs passed 71 focused cases, with 11 definition and 13 lifecycle
+cases retained. The later native login delivery ran the complete native module:
+262/262 passed, zero skipped. Parent reviewed option copies/disposal, conditional
+AWS/Tailscale fields, nullable clearing and the 28-row matrix. These are offline
+wire/control proofs; no external issuer, database or Kubernetes effect is implied.
 
 `LeaseLifecycleTests` and `DynamicDefinitionTests` use actual in-memory resource
 state behind an injected managed HTTP handler. Material is generated per test.
@@ -215,6 +255,12 @@ Actual retained checks, all monitored from the validated SecretKit root:
 - Scoped `dotnet format SecretKit.slnx --no-restore --verify-no-changes`
   over the eight owned C# files passed, exit 0. The final profile file was
   separately rechecked after its last edit, exit 0.
+- Parent SQL optional-input increment built successfully before behavioral Red:
+  four selected cases discovered, three failed on absent fields/contradictory
+  gateway acceptance and one omission case passed. After native serialization and
+  validation were implemented, the complete provider suite passed **132/132**
+  with positive minimum 132, exit 0. Touched diagnostics and scoped formatting
+  passed. No remote database, gateway or password-generation effect was tested.
 
 The initial combined selector discovered only the 13 lifecycle cases; the two
 explicit positive selectors above establish the actual 20-case native coverage.

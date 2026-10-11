@@ -1,5 +1,7 @@
 # SecretKit Internal Design
 
+Current delivery priority: [core scope and deferred orchestration](CORE_SCOPE_AND_ROADMAP.md).
+
 > Audience: SDK contributors and maintainers
 > Status: Proposed / unimplemented
 > Owner: SecretKit maintainers

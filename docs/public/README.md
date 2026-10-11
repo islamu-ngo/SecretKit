@@ -12,6 +12,7 @@ These pages describe intended behavior. The [current local preview](current-prev
 
 ## Read the design
 
+- [Current scope and future orchestration](scope-and-orchestration.md): core two-provider delivery, optional administration and Configurator setup.
 - [Adoption and value](adoption-and-value.md): where an in-process abstraction might help, alternatives, consumer ownership, and measurements needed to establish value.
 - [Configuration and runtime](configuration-and-runtime.md): selected authority, explicit plaintext export, generation ownership, bootstrap, optional integrations, and activation.
 - [Operations and compatibility](operations-and-compatibility.md): seven proposed packages, native capabilities, compatibility evidence, authentication maintenance, security, and release policy.
@@ -42,7 +43,12 @@ The package split is not permission to use administrative authority, a dependenc
 
 ## Release meaning
 
-The planning default after an unanswered question timed out is a **public-API-complete first release**: complete the admitted supported public secret-management operations at a declared interface snapshot, then satisfy the release gates. This is a planner-selected default, not a user-confirmed choice, a promise to wrap every vendor product, or approval to implement or publish.
+The earlier planner-selected **public-API-complete first release** default is
+historical. The user's 2026-10-11 direction supersedes it for current delivery:
+finish the Infisical/Azure Key Vault core SDK first, with bounded support and
+explicit verification gates. Comprehensive admitted-API coverage remains a
+future release goal, not a current prerequisite or publication authorization.
+See [current scope and future orchestration](scope-and-orchestration.md).
 
 Product features without an established supported programmable contract would be reported as `ContractNotEstablished`. That status distinguishes missing SDK contract evidence from absence of the vendor feature. It would not ship a placeholder module or count as working support. Imports and other admitted operations can still encounter provider approval rules or downstream effects even when approval-administration endpoints are not admitted.
 

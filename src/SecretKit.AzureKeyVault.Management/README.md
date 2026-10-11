@@ -2,8 +2,9 @@
 
 Optional, offline-tested administration and audit adapters. Depends inward on
 Core plus the approved `Azure.ResourceManager.KeyVault` 1.4.0 and
-`Azure.Monitor.Query` 1.7.1, and `Azure.ResourceManager.Authorization` 1.1.7. Root solution registration and installed-package
-integration belong to the parent workstream.
+`Azure.Monitor.Query` 1.7.1, `Azure.ResourceManager.Authorization` 1.1.7 and
+`Azure.ResourceManager.EventGrid` 1.1.0. Root solution registration and isolated
+installed-package integration are verified for this implemented subset.
 
 ## Authority and ownership
 
@@ -149,8 +150,8 @@ indexes remain null. No worker, sleep, hidden retry or native deprecated batch.
 
 Tests use actual official SDK clients over a custom HTTP transport with fixture
 backend state, event barriers and nonproduction canaries. They do not establish
-live credentials, permissions, propagation, entitlements, cloud compatibility,
-installed-package integration or distribution readiness.
+live credentials, permissions, propagation, entitlements, cloud compatibility
+or distribution readiness.
 
 Retained 2026-10-09 evidence: the official SDK baseline failed behaviorally on
 a substituted vault response before adapter implementation. Generated locks
@@ -158,13 +159,18 @@ passed locked restore; the Release build and **52/52** focused tests passed.
 Both owned directories passed scoped formatting verification and language-server
 diagnostics reported zero findings. A native continuation discarded by the SDK
 and the SDK's exact monitoring audience were measured, not inferred.
+Subsequent integrated RBAC/notification verification passed all **79/79** tests.
+The Release solution build, seven-package pack and isolated installed consumer
+also passed. Parent review confirmed separate monitoring/administrative identities,
+fixed resource queries, bounded partial results and retained batch cancellation
+progress. These checks do not establish live permissions or delivery.
 
 Run from the independent SecretKit root:
 
 ```sh
 dotnet restore tests/SecretKit.AzureKeyVault.Management.Tests/SecretKit.AzureKeyVault.Management.Tests.csproj --locked-mode
 dotnet build tests/SecretKit.AzureKeyVault.Management.Tests/SecretKit.AzureKeyVault.Management.Tests.csproj --configuration Release --no-restore
-dotnet run --project tests/SecretKit.AzureKeyVault.Management.Tests/SecretKit.AzureKeyVault.Management.Tests.csproj --configuration Release --no-build -- --minimum-expected-tests 52
+dotnet run --project tests/SecretKit.AzureKeyVault.Management.Tests/SecretKit.AzureKeyVault.Management.Tests.csproj --configuration Release --no-build -- --minimum-expected-tests 79
 dotnet format tests/SecretKit.AzureKeyVault.Management.Tests/SecretKit.AzureKeyVault.Management.Tests.csproj --verify-no-changes --include src/SecretKit.AzureKeyVault.Management tests/SecretKit.AzureKeyVault.Management.Tests
 dotnet pack src/SecretKit.AzureKeyVault.Management/SecretKit.AzureKeyVault.Management.csproj --configuration Release --no-build --no-restore --output src/SecretKit.AzureKeyVault.Management/artifacts/packages
 ```

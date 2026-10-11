@@ -1,8 +1,23 @@
 # Current local preview
 
+Scope correction (2026-10-11): finish the Infisical/Azure Key Vault SDK first;
+broad Infisical connector coverage is deferred. See
+[scope and future orchestration](scope-and-orchestration.md). Existing
+administrative subsets are retained, not additional secret-storage providers
+or proof of automated deployment.
+
 This checkout implements a limited read, generation and selected-write subset. It is unpublished and does
 not implement the complete admitted operation inventory.
 The surrounding guides describe the larger design, not completed support.
+
+On 2026-10-10, the owned pinned Infisical v0.166.3 sandbox passed an installed
+package-only narrative with separate generated administrative, project-viewer
+runtime and denied machine identities. It verified selected/versioned reads,
+absence and denied writes/reads, cross-project isolation, metadata inventory,
+required bootstrap and explicit export, a pinned configuration generation across
+replacement, optional fresh recheck and admin-visible/runtime-denied assessment.
+This is local conformance for that slice, not all admitted routes, editions or
+external backends. Azure live testing remains deferred.
 
 The currently install-tested packages are `SecretKit.Core`, `SecretKit.Infisical`,
 `SecretKit.AzureKeyVault`, optional `SecretKit.Extensions.Configuration` and
@@ -36,7 +51,13 @@ visibility evidence is unknown. No other authentication principal is selected.
 The current Infisical client accepts a host-owned `IInfisicalTokenSource`.
 The source returns independently owned token material and must honor
 cancellation. This is not implementation of the thirteen native machine-auth
-flows. The user selected handwritten typed HTTP contracts with Refit and
+flows. The current native addition exposes an explicit Universal Auth login
+exchange plus 18 Universal/Token Auth management routes, with copied protected
+material and caller-held single-use receipts. It performs no automatic login,
+principal discovery or mutation replay. Reported positive login expiry is not
+capped by max-TTL or promoted into finite periodic policy evidence. Unspecified
+trusted-IP response shapes and individual credential DELETE routes remain gaps.
+The user selected handwritten typed HTTP contracts with Refit and
 HttpClient. Internal Refit bindings construct native requests; the controlled
 transport retains actual send cancellation, bounded raw responses and receipts.
 No production, test or assessment project depends on the official Infisical SDK.
@@ -132,10 +153,15 @@ application readiness policy is introduced.
 
 ## Evidence boundary
 
-The optional Infisical administration package currently exposes 87 typed
+The optional Infisical administration package currently exposes 121 typed
 operation projections out of 122 admitted management operations, including
 bounded group inventories, project-template metadata CRUD and organization-user
-membership list/update/delete. Supported input
+membership list/update/delete, identity-template subsets and organization identity
+membership inventory and project user/identity membership inspection and role
+updates, scoped identity search/count, membership invitation/bulk removal,
+project connection metadata, legacy identity privilege inspection/deletion,
+typed v1/v2 privilege authoring and bounded organization/project role authoring.
+Supported input
 subsets are not complete native-operation coverage. The exact source-linked
 [management inventory](../../src/SecretKit.Infisical.Management/operation-coverage.json)
 retains optional configuration gaps and unestablished response contracts.
@@ -150,6 +176,8 @@ published release or complete provenance/API certification. Installation tests
 restore the local packages into an isolated package cache and run an independent
 consumer without project references. The [operation registries](../internal/providers/)
 separate admitted contracts, partial implementation and unverified compatibility.
-The completed release still requires native lifecycle/management/connector
-coverage, live conformance, complete seven-package verification and protected
-publisher evidence.
+Those comprehensive lifecycle/management/connector and publisher requirements
+belong to a future complete release. They are not prerequisites for the
+2026-10-11 core-first local SDK milestone. The current milestone retains
+bounded supported APIs, measured core verification and explicit external gates;
+it does not authorize publication or claim full admitted coverage.

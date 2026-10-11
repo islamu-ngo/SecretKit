@@ -4,6 +4,20 @@ Observed contract date: 2026-10-09. Phase 7.3 is a native metadata/control
 slice, not Phase 8.2 connector configuration completion. No live conformance,
 edition compatibility, permission entitlement or consumer delivery is claimed.
 
+## Owned observation and edition gate, 2026-10-11
+
+The 30-profile protocol/observer regression passed37/37. A separate positive
+owned v0.166.3 case passed1/1: PostgreSQL connection creation, fresh inspection
+and actual query of a separate no-host-ingress backend on an owned private
+bridge. This is not rotation completion or downstream password-change evidence.
+
+The dedicated rotation scenario reached successful connection creation, then
+native rotation creation failed with HTTP400/Rejected:
+"Failed to create secret rotation due to plan restriction. Upgrade plan to
+create secret rotations." That scenario remains an explicit entitlement gate,
+not a passed or skipped case. Manual trigger, provider completion/recovery,
+consumer delivery and fleet convergence remain unverified.
+
 ## Sources and implementation boundary
 
 The approved task is `dev/active/secretkit-sdk/secretkit-sdk-tasks.md`, Phase 7.3.
