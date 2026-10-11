@@ -132,6 +132,7 @@ public sealed class TokenMaintenanceTests
     [Arguments("{\"accessToken\":\"secret\",\"tokenType\":\"Bearer\",\"expiresIn\":0,\"accessTokenMaxTTL\":120}")]
     [Arguments("{\"accessToken\":\"first\",\"accessToken\":\"second\",\"tokenType\":\"Bearer\",\"expiresIn\":60,\"accessTokenMaxTTL\":120}")]
     [Arguments("[]")]
+    [Arguments("{\"accessToken\":\"secret\",\"tokenType\":\"Bearer\",\"expiresIn\":60,\"accessTokenMaxTTL\":120,\"notDeclared\":\"private-extra\"}")]
     public async Task UnestablishedResponseCannotPublishMaterial(string json)
     {
         var time = new ManualTime(Epoch);

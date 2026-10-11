@@ -9,6 +9,66 @@ request-builder path; request-content and method-argument capture are disabled.
 Common reads, selected shared-secret writes and the host-owned token session keep
 their existing behavior.
 
+## R6 authentication and definition inputs
+
+`InfisicalUniversalAuthentication` performs one explicit native login exchange
+using caller-selected client ID and protected client secret. A caller-held
+single-use receipt preserves post-dispatch uncertainty; no login loop, principal
+discovery or replay occurs. Returned token material is independently owned.
+Positive reported `expiresIn` determines its observed expiry, not an invented
+finite periodic ceiling. The management package separately exposes 18
+Universal/Token Auth configuration and credential-administration routes. This
+is a subset of the 78 admitted authentication rows and 13 strategies.
+
+`InfisicalProofAuthentication` also performs explicit AliCloud, AWS, Azure, GCP,
+JWT, Kubernetes, LDAP, OCI, OIDC, SPIFFE JWT-SVID and TLS-certificate login
+exchanges. Construct a named disposable `InfisicalLoginProof` from host-supplied
+proofs and retain a new single-use login receipt. The SDK does not acquire or sign
+cloud credentials, discover workload tokens or choose a fallback principal.
+TLS certificate presentation belongs to the host-owned controlled transport.
+Returned token expiry follows reported `expiresIn`; `accessTokenMaxTTL` remains
+metadata rather than an inferred expiry ceiling.
+
+Login and token-renewal responses enforce the declared four-member root:
+`accessToken`, `accessTokenMaxTTL`, `expiresIn` and `tokenType`. Extra members
+retain uncertain dispatch evidence; renewal requires explicit recovery rather
+than publishing unverified material.
+
+These exchanges have 50 focused offline tests, with 262 native regression tests
+passing at delivery. External issuer/signature acceptance, actual mTLS chain and
+proxy behavior, deployment floors and permission/edition conformance remain
+unverified. Inputs use a 128 KiB copied body budget, bounded text/proof fields
+and no control characters; this is a local input subset, not the entire vendor
+string domain. Configuration administration is exposed separately by the
+management package. `CreateRevocationReceipt` and `RevokeTokenAsync` explicitly
+revoke a host-selected token through the shared native route, without a token
+source or replay. Returned provider prose is not exported. Acknowledgement is
+not a separate proof that the token is unusable. Sixteen revocation cases and
+278 native protocol regressions pass. Owned v0.166.3 loopback conformance separately
+verifies explicit Universal actors and Token Auth runtime permissions, one finite
+renewal, and fresh-read denial after token-management and shared revocation.
+The shared-route observation uses the renewed credential, not an inferred
+token-management metadata flag. A separate native policy case verifies that
+Universal period=60 overrides configured TTL=10/max=20: the credential reports
+expiresIn=60/max=0, renews and reads successfully. Ordinary period=0 reports
+expiresIn=10/max=20. Explicit idle scheduling, original finite ceilings and
+bounded cancellation/drain are separately verified with deterministic host tests,
+not native wall-clock longevity. A separate actual process-recovery case verifies
+native one-use bootstrap consumption, a new process without material reporting
+RecoveryRequired, and recovery only with a separately administrator-authorized
+replacement. Credentials are not persisted or retried.
+Renewal already uses the explicit host-started `InfisicalPeriodicTokenSession`.
+
+The 28 dynamic definition profiles now include established optional gateway,
+password, AWS policy/group/tag, Elasticsearch CA, Mongo null port/CA,
+Kubernetes authentication/SSL, Couchbase bucket, Milvus privilege, SSH algorithm,
+Tailscale and OAuth parameter inputs. Typed disposable options copy protected
+values. Omission, supported explicit null, false and permitted empty variants
+remain distinct. Definition-input tests do not prove credential acquisition,
+renewal, revocation or downstream effects. Complete non-SQL/Kubernetes credential
+result schemas remain unresolved; fixed-expiry Kubernetes JWTs and SSH
+certificates cannot be treated as revoked merely because a lease is deleted.
+
 ## Authority and ownership
 
 Bind every native address to the client's `SecretAuthority` through a
@@ -166,11 +226,11 @@ Verified offline on 2026-10-09: locked restore and the Release native test-proje
 build exited 0. Exact TUnit class filters with positive minimum counts passed
 `OrganizationTests` 8/8, `ImportEffectTests` 17/17 and `ReferenceBoundaryTests` 8/8
 (33/33 total). Scoped source/test whitespace verification exited 0.
-The complete concurrent native suite ran 128 tests: 111 passed and 17 sibling
-rotation tests failed (`Trigger has no published body` and dependent event
-timeouts). Those failures were left to their owner; the full suite is not claimed
-green. The handwritten Refit declarations match all 44 admitted Phase 5 method/path
-pairs with no missing or additional routes.
+The integrated native suite subsequently passed all 128 tests after the rotation
+request-builder and zero-body fixture corrections. This includes the organization,
+import and reference tests; it remains offline subset evidence. The handwritten
+Refit declarations match all 44 admitted Phase 5 method/path pairs with no missing
+or additional routes.
 
 No live provider origin, disposable project/environment coordinates, intended/admin
 credentials or edition entitlements were supplied. Exact permissions, cross-project

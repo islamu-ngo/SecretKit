@@ -6,6 +6,75 @@ namespace SecretKit.Infisical.Tests;
 public sealed class DynamicDefinitionTests
 {
     [Test]
+    [Arguments("omitted")]
+    [Arguments("selected")]
+    [Arguments("cleared")]
+    public async Task SqlOptionalAuthorityTlsAndPasswordFieldsRetainNativeInputSemantics(string mode)
+    {
+        using var wire = new DynamicWireFixture();
+        await using InfisicalDynamicClient client = wire.Client();
+        string material = DynamicWireFixture.Material();
+        using var requirements = mode == "selected" ? new NativePasswordRequirements(24, 4, 4, 4, 4, material) : null;
+        using var profile = new NativeSqlDefinitionProfile(NativeSqlEngine.Postgres, "db.test", 5432,
+            material, material, "db", "create", "revoke",
+            ca: mode == "selected" ? material : null,
+            sslEnabled: mode == "selected" ? false : null,
+            gatewayId: mode == "selected" ? "gateway" : null,
+            gatewayPoolId: mode == "selected" ? "pool" : null,
+            passwordRequirements: requirements,
+            clearGatewayId: mode == "cleared", clearGatewayPoolId: mode == "cleared");
+        InfisicalDynamicTarget target = client.Definition("sql-options");
+        var receipt = new InfisicalDynamicMutationReceipt(target, InfisicalDynamicOperation.CreateDefinition);
+        var result = await client.CreateDefinitionAsync(target, profile, new(TimeSpan.FromMinutes(1)), null, receipt);
+        await Assert.That(result.IsSuccess).IsTrue();
+        await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.Applied);
+        JsonElement inputs = wire.Inputs(target.Name);
+        if (mode == "selected")
+        {
+            await Assert.That(inputs.GetProperty("ca").GetString()).IsEqualTo(material);
+            await Assert.That(inputs.GetProperty("sslEnabled").GetBoolean()).IsFalse();
+            await Assert.That(inputs.GetProperty("gatewayId").GetString()).IsEqualTo("gateway");
+            await Assert.That(inputs.GetProperty("gatewayPoolId").GetString()).IsEqualTo("pool");
+            JsonElement policy = inputs.GetProperty("passwordRequirements");
+            await Assert.That(policy.GetProperty("length").GetInt32()).IsEqualTo(24);
+            foreach (string kind in new[] { "lowercase", "uppercase", "digits", "symbols" })
+                await Assert.That(policy.GetProperty("required").GetProperty(kind).GetInt32()).IsEqualTo(4);
+            await Assert.That(policy.GetProperty("allowedSymbols").GetString()).IsEqualTo(material);
+            await Assert.That(JsonSerializer.Serialize(requirements)).IsEqualTo("{}");
+        }
+        else
+        {
+            await Assert.That(inputs.TryGetProperty("ca", out _)).IsFalse();
+            await Assert.That(inputs.TryGetProperty("sslEnabled", out _)).IsFalse();
+            await Assert.That(inputs.TryGetProperty("passwordRequirements", out _)).IsFalse();
+            if (mode == "cleared")
+            {
+                await Assert.That(inputs.GetProperty("gatewayId").ValueKind).IsEqualTo(JsonValueKind.Null);
+                await Assert.That(inputs.GetProperty("gatewayPoolId").ValueKind).IsEqualTo(JsonValueKind.Null);
+            }
+            else
+            {
+                await Assert.That(inputs.TryGetProperty("gatewayId", out _)).IsFalse();
+                await Assert.That(inputs.TryGetProperty("gatewayPoolId", out _)).IsFalse();
+            }
+        }
+        await Assert.That(inputs.TryGetProperty("sslRejectUnauthorized", out _)).IsFalse();
+        await Assert.That(JsonSerializer.Serialize(profile).Contains(material, StringComparison.Ordinal)).IsFalse();
+        await Assert.That(wire.LeaseCount).IsEqualTo(0);
+    }
+
+    [Test]
+    public async Task InvalidSqlOptionalPoliciesRejectBeforeConstructingDispatch()
+    {
+        await Assert.That(() => new NativePasswordRequirements(251, 0, 0, 0, 0)).Throws<ArgumentException>();
+        await Assert.That(() => new NativePasswordRequirements(10, 11, 0, 0, 0)).Throws<ArgumentException>();
+        await Assert.That(() => new NativePasswordRequirements(10, -1, 0, 0, 0)).Throws<ArgumentException>();
+        await Assert.That(() => new NativeSqlDefinitionProfile(NativeSqlEngine.Postgres, "db.test", 5432,
+            "user", "password", "db", "create", "revoke", gatewayId: "gateway", clearGatewayId: true))
+            .Throws<ArgumentException>();
+    }
+
+    [Test]
     public async Task EveryAdmittedProfileCreatesTypedProtectedNativeDefinitionWithoutIssuance()
     {
         using var wire = new DynamicWireFixture();

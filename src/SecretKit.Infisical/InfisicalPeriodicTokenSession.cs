@@ -328,6 +328,8 @@ public sealed class InfisicalPeriodicTokenSession : IInfisicalTokenSource, IAsyn
                         new JsonDocumentOptions { MaxDepth = 8 });
                     JsonElement json = document.RootElement;
                     if (json.ValueKind != JsonValueKind.Object ||
+                        json.EnumerateObject().Any(property => property.Name is not
+                            ("accessToken" or "accessTokenMaxTTL" or "expiresIn" or "tokenType")) ||
                         json.EnumerateObject().Select(property => property.Name).Distinct(StringComparer.Ordinal).Count() !=
                         json.EnumerateObject().Count() ||
                         !json.TryGetProperty("accessToken", out var token) || token.ValueKind != JsonValueKind.String ||

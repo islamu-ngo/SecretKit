@@ -15,6 +15,8 @@ public abstract class InfisicalDynamicProfile : IDisposable
     private readonly Dictionary<string, decimal> _numbers = new(StringComparer.Ordinal);
     private readonly Dictionary<string, bool> _booleans = new(StringComparer.Ordinal);
     private readonly Dictionary<string, SecretMaterial[]> _arrays = new(StringComparer.Ordinal);
+    private readonly List<NativeProfileOptionData> _options = [];
+    private readonly HashSet<string> _nulls = new(StringComparer.Ordinal);
     private bool _disposed;
     private protected InfisicalDynamicProfile(InfisicalDynamicProvider provider) => Provider = provider;
     public InfisicalDynamicProvider Provider { get; }
@@ -109,6 +111,55 @@ public abstract class InfisicalDynamicProfile : IDisposable
         _numbers.Add(field, value);
     }
     private protected void Flag(string field, bool value) => _booleans.Add(field, value);
+    private protected void Null(string field) => _nulls.Add(field);
+    private protected void Options(NativeProfileOptions? options)
+    {
+        if (options is null) return;
+        try { _options.Add(options.Copy()); }
+        catch { Dispose(); throw; }
+    }
+    private protected void ObjectOptions<T>(string field, IReadOnlyList<T>? values, int maximum = 128)
+        where T : NativeProfileOptions
+    {
+        if (values is null) return;
+        if (values.Count > maximum || values.Any(value => value is null))
+        {
+            Dispose(); throw new ArgumentException("Invalid native object array budget.");
+        }
+        var data = new NativeProfileOptionData();
+        var copies = new List<NativeProfileOptionData>();
+        try
+        {
+            foreach (var value in values) copies.Add(value.Copy());
+            data.Objects.Add(field, copies.ToArray());
+            _options.Add(data);
+        }
+        catch
+        {
+            foreach (var copy in copies) copy.Dispose();
+            Dispose(); throw;
+        }
+    }
+    private protected void PasswordRequirements(NativePasswordRequirements? policy, bool couchbase = false)
+    {
+        if (policy is null) return;
+        if (couchbase && (policy.Length is < 8 or > 128 ||
+            policy.Lowercase < 1 || policy.Uppercase < 1 || policy.Digits < 1 || policy.Symbols < 1))
+        {
+            Dispose(); throw new ArgumentException("Invalid native Couchbase password requirements.");
+        }
+        try
+        {
+            SecretMaterial? symbols = policy.CopyAllowedSymbols();
+            if (symbols is not null) _text.Add("passwordRequirements.allowedSymbols", symbols);
+            Number("passwordRequirements.length", policy.Length, 1, couchbase ? 128 : 250);
+            Number("passwordRequirements.required.lowercase", policy.Lowercase, 0, 250);
+            Number("passwordRequirements.required.uppercase", policy.Uppercase, 0, 250);
+            Number("passwordRequirements.required.digits", policy.Digits, 0, 250);
+            Number("passwordRequirements.required.symbols", policy.Symbols, 0, 250);
+        }
+        catch { Dispose(); throw; }
+    }
     private protected void Strings(string field, IReadOnlyList<string> values, bool allowEmptyArray = false)
     {
         if (values is null)
@@ -186,6 +237,11 @@ public abstract class InfisicalDynamicProfile : IDisposable
             WriteFields(writer, prefix + child + ".");
             writer.WriteEndObject();
         }
+        if (prefix.Length == 0)
+        {
+            foreach (string field in _nulls) writer.WriteNull(field);
+            foreach (var options in _options) options.Write(writer);
+        }
         WriteAdditional(writer, prefix);
     }
     private protected virtual void WriteAdditional(Utf8JsonWriter writer, string prefix) { }
@@ -202,6 +258,7 @@ public abstract class InfisicalDynamicProfile : IDisposable
             {
                 value.Dispose();
             }
+            foreach (var options in _options) options.Dispose();
             DisposeAdditional();
         }
     }
@@ -211,12 +268,77 @@ public abstract class InfisicalDynamicProfile : IDisposable
 
 public enum NativeSqlEngine { Postgres, Mysql, Oracle, SqlServer, SapAse, Vertica }
 
+/// <summary>Bounded whole-number native password generation requirements, not a local generator.</summary>
+public sealed class NativePasswordRequirements : IDisposable
+{
+    private readonly object _gate = new();
+    private readonly SecretMaterial? _allowedSymbols;
+    private bool _disposed;
+    public NativePasswordRequirements(int length, int lowercase, int uppercase, int digits, int symbols,
+        string? allowedSymbols = null)
+    {
+        if (length is < 1 or > 250 || lowercase < 0 || uppercase < 0 || digits < 0 || symbols < 0 ||
+            (long)lowercase + uppercase + digits + symbols > length || allowedSymbols?.Length > 4096)
+            throw new ArgumentException("Invalid bounded password requirements.");
+        Length = length;
+        Lowercase = lowercase;
+        Uppercase = uppercase;
+        Digits = digits;
+        Symbols = symbols;
+        _allowedSymbols = allowedSymbols is null ? null : SecretMaterial.FromText(allowedSymbols);
+    }
+    [JsonIgnore] public int Length { get; }
+    [JsonIgnore] public int Lowercase { get; }
+    [JsonIgnore] public int Uppercase { get; }
+    [JsonIgnore] public int Digits { get; }
+    [JsonIgnore] public int Symbols { get; }
+    /// <summary>Explicit plaintext export, excluded from default serialization.</summary>
+    [JsonIgnore]
+    public string? AllowedSymbols
+    {
+        get
+        {
+            lock (_gate)
+            {
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                return _allowedSymbols?.Reveal();
+            }
+        }
+    }
+    internal SecretMaterial? CopyAllowedSymbols()
+    {
+        lock (_gate)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            return _allowedSymbols?.Copy();
+        }
+    }
+    public void Dispose()
+    {
+        lock (_gate)
+        {
+            if (_disposed) return;
+            _disposed = true; _allowedSymbols?.Dispose();
+        }
+    }
+    public override string ToString() => "[NativePasswordRequirements]";
+}
+
 public sealed class NativeSqlDefinitionProfile : InfisicalDynamicProfile
 {
+    private readonly bool _clearGatewayId;
+    private readonly bool _clearGatewayPoolId;
     public NativeSqlDefinitionProfile(NativeSqlEngine engine, string host, int port, string username,
         string password, string database, string creationStatement, string revocationStatement,
-        string? renewalStatement = null) : base(InfisicalDynamicProvider.SqlDatabase)
+        string? renewalStatement = null, string? ca = null, bool? sslEnabled = null,
+        string? gatewayId = null, string? gatewayPoolId = null,
+        NativePasswordRequirements? passwordRequirements = null,
+        bool clearGatewayId = false, bool clearGatewayPoolId = false) : base(InfisicalDynamicProvider.SqlDatabase)
     {
+        if (clearGatewayId && gatewayId is not null || clearGatewayPoolId && gatewayPoolId is not null)
+            throw new ArgumentException("Contradictory native gateway selection.");
+        _clearGatewayId = clearGatewayId;
+        _clearGatewayPoolId = clearGatewayPoolId;
         Text("client", engine switch
         {
             NativeSqlEngine.Postgres => "postgres",
@@ -232,6 +354,17 @@ public sealed class NativeSqlDefinitionProfile : InfisicalDynamicProfile
         Text("creationStatement", creationStatement, allowEmpty: true);
         Text("revocationStatement", revocationStatement, allowEmpty: true);
         Optional("renewStatement", renewalStatement);
+        Optional("ca", ca);
+        if (sslEnabled is { } enabled) Flag("sslEnabled", enabled);
+        Optional("gatewayId", gatewayId);
+        Optional("gatewayPoolId", gatewayPoolId);
+        PasswordRequirements(passwordRequirements);
+    }
+    private protected override void WriteAdditional(Utf8JsonWriter writer, string prefix)
+    {
+        if (prefix.Length != 0) return;
+        if (_clearGatewayId) writer.WriteNull("gatewayId");
+        if (_clearGatewayPoolId) writer.WriteNull("gatewayPoolId");
     }
 }
 
@@ -250,8 +383,12 @@ public abstract class NativeDatabaseDefinitionProfile : InfisicalDynamicProfile
 public sealed class NativeClickhouseDefinitionProfile : NativeDatabaseDefinitionProfile
 {
     public NativeClickhouseDefinitionProfile(string host, int port, string username, string password,
-        string database, string creation, string revocation, string? renewal = null, string? ca = null)
-        : base(InfisicalDynamicProvider.Clickhouse, host, port, username, password, database, creation, revocation, renewal, ca) { }
+        string database, string creation, string revocation, string? renewal = null, string? ca = null,
+        NativeGatewayOptions? gateway = null, NativePasswordRequirements? passwordRequirements = null)
+        : base(InfisicalDynamicProvider.Clickhouse, host, port, username, password, database, creation, revocation, renewal, ca)
+    {
+        Options(gateway); PasswordRequirements(passwordRequirements);
+    }
 }
 public sealed class NativeCassandraDefinitionProfile : NativeDatabaseDefinitionProfile
 {
@@ -284,17 +421,25 @@ public sealed class NativeRedisDefinitionProfile : NativeDatabaseDefinitionProfi
 public sealed class NativeVerticaDefinitionProfile : NativeDatabaseDefinitionProfile
 {
     public NativeVerticaDefinitionProfile(string host, int port, string username, string password,
-        string database, string creation, string revocation)
-        : base(InfisicalDynamicProvider.Vertica, host, port, username, password, database, creation, revocation, null, null) { }
+        string database, string creation, string revocation, NativeGatewayOptions? gateway = null,
+        NativePasswordRequirements? passwordRequirements = null)
+        : base(InfisicalDynamicProvider.Vertica, host, port, username, password, database, creation, revocation, null, null)
+    {
+        Options(gateway); PasswordRequirements(passwordRequirements);
+    }
 }
 public sealed class NativeAzureSqlDefinitionProfile : NativeDatabaseDefinitionProfile
 {
     public NativeAzureSqlDefinitionProfile(string host, int port, string username, string password,
         string database, string creation, string masterCreation, string revocation,
-        string? masterDatabase = null, string? renewal = null, string? ca = null)
+        string? masterDatabase = null, string? renewal = null, string? ca = null,
+        NativeGatewayOptions? gateway = null, NativePasswordRequirements? passwordRequirements = null,
+        bool? sslEnabled = null)
         : base(InfisicalDynamicProvider.AzureSqlDatabase, host, port, username, password, database, creation, revocation, renewal, ca)
     {
         Text("masterCreationStatement", masterCreation, allowEmpty: true); Optional("masterDatabase", masterDatabase);
+        Options(gateway); PasswordRequirements(passwordRequirements);
+        if (sslEnabled is { } enabled) Flag("sslEnabled", enabled);
     }
 }
 public sealed class NativeSnowflakeDefinitionProfile : InfisicalDynamicProfile
@@ -312,8 +457,10 @@ public sealed class NativeAwsIamDefinitionProfile : InfisicalDynamicProfile
 {
     private enum RoleMethod { AssumeRole, Irsa }
     private NativeAwsIamDefinitionProfile(RoleMethod method, string region, string? roleArn,
-        NativeAwsCredentialKind credentialKind) : base(InfisicalDynamicProvider.AwsIam)
+        NativeAwsCredentialKind credentialKind, NativeAwsIamOptions? options) : base(InfisicalDynamicProvider.AwsIam)
     {
+        if (method != RoleMethod.AssumeRole && options?.HasSessionPolicy == true)
+            throw new ArgumentException("Session policies require native assume-role authentication.");
         if (!Enum.IsDefined(credentialKind))
         {
             throw new ArgumentException("Unknown native AWS credential kind.");
@@ -321,17 +468,20 @@ public sealed class NativeAwsIamDefinitionProfile : InfisicalDynamicProfile
         Text("method", method == RoleMethod.AssumeRole ? "assume-role" : "irsa"); Text("region", region);
         if (method == RoleMethod.AssumeRole) { Text("roleArn", roleArn!); }
         Text("credentialType", credentialKind == NativeAwsCredentialKind.IamUser ? "iam-user" : "temporary-credentials");
+        Options(options);
     }
     public static NativeAwsIamDefinitionProfile ForAssumeRole(string roleArn, string region,
-        NativeAwsCredentialKind credentialKind = NativeAwsCredentialKind.IamUser) =>
-        new(RoleMethod.AssumeRole, region, roleArn, credentialKind);
+        NativeAwsCredentialKind credentialKind = NativeAwsCredentialKind.IamUser, NativeAwsIamOptions? options = null) =>
+        new(RoleMethod.AssumeRole, region, roleArn, credentialKind, options);
     public static NativeAwsIamDefinitionProfile ForIrsa(string region,
-        NativeAwsCredentialKind credentialKind = NativeAwsCredentialKind.IamUser) =>
-        new(RoleMethod.Irsa, region, null, credentialKind);
+        NativeAwsCredentialKind credentialKind = NativeAwsCredentialKind.IamUser, NativeAwsIamOptions? options = null) =>
+        new(RoleMethod.Irsa, region, null, credentialKind, options);
     public NativeAwsIamDefinitionProfile(string accessKey, string secretAccessKey, string region,
-        NativeAwsCredentialKind credentialKind = NativeAwsCredentialKind.IamUser)
+        NativeAwsCredentialKind credentialKind = NativeAwsCredentialKind.IamUser, NativeAwsIamOptions? options = null)
         : base(InfisicalDynamicProvider.AwsIam)
     {
+        if (options?.HasSessionPolicy == true)
+            throw new ArgumentException("Session policies require native assume-role authentication.");
         if (!Enum.IsDefined(credentialKind))
         {
             throw new ArgumentException("Unknown native AWS credential kind.");
@@ -343,6 +493,7 @@ public sealed class NativeAwsIamDefinitionProfile : InfisicalDynamicProfile
             NativeAwsCredentialKind.Temporary => "temporary-credentials",
             _ => throw new ArgumentException("Unknown native AWS credential kind.")
         });
+        Options(options);
     }
 }
 public sealed class NativeAwsElasticacheDefinitionProfile : InfisicalDynamicProfile
@@ -399,33 +550,40 @@ public sealed class NativeGithubDefinitionProfile : InfisicalDynamicProfile
 public sealed class NativeMilvusDefinitionProfile : InfisicalDynamicProfile
 {
     public NativeMilvusDefinitionProfile(string host, int port, string username, string password,
-        string? database = null, string? ca = null) : base(InfisicalDynamicProvider.Milvus)
+        string? database = null, string? ca = null, NativeGatewayOptions? gateway = null,
+        IReadOnlyList<NativeMilvusPrivilege>? privileges = null) : base(InfisicalDynamicProvider.Milvus)
     {
         Text("host", host); Number("port", port, 1, 65535); Text("username", username); Text("password", password);
         Optional("database", database); Optional("ca", ca);
+        Options(gateway); ObjectOptions("privileges", privileges);
     }
 }
 public sealed class NativeMongoDefinitionProfile : InfisicalDynamicProfile
 {
     public NativeMongoDefinitionProfile(string host, string username, string password, string database,
-        IReadOnlyList<string> roles, int? port = null, string? ca = null) : base(InfisicalDynamicProvider.MongoDb)
+        IReadOnlyList<string> roles, int? port = null, string? ca = null,
+        bool clearPort = false, bool clearCa = false) : base(InfisicalDynamicProvider.MongoDb)
     {
+        if (clearPort && port is not null || clearCa && ca is not null)
+            throw new ArgumentException("Contradictory native Mongo clearing.");
         Text("host", host); Text("username", username); Text("password", password); Text("database", database);
         Strings("roles", roles); Optional("ca", ca);
         if (port is { } value) { Number("port", value, 1, 65535); }
+        if (clearPort) Null("port");
+        if (clearCa) Null("ca");
     }
 }
 public sealed class NativeElasticsearchDefinitionProfile : InfisicalDynamicProfile
 {
-    private NativeElasticsearchDefinitionProfile(string host, int port, string apiKeyId, string apiKey,
-        IReadOnlyList<string> roles) : base(InfisicalDynamicProvider.ElasticSearch)
+    private NativeElasticsearchDefinitionProfile(string host, int port, IReadOnlyList<string> roles,
+        string apiKeyId, string apiKey, string? ca) : base(InfisicalDynamicProvider.ElasticSearch)
     {
         Text("host", host); Number("port", port, 1, 65535); Text("auth.type", "api-key");
         Text("auth.apiKeyId", apiKeyId, allowEmpty: true); Text("auth.apiKey", apiKey, allowEmpty: true);
-        Strings("roles", roles);
+        Strings("roles", roles); Optional("ca", ca);
     }
     public static NativeElasticsearchDefinitionProfile ForApiKey(string host, int port, string apiKeyId,
-        string apiKey, IReadOnlyList<string> roles) => new(host, port, apiKeyId, apiKey, roles);
+        string apiKey, IReadOnlyList<string> roles, string? ca = null) => new(host, port, roles, apiKeyId, apiKey, ca);
     public NativeElasticsearchDefinitionProfile(string host, int port, string username, string password,
         IReadOnlyList<string> roles, string? ca = null) : base(InfisicalDynamicProvider.ElasticSearch)
     {
@@ -449,24 +607,50 @@ public sealed class NativeRabbitDefinitionProfile : InfisicalDynamicProfile
 public sealed class NativeKubernetesDefinitionProfile : InfisicalDynamicProfile
 {
     private NativeKubernetesDefinitionProfile(string nameSpace, string serviceAccountName,
-        IReadOnlyList<string> audiences, string clusterToken, string url, string? ca)
+        IReadOnlyList<string> audiences, string? clusterToken, string? url, string? ca,
+        NativeKubernetesAuthentication? authentication, NativeGatewayOptions? gateway, bool? sslEnabled)
         : base(InfisicalDynamicProvider.Kubernetes)
     {
         Text("credentialType", "static"); Text("namespace", nameSpace); Text("serviceAccountName", serviceAccountName);
-        Strings("audiences", audiences, true); Text("clusterToken", clusterToken); SafeUri("url", url);
+        Strings("audiences", audiences, true); ClusterAuthority(clusterToken, url, authentication, gateway, sslEnabled);
         Optional("ca", ca); Flag("sslRejectUnauthorized", true);
     }
     public static NativeKubernetesDefinitionProfile ForStaticAccount(string nameSpace, string serviceAccountName,
-        IReadOnlyList<string> audiences, string clusterToken, string url, string? ca = null) =>
-        new(nameSpace, serviceAccountName, audiences, clusterToken, url, ca);
+        IReadOnlyList<string> audiences, string? clusterToken = null, string? url = null, string? ca = null,
+        NativeKubernetesAuthentication? authentication = null, NativeGatewayOptions? gateway = null, bool? sslEnabled = null) =>
+        new(nameSpace, serviceAccountName, audiences, clusterToken, url, ca, authentication, gateway, sslEnabled);
     public NativeKubernetesDefinitionProfile(string nameSpace, string role, bool clusterRole,
-        IReadOnlyList<string> audiences, string clusterToken, string url, string? ca = null)
+        IReadOnlyList<string> audiences, string? clusterToken = null, string? url = null, string? ca = null,
+        NativeKubernetesAuthentication? authentication = null, NativeGatewayOptions? gateway = null, bool? sslEnabled = null)
         : base(InfisicalDynamicProvider.Kubernetes)
     {
         Text("credentialType", "dynamic"); Text("namespace", nameSpace); Text("role", role);
         Text("roleType", clusterRole ? "cluster-role" : "role"); Strings("audiences", audiences, true);
-        Text("clusterToken", clusterToken); SafeUri("url", url); Optional("ca", ca);
+        ClusterAuthority(clusterToken, url, authentication, gateway, sslEnabled); Optional("ca", ca);
         Flag("sslRejectUnauthorized", true);
+    }
+    private void ClusterAuthority(string? clusterToken, string? url, NativeKubernetesAuthentication? authentication,
+        NativeGatewayOptions? gateway, bool? sslEnabled)
+    {
+        if (authentication is { } invalid && !Enum.IsDefined(invalid))
+        {
+            Dispose(); throw new ArgumentException("Unknown native Kubernetes authentication.");
+        }
+        if (authentication is { } method)
+            Text("authMethod", method switch
+            {
+                NativeKubernetesAuthentication.Api => "api",
+                NativeKubernetesAuthentication.Gateway => "gateway",
+                _ => throw new ArgumentException("Unknown native Kubernetes authentication.")
+            });
+        Optional("clusterToken", clusterToken);
+        if (url is not null)
+        {
+            if (url.Length == 0) Optional("url", url);
+            else SafeUri("url", url);
+        }
+        Options(gateway);
+        if (sslEnabled is { } enabled) Flag("sslEnabled", enabled);
     }
 }
 public sealed class NativeLdapDefinitionProfile : InfisicalDynamicProfile
@@ -514,25 +698,43 @@ public sealed class NativeTotpDefinitionProfile : InfisicalDynamicProfile
 }
 public sealed class NativeSshDefinitionProfile : InfisicalDynamicProfile
 {
-    public NativeSshDefinitionProfile(IReadOnlyList<string> principals) : base(InfisicalDynamicProvider.Ssh) =>
-        Strings("principals", principals);
+    public NativeSshDefinitionProfile(IReadOnlyList<string> principals, NativeSshKeyAlgorithm? keyAlgorithm = null,
+        NativeSshKeyAlgorithm? caKeyAlgorithm = null) : base(InfisicalDynamicProvider.Ssh)
+    {
+        // Validate both enum values before allocating protected principals.
+        string? key = keyAlgorithm is { } algorithm ? Algorithm(algorithm) : null;
+        string? ca = caKeyAlgorithm is { } caAlgorithm ? Algorithm(caAlgorithm) : null;
+        Strings("principals", principals); Optional("keyAlgorithm", key); Optional("caKeyAlgorithm", ca);
+    }
+    private static string Algorithm(NativeSshKeyAlgorithm value) => value switch
+    {
+        NativeSshKeyAlgorithm.Rsa2048 => "RSA_2048",
+        NativeSshKeyAlgorithm.Rsa4096 => "RSA_4096",
+        NativeSshKeyAlgorithm.EcPrime256v1 => "EC_prime256v1",
+        NativeSshKeyAlgorithm.EcSecp384r1 => "EC_secp384r1",
+        NativeSshKeyAlgorithm.Ed25519 => "ED25519",
+        _ => throw new ArgumentException("Unknown native SSH key algorithm.")
+    };
 }
 public sealed class NativeIbmApiDefinitionProfile : InfisicalDynamicProfile
 {
     public NativeIbmApiDefinitionProfile(string apiKey, string applicationId, string clientId, string clientSecret,
-        string organizationId, string catalogId, string consumerOrganizationId, string instanceUrl)
+        string organizationId, string catalogId, string consumerOrganizationId, string instanceUrl,
+        NativeGatewayOptions? gateway = null)
         : base(InfisicalDynamicProvider.IbmApiConnect)
     {
         Text("apiKey", apiKey); Text("appId", applicationId); Text("clientId", clientId); Text("clientSecret", clientSecret);
         Text("orgId", organizationId); Text("catalogId", catalogId); Text("consumerOrgId", consumerOrganizationId);
         SafeUri("instanceUrl", instanceUrl);
+        Options(gateway);
     }
 }
 public enum NativeOauthClientAuthentication { Basic, Post }
 public sealed class NativeOauthDefinitionProfile : InfisicalDynamicProfile
 {
     public NativeOauthDefinitionProfile(string clientId, string clientSecret, NativeOauthClientAuthentication method,
-        string tokenUrl, string revocationUrl, string? scope = null) : base(InfisicalDynamicProvider.Oauth2)
+        string tokenUrl, string revocationUrl, string? scope = null,
+        IReadOnlyList<NativeOauthExtraParameter>? extraParameters = null) : base(InfisicalDynamicProvider.Oauth2)
     {
         if (!Enum.IsDefined(method))
         {
@@ -546,14 +748,18 @@ public sealed class NativeOauthDefinitionProfile : InfisicalDynamicProfile
             _ => throw new ArgumentException("Unknown native OAuth client authentication.")
         });
         SafeUri("tokenUrl", tokenUrl); SafeUri("revocationUrl", revocationUrl); Optional("scope", scope, 2048);
+        ObjectOptions("extraParams", extraParameters, 20);
     }
 }
 public sealed class NativeTailscaleDefinitionProfile : InfisicalDynamicProfile
 {
     private NativeTailscaleDefinitionProfile(string authType, string? apiKey, string? clientId,
-        string? clientSecret, string? issuer, string? subject, IReadOnlyList<string>? scopes)
+        string? clientSecret, string? issuer, string? subject, IReadOnlyList<string>? scopes, NativeTailscaleOptions? options)
         : base(InfisicalDynamicProvider.Tailscale)
     {
+        if (options?.HasAuthKeyFlags == true && authType != "auth_keys" ||
+            options?.HasAudience == true && authType != "federated_keys")
+            throw new ArgumentException("Unsupported native Tailscale branch options.");
         if ((authType != "auth_keys" && scopes is null) ||
             (authType == "federated_keys" && (issuer is null || subject is null)))
         {
@@ -571,18 +777,23 @@ public sealed class NativeTailscaleDefinitionProfile : InfisicalDynamicProfile
         if (issuer is not null) { Text("issuer", issuer); }
         if (subject is not null) { Text("subject", subject); }
         if (scopes is not null) { Strings("scopes", scopes); }
+        Options(options);
     }
-    public static NativeTailscaleDefinitionProfile ForOAuthAuthority(string clientId, string clientSecret) =>
-        new("auth_keys", null, clientId, clientSecret, null, null, null);
+    public static NativeTailscaleDefinitionProfile ForOAuthAuthority(string clientId, string clientSecret,
+        NativeTailscaleOptions? options = null) =>
+        new("auth_keys", null, clientId, clientSecret, null, null, null, options);
     public static NativeTailscaleDefinitionProfile ForFederatedApiKey(string apiKey, string issuer, string subject,
-        IReadOnlyList<string> scopes) => new("federated_keys", apiKey, null, null, issuer, subject, scopes);
+        IReadOnlyList<string> scopes, NativeTailscaleOptions? options = null) =>
+        new("federated_keys", apiKey, null, null, issuer, subject, scopes, options);
     public static NativeTailscaleDefinitionProfile ForFederatedOAuth(string clientId, string clientSecret,
-        string issuer, string subject, IReadOnlyList<string> scopes) =>
-        new("federated_keys", null, clientId, clientSecret, issuer, subject, scopes);
-    public static NativeTailscaleDefinitionProfile ForOAuthKeyApiKey(string apiKey, IReadOnlyList<string> scopes) =>
-        new("oauth_keys", apiKey, null, null, null, null, scopes);
+        string issuer, string subject, IReadOnlyList<string> scopes, NativeTailscaleOptions? options = null) =>
+        new("federated_keys", null, clientId, clientSecret, issuer, subject, scopes, options);
+    public static NativeTailscaleDefinitionProfile ForOAuthKeyApiKey(string apiKey, IReadOnlyList<string> scopes,
+        NativeTailscaleOptions? options = null) =>
+        new("oauth_keys", apiKey, null, null, null, null, scopes, options);
     public static NativeTailscaleDefinitionProfile ForOAuthKeyOAuth(string clientId, string clientSecret,
-        IReadOnlyList<string> scopes) => new("oauth_keys", null, clientId, clientSecret, null, null, scopes);
+        IReadOnlyList<string> scopes, NativeTailscaleOptions? options = null) =>
+        new("oauth_keys", null, clientId, clientSecret, null, null, scopes, options);
     public NativeTailscaleDefinitionProfile(string apiKey, string? tailnet = null, bool reusable = false,
         bool preauthorized = false, IReadOnlyList<string>? tags = null, string? description = null)
         : base(InfisicalDynamicProvider.Tailscale)
@@ -595,10 +806,12 @@ public sealed class NativeTailscaleDefinitionProfile : InfisicalDynamicProfile
 public sealed class NativeCouchbaseDefinitionProfile : InfisicalDynamicProfile
 {
     public NativeCouchbaseDefinitionProfile(string url, string apiKey, string organizationId, string projectId,
-        string clusterId, IReadOnlyList<string> roles) : base(InfisicalDynamicProvider.Couchbase)
+        string clusterId, IReadOnlyList<string> roles, NativeCouchbaseBuckets? buckets = null,
+        NativePasswordRequirements? passwordRequirements = null) : base(InfisicalDynamicProvider.Couchbase)
     {
         SafeUri("url", url); Text("auth.apiKey", apiKey); Text("orgId", organizationId);
         Text("projectId", projectId); Text("clusterId", clusterId); Strings("roles", roles);
+        Options(buckets); PasswordRequirements(passwordRequirements, couchbase: true);
     }
 }
 /// <summary>Protected Atlas role/scope coordinates; no public dictionary accepts additional fields.</summary>
