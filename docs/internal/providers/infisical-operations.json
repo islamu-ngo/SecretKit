@@ -6,7 +6,7 @@
   "maintainerRole": "SecretKit Infisical adapter maintainer (role; individual not assigned)",
   "implemented": false,
   "liveVerified": false,
-  "scope": "Current public secret-management contracts and scoped prerequisites; excludes adjacent products, replaced APIs and unneeded connections",
+  "scope": "Historical R6 public-contract research and admission inventory, not current SDK support or release scope. The 2026-10-11 connector scope decision excludes AppConnections and SecretSyncs from SecretKit.",
   "apiMetadata": {
     "url": "https://app.infisical.com/api/docs/json",
     "infoVersion": "0.0.1",
@@ -81,7 +81,7 @@
     "when": "Wire discriminator conditions; Undiscriminated wire alternative means a separately checked combination, not an invented discriminator",
     "unspecified": "Metadata does not assign a primitive type at that node; do not invent a typed payload contract",
     "omittedDefaults": "Expressive string defaults are deliberately excluded; defaults equal to published wire enum values and scalar numeric/boolean defaults are retained",
-    "admission": "In chosen release scope, not implemented, entitled, permitted or live-conformant",
+    "admission": "Historical R6 admission, not current release scope, implementation, entitlement, permission or live conformance. AppConnections and SecretSyncs are excluded by docs/public/connector-scope-decision.md.",
     "metadataOnly": "Current family public metadata route without a mapped reference page; supported deployment/version must be verified",
     "testCaseIds": "Planned traceability identifiers only; no tests are claimed executed",
     "preconditions": "No global atomicity or retry guarantee is inferred from HTTP verbs",

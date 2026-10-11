@@ -8,7 +8,7 @@
 
 SecretKit is a proposed in-process .NET library family for applications whose operators select among explicitly installed secret-provider adapters.
 
-These pages describe intended behavior. The [current local preview](current-preview.md) records the implemented read-only subset and its limits; it is not a published or completed release. The broader package names, lifecycle contracts and release boundaries below remain design rather than verified support.
+These pages describe intended behavior. The [current local preview](current-preview.md) records implemented read, selected-write and native subsets and their limits; it is not a published or completed release. The [accepted scope decision](connector-scope-decision.md) removes broad third-party app-connection/sync administration from local source. Local post-removal verification passed; broader design is not completed support.
 
 ## Read the design
 
@@ -31,7 +31,7 @@ Standalone samples are proposed to illustrate database bootstrap and optional in
 | --- | --- |
 | `SecretKit.Core` | Minimal proven common read contracts, references, outcomes, and owned material; no provider or host dependency |
 | `SecretKit.Infisical` | Runtime authentication and basic secret data-plane access |
-| `SecretKit.Infisical.Management` | Explicit administrative and connector operations |
+| `SecretKit.Infisical.Management` | Selected project/identity/access administration, native SQL rotation configuration and existing gateway/proxy administration; no third-party connection/sync catalog |
 | `SecretKit.AzureKeyVault` | Secret data-plane operations |
 | `SecretKit.AzureKeyVault.Management` | ARM administration and separately authorized audit integration |
 | `SecretKit.Extensions.Configuration` | Prepared snapshots and explicit plaintext export, without host lifecycle |
@@ -46,8 +46,10 @@ The package split is not permission to use administrative authority, a dependenc
 The earlier planner-selected **public-API-complete first release** default is
 historical. The user's 2026-10-11 direction supersedes it for current delivery:
 finish the Infisical/Azure Key Vault core SDK first, with bounded support and
-explicit verification gates. Comprehensive admitted-API coverage remains a
-future release goal, not a current prerequisite or publication authorization.
+explicit verification gates. The subsequent accepted removal excludes the
+third-party catalog rather than deferring comprehensive connector delivery.
+Frozen Infisical research is `ContractResearchOnly`, not current admission.
+Neither historical counts nor design breadth authorize publication.
 See [current scope and future orchestration](scope-and-orchestration.md).
 
 Product features without an established supported programmable contract would be reported as `ContractNotEstablished`. That status distinguishes missing SDK contract evidence from absence of the vendor feature. It would not ship a placeholder module or count as working support. Imports and other admitted operations can still encounter provider approval rules or downstream effects even when approval-administration endpoints are not admitted.

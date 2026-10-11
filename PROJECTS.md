@@ -6,7 +6,9 @@ Use this map to locate a change's owner before editing. Package presence does no
 
 Core defines common reads, inventory, references, outcomes, and disposable material. Provider packages depend inward on Core and preserve native semantics. Management packages separate administrative dependencies from ordinary runtime access. Configuration export and hosting are independent optional composition layers.
 
-All projects target `net10.0`; tests, samples, and tools are non-packable. The operation registries distinguish admitted, implemented, and remotely verified support.
+All projects target `net10.0`; tests, samples, and tools are non-packable. The frozen Infisical registry is `ContractResearchOnly` evidence, not current admission. The basic management inventory has 122 research rows / 121 callable projections in five families, no connector families, and does not enumerate all retained administration.
+
+The [accepted scope decision](docs/public/connector-scope-decision.md) removes the broad third-party connection/sync catalog, retaining project/identity/access administration, native SQL rotation configuration and runtime features, and existing gateway/proxy administration. Ordinary provider reads need no external connector. Local post-removal verification passed; live-provider gates remain separate.
 
 The application supplies identities and owns validation, activation, persistence, and readiness. SecretKit does not grant permissions, choose fallback principals, or orchestrate deployments. See [architecture](docs/internal/SDK_ARCHITECTURE.md) and [runtime contracts](docs/internal/RUNTIME_CONTRACTS.md).
 

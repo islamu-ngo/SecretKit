@@ -5,6 +5,7 @@ Help improve the two-provider SDK with focused changes, reproducible evidence, a
 ## Before you start
 
 - Read the [current preview](docs/public/current-preview.md) and [scope](docs/public/scope-and-orchestration.md). Planned native operations are not all implemented or live-verified.
+- Follow the [accepted catalog-removal decision](docs/public/connector-scope-decision.md). Third-party app-connection/sync administration is outside current product scope; legitimate retained administration and native SQL rotation features are not removed merely because they reference connections. Frozen Infisical research is not current admission. Local removal checks passed; see the accepted scope decision for evidence.
 - Use [issues](https://github.com/islamu-ngo/SecretKit/issues/new/choose) for ordinary bugs and proposals. Discuss package/API changes, new dependencies, and broad refactors before investing in them.
 - Report security vulnerabilities privately through [SECURITY.md](SECURITY.md), including fixes discovered in forks.
 - Check [PROJECTS.md](PROJECTS.md) for the owner and tests of your change, then [AGENTS.md](AGENTS.md) for the invariants.

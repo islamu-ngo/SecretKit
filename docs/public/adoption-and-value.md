@@ -8,6 +8,13 @@
 
 SecretKit proposes a reusable in-process boundary for operator-selectable provider access; its value must be measured rather than assumed.
 
+The [accepted scope decision](connector-scope-decision.md) removes the broad
+Infisical third-party app-connection/sync catalog while retaining optional
+selected administration and native secret features. Ordinary application reads
+use `ISecretReader` and `ISecretInventory` through Infisical or direct Azure
+access, without an external connector. Broader integration administration can
+be legitimate, but is outside the current product choice. Local removal checks passed; the evaluation below is not comparative or live evidence.
+
 No SecretKit package, integration, publication, or provider conformance test is claimed here. The choices below are design alternatives, not superiority claims or recommendations obtained through outreach.
 
 ## When the abstraction might help

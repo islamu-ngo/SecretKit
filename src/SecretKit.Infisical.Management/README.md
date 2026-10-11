@@ -1,8 +1,8 @@
 # SecretKit.Infisical.Management
 
 Optional, unpublished Infisical administration for selected secret-management
-workflows. The package excludes broad third-party app-connection and secret-sync
-configuration.
+workflows. The broad third-party app-connection and secret-sync catalog has
+been removed under the [accepted scope decision](../../docs/public/connector-scope-decision.md).
 Ordinary application reads do not require this package or an external connector.
 The SDK calls Infisical, not destination service SDKs.
 
@@ -67,8 +67,28 @@ Copied sensitive inputs/results are disposable and excluded from ordinary
 formatting/serialization. Explicit strings and host instrumentation remain
 separate plaintext boundaries.
 
-## Verification boundary
+## Evidence and open gates
 
-Offline tests cover fixed bindings, authority, receipts and response parsing.
-They do not establish provider permissions, licensed SQL rotation effects,
-agent/proxy deployment or production readiness.
+Historical pre-removal verification recorded 15,182 passing cases in the whole
+management suite and 15,870 in the offline solution. Those are not connector-only
+counts or post-removal results. The reduced solution passed locked restore,
+Release build, all 3,668 offline tests, formatting and packaging. A fresh
+installed-package consumer passed and asserted that public connector/sync types
+are absent. Clean exact-file C# diagnostics and three retired-route guards
+supplement that evidence; the guards are included in the full total.
+Independent read-only review found no scoped regression.
+
+The owned rotation fixture's direct Infisical PostgreSQL connection provisioning
+is a test-only prerequisite, not public connector support. Historical native
+rotation creation was rejected by the owned edition's license gate. SQL effects,
+PATCH persistence, backend credential changes and consumer convergence remain
+unverified. Gateway metadata does not prove agent/proxy deployment.
+
+Offline transport evidence does not establish native permissions, edition or
+entitlement, deployment/version compatibility, Azure live support, AOT/trimming
+or production readiness. Event-stream payload/lifetime/resume contracts and
+omitted native input/result variants remain gaps. No live-provider call, commit or publication was performed during removal.
+
+See the [current preview](../../docs/public/current-preview.md),
+[core scope and evidence](../../docs/internal/CORE_SCOPE_AND_ROADMAP.md) and
+[owned conformance guidance](../../tests/SecretKit.Infisical.Conformance.Tests/README.md).

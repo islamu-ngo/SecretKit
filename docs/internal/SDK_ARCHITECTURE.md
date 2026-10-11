@@ -4,9 +4,16 @@
 > Status: Proposed / unimplemented
 > Owner: SecretKit architecture maintainer
 > Last Verified: 2026-10-09, bounded design evidence and local links only
-> Source Anchors: [internal overview](README.md), [R4 evidence](../../dev/active/secretkit-sdk/research-evidence.md), [runtime contracts](RUNTIME_CONTRACTS.md), [ADR-001](adr/ADR-001-capability-aware-secret-sdk.md)
+> Source Anchors: [internal overview](README.md), [historical research](RESEARCH_EVIDENCE.md), [runtime contracts](RUNTIME_CONTRACTS.md), [ADR-001](adr/ADR-001-capability-aware-secret-sdk.md)
 
 This proposal separates a proven portable read contract from provider-native functionality, configuration export and optional host lifecycle.
+
+Current scope follows the [accepted catalog-removal decision](../public/connector-scope-decision.md).
+Broad third-party app-connection/sync administration is removed from local
+source, not a future completeness requirement. Native SQL rotation configuration
+and runtime features, selected administration and existing gateway/proxy
+administration remain; local post-removal verification passed. Other proposed
+behavior below is design, not post-removal verification.
 
 ## Seven Packages And Dependency Direction
 
@@ -14,7 +21,7 @@ This proposal separates a proven portable read contract from provider-native fun
 | --- | --- | --- |
 | `SecretKit.Core` | Common reads and metadata inventory; authority-bound references, material and outcomes | BCL only; no external runtime dependencies |
 | `SecretKit.Infisical` | Secret access, reference semantics and admitted native secret lifecycle/authentication features | Core; approved provider SDK or justified managed transport |
-| `SecretKit.Infisical.Management` | Admitted identity, project, access, governance, connection and connector administration | Core; Infisical adapter where needed; approved dependencies only |
+| `SecretKit.Infisical.Management` | Selected identity/project/access/governance administration, native SQL rotation configuration and existing gateway/proxy administration; no third-party connection/sync catalog | Core; Infisical adapter where needed; approved dependencies only |
 | `SecretKit.AzureKeyVault` | Key Vault secret data plane and admitted native version/lifecycle features | Core; approved `Azure.Security.KeyVault.Secrets` and Azure.Core dependencies |
 | `SecretKit.AzureKeyVault.Management` | Scoped vault administration, RBAC/access policies, diagnostics and authorized audit access | Core; approved Azure management/monitoring SDKs; data adapter only where needed |
 | `SecretKit.Extensions.Configuration` | Explicit key mapping and string export through .NET configuration | Core; narrow Microsoft.Extensions.Configuration dependencies |
@@ -36,7 +43,7 @@ The proposed common surface would cover only semantics demonstrated by both sele
 - Explicitly disposable material and material-free immutable observations.
 - Bounded outcomes and capability evidence sufficient to avoid invented success, permissions or guarantees.
 
-Names such as `ISecretReader`, `ISecretInventory`, `SecretReference`, `SecretMaterial` and `SecretOutcome<T>` would be design candidates, not existing exported APIs. Core would not reserve future capabilities in anticipation of a common abstraction.
+`ISecretReader`, `ISecretInventory`, `SecretReference`, `SecretMaterial` and `SecretOutcome<T>` are existing common APIs described in the [current preview](../public/current-preview.md). Core does not reserve future capabilities in anticipation of a common abstraction.
 
 There would be no Core `ISecretApprovalClient` and no unproven common writer, backup, lease, rotation or recovery interface. Those effects and state machines differ enough to require native typed contracts until independent evidence establishes a genuinely substitutable shared contract. Adding an empty interface now would mislead adopters and constrain future design without proving portability.
 
@@ -44,11 +51,11 @@ A reference would bind an opaque provider-instance identity to an independently 
 
 ## Typed Native Features Are First-Class
 
-The proposed provider packages would expose narrowly typed, independently designed native modules. An Azure backup artifact could remain an opaque, sensitive provider-bound artifact. Infisical dynamic issuance would retain definition, acquisition, renewal and revocation distinctions. Connector configuration would have admitted typed variants rather than an arbitrary JSON bag or raw-operation escape hatch.
+The proposed provider packages would expose narrowly typed, independently designed native modules. An Azure backup artifact could remain an opaque, sensitive provider-bound artifact. Infisical dynamic issuance would retain definition, acquisition, renewal and revocation distinctions. Retained SQL rotation configuration stays typed; removing the third-party connection/sync catalog does not introduce an arbitrary JSON bag or raw-operation escape hatch.
 
 Core would not absorb those models. Nor would public provider contracts simply expose vendor DTOs, exceptions, arbitrary HTTP requests or `ExecuteRaw`. Native operations would remain subject to the same ownership, receipt, cancellation and diagnostic contracts as portable reads.
 
-The management split would be driven by resource function and dependency weight. Runtime token acquisition/renewal would remain an authentication concern in the Infisical adapter. Identity creation and credential issuance administration would belong in Infisical.Management. Lease material acquisition is not inventory. Secret sync administration is not a claim that the SDK operates the vendor's agent/proxy runtime.
+The management split would be driven by resource function and dependency weight. Runtime token acquisition/renewal would remain an authentication concern in the Infisical adapter. Identity creation and credential issuance administration would belong in Infisical.Management. Lease material acquisition is not inventory. Existing gateway/proxy administration does not mean that the SDK deploys agents or operates backend transport. Role subjects named `AppConnections` remain policy values, not catalog APIs.
 
 ## Capability Evidence And Admission
 
@@ -56,7 +63,7 @@ Implementation support, supported programmable contract, deployed API/version, e
 
 Unknown required semantics would reject the operation before a mutation. Unknown permission could justify an explicit authorized provider probe if the admitted contract allowed it, but not a success claim. The result would distinguish unsupported, contract not established, entitlement unavailable, denied and not checked. Discovery would not acquire a dynamic credential, create an import or silently authenticate under another principal.
 
-The [admission policy and populated registry](DELIVERY_AND_MAINTENANCE.md) would be distinct deliverables. Registry rows would map each admitted operation to its package/native owner, contract, permissions, effects and evidence. Counts from the R4 research would remain planning inputs until canonicalization and mapping were complete.
+The [admission policy and populated registry](DELIVERY_AND_MAINTENANCE.md) are distinct concerns. Active coverage must map each retained operation to its package/native owner, contract, permissions, effects and evidence. The frozen Infisical registry is `ContractResearchOnly`; R4 counts are historical research, not current admission.
 
 ## SDK Reuse And Infisical Transport Decision
 

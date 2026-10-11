@@ -10,13 +10,19 @@ SecretKit proposes explicit capability admission and evidence-based support clai
 
 This page defines intended operational and release policy. It does not describe implemented, published, or tested SDK behavior. Official vendor documentation establishes vendor facts, not SecretKit conformance.
 
+Current product scope is the [accepted catalog-removal decision](connector-scope-decision.md).
+Broad third-party app-connection/sync administration has been removed from local
+source; retained native SQL rotation configuration/runtime features and existing
+gateway/proxy administration are not removed. Local removal checks passed; live-provider and release gates remain separate.
+Historical release goals below do not override that scope.
+
 ## Package responsibilities
 
 | Proposed package | Intended boundary |
 | --- | --- |
 | `SecretKit.Core` | BCL-only, minimal proven read contracts, typed references, bounded outcomes, independent owned material, and acquired immutable generations; no vendor SDK, host framework, database, or application policy |
 | `SecretKit.Infisical` | Runtime identity/authentication and basic secret data-plane operations, with explicit native address and reference semantics |
-| `SecretKit.Infisical.Management` | Separately registered administration, prerequisite access/configuration, imports and connector operations, and admitted advanced native secret-management features |
+| `SecretKit.Infisical.Management` | Separately authorized selected project/identity/access administration, native SQL rotation configuration and existing gateway/proxy administration; no broad third-party connection/sync catalog |
 | `SecretKit.AzureKeyVault` | Secret data plane, including admitted native versions and lifecycle operations |
 | `SecretKit.AzureKeyVault.Management` | Optional ARM vault/access administration and separately authorized audit/monitoring integration |
 | `SecretKit.Extensions.Configuration` | Prepared snapshots, explicit mappings, and opt-in plaintext `IConfiguration` export; no host lifecycle |
@@ -30,7 +36,7 @@ Azure's [secret client documentation](https://learn.microsoft.com/en-us/dotnet/a
 
 ## Admission and first-release boundary
 
-The public-API-complete first release is the planner's best-judgment default after the release-boundary question timed out. It is not an explicit user selection or implementation/publication approval. Completion would mean all admitted current supported public secret-management operations at a recorded interface snapshot, with their required native variants and evidence, rather than a CRUD-only preview labeled complete.
+The earlier public-API-complete first-release default is historical and superseded by the accepted two-provider/catalog-removal decision. Current admission follows demonstrated product use, not Infisical's complete API catalog. The frozen `infisical-operations.json` is `ContractResearchOnly`; basic management coverage is 122 research rows / 121 callable projections across five nonconnector families, not complete administration or live conformance.
 
 Breadth means covering admitted operation families and variants. Depth means proving semantics, identity/permission boundaries, uncertainty, cancellation, lifecycle, and operational failure behavior for each claimed combination. A large endpoint list demonstrates neither depth nor conformance. Adjacent keys, certificates, PKI, KMS, PAM, and SSH products would remain outside the selected secret-management scope.
 
@@ -51,7 +57,7 @@ The support registry would keep these dimensions separate:
 | Unknown | A contract, environment, entitlement, or behavior lacks evidence | All initial support combinations unverified |
 | Available to this identity | A scoped runtime observation establishes permission/entitlement at a stated time | Cannot be inferred from package installation or product availability |
 
-A future matrix would record provider release/version, cloud or self-hosted deployment, edition, API version by family, authentication method, permission model, region/sovereign cloud, operation, selected dependencies, OS/architecture, and evidence date. Every version/edition/API/cloud combination is initially unverified. A passing read in one vault would not establish all Azure clouds or management/audit operations; one Infisical edition would not establish every connector or entitlement.
+A future matrix would record provider release/version, cloud or self-hosted deployment, edition, API version by family, authentication method, permission model, region/sovereign cloud, operation, selected dependencies, OS/architecture, and evidence date. This design page establishes no verified combination. Scoped historical evidence is in the [current preview](current-preview.md); it does not verify the removal. A passing read in one vault would not establish all Azure clouds or management/audit operations; one Infisical edition would not establish other native features or entitlements.
 
 `net10.0` is proposed, not a shipped compatibility guarantee. Native AOT, trimming, OS/architecture portability, and other framework targets would be advertised only after packed-consumer verification of that exact package and dependency path. Assembly compilation alone would not establish platform support.
 

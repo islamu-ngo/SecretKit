@@ -4,13 +4,20 @@
 > Status: Proposed / unimplemented
 > Owner: SecretKit delivery maintainer
 > Last Verified: 2026-10-09, bounded design evidence and local links only
-> Source Anchors: [overview](README.md), [architecture](SDK_ARCHITECTURE.md), [runtime contracts](RUNTIME_CONTRACTS.md), [R4 inventory](../../dev/active/secretkit-sdk/provider-operation-inventory.md)
+> Source Anchors: [overview](README.md), [architecture](SDK_ARCHITECTURE.md), [runtime contracts](RUNTIME_CONTRACTS.md), [historical research](RESEARCH_EVIDENCE.md)
 
 This proposal puts documentation and early adopting-consumer evidence before comprehensive feature expansion, with an honest declared-coverage release gate.
 
+The [accepted 2026-10-11 decision](../public/connector-scope-decision.md)
+supersedes comprehensive connector delivery: the third-party app-connection/
+sync catalog is removed from local source. Selected administration, native SQL
+rotation configuration/runtime features and existing gateway/proxy administration
+remain. Local removal checks passed; live-provider and release gates remain separate. The earlier broad delivery plan is
+historical where it conflicts with that boundary.
+
 ## Admission Policy Is Not A Populated Registry
 
-The proposed admission policy would require a supported published public contract, compatible provenance, explicit authority/effects, testable semantics and a named maintenance owner. It would exclude private/undocumented contracts, adjacent products and unapproved previews. The public-API-first first-release boundary is the planner's timeout default, not a user-confirmed abandonment of eventual full secret-management coverage.
+Admission requires a supported published public contract, compatible provenance, explicit authority/effects, testable semantics, a named maintenance owner and a current product use case. Private/undocumented contracts, adjacent products and unapproved previews remain excluded. The earlier public-API-complete first-release default is superseded by the accepted product scope, not a requirement to restore the catalog.
 
 A populated per-operation registry would be a separate required artifact before credible estimates or completion claims. Neither this prose nor R4's cohort inventory is that registry. Each row would require:
 
@@ -23,13 +30,13 @@ A populated per-operation registry would be a separate required artifact before 
 | Outcomes and observations | Applied/pending/rejected/unknown mapping, actual provider handles if available, supported reconciliation and completeness/collection limits |
 | Evidence | Implementation status, deterministic test mapping, focused real-provider receipts, compatibility matrix and installed-package evidence |
 
-Registry population would freeze canonical families without turning documentation-page or method/path counts into operation counts. Each admitted connector variant would require actual typed configuration and effect mapping; a catch-all JSON dictionary, raw request gateway or unavailable stub would not count as support.
+Registry population must not turn documentation-page or method/path counts into implemented operation counts. The frozen `infisical-operations.json` is `ContractResearchOnly`, not current admission. The basic management inventory has 122 research rows / 121 callable projections in five families and no connector families; it does not enumerate all retained administration. Typed configuration and effect mapping remain required for retained native features; a catch-all JSON dictionary, raw request gateway or unavailable stub does not count as support.
 
 An admission decision would not prove a deployed provider supports the operation. Permissions and editions would remain scoped observations, and live conformance would remain a separate gate. Unknown required semantics would fail closed, while the registry retained the reason and the evidence needed to resolve it.
 
 ## Coverage And Compatibility Boundaries
 
-The proposed Infisical boundary would include admitted secret reads, inventory, lifecycle, organization/imports, machine authentication, dynamic credentials, scoped access/governance and required connection/rotation/sync variants. Infisical.Management would own admitted administrative families rather than forcing all their dependencies into the runtime package.
+The retained Infisical boundary includes supported secret reads, inventory, lifecycle, organization/imports, machine authentication, dynamic credentials, scoped access/governance, native SQL rotation configuration and runtime features, and existing gateway/proxy administration. Infisical.Management keeps selected administrative dependencies out of ordinary runtime access. The broad third-party connection/sync catalog is excluded; broader optional integration administration could be legitimate under a future explicit product decision.
 
 The proposed Azure boundary would include secret data-plane families and optional scoped vault, RBAC/access-policy, diagnostics and audit administration. Keys, certificates, Managed HSM, broad directory/subscription management and unrelated vendor products would remain outside scope. A secret data-plane client would not become a rotation automation platform.
 
@@ -49,7 +56,7 @@ These are intended outcomes, not executed milestones or authorization to impleme
 | Dual-provider minimal reads | Dependency-free Core plus both Infisical and Azure minimal readers/inventory; reference/material/outcome ownership; justified transport choice; explicit identity and version/collection evidence |
 | Both workflows and installed-package pilot | Standalone Event-like runtime and Configurator-like inspection/review workflows consuming packed prerelease packages, not project references; focused real-provider risk evidence early |
 | Safe writes, imports, snapshots and auth lifecycle | Native mutation/precondition contracts, pre-dispatch receipts, import approval effects, coherent acquired generations, explicit string export, optional host-started maintenance and recovery boundaries |
-| Comprehensive administration and connectors | Every admitted administrative family and typed connector variant, including depth of errors/permissions/lifecycle; no indefinite postponement hidden in a completeness claim |
+| Retained administration and native features | Selected project/identity/access administration, native SQL rotation configuration/runtime features and gateway/proxy administration; no broad third-party connection/sync catalog |
 | Final declared coverage/provider/install/publish gate | Full declared operation and compatibility evidence, provider conformance, installed-package matrix, package provenance and protected publication readiness |
 
 The early pilot would test whether the SDK is useful before the large administrative investment. Both workflows would be mandatory evidence, not an Event-only smoke sample followed by a Configurator example at the end. No Event or Configurator source, packages, migrations or documentation would change in these examples.
@@ -74,7 +81,7 @@ The proposed early value assessment would compare both installed-package workflo
 
 A proposed conformance kit would provide reusable deterministic contract cases plus explicitly authorized remote scenarios keyed to registry rows. It would identify provider/API/edition/cloud combinations, permissions, sensitivity, receipt/outcome expectations and evidence limits. Adopters could reproduce a compatibility claim without assuming every provider deployment behaved identically. The kit would not embed credentials or turn provider integration into a new orchestration product.
 
-Prerelease pilots could establish value before complete breadth. Their artifacts and claims would be labeled prerelease and incomplete, never marketed as the final complete release. Full-release coverage would require every admitted row and variant to satisfy its declared depth and evidence.
+Prerelease pilots could establish value before complete breadth. Their artifacts and claims would be labeled prerelease and incomplete, never marketed as the final complete release. Any full-release claim must satisfy the explicitly selected current scope and its declared depth/evidence, not every row of a historical research catalog.
 
 ## Dependency, Provenance And Licensing
 

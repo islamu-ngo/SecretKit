@@ -115,7 +115,7 @@ Supported writes retain provider-native semantics and uncertainty. A complete lo
 
 ### Do I need deployment connectors to read secrets?
 
-Ordinary Infisical or Azure Key Vault access does not require a connection to a deployment destination. Broad connector administration is deferred from the core-first milestone. See [scope and future orchestration](docs/public/scope-and-orchestration.md).
+Ordinary Infisical or direct Azure Key Vault access does not require a connection to a deployment destination. The broad Infisical third-party connection/sync catalog has been removed from local source; selected optional administration and native secret features remain. Local post-removal verification passed. See the [accepted scope decision](docs/public/connector-scope-decision.md).
 
 ---
 

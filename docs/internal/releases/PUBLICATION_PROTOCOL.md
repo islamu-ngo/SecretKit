@@ -3,6 +3,15 @@
 Status: local infrastructure, not an authorized or completed release.
 Execution owner: the appointed SecretKit release maintainer.
 
+Scope note (2026-10-11): the
+[accepted catalog-removal decision](../../public/connector-scope-decision.md)
+supersedes the earlier comprehensive Infisical admission goal. The frozen
+`infisical-operations.json` is `ContractResearchOnly`, not current product
+admission. The all-registry completion gate described below belongs to the
+earlier release infrastructure contract; it does not require restoring removed
+connector APIs or establish readiness for the smaller product. Release tooling/
+scope-metadata reconciliation is separate work. Local removal checks passed; no publication is authorized.
+
 The BCL-only .NET 10 tool in `tools/SecretKit.Release` publishes only the seven
 exact IDs below, at one approved normalized version. It does not build packages,
 infer credentials, register publishers, claim live conformance, overwrite a

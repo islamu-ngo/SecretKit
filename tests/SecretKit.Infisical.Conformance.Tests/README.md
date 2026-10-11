@@ -160,7 +160,7 @@ Configuration/progress/trigger completion, password changes, runtime refresh
 and fleet convergence remain unverified.
 The retained rotation fixture builds, but its revised live scenario was not run
 during catalog removal. The command above selects only that native scenario. Native SQL rotation configuration and runtime features remain in
-scope under the current SDK scope.
+scope under the [accepted decision](../../docs/public/connector-scope-decision.md).
 
 The owned server requires documented `ALLOW_INTERNAL_IP_CONNECTIONS=true` for
 these private destinations. This does not permit using hosts reserved for

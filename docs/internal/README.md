@@ -2,11 +2,16 @@
 
 Current delivery priority: [core scope and deferred orchestration](CORE_SCOPE_AND_ROADMAP.md).
 
+The [accepted 2026-10-11 scope decision](../public/connector-scope-decision.md)
+has removed broad third-party app-connection/sync administration from local
+source while retaining selected administration, native SQL rotation and
+runtime features, and gateway/proxy administration. Local removal checks passed; live-provider and release gates remain separate. R4/R5 scope and research below are historical where superseded.
+
 > Audience: SDK contributors and maintainers
 > Status: Proposed / unimplemented
 > Owner: SecretKit maintainers
 > Last Verified: 2026-10-09, local design evidence and documentation links only
-> Source Anchors: [R4 evidence](../../dev/active/secretkit-sdk/research-evidence.md), [R4 inventory](../../dev/active/secretkit-sdk/provider-operation-inventory.md), [architecture](SDK_ARCHITECTURE.md), [runtime contracts](RUNTIME_CONTRACTS.md)
+> Source Anchors: [historical research](RESEARCH_EVIDENCE.md), [architecture](SDK_ARCHITECTURE.md), [runtime contracts](RUNTIME_CONTRACTS.md)
 
 SecretKit is proposed as a reusable .NET secret-management SDK for Infisical and Azure Key Vault, with a small portable read boundary and legitimate typed provider-native features.
 
@@ -33,7 +38,7 @@ The package family would contain exactly `SecretKit.Core`, `SecretKit.Infisical`
 
 Core would use only the BCL and contain proven common read, inventory, reference, material and outcome semantics. Provider-native modules would retain useful semantics that are not portable. They would not be second-class escape hatches. No speculative `ISecretApprovalClient`, common backup, lease, rotation, or recovery API would be reserved in Core. Native features could be admitted when their supported contracts and evidence justify them.
 
-The selected release scope would be the complete declared set of admitted public secret-management operations, not every vendor product or UI feature. Missing supported programmable contracts would remain explicit future vendor gates, with no stubs. The public-API-first boundary originated as the planner's default after a question timed out, not an affirmative user decision that the long-term full-feature goal should shrink.
+The earlier complete-admitted-API release goal is historical and superseded by the accepted two-provider/catalog-removal scope. The frozen Infisical inventory is `ContractResearchOnly`, not current product admission. Missing supported programmable contracts remain explicit gates, with no stubs; retained native feature depth still requires evidence.
 
 Approval administration remaining outside an initial admission would not erase approval effects of admitted operations. Import-resource creation, replication requested, destination approval pending, destination applied and destination outcome unknown would be distinct observations. A returned import identifier would not certify destination material delivery.
 

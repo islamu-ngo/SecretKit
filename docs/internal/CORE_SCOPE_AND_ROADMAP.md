@@ -1,79 +1,108 @@
 # Core delivery scope and deferred orchestration
 
-Decision: user scope correction on 2026-10-11. This supersedes the R6 requirement
-to finish every admitted connector before delivering the core SDK.
+Decision: accepted user scope correction on 2026-10-11, applied to local source.
+It supersedes both comprehensive R6 connector delivery and the intermediate
+keep/preserve requests. The broad third-party Infisical app-connection and
+secret-sync catalog is removed, not awaiting confirmation or a new archive.
 
-The [public scope guide](../public/scope-and-orchestration.md) preserves the
-product rationale, examples and distinction between secret access, optional
-Infisical administration and Configurator orchestration.
+The [public decision](../public/connector-scope-decision.md) explains the
+boundary; [scope and orchestration](../public/scope-and-orchestration.md)
+distinguishes secret access, optional administration and Configurator.
 
-## Current exit criteria
+## Retained scope
 
-- Finish the Infisical/Azure Key Vault SDK using the existing typed architecture,
-  explicit authority, host-owned transports and caller-held mutation receipts.
-- Preserve existing integrated connector code and its measured evidence.
-  Stop broad connector expansion; retain unfinished source outside package
-  compilation rather than publishing unbound factories.
-- Run relevant offline regressions, solution build/format/pack and an isolated
-  installed-package consumer. Verify owned Infisical workflows where the local
-  fixture and intended authority permit them.
-- Azure live testing remains deferred without an account. Infisical licensed
-  replication and SQL acquisition/rotation failures and unspecified event/output schemas remain
-  explicit gates, not SDK passes or invented contracts.
+- BCL-only Core with `ISecretReader`, `ISecretInventory`, references, owned
+  material and explicit outcomes.
+- Infisical and direct Azure runtime secret reads, writes, authentication and
+  supported provider-native lifecycle.
+- Independent optional configuration export and explicitly started hosting.
+- Project/environment, identity/access and selected governance administration.
+- Native SQL rotation configuration and runtime features, plus existing
+  gateway and proxied-service administration.
 
-Fresh core verification on 2026-10-11 passed 15,870 offline solution tests,
-locked restore, build, formatting and packaging. A freshly packed, isolated
-package-only consumer passed separately. Owned live identity, installed
-read/write/configuration/assessment workflows, mutation uncertainty and ordinary
-import delivery passed. Native replicated-import verification was rejected
-(`Invalid` / `Rejected`) by the owned deployment's license restriction; its
-test remains failing and unchanged. Live authentication, token policy and
-bootstrap recovery also passed. Across eight native class invocations,
-10 cases were attempted: nine passed and one hit the replication entitlement
-gate. This is not a whole-green native matrix. Independent scope review found
-three documentation consistency issues; current acceptance and historical
-resume text were corrected, and local links and archive preservation checked.
-The bounded review is not a whole-SDK or native-effect audit.
-- Report the core result and remaining gates. No commits or publication.
+An Infisical Azure connection is not the direct Azure provider. A role subject
+named `AppConnections` is not a connector factory. Retained rotation configuration
+can reference an existing connection without SDK connection provisioning.
+The single direct PostgreSQL connection setup inside `RotationProgressTests`
+is an owned test-only prerequisite, not public connector support.
+
+## Applied removal and verified local evidence
+
+The removal unit deleted 234 catalog C# units, 80 connector-only test files,
+640 dispatcher cases, `connector-coverage.json`, and 16 partial archived
+source/test files for Fireworks, Spacelift, Daytona and TeamCity sync.
+No new archive, branch, repository or integration package was created.
+Shared rotation parsing is detached from catalog helpers; delivered-connection
+summary overloads and the standalone owned connection test are removed.
+The local verification below applies to the reduced source.
+
+Removal evidence: the reduced full solution Release build
+completed with exit 0; exact-file LSP checks on all 16 changed C# files were
+clean; the retired-route guard passed three cases. Source checks found no
+catalog factories/types/routes, only retained `ProjectConnectionOperations`
+and audit/role permission vocabulary.
+
+The full offline matrix passed 3,668 cases with no failures. Locked restore,
+Release build, formatting and local pack also passed. All seven packages were
+installed into fresh consumer outputs/cache; the consumer ran successfully and
+asserted that no public connection/sync catalog types remained. The three guard
+cases are already included in the full total.
+
+Independent read-only review found no scoped regression. Retained JSON
+inventories parsed successfully. The optional Biome JSON language server was
+unavailable; no dependency was installed for it. Exact C# diagnostics and the
+actual compiler were clean. No new live-provider verification was claimed.
+
+The basic `operation-coverage.json` stays at 122 research rows / 121 callable
+projections across ScopedAccess, Projects, Identities, IdentityPrivileges and
+Governance. It has no connector families and does not enumerate all retained
+administration. Frozen `infisical-operations.json` is `ContractResearchOnly`
+evidence, not current product admission or complete implemented coverage.
+
+## Historical verification before removal
+
+The 2026-10-11 checkout passed 15,870 offline solution tests, locked restore,
+build, formatting, local packaging of seven packages and an isolated
+package-only consumer. The separate 15,182-case management run covered the
+whole management suite, not solely connector tests. Neither result verifies
+the post-removal checkout.
+
+Owned live identity, installed read/write/configuration/assessment workflows,
+mutation uncertainty, ordinary imports, authentication, token policy and
+bootstrap recovery had scoped positive evidence. Across eight native class
+invocations, ten cases were attempted: nine passed and one replication case
+was rejected (`Invalid` / `Rejected`) by the owned deployment's license gate.
+That is not a whole-green native matrix.
+
+Historical connector audits and counts describe the former scope only. The
+Qovery fault-fixture and Vault action-effect evidence gaps were not closed by
+passing counts; removed tests are not relabeled as verified native effects.
+
+## Remaining gates
+
+Azure live verification remains deferred without an account. Licensed replicated
+imports and SQL acquisition/rotation remain entitlement gates. Native credential
+effects, permissions, persistence, edition/version compatibility, unspecified
+event/output schemas and platform/AOT/trimming support need scoped evidence.
+Source removal does not revoke remote credentials or change server policy.
+Private consumers outside the checkout are unknown.
+
+No live-provider scenario, commit or publication was performed during this
+removal. Local package evaluation does not authorize a public release.
 
 ## Later workflow: a selected Configurator deployment
 
-Coolify is an illustrative destination, not an approved working integration.
-Choose one actual application, destination and secret-delivery mechanism before
-implementing orchestration. Confirm available native APIs, authority and
-destination capabilities from their current contracts; do not infer support
-from an app-connection name or a marketing integration claim.
+Coolify is illustrative, not an approved working integration. Choose one actual
+application, destination and delivery mechanism before orchestration. Runtime
+secret fetching needs no external connector. Broader optional integration
+administration could be legitimate, but it is excluded by this product decision.
 
-Configurator owns project/environment setup, grants, destination configuration,
-deployment sequencing and recovery. SecretKit owns typed provider access and
-native administrative request contracts. Destination clients remain separate;
-neither deployment logic nor hidden orchestration workers belong in Core.
+Configurator owns destination configuration, deployment sequencing, grants,
+operator review and recovery; destination clients remain separate. SecretKit
+owns typed provider access and retained native administration. Each step needs
+selected authority, observable state and a recovery decision. Reconcile lost
+responses from actual provider evidence rather than replaying mutations.
 
-Each workflow step needs independently selected authority, observable state
-and a recovery decision. After a lost mutation response, reconcile actual
-state using its caller-held receipt rather than automatically replaying it.
-Verify fresh source state, destination delivery and application access. Do not
-promise cross-system atomicity or credential effects based on metadata.
-
-## Deferred comprehensive administration
-
-The frozen registry describes 69 connection variants, 49 sync destinations,
-30 rotations, 28 dynamic-definition profiles and 13 authentication variants.
-These are admitted design scope, not delivered support totals.
-
-At the scope correction, 60 connection increments and 14 sync increments had
-offline integration evidence. The latest coherent management-only run passed
-15,182 cases on 2026-10-11 at 09:36:24 UTC; it does not prove the entire SDK,
-native effects or current installed-package support. Its exact report digest
-and bounded audit limits remain in the excluded execution ledger.
-
-Four source-only units were stopped: Fireworks, Spacelift, Daytona and TeamCity
-sync. Preserve their authored work for later, explicitly unverified and
-unbound. Do not finish them merely to inflate coverage under the new scope.
-
-The latest Hasura/Qovery/LiteLLM/Vault audit found no scoped production-contract
-defect but identified two P2 fixture-evidence gaps: Qovery fault tests asserted
-dispatch counts without substantive effects; Vault action fixtures lacked
-delete/import/remove/sync effect state. Preserve these findings for any future
-administration work. Passing counts do not close them. They do not block core
-secret access and are not being silently relabeled as verified effects.
+Reconsider a specific integration only for a demonstrated consumer, established
+contracts, maintenance ownership and effect-level verification. Do not turn the
+historical provider catalog back into the backlog.

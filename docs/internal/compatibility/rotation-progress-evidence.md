@@ -4,12 +4,22 @@ Observed contract date: 2026-10-09. Phase 7.3 is a native metadata/control
 slice, not Phase 8.2 connector configuration completion. No live conformance,
 edition compatibility, permission entitlement or consumer delivery is claimed.
 
+This page preserves historical Phase 7.3 evidence, not the full current feature
+inventory. The [accepted catalog-removal decision](../../public/connector-scope-decision.md)
+retains native SQL rotation configuration/runtime features while removing
+third-party connection/sync APIs. Local removal checks passed; live-provider and release gates remain separate. Phase 8.2
+references below describe the former plan, not an obligation to restore it.
+
 ## Owned observation and edition gate, 2026-10-11
 
 The 30-profile protocol/observer regression passed37/37. A separate positive
-owned v0.166.3 case passed1/1: PostgreSQL connection creation, fresh inspection
+owned v0.166.3 case historically passed1/1: PostgreSQL connection creation, fresh inspection
 and actual query of a separate no-host-ingress backend on an owned private
 bridge. This is not rotation completion or downstream password-change evidence.
+That standalone connection test is now removed. The retained rotation scenario
+provisions a connection directly through Infisical only as an owned test fixture
+prerequisite, not public SDK connector support. See the
+[current fixture command](../../../tests/SecretKit.Infisical.Conformance.Tests/README.md).
 
 The dedicated rotation scenario reached successful connection creation, then
 native rotation creation failed with HTTP400/Rejected:
@@ -21,8 +31,9 @@ consumer delivery and fleet convergence remain unverified.
 ## Sources and implementation boundary
 
 The approved task is `dev/active/secretkit-sdk/secretkit-sdk-tasks.md`, Phase 7.3.
-The current inventory is `../providers/infisical-operations.json`: 305 current
-v2 rotation method/path decisions, 30 profiles. Request/response facts, not
+The frozen research inventory is `../providers/infisical-operations.json`:
+305 v2 rotation method/path decisions, 30 profiles at the recorded snapshot.
+It is `ContractResearchOnly`, not current admission. Request/response facts, not
 vendor source or generated classes, informed independently authored code.
 The registry remains research evidence; this slice does not change its global
 `implemented` flags.
@@ -54,7 +65,7 @@ The four native Refit methods are handwritten and internal, not generated
 from a vendor schema. Refit's ordinary implementation generation is its own
 build-time mechanism, not copied connector models.
 
-## Exhaustive current operation status
+## Historical Phase 7.3 operation status
 
 Use `B = /api/v2/secret-rotations` and `P = one exact profile below`.
 The table accounts for all 305 current operations: 2 catalog operations,

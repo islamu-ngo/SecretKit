@@ -1,10 +1,17 @@
 # ADR-001: Capability-Aware Secret SDK
 
+Historical R5 proposal. Its comprehensive administration/connector delivery
+and first-release scope are superseded by the
+[accepted 2026-10-11 catalog-removal decision](../../public/connector-scope-decision.md).
+Retained native secret features and selected administration remain in scope;
+local post-removal verification passed. The proposal below is preserved as history,
+not current catalog admission or an instruction to restore deleted APIs.
+
 > Audience: SDK maintainers and architecture/security reviewers
 > Status: Proposed / unimplemented; not an accepted or executed decision
 > Owner: SecretKit architecture maintainer
 > Last Verified: 2026-10-09, bounded design evidence and local links only
-> Source Anchors: [architecture](../SDK_ARCHITECTURE.md), [runtime contracts](../RUNTIME_CONTRACTS.md), [delivery](../DELIVERY_AND_MAINTENANCE.md), [R4 evidence](../../../dev/active/secretkit-sdk/research-evidence.md)
+> Source Anchors: [architecture](../SDK_ARCHITECTURE.md), [runtime contracts](../RUNTIME_CONTRACTS.md), [delivery](../DELIVERY_AND_MAINTENANCE.md), [historical research](../RESEARCH_EVIDENCE.md)
 
 ## Context
 

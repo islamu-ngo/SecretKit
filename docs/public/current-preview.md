@@ -1,10 +1,11 @@
 # Current local preview
 
-Scope correction (2026-10-11): finish the Infisical/Azure Key Vault SDK first;
-broad Infisical connector coverage is deferred. See
-[scope and future orchestration](scope-and-orchestration.md). Existing
-administrative subsets are retained, not additional secret-storage providers
-or proof of automated deployment.
+Accepted scope correction (2026-10-11): the broad Infisical third-party
+app-connection and secret-sync catalog has been removed from local source.
+Core, Infisical/direct Azure runtime access, optional configuration/hosting,
+selected administration, native SQL rotation configuration and runtime features,
+and existing gateway/proxy administration remain. See the
+[applied decision](connector-scope-decision.md). Local removal verification passed; historical evidence below remains separate.
 
 This checkout implements a limited read, generation and selected-write subset. It is unpublished and does
 not implement the complete admitted operation inventory.
@@ -19,7 +20,7 @@ replacement, optional fresh recheck and admin-visible/runtime-denied assessment.
 This is local conformance for that slice, not all admitted routes, editions or
 external backends. Azure live testing remains deferred.
 
-The currently install-tested packages are `SecretKit.Core`, `SecretKit.Infisical`,
+The historically install-tested packages before removal are `SecretKit.Core`, `SecretKit.Infisical`,
 `SecretKit.AzureKeyVault`, optional `SecretKit.Extensions.Configuration` and
 optional `SecretKit.Extensions.Hosting`, `SecretKit.Infisical.Management` and
 `SecretKit.AzureKeyVault.Management`,
@@ -153,8 +154,8 @@ application readiness policy is introduced.
 
 ## Evidence boundary
 
-The optional Infisical administration package currently exposes 121 typed
-operation projections out of 122 admitted management operations, including
+The basic Infisical administration inventory records 121 callable typed
+operation projections out of 122 research rows across five families, including
 bounded group inventories, project-template metadata CRUD and organization-user
 membership list/update/delete, identity-template subsets and organization identity
 membership inventory and project user/identity membership inspection and role
@@ -164,20 +165,32 @@ typed v1/v2 privilege authoring and bounded organization/project role authoring.
 Supported input
 subsets are not complete native-operation coverage. The exact source-linked
 [management inventory](../../src/SecretKit.Infisical.Management/operation-coverage.json)
-retains optional configuration gaps and unestablished response contracts.
+retains optional configuration gaps and unestablished response contracts. It
+has no connector families and is not complete retained administration coverage:
+native SQL rotation configuration, gateway/proxy and other retained native
+subsets are not all counted in that denominator. Permission subjects named
+`AppConnections` are access-policy values, not public catalog support.
 
 Offline transport tests exercise material ownership, cancellation, identity
 separation, response budgets, status mapping and metadata boundaries. They do
 not establish real provider permissions, server editions, paid features,
 cloud behavior, runtime interoperability, Native AOT or trimming.
 
-Local `0.1.0-preview.1` artifacts are a subset and working-tree build, not a
-published release or complete provenance/API certification. Installation tests
+Historical local `0.1.0-preview.1` artifacts are a pre-removal subset and
+working-tree build, not a published release or post-removal certification. Installation tests
 restore the local packages into an isolated package cache and run an independent
-consumer without project references. The [operation registries](../internal/providers/)
-separate admitted contracts, partial implementation and unverified compatibility.
-Those comprehensive lifecycle/management/connector and publisher requirements
-belong to a future complete release. They are not prerequisites for the
-2026-10-11 core-first local SDK milestone. The current milestone retains
-bounded supported APIs, measured core verification and explicit external gates;
-it does not authorize publication or claim full admitted coverage.
+consumer without project references. The frozen Infisical inventory in the
+[research registries](../internal/providers/) is `ContractResearchOnly`
+evidence, not current admission or a promise to deliver every connector.
+The accepted scope retains bounded native features rather than comprehensive
+third-party integration administration. Historical verification recorded 15,870
+offline solution passes; the 15,182 cases were in the whole management suite,
+not solely connector tests. Ten owned live cases yielded nine passes and one
+replication license rejection. Post-removal checks passed locked restore, the
+full solution Release build, all 3,668 offline tests, formatting, seven local
+packages and fresh installed consumers. The consumer asserted public connector
+API absence. Exact-file C# diagnostics were clean; three retired-route guard
+cases passed separately and are included in the full total. Independent
+read-only review found no scoped regression.
+Azure live and licensed/native effects remain gates; no publication or complete
+coverage is claimed.
