@@ -1,0 +1,23 @@
+name: Feature request
+description: Propose a concrete SDK or documentation improvement.
+title: "[Feature]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Check [the current scope](https://github.com/islamu-ngo/SecretKit/blob/main/docs/public/scope-and-orchestration.md) first.
+        Use synthetic examples and keep credentials and confidential configuration out of this issue.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Consumer problem
+      description: What application workflow needs this, and why is the current supported surface insufficient?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Smallest useful change
+      description: Identify the relevant package/provider, intended behavior, alternatives, and a way to verify it. Link supported public contracts for native API requests.
+    validations:
+      required: true

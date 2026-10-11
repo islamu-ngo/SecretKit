@@ -4,6 +4,20 @@ SecretKit is a greenfield MIT .NET 10 SDK. Breaking changes during development
 are permitted; do not add compatibility aliases. Independently design code from
 public interface facts. Do not copy source from Event, Configurator or vendors.
 
+## Start here
+
+- [CONTRIBUTING.md](CONTRIBUTING.md) owns contributor workflow and PR evidence.
+- [PROJECTS.md](PROJECTS.md) maps packages, tests, samples, and focused commands.
+- [docs/README.md](docs/README.md) routes public and internal documentation.
+- [Current preview](docs/public/current-preview.md) records implemented support;
+  [scope](docs/public/scope-and-orchestration.md) records the core-first priority.
+- [SECURITY.md](SECURITY.md) owns private vulnerability reporting;
+  [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) owns community participation.
+
+Read applicable path-scoped instructions before editing. Keep changes focused
+on the named task and preserve existing work. No external cockpit is required
+to understand or follow this repository contract.
+
 ## Boundaries
 
 - Core uses the BCL only. Providers depend inward on Core.
@@ -39,6 +53,11 @@ Record missing identities, entitlements, cloud/platform coverage and publisher
 rights as open gates. Do not skip tests to manufacture a passing support claim.
 
 ## Ownership
+
+Documentation-only changes use link, formatting, and command/path checks rather
+than product builds. Public guidance and internal contracts must distinguish
+proposed behavior, implemented subsets, offline evidence, and live conformance.
+For SDK behavior changes, the verification baseline above remains required.
 
 Private execution notes remain locally excluded in dev/active/secretkit-sdk.
 Preserve unrelated changes. No commit, push, publication or remote mutation

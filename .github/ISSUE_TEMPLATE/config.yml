@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Private security report
+    url: https://github.com/islamu-ngo/SecretKit/blob/main/SECURITY.md
+    about: Read the private disclosure process before reporting a vulnerability.
+  - name: ISLAMU community
+    url: https://discord.gg/wrkY824Yv5
+    about: Ask general questions in the ISLAMU community; keep credentials and private configuration out of chat.

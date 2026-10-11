@@ -1,0 +1,30 @@
+name: Bug report
+description: Report a reproducible SDK or documentation problem with sanitized evidence.
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Report vulnerabilities privately through [SECURITY.md](https://github.com/islamu-ngo/SecretKit/blob/main/SECURITY.md).
+        Never include real credentials, secret values, sensitive provider coordinates, or personal data.
+  - type: textarea
+    id: environment
+    attributes:
+      label: Package and environment
+      description: Package/version or commit, .NET SDK/runtime, OS, and provider/API version or edition where relevant.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Give steps or a small example using synthetic material. State whether the evidence is offline or from an authorized live environment.
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Expected and observed behavior
+      description: Include sanitized errors and the affected workflow. Distinguish a documented preview limit from a regression where possible.
+    validations:
+      required: true
