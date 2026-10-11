@@ -60,7 +60,10 @@ public sealed class OrganizationMembershipTests
         metadata[0] = new("changed-key", "changed-value");
         var receipt = client.CreateReceipt(request);
         var grant = authority.IssueGrant("infisical." + method.ToLowerInvariant() +
-            ".v2.organizations.by.organizationId.memberships.by.membershipId", new(Org, resourceId: Membership));
+            ".v2.organizations.by.organizationId.memberships.by.membershipId", method == "PATCH"
+                ? OrganizationMembershipOperations.OrganizationMembershipUpdateTarget(Org, Membership, "member", false,
+                    [new("private-key", "private-value")])
+                : new(Org, resourceId: Membership));
         var result = await client.ExecuteAsync(request, authority, grant, receipt);
         await Assert.That(result.Status).IsEqualTo(SecretStatus.Success);
         await Assert.That(result.Value.Id).IsEqualTo(Membership);
@@ -97,7 +100,10 @@ public sealed class OrganizationMembershipTests
         using var request = OrganizationMembershipOperations.UpdateOrganizationMembership(Org, Membership,
             role: field == "role" ? "custom-role" : null, isActive: field == "active" ? false : null,
             metadata: field == "metadata" ? [] : null);
-        var result = await Execute(request, wire, mutation: true);
+        var result = await Execute(request, wire, mutation: true,
+            approved: OrganizationMembershipOperations.OrganizationMembershipUpdateTarget(Org, Membership,
+                role: field == "role" ? "custom-role" : null, isActive: field == "active" ? false : null,
+                metadata: field == "metadata" ? [] : null));
         await Assert.That(result.Status).IsEqualTo(SecretStatus.Success);
         using JsonDocument body = JsonDocument.Parse(wire.Body!);
         await Assert.That(body.RootElement.EnumerateObject().Count()).IsEqualTo(1);
@@ -149,10 +155,10 @@ public sealed class OrganizationMembershipTests
     }
 
     [Test]
-    [Arguments("PATCH", "orgId", "other", SecretStatus.Invalid)]
-    [Arguments("DELETE", "orgId", "other", SecretStatus.Invalid)]
-    [Arguments("PATCH", "id", "other", SecretStatus.Invalid)]
-    [Arguments("DELETE", "id", "other", SecretStatus.Invalid)]
+    [Arguments("PATCH", "orgId", "90000000-0000-4000-8000-000000000009", SecretStatus.Invalid)]
+    [Arguments("DELETE", "orgId", "90000000-0000-4000-8000-000000000009", SecretStatus.Invalid)]
+    [Arguments("PATCH", "id", "90000000-0000-4000-8000-000000000009", SecretStatus.Invalid)]
+    [Arguments("DELETE", "id", "90000000-0000-4000-8000-000000000009", SecretStatus.Invalid)]
     [Arguments("PATCH", "orgId", null, SecretStatus.Unknown)]
     [Arguments("DELETE", "createdAt", null, SecretStatus.Unknown)]
     [Arguments("PATCH", "updatedAt", null, SecretStatus.Unknown)]
@@ -170,7 +176,7 @@ public sealed class OrganizationMembershipTests
         using var request = Single(method);
         var receipt = client.CreateReceipt(request);
         var result = await client.ExecuteAsync(request, authority,
-            authority.IssueGrant(request.OperationId, new(Org, resourceId: Membership)), receipt);
+            authority.IssueGrant(request.OperationId, SingleTarget(method)), receipt);
         await Assert.That(result.Status).IsEqualTo(expected);
         await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.PossiblyDispatched);
     }
@@ -187,8 +193,8 @@ public sealed class OrganizationMembershipTests
     public async Task InventoryRejectsForeignScopeAndMalformedUser(string defect, SecretStatus expected)
     {
         var fields = Row(list: true);
-        if (defect == "organization") fields["orgId"] = "other";
-        if (defect == "user") fields["userId"] = "other";
+        if (defect == "organization") fields["orgId"] = "90000000-0000-4000-8000-000000000009";
+        if (defect == "user") fields["userId"] = "90000000-0000-4000-8000-000000000009";
         if (defect == "missing-user") fields.Remove("user");
         if (defect == "missing-username") fields["user"] = new { id = User };
         if (defect == "active-type") fields["isActive"] = "false";
@@ -247,7 +253,7 @@ public sealed class OrganizationMembershipTests
         using var cancel = new CancellationTokenSource();
         if (before) cancel.Cancel();
         var operation = client.ExecuteAsync(request, authority,
-            authority.IssueGrant(request.OperationId, new(Org, resourceId: Membership)), receipt, cancel.Token).AsTask();
+            authority.IssueGrant(request.OperationId, SingleTarget(method)), receipt, cancel.Token).AsTask();
         if (!before)
         {
             await wire.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -299,7 +305,9 @@ public sealed class OrganizationMembershipTests
             ? OrganizationMembershipOperations.UpdateOrganizationMembership(Org, Membership, role: "admin", isActive: true)
             : OrganizationMembershipOperations.DeleteOrganizationMembership(Org, Membership);
         var receipt = client.CreateReceipt(request);
-        var grant = authority.IssueGrant(request.OperationId, new(Org, resourceId: Membership));
+        var grant = authority.IssueGrant(request.OperationId, method == "PATCH"
+            ? OrganizationMembershipOperations.OrganizationMembershipUpdateTarget(Org, Membership, role: "admin", isActive: true)
+            : new(Org, resourceId: Membership));
         var result = await client.ExecuteAsync(request, authority, grant, receipt);
         await Assert.That(result.Status).IsEqualTo(drop ? SecretStatus.Unknown : SecretStatus.Success);
         await Assert.That(receipt.Evidence).IsEqualTo(drop ? DispatchEvidence.PossiblyDispatched : DispatchEvidence.Applied);
@@ -320,7 +328,7 @@ public sealed class OrganizationMembershipTests
     [Test]
     [Arguments("PATCH")]
     [Arguments("DELETE")]
-    public async Task BothProtectedCoordinatesAreEscapedOnActualWire(string method)
+    public async Task OpaqueCoordinatesEscapeButNonUuidResponseEchoesRemainUnverified(string method)
     {
         const string organization = "org/with?query#fragment";
         const string membership = "member/with?query#fragment";
@@ -336,9 +344,13 @@ public sealed class OrganizationMembershipTests
         using var request = method == "PATCH"
             ? OrganizationMembershipOperations.UpdateOrganizationMembership(organization, membership, isActive: false)
             : OrganizationMembershipOperations.DeleteOrganizationMembership(organization, membership);
+        var receipt = client.CreateReceipt(request);
         var result = await client.ExecuteAsync(request, authority,
-            authority.IssueGrant(request.OperationId, new(organization, resourceId: membership)), client.CreateReceipt(request));
-        await Assert.That(result.Status).IsEqualTo(SecretStatus.Success);
+            authority.IssueGrant(request.OperationId, method == "PATCH"
+                ? OrganizationMembershipOperations.OrganizationMembershipUpdateTarget(organization, membership, isActive: false)
+                : new(organization, resourceId: membership)), receipt);
+        await Assert.That(result.Status).IsEqualTo(SecretStatus.Unknown);
+        await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.PossiblyDispatched);
         await Assert.That(wire.Observed).IsTrue();
     }
 
@@ -360,6 +372,92 @@ public sealed class OrganizationMembershipTests
     private static ManagementRequest<OrganizationMembershipSummary> Single(string method) => method == "PATCH"
         ? OrganizationMembershipOperations.UpdateOrganizationMembership(Org, Membership, isActive: false)
         : OrganizationMembershipOperations.DeleteOrganizationMembership(Org, Membership);
+
+    [Test]
+    [Arguments("GET", "lastInvitedAt", "2026-01-01")]
+    [Arguments("GET", "lastInvitedAt", "2026-01-01T03:04:05")]
+    [Arguments("GET", "lastInvitedAt", "2026-02-30T03:04:05Z")]
+    [Arguments("GET", "lastLoginTime", "2026-01-01")]
+    [Arguments("GET", "lastLoginTime", "2026-01-01T03:04:05")]
+    [Arguments("GET", "lastLoginTime", "2026-02-30T03:04:05Z")]
+    [Arguments("PATCH", "lastInvitedAt", "2026-01-01")]
+    [Arguments("PATCH", "lastInvitedAt", "2026-01-01T03:04:05")]
+    [Arguments("PATCH", "lastInvitedAt", "2026-02-30T03:04:05Z")]
+    [Arguments("PATCH", "lastLoginTime", "2026-01-01")]
+    [Arguments("PATCH", "lastLoginTime", "2026-01-01T03:04:05")]
+    [Arguments("PATCH", "lastLoginTime", "2026-02-30T03:04:05Z")]
+    [Arguments("DELETE", "lastInvitedAt", "2026-01-01")]
+    [Arguments("DELETE", "lastInvitedAt", "2026-01-01T03:04:05")]
+    [Arguments("DELETE", "lastInvitedAt", "2026-02-30T03:04:05Z")]
+    [Arguments("DELETE", "lastLoginTime", "2026-01-01")]
+    [Arguments("DELETE", "lastLoginTime", "2026-01-01T03:04:05")]
+    [Arguments("DELETE", "lastLoginTime", "2026-02-30T03:04:05Z")]
+    public async Task OptionalNativeDatesRejectDateOnlyMissingZoneAndInvalidCalendar(string method, string field, string invalid)
+    {
+        // Given valid selected UUIDs and exactly one defective optional date.
+        var row = Row(list: method == "GET");
+        row[field] = invalid;
+        // When the named public adapter dispatches through its HTTP boundary.
+        var result = await ExecuteDateRow(method, row);
+        // Then the date cannot become verified membership metadata.
+        await Assert.That(result.Status).IsEqualTo(SecretStatus.Unknown);
+    }
+
+    [Test]
+    [Arguments("GET", "absent")]
+    [Arguments("GET", "null")]
+    [Arguments("GET", "2026-01-01T03:04:05Z")]
+    [Arguments("GET", "2026-01-01T03:04:05.1234567+02:30")]
+    [Arguments("GET", "2026-01-01T03:04:05-04:00")]
+    [Arguments("PATCH", "absent")]
+    [Arguments("PATCH", "null")]
+    [Arguments("PATCH", "2026-01-01T03:04:05Z")]
+    [Arguments("PATCH", "2026-01-01T03:04:05.1234567+02:30")]
+    [Arguments("PATCH", "2026-01-01T03:04:05-04:00")]
+    [Arguments("DELETE", "absent")]
+    [Arguments("DELETE", "null")]
+    [Arguments("DELETE", "2026-01-01T03:04:05Z")]
+    [Arguments("DELETE", "2026-01-01T03:04:05.1234567+02:30")]
+    [Arguments("DELETE", "2026-01-01T03:04:05-04:00")]
+    public async Task OptionalNativeDatesPreserveAbsenceNullAndOriginalSignedOffsetText(string method, string shape)
+    {
+        // Given endpoint-owned optional dates, absent, null or explicitly zoned text.
+        var row = Row(list: method == "GET");
+        if (shape != "absent")
+        {
+            row["lastInvitedAt"] = shape == "null" ? null : shape;
+            row["lastLoginTime"] = shape == "null" ? null : shape;
+        }
+        // When the transport has finished and been disposed.
+        var result = await ExecuteDateRow(method, row);
+        // Then native presence and the complete original offset text are copied.
+        await Assert.That(result.Status).IsEqualTo(SecretStatus.Success);
+        foreach (var field in new[] { result.Value.LastInvitedAt, result.Value.LastLoginTime })
+        {
+            await Assert.That(field.IsPresent).IsEqualTo(shape != "absent");
+            await Assert.That(field.IsNull).IsEqualTo(shape == "null");
+            if (shape is not ("absent" or "null")) await Assert.That(field.Value).IsEqualTo(shape);
+        }
+    }
+
+    private static async Task<SecretOutcome<OrganizationMembershipSummary>> ExecuteDateRow(
+        string method, Dictionary<string, object?> row)
+    {
+        if (method == "GET")
+        {
+            using var request = OrganizationMembershipOperations.ListOrganizationMemberships(Org);
+            var result = await Execute(request, new Wire(method, Path, ListBody(row)));
+            return result.IsSuccess ? SecretOutcome<OrganizationMembershipSummary>.Success(result.Value.Items.Single())
+                : SecretOutcome<OrganizationMembershipSummary>.Failure(result.Status);
+        }
+        using var single = Single(method);
+        return await Execute(single, new Wire(method, Path + "/" + Membership, MutationBody(row)),
+            mutation: true, approved: SingleTarget(method));
+    }
+
+    private static ManagementTarget SingleTarget(string method) => method == "PATCH"
+        ? OrganizationMembershipOperations.OrganizationMembershipUpdateTarget(Org, Membership, isActive: false)
+        : new(Org, resourceId: Membership);
 
     private static Dictionary<string, object?> Row(bool list = false)
     {
@@ -387,13 +485,13 @@ public sealed class OrganizationMembershipTests
     private static string MutationBody(Dictionary<string, object?> row) => JsonSerializer.Serialize(new { membership = row });
 
     private static async Task<SecretOutcome<T>> Execute<T>(ManagementRequest<T> request, Wire wire,
-        bool mutation = false) where T : notnull
+        bool mutation = false, ManagementTarget? approved = null) where T : notnull
     {
         using var transport = Transport(wire);
         var client = new ManagementClient(transport);
         var authority = new ManagementAuthority(client.Authority, new Tokens(), Org);
         return await client.ExecuteAsync(request, authority, authority.IssueGrant(request.OperationId,
-            new(Org, resourceId: mutation ? Membership : null)), mutation ? client.CreateReceipt(request) : null);
+            approved ?? new(Org, resourceId: mutation ? Membership : null)), mutation ? client.CreateReceipt(request) : null);
     }
 
     private static ManagementTransport Transport(HttpMessageHandler handler) =>

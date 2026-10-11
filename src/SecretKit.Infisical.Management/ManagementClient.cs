@@ -132,12 +132,23 @@ public sealed class ManagementClient
                 return SecretOutcome<T>.Failure(SecretStatus.Invalid);
             }
             using HttpResponseMessage response = await _transport.SendAsync(message, cancellationToken).ConfigureAwait(false);
+            bool credentialCheck = request.OperationId is
+                "infisical.post.v2.secret.rotations.postgres.credentials.by.rotationId.check.credentials" or
+                "infisical.post.v2.secret.rotations.mysql.credentials.by.rotationId.check.credentials" or
+                "infisical.post.v2.secret.rotations.mssql.credentials.by.rotationId.check.credentials";
+            if (credentialCheck && response.StatusCode == HttpStatusCode.NoContent)
+            {
+                T acknowledgement = request.Parse(JsonSerializer.SerializeToElement(""));
+                receipt?.Record(DispatchEvidence.Applied);
+                cancellationToken.ThrowIfCancellationRequested();
+                return SecretOutcome<T>.Success(acknowledgement);
+            }
             if (response.StatusCode == HttpStatusCode.Accepted)
             {
                 receipt?.Record(DispatchEvidence.Pending);
                 return SecretOutcome<T>.Failure(SecretStatus.Pending);
             }
-            if (response.StatusCode != HttpStatusCode.OK)
+            if (response.StatusCode != HttpStatusCode.OK || credentialCheck)
             {
                 SecretStatus status = response.StatusCode switch
                 {

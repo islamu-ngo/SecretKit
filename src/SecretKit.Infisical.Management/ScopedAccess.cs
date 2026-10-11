@@ -3,9 +3,12 @@ using System.Text.Json.Serialization;
 
 namespace SecretKit.Infisical.Management;
 
+public enum GroupIdentityFilter { Assigned, Unassigned }
+public enum GroupUserFilter { Members, NonMembers }
+
 public sealed class GroupMetadata
 {
-    internal GroupMetadata(JsonElement value, string organizationId, string? id = null)
+    internal GroupMetadata(JsonElement value, string organizationId, string? id = null, bool requireCustomRoleSlug = false)
     {
         ManagementJson.RequireEqual(value, "orgId", organizationId);
         if (id is not null)
@@ -18,6 +21,14 @@ public sealed class GroupMetadata
         Slug = ManagementJson.Required(value, "slug");
         Role = ManagementJson.Optional(value, "role");
         RoleId = ManagementJson.Optional(value, "roleId");
+        if (value.TryGetProperty("customRoleSlug", out JsonElement customRole))
+        {
+            CustomRoleSlug = customRole.ValueKind == JsonValueKind.Null
+                ? ProjectField<string>.Null()
+                : ProjectField<string>.Present(ManagementJson.Required(value, "customRoleSlug"));
+        }
+        else if (requireCustomRoleSlug)
+            throw new ManagementContractException(Core.SecretStatus.Unknown);
         CreatedAt = ManagementJson.Required(value, "createdAt");
         UpdatedAt = ManagementJson.Required(value, "updatedAt");
     }
@@ -28,6 +39,7 @@ public sealed class GroupMetadata
     [JsonIgnore] public string Slug { get; }
     [JsonIgnore] public string? Role { get; }
     [JsonIgnore] public string? RoleId { get; }
+    [JsonIgnore] public ProjectField<string> CustomRoleSlug { get; }
     [JsonIgnore] public string CreatedAt { get; }
     [JsonIgnore] public string UpdatedAt { get; }
     public override string ToString() => "[GroupMetadata]";
@@ -55,7 +67,7 @@ public sealed class GroupIdentity
         Id = ManagementJson.Required(value, "id");
         Name = ManagementJson.Required(value, "name");
         IsMember = ManagementJson.Boolean(value, "isPartOfGroup");
-        JoinedAt = ManagementJson.Optional(value, "joinedGroupAt");
+        JoinedAt = ManagementJson.RequiredNullableString(value, "joinedGroupAt");
     }
     [JsonIgnore] public string Id { get; }
     [JsonIgnore] public string Name { get; }
@@ -74,7 +86,8 @@ public sealed class GroupUser
         FirstName = ManagementJson.Optional(value, "firstName");
         LastName = ManagementJson.Optional(value, "lastName");
         IsMember = membership ? ManagementJson.Boolean(value, "isPartOfGroup") : null;
-        JoinedAt = ManagementJson.Optional(value, "joinedGroupAt");
+        JoinedAt = membership ? ManagementJson.RequiredNullableString(value, "joinedGroupAt") :
+            ManagementJson.Optional(value, "joinedGroupAt");
     }
     [JsonIgnore] public string Id { get; }
     [JsonIgnore] public string Username { get; }
@@ -111,13 +124,26 @@ public sealed class RoleSummary
         Name = ManagementJson.Required(value, "name");
         Slug = ManagementJson.Required(value, "slug");
         Description = ManagementJson.Optional(value, "description");
+        CreatedAt = NativeDate(value, "createdAt");
+        UpdatedAt = NativeDate(value, "updatedAt");
+        Permissions = RolePermissionSummary.Read(value);
     }
     [JsonIgnore] public string Id { get; }
     [JsonIgnore] public string Name { get; }
     [JsonIgnore] public string Slug { get; }
     [JsonIgnore] public string? Description { get; }
-    public bool IncludesPermissions => false;
+    [JsonIgnore] public string CreatedAt { get; }
+    [JsonIgnore] public string UpdatedAt { get; }
+    [JsonIgnore] public IReadOnlyList<RolePermissionSummary>? Permissions { get; }
+    public bool IncludesPermissions => Permissions is not null;
     public override string ToString() => "[RoleSummary]";
+
+    private static string NativeDate(JsonElement value, string field)
+    {
+        string text = ManagementJson.Required(value, field);
+        ManagementResponseDates.ValidateDateValue(value.GetProperty(field));
+        return text;
+    }
 }
 
 public static class ScopedAccessOperations
@@ -125,7 +151,24 @@ public static class ScopedAccessOperations
     public static ManagementRequest<ManagementPage<GroupMemberMetadata>> ListGroupMembers(
         string organizationId, string groupId, int offset = 0, int limit = 100,
         string? search = null, ManagementListOrder order = ManagementListOrder.Ascending,
-        GroupMemberFilter members = GroupMemberFilter.All)
+        GroupMemberFilter members = GroupMemberFilter.All, IReadOnlyList<GroupMemberFilter>? memberTypes = null)
+    {
+        string query = GroupMemberQuery(offset, limit, search, order, members, memberTypes);
+        return new("infisical.get.v1.groups.by.id.members", HttpMethod.Get,
+            "/api/v1/groups/" + ManagementJson.Escape(groupId) + "/members?" + query,
+            InventorySelectorWire.Intent(organizationId, null, query, memberTypes is null ? null : true, groupId), null,
+            root => CountedPage(root, "members", value => new GroupMemberMetadata(value), offset, limit), false);
+    }
+
+    public static ManagementTarget GroupMemberListTarget(string organizationId, string groupId,
+        int offset = 0, int limit = 100, string? search = null,
+        ManagementListOrder order = ManagementListOrder.Ascending,
+        GroupMemberFilter members = GroupMemberFilter.All, IReadOnlyList<GroupMemberFilter>? memberTypes = null) =>
+        InventorySelectorWire.Intent(organizationId, null,
+            GroupMemberQuery(offset, limit, search, order, members, memberTypes), memberTypes is null ? null : true, groupId);
+
+    private static string GroupMemberQuery(int offset, int limit, string? search, ManagementListOrder order,
+        GroupMemberFilter members, IReadOnlyList<GroupMemberFilter>? memberTypes)
     {
         string? filter = members switch
         {
@@ -136,16 +179,42 @@ public static class ScopedAccessOperations
         };
         string query = GroupInventoryQuery(offset, limit, search, order);
         if (filter is not null) query += "&memberTypeFilter=" + filter;
-        return new("infisical.get.v1.groups.by.id.members", HttpMethod.Get,
-            "/api/v1/groups/" + ManagementJson.Escape(groupId) + "/members?" + query,
-            new(organizationId, resourceId: groupId), null,
-            root => CountedPage(root, "members", value => new GroupMemberMetadata(value), offset, limit), false);
+        if (memberTypes is not null)
+        {
+            GroupMemberFilter[] copy = memberTypes.Take(101).ToArray();
+            if (members != GroupMemberFilter.All || copy.Length > 100)
+                throw new ArgumentException("Invalid mixed-member filter selection.");
+            foreach (GroupMemberFilter item in copy)
+                query += "&memberTypeFilter=" + (item switch
+                {
+                    GroupMemberFilter.Users => "users",
+                    GroupMemberFilter.MachineIdentities => "machineIdentities",
+                    _ => throw new ArgumentException("An array item must select a native member type.")
+                });
+        }
+        return query;
     }
 
     public static ManagementRequest<ManagementPage<GroupProjectMetadata>> ListGroupProjects(
         string organizationId, string groupId, GroupProjectSelection selection,
         int offset = 0, int limit = 100, string? search = null,
         ManagementListOrder order = ManagementListOrder.Ascending)
+    {
+        string query = GroupProjectQuery(selection, offset, limit, search, order);
+        return new("infisical.get.v1.groups.by.id.projects", HttpMethod.Get,
+            "/api/v1/groups/" + ManagementJson.Escape(groupId) + "/projects?" + query,
+            InventorySelectorWire.Intent(organizationId, null, query, resourceId: groupId), null,
+            root => CountedPage(root, "projects", value => new GroupProjectMetadata(value), offset, limit), false);
+    }
+
+    public static ManagementTarget GroupProjectListTarget(string organizationId, string groupId,
+        GroupProjectSelection selection, int offset = 0, int limit = 100, string? search = null,
+        ManagementListOrder order = ManagementListOrder.Ascending) =>
+        InventorySelectorWire.Intent(organizationId, null,
+            GroupProjectQuery(selection, offset, limit, search, order), resourceId: groupId);
+
+    private static string GroupProjectQuery(GroupProjectSelection selection, int offset, int limit,
+        string? search, ManagementListOrder order)
     {
         string? filter = selection switch
         {
@@ -156,10 +225,7 @@ public static class ScopedAccessOperations
         };
         string query = GroupInventoryQuery(offset, limit, search, order);
         if (filter is not null) query += "&filter=" + filter;
-        return new("infisical.get.v1.groups.by.id.projects", HttpMethod.Get,
-            "/api/v1/groups/" + ManagementJson.Escape(groupId) + "/projects?" + query,
-            new(organizationId, resourceId: groupId, secondaryId: filter ?? "allProjects"), null,
-            root => CountedPage(root, "projects", value => new GroupProjectMetadata(value), offset, limit), false);
+        return query;
     }
 
     private static string GroupInventoryQuery(int offset, int limit, string? search, ManagementListOrder order)
@@ -171,7 +237,7 @@ public static class ScopedAccessOperations
             _ => throw new ArgumentOutOfRangeException(nameof(order))
         };
         string query = ManagementJson.Paging(offset, limit) + "&orderBy=name&orderDirection=" + direction;
-        if (search is not null) query += "&search=" + ManagementJson.Escape(search);
+        if (search is not null) query += "&search=" + InventorySelectorWire.Escape(search);
         return query;
     }
 
@@ -183,14 +249,14 @@ public static class ScopedAccessOperations
     public static ManagementRequest<GroupMetadata> GetGroup(string organizationId, string groupId) =>
         new("infisical.get.v1.groups.by.id", HttpMethod.Get, "/api/v1/groups/" + ManagementJson.Escape(groupId),
             new(organizationId, resourceId: groupId), null,
-            root => new(root, organizationId, groupId), false);
+            root => new(root, organizationId, groupId, requireCustomRoleSlug: true), false);
 
     public static ManagementRequest<GroupMetadata> CreateGroup(string organizationId, string name,
         string? slug = null, string? role = null)
     {
         ValidateGroupFields(name, slug, role);
         return new("infisical.post.v1.groups", HttpMethod.Post, "/api/v1/groups",
-            new(organizationId, resourceId: slug ?? name), writer => WriteGroup(writer, name, slug, role),
+            GroupCreationTarget(organizationId, name, slug, role), writer => WriteGroup(writer, name, slug, role),
             root => new(root, organizationId));
     }
 
@@ -203,8 +269,37 @@ public static class ScopedAccessOperations
         }
         ValidateGroupFields(name, slug, role);
         return new("infisical.patch.v1.groups.by.id", HttpMethod.Patch,
-            "/api/v1/groups/" + ManagementJson.Escape(groupId), new(organizationId, resourceId: groupId),
+            "/api/v1/groups/" + ManagementJson.Escape(groupId), GroupUpdateTarget(organizationId, groupId, name, slug, role),
             writer => WriteGroup(writer, name, slug, role), root => new(root, organizationId, groupId));
+    }
+
+    public static ManagementTarget GroupCreationTarget(string organizationId, string name,
+        string? slug = null, string? role = null)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+        ValidateGroupFields(name, slug, role);
+        return GroupIntent(organizationId, slug ?? name, name, slug, role);
+    }
+
+    public static ManagementTarget GroupUpdateTarget(string organizationId, string groupId,
+        string? name = null, string? slug = null, string? role = null)
+    {
+        if (name is null && slug is null && role is null)
+            throw new ArgumentException("A group change is required.");
+        ValidateGroupFields(name, slug, role);
+        return GroupIntent(organizationId, groupId, name, slug, role);
+    }
+
+    private static ManagementTarget GroupIntent(string organizationId, string groupId,
+        string? name, string? slug, string? role)
+    {
+        byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(new { name, slug, role });
+        try
+        {
+            return new(organizationId, resourceId: groupId,
+                secondaryId: Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)));
+        }
+        finally { Array.Clear(bytes); }
     }
 
     public static ManagementRequest<GroupMetadata> DeleteGroup(string organizationId, string groupId) =>
@@ -213,11 +308,33 @@ public static class ScopedAccessOperations
             null, root => new(root, organizationId, groupId));
 
     public static ManagementRequest<ManagementPage<GroupIdentity>> ListGroupIdentities(
-        string organizationId, string groupId, int offset = 0, int limit = 100) =>
-        new("infisical.get.v1.groups.by.id.machine.identities", HttpMethod.Get,
+        string organizationId, string groupId, int offset = 0, int limit = 100,
+        GroupIdentityFilter? filter = null, string? search = null)
+    {
+        string query = GroupIdentityQuery(offset, limit, filter, search);
+        return new("infisical.get.v1.groups.by.id.machine.identities", HttpMethod.Get,
             "/api/v1/groups/" + ManagementJson.Escape(groupId) + "/machine-identities?" +
-            ManagementJson.Paging(offset, limit), new(organizationId, resourceId: groupId), null,
+            query, InventorySelectorWire.Intent(organizationId, null, query, resourceId: groupId), null,
             root => CountedPage(root, "machineIdentities", value => new GroupIdentity(value), offset, limit), false);
+    }
+
+    public static ManagementTarget GroupIdentityListTarget(string organizationId, string groupId,
+        int offset = 0, int limit = 100, GroupIdentityFilter? filter = null, string? search = null) =>
+        InventorySelectorWire.Intent(organizationId, null, GroupIdentityQuery(offset, limit, filter, search), resourceId: groupId);
+
+    private static string GroupIdentityQuery(int offset, int limit, GroupIdentityFilter? filter, string? search)
+    {
+        string query = ManagementJson.Paging(offset, limit);
+        if (filter is { } selected)
+            query += "&filter=" + (selected switch
+            {
+                GroupIdentityFilter.Assigned => "assignedMachineIdentities",
+                GroupIdentityFilter.Unassigned => "nonAssignedMachineIdentities",
+                _ => throw new ArgumentOutOfRangeException(nameof(filter))
+            });
+        if (search is not null) query += "&search=" + InventorySelectorWire.Escape(search);
+        return query;
+    }
 
     public static ManagementRequest<MembershipIdentifier> AddGroupIdentity(
         string organizationId, string groupId, string identityId) =>
@@ -228,11 +345,34 @@ public static class ScopedAccessOperations
         GroupIdentityChange(organizationId, groupId, identityId, false);
 
     public static ManagementRequest<ManagementPage<GroupUser>> ListGroupUsers(
-        string organizationId, string groupId, int offset = 0, int limit = 100) =>
-        new("infisical.get.v1.groups.by.id.users", HttpMethod.Get,
-            "/api/v1/groups/" + ManagementJson.Escape(groupId) + "/users?" + ManagementJson.Paging(offset, limit),
-            new(organizationId, resourceId: groupId), null,
+        string organizationId, string groupId, int offset = 0, int limit = 100,
+        GroupUserFilter? filter = null, string? search = null, string? username = null)
+    {
+        string query = GroupUserQuery(offset, limit, filter, search, username);
+        return new("infisical.get.v1.groups.by.id.users", HttpMethod.Get,
+            "/api/v1/groups/" + ManagementJson.Escape(groupId) + "/users?" + query,
+            InventorySelectorWire.Intent(organizationId, null, query, resourceId: groupId), null,
             root => CountedPage(root, "users", value => new GroupUser(value, true), offset, limit), false);
+    }
+
+    public static ManagementTarget GroupUserListTarget(string organizationId, string groupId,
+        int offset = 0, int limit = 100, GroupUserFilter? filter = null, string? search = null, string? username = null) =>
+        InventorySelectorWire.Intent(organizationId, null, GroupUserQuery(offset, limit, filter, search, username), resourceId: groupId);
+
+    private static string GroupUserQuery(int offset, int limit, GroupUserFilter? filter, string? search, string? username)
+    {
+        string query = ManagementJson.Paging(offset, limit);
+        if (filter is { } selected)
+            query += "&filter=" + (selected switch
+            {
+                GroupUserFilter.Members => "existingMembers",
+                GroupUserFilter.NonMembers => "nonMembers",
+                _ => throw new ArgumentOutOfRangeException(nameof(filter))
+            });
+        if (search is not null) query += "&search=" + InventorySelectorWire.Escape(search);
+        if (username is not null) query += "&username=" + InventorySelectorWire.Escape(username);
+        return query;
+    }
 
     public static ManagementRequest<GroupUser> AddGroupUser(string organizationId, string groupId, string username) =>
         GroupUserChange(organizationId, groupId, username, true);
@@ -246,15 +386,25 @@ public static class ScopedAccessOperations
                 .Select(value => new AccessCandidate(value)), true), false);
 
     public static ManagementRequest<ManagementPage<AccessCandidate>> AvailableIdentities(string organizationId,
-        int offset = 0, int limit = 100) =>
-        new("infisical.get.v1.organization.available.identities", HttpMethod.Get,
-            "/api/v1/organization/available-identities?" + ManagementJson.Paging(offset, limit),
-            new(organizationId), null, root =>
+        int offset = 0, int limit = 100, string? identityName = null)
+    {
+        string query = AvailableIdentityQuery(offset, limit, identityName);
+        return new("infisical.get.v1.organization.available.identities", HttpMethod.Get,
+            "/api/v1/organization/available-identities?" + query,
+            InventorySelectorWire.Intent(organizationId, null, query), null, root =>
             {
                 AccessCandidate[] items = ManagementJson.Array(root, "identities")
                     .Select(value => new AccessCandidate(value)).ToArray();
                 return BoundedPage(items, offset, limit);
             }, false);
+    }
+
+    public static ManagementTarget AvailableIdentityListTarget(string organizationId,
+        int offset = 0, int limit = 100, string? identityName = null) =>
+        InventorySelectorWire.Intent(organizationId, null, AvailableIdentityQuery(offset, limit, identityName));
+
+    private static string AvailableIdentityQuery(int offset, int limit, string? identityName) =>
+        ManagementJson.Paging(offset, limit) + (identityName is null ? "" : "&identityName=" + InventorySelectorWire.Escape(identityName));
 
     public static ManagementRequest<ManagementPage<RoleSummary>> ListOrganizationRoles(string organizationId) =>
         new("infisical.get.v1.organization.roles", HttpMethod.Get, "/api/v1/organization/roles",
@@ -351,7 +501,7 @@ public sealed class GroupProjectMetadata
         Slug = ManagementJson.Required(value, "slug");
         Type = ManagementJson.Required(value, "type");
         Description = ManagementJson.Optional(value, "description");
-        JoinedAt = ManagementJson.Optional(value, "joinedGroupAt");
+        JoinedAt = ManagementJson.RequiredNullableString(value, "joinedGroupAt");
     }
 
     [JsonIgnore] public string Id { get; }
@@ -369,7 +519,7 @@ public sealed class GroupMemberMetadata
     internal GroupMemberMetadata(JsonElement value)
     {
         Id = ManagementJson.Required(value, "id");
-        JoinedAt = ManagementJson.Optional(value, "joinedGroupAt");
+        JoinedAt = ManagementJson.RequiredNullableString(value, "joinedGroupAt");
         Kind = ManagementJson.Required(value, "type") switch
         {
             "user" => GroupMemberKind.User,

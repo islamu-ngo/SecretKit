@@ -3,14 +3,15 @@ using SecretKit.Core;
 
 namespace SecretKit.Infisical.Management;
 
-/// <summary>Protected exact coordinates. Null is an absent coordinate, never a wildcard.</summary>
+/// <summary>Protected exact coordinates. Null is absent, not a wildcard; an empty project selector is distinct.</summary>
 public sealed class ManagementTarget
 {
     public ManagementTarget(string organizationId, string? projectId = null,
         string? resourceId = null, string? secondaryId = null)
     {
         ManagementJson.Text(organizationId);
-        foreach (string? value in new[] { projectId, resourceId, secondaryId })
+        if (projectId is { Length: > 0 }) ManagementJson.Text(projectId);
+        foreach (string? value in new[] { resourceId, secondaryId })
         {
             if (value is not null)
             {

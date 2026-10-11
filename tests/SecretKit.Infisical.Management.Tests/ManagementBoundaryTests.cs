@@ -8,6 +8,35 @@ namespace SecretKit.Infisical.Management.Tests;
 
 public sealed class ManagementBoundaryTests
 {
+    private const string GroupId = "22222222-2222-4222-8222-222222222222";
+    private const string IdentityId = "33333333-3333-4333-8333-333333333333";
+    private const string OtherIdentityId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+    private const string AuditId = "44444444-4444-4444-8444-444444444444";
+    private const string OtherAuditId = "55555555-5555-4555-8555-555555555555";
+    private const string OrgId = "11111111-1111-4111-8111-111111111111";
+    private const string ForeignId = "99999999-9999-4999-8999-999999999999";
+
+    [Test]
+    [Arguments("infisical.get.v1.app.connections", "/api/v1/app-connections")]
+    [Arguments("infisical.get.v1.app.connections.1password", "/api/v1/app-connections/1password")]
+    [Arguments("infisical.get.v1.secret.syncs.azure.key.vault", "/api/v1/secret-syncs/azure-key-vault")]
+    public async Task RetiredConnectorRoutesRejectBeforeTokenAcquisition(string operationId, string path)
+    {
+        using var transport = Transport(new Backend());
+        var client = new ManagementClient(transport);
+        var tokens = new Tokens { Forbidden = true };
+        var authority = new ManagementAuthority(client.Authority, tokens, OrgId);
+        using var request = new ManagementRequest<GroupMetadata>(operationId, HttpMethod.Get, path,
+            new(OrgId), null, _ => throw new InvalidOperationException("Retired routes must not parse responses."),
+            mutation: false);
+
+        var result = await client.ExecuteAsync(request, authority,
+            authority.IssueGrant(operationId, new(OrgId)));
+
+        await Assert.That(result.Status).IsEqualTo(SecretStatus.ContractNotEstablished);
+        await Assert.That(tokens.Acquired).IsFalse();
+    }
+
     [Test]
     [Arguments("missing")]
     [Arguments("operation")]
@@ -21,20 +50,20 @@ public sealed class ManagementBoundaryTests
         using ManagementTransport transport = Transport(backend);
         var client = new ManagementClient(transport);
         var tokens = new Tokens { Forbidden = true };
-        var authority = new ManagementAuthority(client.Authority, tokens, "org");
-        using var request = ScopedAccessOperations.DeleteGroup("org", "group");
+        var authority = new ManagementAuthority(client.Authority, tokens, OrgId);
+        using var request = ScopedAccessOperations.DeleteGroup(OrgId, GroupId);
         ManagementReceipt receipt = client.CreateReceipt(request);
         ManagementGrant? grant = mismatch switch
         {
             "missing" => null,
-            "operation" => authority.IssueGrant("infisical.get.v1.groups.by.id", new("org", resourceId: "group")),
-            "organization" => new ManagementAuthority(client.Authority, tokens, "other")
-                .IssueGrant(request.OperationId, new("other", resourceId: "group")),
-            "target" => authority.IssueGrant(request.OperationId, new("org", resourceId: "other")),
-            "principal" => new ManagementAuthority(client.Authority, tokens, "org")
-                .IssueGrant(request.OperationId, new("org", resourceId: "group")),
-            "client" => new ManagementAuthority(new SecretAuthority(), tokens, "org")
-                .IssueGrant(request.OperationId, new("org", resourceId: "group")),
+            "operation" => authority.IssueGrant("infisical.get.v1.groups.by.id", new(OrgId, resourceId: GroupId)),
+            "organization" => new ManagementAuthority(client.Authority, tokens, ForeignId)
+                .IssueGrant(request.OperationId, new(ForeignId, resourceId: GroupId)),
+            "target" => authority.IssueGrant(request.OperationId, new(OrgId, resourceId: ForeignId)),
+            "principal" => new ManagementAuthority(client.Authority, tokens, OrgId)
+                .IssueGrant(request.OperationId, new(OrgId, resourceId: GroupId)),
+            "client" => new ManagementAuthority(new SecretAuthority(), tokens, OrgId)
+                .IssueGrant(request.OperationId, new(OrgId, resourceId: GroupId)),
             _ => throw new InvalidOperationException()
         };
 
@@ -51,8 +80,8 @@ public sealed class ManagementBoundaryTests
     {
         using var transport = Transport(new Backend());
         var client = new ManagementClient(transport);
-        var authority = new ManagementAuthority(client.Authority, new Tokens(), "org");
-        await Assert.That(() => authority.IssueGrant("op", new("org", "project"))).Throws<ArgumentException>();
+        var authority = new ManagementAuthority(client.Authority, new Tokens(), OrgId);
+        await Assert.That(() => authority.IssueGrant("op", new(OrgId, "project"))).Throws<ArgumentException>();
     }
 
     [Test]
@@ -62,18 +91,21 @@ public sealed class ManagementBoundaryTests
         using var transport = Transport(backend);
         var client = new ManagementClient(transport);
         var tokens = new Tokens();
-        var authority = new ManagementAuthority(client.Authority, tokens, "org");
-        using var create = ScopedAccessOperations.CreateGroup("org", "first", "group");
+        var authority = new ManagementAuthority(client.Authority, tokens, OrgId);
+        using var create = ScopedAccessOperations.CreateGroup(OrgId, "first", "group");
         ManagementReceipt receipt = client.CreateReceipt(create);
         var created = await client.ExecuteAsync(create, authority,
-            authority.IssueGrant(create.OperationId, new("org", resourceId: "group")), receipt);
-        using var get = ScopedAccessOperations.GetGroup("org", "group");
+            authority.IssueGrant(create.OperationId, ScopedAccessOperations.GroupCreationTarget(OrgId, "first", "group")), receipt);
+        using var get = ScopedAccessOperations.GetGroup(OrgId, backend.CreatedGroupId);
         var observed = await client.ExecuteAsync(get, authority,
-            authority.IssueGrant(get.OperationId, new("org", resourceId: "group")));
+            authority.IssueGrant(get.OperationId, new(OrgId, resourceId: backend.CreatedGroupId)));
+        await Assert.That(created.Value.Id).IsEqualTo(backend.CreatedGroupId);
+        await Assert.That(created.Value.Slug).IsEqualTo("group");
+        await Assert.That(created.Value.Id).IsNotEqualTo(created.Value.Slug);
         await Assert.That(created.Value.Name).IsEqualTo("first");
         await Assert.That(observed.Value.Name).IsEqualTo("first");
         await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.Applied);
-        await Assert.That(backend.Groups["group"]).IsEqualTo("first");
+        await Assert.That(backend.Groups[backend.CreatedGroupId]).IsEqualTo("first");
         await Assert.That(() => tokens.LastMaterial!.Reveal()).Throws<ObjectDisposedException>();
     }
 
@@ -86,11 +118,11 @@ public sealed class ManagementBoundaryTests
         var backend = new Backend { MutationStatus = status };
         using var transport = Transport(backend);
         var client = new ManagementClient(transport);
-        var authority = new ManagementAuthority(client.Authority, new Tokens(), "org");
-        using var create = ScopedAccessOperations.CreateGroup("org", "first", "group");
+        var authority = new ManagementAuthority(client.Authority, new Tokens(), OrgId);
+        using var create = ScopedAccessOperations.CreateGroup(OrgId, "first", "group");
         var receipt = client.CreateReceipt(create);
         var result = await client.ExecuteAsync(create, authority,
-            authority.IssueGrant(create.OperationId, new("org", resourceId: "group")), receipt);
+            authority.IssueGrant(create.OperationId, ScopedAccessOperations.GroupCreationTarget(OrgId, "first", "group")), receipt);
         await Assert.That(result.Status).IsEqualTo(outcome);
         await Assert.That(receipt.Evidence).IsEqualTo(evidence);
         await Assert.That(backend.Groups.Count).IsEqualTo(0);
@@ -102,10 +134,10 @@ public sealed class ManagementBoundaryTests
         var backend = new Backend { DropAfterCommit = true };
         using var transport = Transport(backend);
         var client = new ManagementClient(transport);
-        var authority = new ManagementAuthority(client.Authority, new Tokens(), "org");
-        using var create = ScopedAccessOperations.CreateGroup("org", "first", "group");
+        var authority = new ManagementAuthority(client.Authority, new Tokens(), OrgId);
+        using var create = ScopedAccessOperations.CreateGroup(OrgId, "first", "group");
         var receipt = client.CreateReceipt(create);
-        var grant = authority.IssueGrant(create.OperationId, new("org", resourceId: "group"));
+        var grant = authority.IssueGrant(create.OperationId, ScopedAccessOperations.GroupCreationTarget(OrgId, "first", "group"));
 
         var result = await client.ExecuteAsync(create, authority, grant, receipt);
         var replay = await client.ExecuteAsync(create, authority, grant, receipt);
@@ -113,7 +145,7 @@ public sealed class ManagementBoundaryTests
         await Assert.That(result.Status).IsEqualTo(SecretStatus.Unknown);
         await Assert.That(replay.Status).IsEqualTo(SecretStatus.Invalid);
         await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.PossiblyDispatched);
-        await Assert.That(backend.Groups["group"]).IsEqualTo("first");
+        await Assert.That(backend.Groups[backend.CreatedGroupId]).IsEqualTo("first");
         await Assert.That(backend.Revision).IsEqualTo(1);
     }
 
@@ -124,10 +156,10 @@ public sealed class ManagementBoundaryTests
         using var transport = Transport(backend);
         var client = new ManagementClient(transport);
         var tokens = new RendezvousTokens();
-        var authority = new ManagementAuthority(client.Authority, tokens, "org");
-        using var request = ScopedAccessOperations.CreateGroup("org", "first", "group");
+        var authority = new ManagementAuthority(client.Authority, tokens, OrgId);
+        using var request = ScopedAccessOperations.CreateGroup(OrgId, "first", "group");
         var receipt = client.CreateReceipt(request);
-        var grant = authority.IssueGrant(request.OperationId, new("org", resourceId: "group"));
+        var grant = authority.IssueGrant(request.OperationId, ScopedAccessOperations.GroupCreationTarget(OrgId, "first", "group"));
         Task<SecretOutcome<GroupMetadata>> first = client.ExecuteAsync(request, authority, grant, receipt).AsTask();
         Task<SecretOutcome<GroupMetadata>> second = client.ExecuteAsync(request, authority, grant, receipt).AsTask();
         await tokens.BothEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -136,7 +168,7 @@ public sealed class ManagementBoundaryTests
         await Assert.That(outcomes.Count(result => result.Status == SecretStatus.Success)).IsEqualTo(1);
         await Assert.That(outcomes.Count(result => result.Status == SecretStatus.Invalid)).IsEqualTo(1);
         await Assert.That(backend.Revision).IsEqualTo(1);
-        await Assert.That(backend.Groups["group"]).IsEqualTo("first");
+        await Assert.That(backend.Groups[backend.CreatedGroupId]).IsEqualTo("first");
         await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.Applied);
     }
 
@@ -149,13 +181,13 @@ public sealed class ManagementBoundaryTests
         using var transport = Transport(backend);
         var client = new ManagementClient(transport);
         var tokens = new Tokens { Forbidden = before };
-        var authority = new ManagementAuthority(client.Authority, tokens, "org");
-        using var create = ScopedAccessOperations.CreateGroup("org", "first", "group");
+        var authority = new ManagementAuthority(client.Authority, tokens, OrgId);
+        using var create = ScopedAccessOperations.CreateGroup(OrgId, "first", "group");
         var receipt = client.CreateReceipt(create);
         using var cancel = new CancellationTokenSource();
         if (before) cancel.Cancel();
         Task<SecretOutcome<GroupMetadata>> operation = client.ExecuteAsync(create, authority,
-            authority.IssueGrant(create.OperationId, new("org", resourceId: "group")), receipt, cancel.Token).AsTask();
+            authority.IssueGrant(create.OperationId, ScopedAccessOperations.GroupCreationTarget(OrgId, "first", "group")), receipt, cancel.Token).AsTask();
         if (!before)
         {
             await backend.Committed.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -174,12 +206,12 @@ public sealed class ManagementBoundaryTests
         using var transport = Transport(backend);
         var client = new ManagementClient(transport);
         var tokens = new BlockingTokens();
-        var authority = new ManagementAuthority(client.Authority, tokens, "org");
-        using var request = ScopedAccessOperations.CreateGroup("org", "first", "group");
+        var authority = new ManagementAuthority(client.Authority, tokens, OrgId);
+        using var request = ScopedAccessOperations.CreateGroup(OrgId, "first", "group");
         var receipt = client.CreateReceipt(request);
         using var cancel = new CancellationTokenSource();
         Task<SecretOutcome<GroupMetadata>> operation = client.ExecuteAsync(request, authority,
-            authority.IssueGrant(request.OperationId, new("org", resourceId: "group")), receipt, cancel.Token).AsTask();
+            authority.IssueGrant(request.OperationId, ScopedAccessOperations.GroupCreationTarget(OrgId, "first", "group")), receipt, cancel.Token).AsTask();
         await tokens.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
         cancel.Cancel();
         await Assert.That(async () => await operation).Throws<OperationCanceledException>();
@@ -190,17 +222,17 @@ public sealed class ManagementBoundaryTests
     [Test]
     public async Task WrongReturnedOrganizationDoesNotUndoAnAlreadyCommittedMutation()
     {
-        var backend = new Backend { ReturnedOrganization = "other" };
+        var backend = new Backend { ReturnedOrganization = ForeignId };
         using var transport = Transport(backend);
         var client = new ManagementClient(transport);
-        var authority = new ManagementAuthority(client.Authority, new Tokens(), "org");
-        using var request = ScopedAccessOperations.CreateGroup("org", "first", "group");
+        var authority = new ManagementAuthority(client.Authority, new Tokens(), OrgId);
+        using var request = ScopedAccessOperations.CreateGroup(OrgId, "first", "group");
         var receipt = client.CreateReceipt(request);
         var result = await client.ExecuteAsync(request, authority,
-            authority.IssueGrant(request.OperationId, new("org", resourceId: "group")), receipt);
+            authority.IssueGrant(request.OperationId, ScopedAccessOperations.GroupCreationTarget(OrgId, "first", "group")), receipt);
         await Assert.That(result.Status).IsEqualTo(SecretStatus.Invalid);
         await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.PossiblyDispatched);
-        await Assert.That(backend.Groups["group"]).IsEqualTo("first");
+        await Assert.That(backend.Groups[backend.CreatedGroupId]).IsEqualTo("first");
     }
 
     [Test]
@@ -209,12 +241,12 @@ public sealed class ManagementBoundaryTests
         using var transport = Transport(new Backend());
         var client = new ManagementClient(transport);
         var tokens = new Tokens { Forbidden = true };
-        var authority = new ManagementAuthority(client.Authority, tokens, "org");
-        using var first = ScopedAccessOperations.CreateGroup("org", "first", "group");
-        using var second = ScopedAccessOperations.CreateGroup("org", "second", "group");
+        var authority = new ManagementAuthority(client.Authority, tokens, OrgId);
+        using var first = ScopedAccessOperations.CreateGroup(OrgId, "first", "group");
+        using var second = ScopedAccessOperations.CreateGroup(OrgId, "second", "group");
         var receipt = client.CreateReceipt(first);
         var result = await client.ExecuteAsync(second, authority,
-            authority.IssueGrant(second.OperationId, new("org", resourceId: "group")), receipt);
+            authority.IssueGrant(second.OperationId, ScopedAccessOperations.GroupCreationTarget(OrgId, "second", "group")), receipt);
         await Assert.That(result.Status).IsEqualTo(SecretStatus.Invalid);
         await Assert.That(tokens.Acquired).IsFalse();
     }
@@ -224,16 +256,16 @@ public sealed class ManagementBoundaryTests
     {
         foreach (string response in new[]
         {
-            "{\"id\":\"group\",\"name\":\"" + new string('x', 2048) + "\",\"orgId\":\"org\"}",
-            "{\"id\":\"group\",\"name\":\"first\",\"slug\":\"group\",\"orgId\":\"other\",\"orgId\":\"org\",\"createdAt\":\"now\",\"updatedAt\":\"now\"}"
+            "{\"id\":\"" + GroupId + "\",\"name\":\"" + new string('x', 2048) + "\",\"orgId\":\"" + OrgId + "\"}",
+            "{\"id\":\"" + GroupId + "\",\"name\":\"first\",\"slug\":\"group\",\"orgId\":\"" + ForeignId + "\",\"orgId\":\"" + OrgId + "\",\"createdAt\":\"now\",\"updatedAt\":\"now\"}"
         })
         {
             using var transport = Transport(new FixedResponse(response), 1024);
             var client = new ManagementClient(transport);
-            var authority = new ManagementAuthority(client.Authority, new Tokens(), "org");
-            using var request = ScopedAccessOperations.GetGroup("org", "group");
+            var authority = new ManagementAuthority(client.Authority, new Tokens(), OrgId);
+            using var request = ScopedAccessOperations.GetGroup(OrgId, GroupId);
             var result = await client.ExecuteAsync(request, authority,
-                authority.IssueGrant(request.OperationId, new("org", resourceId: "group")));
+                authority.IssueGrant(request.OperationId, new(OrgId, resourceId: GroupId)));
             await Assert.That(result.Status).IsEqualTo(SecretStatus.Unknown);
         }
     }
@@ -245,23 +277,24 @@ public sealed class ManagementBoundaryTests
         {
             auditLogs = new[]
             {
-                Audit("good", "org", "project"),
-                Audit("forbidden", "other", "project"),
-                Audit("wrong-project", "org", "other-project")
+                Audit(AuditId, OrgId, "project"),
+                Audit(ForeignId, ForeignId, "project"),
+                Audit(OtherAuditId, OrgId, "other-project")
             }
         });
         using var transport = Transport(new FixedResponse(body));
         var client = new ManagementClient(transport);
-        var authority = new ManagementAuthority(client.Authority, new Tokens(), "org", "project");
-        using var request = GovernanceOperations.ReadAudit("org", DateTimeOffset.UnixEpoch,
+        var authority = new ManagementAuthority(client.Authority, new Tokens(), OrgId, "project");
+        using var request = GovernanceOperations.ReadAudit(OrgId, DateTimeOffset.UnixEpoch,
             DateTimeOffset.UnixEpoch.AddDays(1), "project", offset: 7);
         var result = await client.ExecuteAsync(request, authority,
-            authority.IssueGrant(request.OperationId, new("org", "project")));
+            authority.IssueGrant(request.OperationId, GovernanceOperations.AuditReadTarget(OrgId,
+                DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch.AddDays(1), "project", offset: 7)));
         await Assert.That(result.Value.Items.Select(item => item.Ordinal).ToArray()).IsEquivalentTo(new[] { 7, 8, 9 });
-        await Assert.That(result.Value.Items[0].Outcome.Value.Id).IsEqualTo("good");
+        await Assert.That(result.Value.Items[0].Outcome.Value.Id).IsEqualTo(AuditId);
         await Assert.That(result.Value.Items[1].Outcome.Status).IsEqualTo(SecretStatus.Invalid);
         await Assert.That(result.Value.Items[2].Outcome.Status).IsEqualTo(SecretStatus.Invalid);
-        await Assert.That(JsonSerializer.Serialize(result).Contains("forbidden", StringComparison.Ordinal)).IsFalse();
+        await Assert.That(JsonSerializer.Serialize(result).Contains(ForeignId, StringComparison.Ordinal)).IsFalse();
     }
 
     [Test]
@@ -271,9 +304,9 @@ public sealed class ManagementBoundaryTests
         var backend = new ShareBackend(secret);
         using var transport = Transport(backend);
         var client = new ManagementClient(transport);
-        var authority = new ManagementAuthority(client.Authority, new Tokens(), "org");
-        using var request = SharingOperations.AccessShare("org", "share");
-        var grant = authority.IssueGrant(request.OperationId, new("org", resourceId: "share"));
+        var authority = new ManagementAuthority(client.Authority, new Tokens(), OrgId);
+        using var request = SharingOperations.AccessShare(OrgId, "share");
+        var grant = authority.IssueGrant(request.OperationId, SharingOperations.AccessShareTarget(OrgId, "share"));
         var firstReceipt = client.CreateReceipt(request);
         using SharedValue first = (await client.ExecuteAsync(request, authority, grant, firstReceipt)).Value;
         using SharedValue second = (await client.ExecuteAsync(request, authority, grant, client.CreateReceipt(request))).Value;
@@ -310,13 +343,13 @@ public sealed class ManagementBoundaryTests
     [Test]
     public async Task InputAndPaginationLimitsRejectBeforeAnyIdentityIsSelected()
     {
-        await Assert.That(() => ScopedAccessOperations.ListGroupUsers("org", "group", limit: 101)).Throws<ArgumentException>();
-        await Assert.That(() => ScopedAccessOperations.CreateGroup("org", new string('x', 256))).Throws<ArgumentException>();
-        await Assert.That(() => SharingOperations.ListShares("org", offset: 101)).Throws<ArgumentException>();
+        await Assert.That(() => ScopedAccessOperations.ListGroupUsers(OrgId, "group", limit: 101)).Throws<ArgumentException>();
+        await Assert.That(() => ScopedAccessOperations.CreateGroup(OrgId, new string('x', 256))).Throws<ArgumentException>();
+        await Assert.That(() => SharingOperations.ListShares(OrgId, offset: 101)).Throws<ArgumentException>();
         using SecretMaterial large = SecretMaterial.FromText(new string('x', 10001));
-        await Assert.That(() => SharingOperations.CreateShare("org", "share", large, 5, ShareAudience.Organization)).Throws<ArgumentException>();
+        await Assert.That(() => SharingOperations.CreateShare(OrgId, "share", large, 5, ShareAudience.Organization)).Throws<ArgumentException>();
         var metadata = Enumerable.Range(0, 100).Select(i => new IdentityAttribute(i.ToString(), new string('x', 4096))).ToArray();
-        await Assert.That(() => IdentityOperations.CreateOrganizationIdentity("org", "identity", "member", metadata: metadata))
+        await Assert.That(() => IdentityOperations.CreateOrganizationIdentity(OrgId, "identity", "member", metadata: metadata))
             .Throws<ArgumentException>();
     }
 
@@ -327,7 +360,7 @@ public sealed class ManagementBoundaryTests
         {
             await Assert.That(() => new ManagementTransport(new Uri(address))).Throws<ArgumentException>();
         }
-        using var request = ScopedAccessOperations.GetGroup("org", "not/a?query#fragment");
+        using var request = ScopedAccessOperations.GetGroup(OrgId, "not/a?query#fragment");
         await Assert.That(request.Path).IsEqualTo("/api/v1/groups/not%2Fa%3Fquery%23fragment");
     }
 
@@ -336,17 +369,18 @@ public sealed class ManagementBoundaryTests
     {
         string body = JsonSerializer.Serialize(new
         {
-            identities = new[] { new { id = "one", name = "One" }, new { id = "two", name = "Two" } }
+            identities = new[] { new { id = IdentityId, name = "One" }, new { id = OtherIdentityId, name = "Two" } }
         });
         using var transport = Transport(new FixedResponse(body));
         var client = new ManagementClient(transport);
-        var authority = new ManagementAuthority(client.Authority, new Tokens(), "org");
-        using var limited = ScopedAccessOperations.AvailableIdentities("org", limit: 1);
+        var authority = new ManagementAuthority(client.Authority, new Tokens(), OrgId);
+        using var limited = ScopedAccessOperations.AvailableIdentities(OrgId, limit: 1);
         var invalid = await client.ExecuteAsync(limited, authority,
-            authority.IssueGrant(limited.OperationId, new("org")));
+            authority.IssueGrant(limited.OperationId, ScopedAccessOperations.AvailableIdentityListTarget(OrgId, limit: 1)));
         await Assert.That(invalid.Status).IsEqualTo(SecretStatus.Unknown);
-        using var page = ScopedAccessOperations.AvailableIdentities("org", limit: 2);
-        var result = await client.ExecuteAsync(page, authority, authority.IssueGrant(page.OperationId, new("org")));
+        using var page = ScopedAccessOperations.AvailableIdentities(OrgId, limit: 2);
+        var result = await client.ExecuteAsync(page, authority, authority.IssueGrant(page.OperationId,
+            ScopedAccessOperations.AvailableIdentityListTarget(OrgId, limit: 2)));
         await Assert.That(result.Value.IsComplete).IsFalse();
         await Assert.That(result.Value.NextOffset).IsEqualTo(2);
     }
@@ -357,6 +391,7 @@ public sealed class ManagementBoundaryTests
         orgId = org,
         projectId = project,
         createdAt = "1970-01-01T00:00:00Z",
+        updatedAt = "1970-01-01T00:00:00Z",
         actor = new { type = "identity" },
         @event = new { type = "create-secret", @class = "management" }
     };
@@ -407,23 +442,26 @@ public sealed class ManagementBoundaryTests
     private sealed class Backend : HttpMessageHandler
     {
         public Dictionary<string, string> Groups { get; } = new(StringComparer.Ordinal);
+        public string CreatedGroupId { get; } = Guid.NewGuid().ToString("D");
+        private string? _slug;
         public int Revision { get; private set; }
         public int MutationStatus { get; init; } = 200;
         public bool DropAfterCommit { get; init; }
         public bool HoldAfterCommit { get; init; }
-        public string ReturnedOrganization { get; init; } = "org";
+        public string ReturnedOrganization { get; init; } = OrgId;
         public TaskCompletionSource Committed { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly TaskCompletionSource _hold = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             if (request.Headers.Authorization?.Scheme != "Bearer") return Json(401, new { });
-            string id = "group";
+            string id = request.RequestUri!.Segments[^1];
             if (request.Method != HttpMethod.Get)
             {
                 if (MutationStatus != 200) return Json(MutationStatus, new { });
                 using JsonDocument body = JsonDocument.Parse(await request.Content!.ReadAsByteArrayAsync(cancellationToken));
-                id = body.RootElement.GetProperty("slug").GetString()!;
+                id = CreatedGroupId;
+                _slug = body.RootElement.GetProperty("slug").GetString()!;
                 Groups[id] = body.RootElement.GetProperty("name").GetString()!;
                 Revision++;
                 Committed.TrySetResult();
@@ -431,15 +469,17 @@ public sealed class ManagementBoundaryTests
                 if (HoldAfterCommit) await _hold.Task.WaitAsync(cancellationToken);
             }
             if (!Groups.TryGetValue(id, out string? name)) return Json(404, new { });
-            return Json(200, new
+            var result = new Dictionary<string, object?>
             {
-                id,
-                name,
-                slug = id,
-                orgId = ReturnedOrganization,
-                createdAt = "2026-01-01T00:00:00Z",
-                updatedAt = "2026-01-01T00:00:00Z"
-            });
+                ["id"] = id,
+                ["name"] = name,
+                ["slug"] = _slug,
+                ["orgId"] = ReturnedOrganization,
+                ["createdAt"] = "2026-01-01T00:00:00Z",
+                ["updatedAt"] = "2026-01-01T00:00:00Z"
+            };
+            if (request.Method == HttpMethod.Get) result["customRoleSlug"] = null;
+            return Json(200, result);
         }
     }
 
@@ -451,7 +491,15 @@ public sealed class ManagementBoundaryTests
             if (request.Method != HttpMethod.Post || request.RequestUri!.AbsolutePath != "/api/v1/shared-secrets/share/access")
                 return Task.FromResult(Json(400, new { }));
             Views++;
-            return Task.FromResult(Json(200, new { id = "share", orgId = "org", expiresAt = "2026-12-01T00:00:00Z", secretValue = value }));
+            return Task.FromResult(Json(200, new
+            {
+                id = "share",
+                orgId = OrgId,
+                expiresAt = "2026-12-01T00:00:00Z",
+                createdAt = "2026-10-10T00:00:00Z",
+                updatedAt = "2026-10-10T00:00:00Z",
+                secretValue = value
+            }));
         }
     }
 

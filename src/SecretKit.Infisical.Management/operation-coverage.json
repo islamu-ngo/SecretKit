@@ -9,8 +9,8 @@
       "method": "DELETE",
       "path": "/api/v1/additional-privilege/identity",
       "family": "IdentityPrivileges",
-      "availability": "EstablishedNotImplemented",
-      "factory": null,
+      "availability": "TypedProjection",
+      "factory": "LegacyIdentityPrivilegeOperations.DeletePrivilege",
       "liveVerified": false,
       "evidenceKind": "CurrentReferenceAndPublicMetadata",
       "sources": [
@@ -20,15 +20,15 @@
       "untypedNodes": [
         "response:privilege.permissions[].conditions"
       ],
-      "gap": "Established native route is not implemented in this package increment; no callable stub is exposed."
+      "gap": "Protected bounded v1 metadata, validating independently selected projectMembershipId and privilege slug. Conditions and permissions are not projected; native project slug/member mapping is host-selected and grant-bound. Offline evidence only."
     },
     {
       "operationId": "infisical.get.v1.additional.privilege.identity",
       "method": "GET",
       "path": "/api/v1/additional-privilege/identity",
       "family": "IdentityPrivileges",
-      "availability": "EstablishedNotImplemented",
-      "factory": null,
+      "availability": "TypedProjection",
+      "factory": "LegacyIdentityPrivilegeOperations.ListPrivileges",
       "liveVerified": false,
       "evidenceKind": "CurrentReferenceAndPublicMetadata",
       "sources": [
@@ -38,15 +38,15 @@
       "untypedNodes": [
         "response:privileges[].permissions[].conditions"
       ],
-      "gap": "Established native route is not implemented in this package increment; no callable stub is exposed."
+      "gap": "Protected bounded v1 metadata, validating independently selected projectMembershipId and privilege slug. Conditions and permissions are not projected; native project slug/member mapping is host-selected and grant-bound. Offline evidence only."
     },
     {
       "operationId": "infisical.patch.v1.additional.privilege.identity",
       "method": "PATCH",
       "path": "/api/v1/additional-privilege/identity",
       "family": "IdentityPrivileges",
-      "availability": "EstablishedNotImplemented",
-      "factory": null,
+      "availability": "TypedProjection",
+      "factory": "IdentityPrivilegeChangeOperations.UpdateLegacyPrivilege",
       "liveVerified": false,
       "evidenceKind": "CurrentReferenceAndPublicMetadata",
       "sources": [
@@ -56,15 +56,15 @@
       "untypedNodes": [
         "response:privilege.permissions[].conditions"
       ],
-      "gap": "Handwritten typed request variant and validated result are not implemented. No raw payload escape hatch is exposed."
+      "gap": "Protected typed v1 privilege input, complete change intent and selected membership/slug validation. Returned permissions, isTemporary and timestamps are unprojected; no effective-permission or live proof."
     },
     {
       "operationId": "infisical.get.v1.additional.privilege.identity.by.privilegeSlug",
       "method": "GET",
       "path": "/api/v1/additional-privilege/identity/{privilegeSlug}",
       "family": "IdentityPrivileges",
-      "availability": "EstablishedNotImplemented",
-      "factory": null,
+      "availability": "TypedProjection",
+      "factory": "LegacyIdentityPrivilegeOperations.GetPrivilege",
       "liveVerified": false,
       "evidenceKind": "CurrentReferenceAndPublicMetadata",
       "sources": [
@@ -74,15 +74,15 @@
       "untypedNodes": [
         "response:privilege.permissions[].conditions"
       ],
-      "gap": "Established native route is not implemented in this package increment; no callable stub is exposed."
+      "gap": "Protected bounded v1 metadata, validating independently selected projectMembershipId and privilege slug. Conditions and permissions are not projected; native project slug/member mapping is host-selected and grant-bound. Offline evidence only."
     },
     {
       "operationId": "infisical.post.v1.additional.privilege.identity.permanent",
       "method": "POST",
       "path": "/api/v1/additional-privilege/identity/permanent",
       "family": "IdentityPrivileges",
-      "availability": "EstablishedNotImplemented",
-      "factory": null,
+      "availability": "TypedProjection",
+      "factory": "IdentityPrivilegeChangeOperations.CreatePermanentLegacyPrivilege",
       "liveVerified": false,
       "evidenceKind": "CurrentReferenceAndPublicMetadata",
       "sources": [
@@ -92,15 +92,15 @@
       "untypedNodes": [
         "response:privilege.permissions[].conditions"
       ],
-      "gap": "Handwritten typed request variant and validated result are not implemented. No raw payload escape hatch is exposed."
+      "gap": "Protected typed v1 privilege input, complete change intent and selected membership/slug validation. Returned permissions, isTemporary and timestamps are unprojected; no effective-permission or live proof."
     },
     {
       "operationId": "infisical.post.v1.additional.privilege.identity.temporary",
       "method": "POST",
       "path": "/api/v1/additional-privilege/identity/temporary",
       "family": "IdentityPrivileges",
-      "availability": "EstablishedNotImplemented",
-      "factory": null,
+      "availability": "TypedProjection",
+      "factory": "IdentityPrivilegeChangeOperations.CreateTemporaryLegacyPrivilege",
       "liveVerified": false,
       "evidenceKind": "CurrentReferenceAndPublicMetadata",
       "sources": [
@@ -110,7 +110,7 @@
       "untypedNodes": [
         "response:privilege.permissions[].conditions"
       ],
-      "gap": "Handwritten typed request variant and validated result are not implemented. No raw payload escape hatch is exposed."
+      "gap": "Protected typed v1 privilege input, complete change intent and selected membership/slug validation. Returned permissions, isTemporary and timestamps are unprojected; no effective-permission or live proof."
     },
     {
       "operationId": "infisical.post.v1.events.subscribe.project.events",
@@ -126,7 +126,7 @@
         "https://app.infisical.com/api/docs/json"
       ],
       "untypedNodes": [],
-      "gap": "No published response framing, completion, resume, or streaming lifetime contract."
+      "gap": "SSE text/event-stream transport and machine permission are published; formal payload schemas, readiness, lifetime, termination, loss/ordering and reconnect/resume contracts remain unresolved. Enterprise entitlement is required."
     },
     {
       "operationId": "infisical.get.v1.groups",
@@ -424,120 +424,120 @@
       "method": "GET",
       "path": "/api/v1/identity-templates",
       "family": "Identities",
-      "availability": "EstablishedNotImplemented",
-      "factory": null,
+      "availability": "TypedProjection",
+      "factory": "IdentityTemplateOperations.ListIdentityTemplates",
       "liveVerified": false,
       "evidenceKind": "PublicMetadataOnly",
       "sources": [
         "https://app.infisical.com/api/docs/json"
       ],
       "untypedNodes": [],
-      "gap": "Typed authentication-template variants and their usage lifecycle have not been implemented; published union facts are not absent endpoints."
+      "gap": "Typed method-filtered metadata and credential-presence flags only; stored template configuration/material is not exposed."
     },
     {
       "operationId": "infisical.post.v1.identity.templates",
       "method": "POST",
       "path": "/api/v1/identity-templates",
       "family": "Identities",
-      "availability": "EstablishedNotImplemented",
-      "factory": null,
+      "availability": "TypedProjection",
+      "factory": "IdentityTemplateOperations.CreateIdentityTemplate",
       "liveVerified": false,
       "evidenceKind": "PublicMetadataOnly",
       "sources": [
         "https://app.infisical.com/api/docs/json"
       ],
       "untypedNodes": [],
-      "gap": "Typed authentication-template variants and their usage lifecycle have not been implemented; published union facts are not absent endpoints."
+      "gap": "Required OIDC discovery URL and issuer inputs only; LDAP/Kubernetes creation and optional OIDC fields are not exposed."
     },
     {
       "operationId": "infisical.delete.v1.identity.templates.by.templateId",
       "method": "DELETE",
       "path": "/api/v1/identity-templates/{templateId}",
       "family": "Identities",
-      "availability": "EstablishedNotImplemented",
-      "factory": null,
+      "availability": "TypedProjection",
+      "factory": "IdentityTemplateOperations.DeleteIdentityTemplate",
       "liveVerified": false,
       "evidenceKind": "PublicMetadataOnly",
       "sources": [
         "https://app.infisical.com/api/docs/json"
       ],
       "untypedNodes": [],
-      "gap": "Typed authentication-template variants and their usage lifecycle have not been implemented; published union facts are not absent endpoints."
+      "gap": "Protected native acknowledgement only; response does not attest organization/template coordinates or runtime delivery."
     },
     {
       "operationId": "infisical.get.v1.identity.templates.by.templateId",
       "method": "GET",
       "path": "/api/v1/identity-templates/{templateId}",
       "family": "Identities",
-      "availability": "EstablishedNotImplemented",
-      "factory": null,
+      "availability": "TypedProjection",
+      "factory": "IdentityTemplateOperations.GetIdentityTemplate",
       "liveVerified": false,
       "evidenceKind": "PublicMetadataOnly",
       "sources": [
         "https://app.infisical.com/api/docs/json"
       ],
       "untypedNodes": [],
-      "gap": "Typed authentication-template variants and their usage lifecycle have not been implemented; published union facts are not absent endpoints."
+      "gap": "Protected metadata and credential-presence flags only; stored template configuration/material is not exposed."
     },
     {
       "operationId": "infisical.patch.v1.identity.templates.by.templateId",
       "method": "PATCH",
       "path": "/api/v1/identity-templates/{templateId}",
       "family": "Identities",
-      "availability": "EstablishedNotImplemented",
-      "factory": null,
+      "availability": "TypedProjection",
+      "factory": "IdentityTemplateOperations.UpdateIdentityTemplate",
       "liveVerified": false,
       "evidenceKind": "PublicMetadataOnly",
       "sources": [
         "https://app.infisical.com/api/docs/json"
       ],
       "untypedNodes": [],
-      "gap": "Typed authentication-template variants and their usage lifecycle have not been implemented; published union facts are not absent endpoints."
+      "gap": "Rename-only typed input; template configuration patches are not exposed."
     },
     {
       "operationId": "infisical.post.v1.identity.templates.by.templateId.delete.usage",
       "method": "POST",
       "path": "/api/v1/identity-templates/{templateId}/delete-usage",
       "family": "Identities",
-      "availability": "EstablishedNotImplemented",
-      "factory": null,
+      "availability": "TypedProjection",
+      "factory": "IdentityTemplateOperations.DeleteIdentityTemplateUsage",
       "liveVerified": false,
       "evidenceKind": "PublicMetadataOnly",
       "sources": [
         "https://app.infisical.com/api/docs/json"
       ],
       "untypedNodes": [],
-      "gap": "Typed authentication-template variants and their usage lifecycle have not been implemented; published union facts are not absent endpoints."
+      "gap": "One independently selected identity unlink only; multi-identity input is not exposed. Returned association rows do not attest organization/template coordinates."
     },
     {
       "operationId": "infisical.get.v1.identity.templates.by.templateId.usage",
       "method": "GET",
       "path": "/api/v1/identity-templates/{templateId}/usage",
       "family": "Identities",
-      "availability": "EstablishedNotImplemented",
-      "factory": null,
+      "availability": "TypedProjection",
+      "factory": "IdentityTemplateOperations.GetIdentityTemplateUsage",
       "liveVerified": false,
       "evidenceKind": "PublicMetadataOnly",
       "sources": [
         "https://app.infisical.com/api/docs/json"
       ],
       "untypedNodes": [],
-      "gap": "Typed authentication-template variants and their usage lifecycle have not been implemented; published union facts are not absent endpoints."
+      "gap": "Protected association metadata only; response does not attest organization/template coordinates or effective permissions."
     },
     {
       "operationId": "infisical.get.v1.identity.templates.search",
       "method": "GET",
       "path": "/api/v1/identity-templates/search",
       "family": "Identities",
-      "availability": "EstablishedNotImplemented",
-      "factory": null,
+      "availability": "TypedProjection",
+      "factory": "IdentityTemplateOperations.SearchIdentityTemplates",
       "liveVerified": false,
       "evidenceKind": "PublicMetadataOnly",
       "sources": [
         "https://app.infisical.com/api/docs/json"
       ],
       "untypedNodes": [],
-      "gap": "Typed authentication-template variants and their usage lifecycle have not been implemented; published union facts are not absent endpoints."
+      "gap": "Bounded searchable metadata page only; stored template configuration/material is not exposed."
     },
     {
       "operationId": "infisical.get.v1.organization.audit.log.settings",
@@ -635,8 +635,8 @@
       "method": "POST",
       "path": "/api/v1/organization/roles",
       "family": "ScopedAccess",
-      "availability": "EstablishedNotImplemented",
-      "factory": null,
+      "availability": "TypedProjection",
+      "factory": "RoleChangeOperations.CreateOrganizationRole",
       "liveVerified": false,
       "evidenceKind": "CurrentReferenceAndPublicMetadata",
       "sources": [
@@ -646,7 +646,7 @@
       "untypedNodes": [
         "response:role.permissions[].conditions"
       ],
-      "gap": "Handwritten typed request variant and validated result are not implemented. No raw payload escape hatch is exposed."
+      "gap": "Finite typed subject/action domains and supported conjunctive/tag/metadata conditions; complete changes are grant-bound. Eight deprecated SSH/MCP branches, empty conditions/comparisons/arrays and no-op updates are unexposed. Effective permissions are not projected. Offline evidence only."
     },
     {
       "operationId": "infisical.delete.v1.organization.roles.by.roleId",
@@ -687,8 +687,8 @@
       "method": "PATCH",
       "path": "/api/v1/organization/roles/{roleId}",
       "family": "ScopedAccess",
-      "availability": "EstablishedNotImplemented",
-      "factory": null,
+      "availability": "TypedProjection",
+      "factory": "RoleChangeOperations.UpdateOrganizationRole",
       "liveVerified": false,
       "evidenceKind": "CurrentReferenceAndPublicMetadata",
       "sources": [
@@ -698,7 +698,7 @@
       "untypedNodes": [
         "response:role.permissions[].conditions"
       ],
-      "gap": "Handwritten typed request variant and validated result are not implemented. No raw payload escape hatch is exposed."
+      "gap": "Finite typed subject/action domains and supported conjunctive/tag/metadata conditions; complete changes are grant-bound. Eight deprecated SSH/MCP branches, empty conditions/comparisons/arrays and no-op updates are unexposed. Effective permissions are not projected. Offline evidence only."
     },
     {
       "operationId": "infisical.get.v1.organization.roles.slug.by.roleSlug",
@@ -991,8 +991,8 @@
       "method": "GET",
       "path": "/api/v1/projects/{projectId}/authorizations",
       "family": "Projects",
-      "availability": "EstablishedNotImplemented",
-      "factory": null,
+      "availability": "TypedProjection",
+      "factory": "ProjectConnectionOperations.ListAuthorizations",
       "liveVerified": false,
       "evidenceKind": "PublicMetadataOnly",
       "sources": [
@@ -1001,7 +1001,7 @@
       "untypedNodes": [
         "response:authorizations[].metadata"
       ],
-      "gap": "Established native route is not implemented in this package increment; no callable stub is exposed."
+      "gap": "Protected bounded connection metadata. Native authorization rows attest projectId; integrations attest neither organization nor project. Unconstrained metadata and free-form syncMessage are omitted. Offline evidence only."
     },
     {
       "operationId": "infisical.post.v1.projects.by.projectId.environments",
@@ -1172,8 +1172,8 @@
       "method": "GET",
       "path": "/api/v1/projects/{projectId}/integrations",
       "family": "Projects",
-      "availability": "EstablishedNotImplemented",
-      "factory": null,
+      "availability": "TypedProjection",
+      "factory": "ProjectConnectionOperations.ListIntegrations",
       "liveVerified": false,
       "evidenceKind": "PublicMetadataOnly",
       "sources": [
@@ -1182,15 +1182,15 @@
       "untypedNodes": [
         "response:integrations[].metadata"
       ],
-      "gap": "Established native route is not implemented in this package increment; no callable stub is exposed."
+      "gap": "Protected bounded connection metadata. Native authorization rows attest projectId; integrations attest neither organization nor project. Unconstrained metadata and free-form syncMessage are omitted. Offline evidence only."
     },
     {
       "operationId": "infisical.delete.v1.projects.by.projectId.memberships",
       "method": "DELETE",
       "path": "/api/v1/projects/{projectId}/memberships",
       "family": "Projects",
-      "availability": "EstablishedNotImplemented",
-      "factory": null,
+      "availability": "TypedProjection",
+      "factory": "MembershipMutationOperations.RemoveProjectMembers",
       "liveVerified": false,
       "evidenceKind": "CurrentReferenceAndPublicMetadata",
       "sources": [
@@ -1198,15 +1198,15 @@
         "https://app.infisical.com/api/docs/json"
       ],
       "untypedNodes": [],
-      "gap": "Established native route is not implemented in this package increment; no callable stub is exposed."
+      "gap": "Bounded copied native inputs with grant-bound batch intent. Project responses cannot attest selector-to-user or assigned-role correspondence; organization results omit favorites and login/invitation history. Offline evidence only."
     },
     {
       "operationId": "infisical.get.v1.projects.by.projectId.memberships",
       "method": "GET",
       "path": "/api/v1/projects/{projectId}/memberships",
       "family": "Projects",
-      "availability": "EstablishedNotImplemented",
-      "factory": null,
+      "availability": "TypedProjection",
+      "factory": "ProjectMembershipOperations.ListProjectMemberships",
       "liveVerified": false,
       "evidenceKind": "CurrentReferenceAndPublicMetadata",
       "sources": [
@@ -1214,30 +1214,31 @@
         "https://app.infisical.com/api/docs/json"
       ],
       "untypedNodes": [],
-      "gap": "Established native route is not implemented in this package increment; no callable stub is exposed."
+      "gap": "Protected metadata subset; optional authentication, lockout, verification and public-key fields are not projected. Offline tests are not live conformance."
     },
     {
       "operationId": "infisical.post.v1.projects.by.projectId.memberships",
       "method": "POST",
       "path": "/api/v1/projects/{projectId}/memberships",
       "family": "Projects",
-      "availability": "EstablishedNotImplemented",
-      "factory": null,
+      "availability": "TypedProjection",
+      "factory": "MembershipMutationOperations.InviteProjectMembers",
       "liveVerified": false,
       "evidenceKind": "CurrentReferenceAndPublicMetadata",
       "sources": [
         "https://infisical.com/docs/api-reference/endpoints/project-users/invite-member-to-project.md",
         "https://app.infisical.com/api/docs/json"
       ],
-      "untypedNodes": []
+      "untypedNodes": [],
+      "gap": "Bounded copied native inputs with grant-bound batch intent. Project responses cannot attest selector-to-user or assigned-role correspondence; organization results omit favorites and login/invitation history. Offline evidence only."
     },
     {
       "operationId": "infisical.patch.v1.projects.by.projectId.memberships.by.membershipId",
       "method": "PATCH",
       "path": "/api/v1/projects/{projectId}/memberships/{membershipId}",
       "family": "Projects",
-      "availability": "EstablishedNotImplemented",
-      "factory": null,
+      "availability": "TypedProjection",
+      "factory": "ProjectMembershipOperations.UpdateProjectMembershipRoles",
       "liveVerified": false,
       "evidenceKind": "CurrentReferenceAndPublicMetadata",
       "sources": [
@@ -1251,23 +1252,23 @@
       "method": "GET",
       "path": "/api/v1/projects/{projectId}/memberships/available-identities",
       "family": "Projects",
-      "availability": "EstablishedNotImplemented",
-      "factory": null,
+      "availability": "TypedProjection",
+      "factory": "ProjectMembershipOperations.ListAvailableProjectIdentities",
       "liveVerified": false,
       "evidenceKind": "PublicMetadataOnly",
       "sources": [
         "https://app.infisical.com/api/docs/json"
       ],
       "untypedNodes": [],
-      "gap": "Established native route is not implemented in this package increment; no callable stub is exposed."
+      "gap": "Protected metadata subset; optional authentication, lockout, verification and public-key fields are not projected. Offline tests are not live conformance."
     },
     {
       "operationId": "infisical.post.v1.projects.by.projectId.memberships.details",
       "method": "POST",
       "path": "/api/v1/projects/{projectId}/memberships/details",
       "family": "Projects",
-      "availability": "EstablishedNotImplemented",
-      "factory": null,
+      "availability": "TypedProjection",
+      "factory": "ProjectMembershipOperations.InspectProjectMembershipByUsername",
       "liveVerified": false,
       "evidenceKind": "CurrentReferenceAndPublicMetadata",
       "sources": [
@@ -1275,7 +1276,7 @@
         "https://app.infisical.com/api/docs/json"
       ],
       "untypedNodes": [],
-      "gap": "Handwritten typed request variant and validated result are not implemented. No raw payload escape hatch is exposed."
+      "gap": "Protected metadata subset; optional authentication, lockout, verification and public-key fields are not projected. Offline tests are not live conformance."
     },
     {
       "operationId": "infisical.get.v1.projects.by.projectId.memberships.groups",
@@ -1357,8 +1358,8 @@
       "method": "GET",
       "path": "/api/v1/projects/{projectId}/memberships/identities",
       "family": "Identities",
-      "availability": "EstablishedNotImplemented",
-      "factory": null,
+      "availability": "TypedProjection",
+      "factory": "ProjectMembershipOperations.ListProjectIdentityMemberships",
       "liveVerified": false,
       "evidenceKind": "CurrentReferenceAndPublicMetadata",
       "sources": [
@@ -1366,7 +1367,7 @@
         "https://app.infisical.com/api/docs/json"
       ],
       "untypedNodes": [],
-      "gap": "Established native route is not implemented in this package increment; no callable stub is exposed."
+      "gap": "Protected metadata subset; optional authentication, lockout, verification and public-key fields are not projected. Offline tests are not live conformance."
     },
     {
       "operationId": "infisical.delete.v1.projects.by.projectId.memberships.identities.by.identityId",
@@ -1448,8 +1449,8 @@
       "method": "POST",
       "path": "/api/v1/projects/{projectId}/roles",
       "family": "Projects",
-      "availability": "EstablishedNotImplemented",
-      "factory": null,
+      "availability": "TypedProjection",
+      "factory": "RoleChangeOperations.CreateProjectRole",
       "liveVerified": false,
       "evidenceKind": "CurrentReferenceAndPublicMetadata",
       "sources": [
@@ -1460,7 +1461,7 @@
         "body:permissions[].conditions.*",
         "response:role.permissions[].conditions"
       ],
-      "gap": "Handwritten typed request variant and validated result are not implemented. No raw payload escape hatch is exposed."
+      "gap": "Finite typed subject/action domains and supported conjunctive/tag/metadata conditions; complete changes are grant-bound. Eight deprecated SSH/MCP branches, empty conditions/comparisons/arrays and no-op updates are unexposed. Effective permissions are not projected. Offline evidence only."
     },
     {
       "operationId": "infisical.delete.v1.projects.by.projectId.roles.by.roleId",
@@ -1484,8 +1485,8 @@
       "method": "PATCH",
       "path": "/api/v1/projects/{projectId}/roles/{roleId}",
       "family": "Projects",
-      "availability": "EstablishedNotImplemented",
-      "factory": null,
+      "availability": "TypedProjection",
+      "factory": "RoleChangeOperations.UpdateProjectRole",
       "liveVerified": false,
       "evidenceKind": "CurrentReferenceAndPublicMetadata",
       "sources": [
@@ -1496,7 +1497,7 @@
         "body:permissions[].conditions.*",
         "response:role.permissions[].conditions"
       ],
-      "gap": "Handwritten typed request variant and validated result are not implemented. No raw payload escape hatch is exposed."
+      "gap": "Finite typed subject/action domains and supported conjunctive/tag/metadata conditions; complete changes are grant-bound. Eight deprecated SSH/MCP branches, empty conditions/comparisons/arrays and no-op updates are unexposed. Effective permissions are not projected. Offline evidence only."
     },
     {
       "operationId": "infisical.get.v1.projects.by.projectId.roles.slug.by.roleSlug",
@@ -1725,8 +1726,8 @@
       "method": "POST",
       "path": "/api/v2/identities/search",
       "family": "Identities",
-      "availability": "EstablishedNotImplemented",
-      "factory": null,
+      "availability": "TypedProjection",
+      "factory": "IdentitySearchOperations.SearchIdentities",
       "liveVerified": false,
       "evidenceKind": "CurrentReferenceAndPublicMetadata",
       "sources": [
@@ -1734,15 +1735,15 @@
         "https://app.infisical.com/api/docs/json"
       ],
       "untypedNodes": [],
-      "gap": "Handwritten typed request variant and validated result are not implemented. No raw payload escape hatch is exposed."
+      "gap": "Typed bounded native scope/filter inspection; authentication arrays, project metadata, login fields and custom-role description are not projected. SDK $in lists are capped at 100 nonempty strings; shorthand strings use equivalent typed $eq. Counts do not return organization coordinates. Offline evidence only."
     },
     {
       "operationId": "infisical.post.v2.identities.search.count",
       "method": "POST",
       "path": "/api/v2/identities/search/count",
       "family": "Identities",
-      "availability": "EstablishedNotImplemented",
-      "factory": null,
+      "availability": "TypedProjection",
+      "factory": "IdentitySearchOperations.CountIdentities",
       "liveVerified": false,
       "evidenceKind": "CurrentReferenceAndPublicMetadata",
       "sources": [
@@ -1750,7 +1751,7 @@
         "https://app.infisical.com/api/docs/json"
       ],
       "untypedNodes": [],
-      "gap": "Handwritten typed request variant and validated result are not implemented. No raw payload escape hatch is exposed."
+      "gap": "Typed bounded native scope/filter inspection; authentication arrays, project metadata, login fields and custom-role description are not projected. SDK $in lists are capped at 100 nonempty strings; shorthand strings use equivalent typed $eq. Counts do not return organization coordinates. Offline evidence only."
     },
     {
       "operationId": "infisical.get.v2.identity.project.additional.privilege",
@@ -1772,8 +1773,8 @@
       "method": "POST",
       "path": "/api/v2/identity-project-additional-privilege",
       "family": "IdentityPrivileges",
-      "availability": "EstablishedNotImplemented",
-      "factory": null,
+      "availability": "TypedProjection",
+      "factory": "IdentityPrivilegeChangeOperations.CreateProjectPrivilege",
       "liveVerified": false,
       "evidenceKind": "CurrentReferenceAndPublicMetadata",
       "sources": [
@@ -1784,7 +1785,7 @@
         "body:permissions[].conditions.*",
         "response:privilege.permissions[].conditions"
       ],
-      "gap": "Handwritten typed request variant and validated result are not implemented. No raw payload escape hatch is exposed."
+      "gap": "Protected typed v2 project-role permission input and complete change intent. Returned permissions, isTemporary and timestamps are unprojected; native response lacks project/identity/membership scope attestation. Offline evidence only."
     },
     {
       "operationId": "infisical.delete.v2.identity.project.additional.privilege.by.id",
@@ -1825,8 +1826,8 @@
       "method": "PATCH",
       "path": "/api/v2/identity-project-additional-privilege/{id}",
       "family": "IdentityPrivileges",
-      "availability": "EstablishedNotImplemented",
-      "factory": null,
+      "availability": "TypedProjection",
+      "factory": "IdentityPrivilegeChangeOperations.UpdateProjectPrivilege",
       "liveVerified": false,
       "evidenceKind": "CurrentReferenceAndPublicMetadata",
       "sources": [
@@ -1837,15 +1838,15 @@
         "body:permissions[].conditions.*",
         "response:privilege.permissions[].conditions"
       ],
-      "gap": "Handwritten typed request variant and validated result are not implemented. No raw payload escape hatch is exposed."
+      "gap": "Protected typed v2 project-role permission input and complete change intent. Returned permissions, isTemporary and timestamps are unprojected; native response lacks project/identity/membership scope attestation. Offline evidence only."
     },
     {
       "operationId": "infisical.get.v2.identity.project.additional.privilege.slug.by.privilegeSlug",
       "method": "GET",
       "path": "/api/v2/identity-project-additional-privilege/slug/{privilegeSlug}",
       "family": "IdentityPrivileges",
-      "availability": "EstablishedNotImplemented",
-      "factory": null,
+      "availability": "TypedProjection",
+      "factory": "IdentityPrivilegeChangeOperations.GetProjectPrivilegeBySlug",
       "liveVerified": false,
       "evidenceKind": "CurrentReferenceAndPublicMetadata",
       "sources": [
@@ -1855,15 +1856,15 @@
       "untypedNodes": [
         "response:privilege.permissions[].conditions"
       ],
-      "gap": "Established native route is not implemented in this package increment; no callable stub is exposed."
+      "gap": "Protected typed v2 project-role permission input and complete change intent. Returned permissions, isTemporary and timestamps are unprojected; native response lacks project/identity/membership scope attestation. Offline evidence only."
     },
     {
       "operationId": "infisical.delete.v2.organizations.by.organizationId.memberships",
       "method": "DELETE",
       "path": "/api/v2/organizations/{organizationId}/memberships",
       "family": "ScopedAccess",
-      "availability": "EstablishedNotImplemented",
-      "factory": null,
+      "availability": "TypedProjection",
+      "factory": "MembershipMutationOperations.DeleteOrganizationMemberships",
       "liveVerified": false,
       "evidenceKind": "CurrentReferenceAndPublicMetadata",
       "sources": [
@@ -1871,7 +1872,7 @@
         "https://app.infisical.com/api/docs/json"
       ],
       "untypedNodes": [],
-      "gap": "Established native route is not implemented in this package increment; no callable stub is exposed."
+      "gap": "Bounded copied native inputs with grant-bound batch intent. Project responses cannot attest selector-to-user or assigned-role correspondence; organization results omit favorites and login/invitation history. Offline evidence only."
     },
     {
       "operationId": "infisical.get.v2.organizations.by.organizationId.memberships",
@@ -1926,8 +1927,8 @@
       "method": "GET",
       "path": "/api/v2/organizations/{orgId}/identity-memberships",
       "family": "ScopedAccess",
-      "availability": "EstablishedNotImplemented",
-      "factory": null,
+      "availability": "TypedProjection",
+      "factory": "OrganizationIdentityMembershipOperations.ListOrganizationIdentityMemberships",
       "liveVerified": false,
       "evidenceKind": "CurrentReferenceAndPublicMetadata",
       "sources": [
@@ -1937,7 +1938,7 @@
       "untypedNodes": [
         "response:identityMemberships[].customRole.permissions"
       ],
-      "gap": "Established native route is not implemented in this package increment; no callable stub is exposed."
+      "gap": "Protected membership/identity metadata only; custom-role permissions and authentication-method arrays are not exposed. SDK page limit is 100 rather than the provider maximum of 20000."
     }
   ]
 }

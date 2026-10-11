@@ -29,7 +29,22 @@ public sealed class ManagementRequest<T> : IDisposable where T : notnull
         Method = method;
         Path = path;
         Target = target;
-        Parse = parse;
+        Parse = root =>
+        {
+            T result = parse(root);
+            try
+            {
+                ManagementResponseContracts.Validate(operationId, root);
+                ManagementResponseUuids.Validate(operationId, root);
+                ManagementResponseDates.Validate(operationId, root);
+                return result;
+            }
+            catch
+            {
+                (result as IDisposable)?.Dispose();
+                throw;
+            }
+        };
         IsMutation = mutation;
         if (writeBody is not null)
         {
@@ -123,6 +138,13 @@ internal static class ManagementJson
         return Uri.EscapeDataString(value);
     }
 
+    internal static string UuidInput(string value)
+    {
+        if (!Guid.TryParseExact(value, "D", out _))
+            throw new ArgumentException("Invalid management UUID coordinate.");
+        return value;
+    }
+
     internal static JsonElement Object(JsonElement value, string field)
     {
         if (value.ValueKind != JsonValueKind.Object ||
@@ -139,16 +161,17 @@ internal static class ManagementJson
         return result ?? throw new ManagementContractException(SecretStatus.Unknown);
     }
 
-    internal static string? Optional(JsonElement value, string field)
+    internal static string? Optional(JsonElement value, string field, bool nullable = true)
     {
         if (value.ValueKind != JsonValueKind.Object)
         {
             throw new ManagementContractException(SecretStatus.Unknown);
         }
-        if (!value.TryGetProperty(field, out JsonElement child) || child.ValueKind == JsonValueKind.Null)
+        if (!value.TryGetProperty(field, out JsonElement child))
         {
             return null;
         }
+        if (child.ValueKind == JsonValueKind.Null && nullable) return null;
         if (child.ValueKind != JsonValueKind.String)
         {
             throw new ManagementContractException(SecretStatus.Unknown);
@@ -159,6 +182,35 @@ internal static class ManagementJson
             throw new ManagementContractException(SecretStatus.Unknown);
         }
         return result;
+    }
+
+    internal static string Nonempty(JsonElement value, string field)
+    {
+        string result = Required(value, field);
+        return result.Length > 0 ? result : throw new ManagementContractException(SecretStatus.Unknown);
+    }
+
+    internal static double Number(JsonElement value, string field)
+    {
+        if (!value.TryGetProperty(field, out JsonElement child) || child.ValueKind != JsonValueKind.Number ||
+            !child.TryGetDouble(out double result) || !double.IsFinite(result))
+            throw new ManagementContractException(SecretStatus.Unknown);
+        return result;
+    }
+
+    internal static string? Timestamp(JsonElement value, string field, bool required)
+    {
+        string? text = required ? Required(value, field) : Optional(value, field);
+        if (text is not null && !DateTimeOffset.TryParse(text, CultureInfo.InvariantCulture,
+            DateTimeStyles.RoundtripKind, out _)) throw new ManagementContractException(SecretStatus.Unknown);
+        return text;
+    }
+
+    internal static string? RequiredNullableString(JsonElement value, string field)
+    {
+        if (value.ValueKind != JsonValueKind.Object || !value.TryGetProperty(field, out _))
+            throw new ManagementContractException(SecretStatus.Unknown);
+        return Optional(value, field);
     }
 
     internal static bool Boolean(JsonElement value, string field)

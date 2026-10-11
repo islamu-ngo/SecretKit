@@ -4,12 +4,11 @@ using System.Text.Json.Serialization;
 namespace SecretKit.Infisical.Management;
 
 /// <summary>
-/// Native privilege identity/lifetime projection. Permissions are deliberately not
-/// projected: this result must not be interpreted as an effective access decision.
+/// Native privilege identity/lifetime and permission metadata, not an effective access decision.
 /// </summary>
 public sealed class IdentityPrivilegeSummary
 {
-    internal IdentityPrivilegeSummary(JsonElement value, string? id = null)
+    internal IdentityPrivilegeSummary(JsonElement value, string? id = null, bool includePermissions = true)
     {
         if (id is not null) ManagementJson.RequireEqual(value, "id", id);
         Id = ManagementJson.Required(value, "id");
@@ -18,6 +17,12 @@ public sealed class IdentityPrivilegeSummary
         EndsAt = ManagementJson.Optional(value, "temporaryAccessEndTime");
         Mode = ManagementJson.Optional(value, "temporaryMode");
         Range = ManagementJson.Optional(value, "temporaryRange");
+        Permissions = includePermissions ? RolePermissionSummary.Read(value) ??
+            throw new ManagementContractException(SecretKit.Core.SecretStatus.Unknown) : null;
+        if (value.TryGetProperty("isTemporary", out _))
+            IsTemporary = ManagementJson.Boolean(value, "isTemporary");
+        CreatedAt = ManagementJson.Required(value, "createdAt");
+        UpdatedAt = ManagementJson.Required(value, "updatedAt");
     }
     [JsonIgnore] public string Id { get; }
     [JsonIgnore] public string Slug { get; }
@@ -25,7 +30,11 @@ public sealed class IdentityPrivilegeSummary
     [JsonIgnore] public string? EndsAt { get; }
     [JsonIgnore] public string? Mode { get; }
     [JsonIgnore] public string? Range { get; }
-    public bool IncludesPermissions => false;
+    [JsonIgnore] public IReadOnlyList<RolePermissionSummary>? Permissions { get; }
+    [JsonIgnore] public bool? IsTemporary { get; }
+    [JsonIgnore] public string CreatedAt { get; }
+    [JsonIgnore] public string UpdatedAt { get; }
+    public bool IncludesPermissions => Permissions is not null;
     public override string ToString() => "[IdentityPrivilegeSummary]";
 }
 
@@ -36,7 +45,7 @@ public static class IdentityPrivilegeOperations
         new("infisical.get.v2.identity.project.additional.privilege", HttpMethod.Get,
             "/api/v2/identity-project-additional-privilege?projectId=" + ManagementJson.Escape(projectId) +
             "&identityId=" + ManagementJson.Escape(identityId), new(organizationId, projectId, identityId), null,
-            root => new(ManagementJson.Array(root, "privileges").Select(value => new IdentityPrivilegeSummary(value)), true), false);
+            root => new(ManagementJson.Array(root, "privileges").Select(value => new IdentityPrivilegeSummary(value, includePermissions: false)), true), false);
 
     public static ManagementRequest<IdentityPrivilegeSummary> GetProjectPrivilege(
         string organizationId, string projectId, string identityId, string privilegeId) =>
