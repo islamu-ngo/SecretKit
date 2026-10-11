@@ -173,6 +173,13 @@
           "SecretKit.Core": "[0.1.0-preview.1, )"
         }
       },
+      "secretkit.infisical.management": {
+        "type": "Project",
+        "dependencies": {
+          "Refit": "[16.3.0, )",
+          "SecretKit.Infisical": "[0.1.0-preview.1, )"
+        }
+      },
       "Microsoft.Extensions.Configuration": {
         "type": "CentralTransitive",
         "requested": "[10.0.12, )",

@@ -13,6 +13,17 @@ using SecretKit.Infisical;
 using SecretKit.Samples.ProviderAssessment;
 using SecretKit.Samples.RuntimeConfiguration;
 
+if (args is ["live-infisical"])
+{
+    try { await InstalledInfisical.RunAsync(); }
+    catch
+    {
+        Console.Error.WriteLine("Installed live consumer failed; protected diagnostics withheld.");
+        Environment.ExitCode = 1;
+    }
+    return;
+}
+
 string value = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
 using (SecretMaterial source = SecretMaterial.FromText(value))
 using (SecretMaterial copy = source.Copy())
@@ -131,6 +142,10 @@ using var managementTransport = new SecretKit.Infisical.Management.ManagementTra
     new Uri("https://fixture.infisical.invalid"));
 var infisicalManagement = new SecretKit.Infisical.Management.ManagementClient(managementTransport);
 Require(infisicalManagement.Authority is not null);
+Require(typeof(SecretKit.Infisical.Management.ManagementClient).Assembly.GetExportedTypes().All(type =>
+    (!type.Name.Contains("Connection", StringComparison.Ordinal) ||
+        type.Name.StartsWith("ProjectConnection", StringComparison.Ordinal)) &&
+    !type.Name.Contains("Sync", StringComparison.Ordinal)));
 var vaultAdministration = new SecretKit.AzureKeyVault.Management.VaultAdministration(
     new FixtureCredential(), transport);
 var vaultScope = new SecretKit.AzureKeyVault.Management.VaultScope(

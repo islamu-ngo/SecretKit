@@ -6,6 +6,12 @@ using SecretKit.ConsumerBaseline;
 using SecretKit.Core;
 using SecretKit.Infisical;
 
+if (args is ["live-infisical"])
+{
+    await LiveInfisical.RunAsync();
+    return;
+}
+
 const int warmups = 5;
 const int samples = 30;
 using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(60));
