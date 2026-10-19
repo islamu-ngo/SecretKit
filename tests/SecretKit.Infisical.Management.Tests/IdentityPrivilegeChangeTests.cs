@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using System.Text;
 using System.Text.Json;
@@ -17,6 +18,55 @@ public sealed class IdentityPrivilegeChangeTests
     private const string ForeignUuid = "70bc9c42-31b3-4a13-ac45-dc937db4eb63";
     private const string Slug = "privilege-slug-private";
     private static readonly DateTimeOffset Start = new(2026, 10, 9, 12, 0, 0, TimeSpan.Zero);
+
+    [Test]
+    [Arguments(0, 0)]
+    [Arguments(0, 330)]
+    [Arguments(0, -420)]
+    [Arguments(2, 0)]
+    [Arguments(2, 330)]
+    [Arguments(2, -420)]
+    [Arguments(3, 0)]
+    [Arguments(3, 330)]
+    [Arguments(3, -420)]
+    [Arguments(4, 0)]
+    [Arguments(4, 330)]
+    [Arguments(4, -420)]
+    public async Task TemporaryRequestsSerializeUtcZWithoutChangingInstant(int route, int offsetMinutes)
+    {
+        var instant = Start.AddTicks(1234567);
+        var start = instant.ToOffset(TimeSpan.FromMinutes(offsetMinutes));
+        var lifetime = PrivilegeLifetime.Temporary("1h", start);
+        var legacy = new LegacyPrivilegeChange(Slug, permissions:
+            [new(ProjectRoleSubject.Secrets, LegacyPrivilegeAction.Read)],
+            temporaryAccessStartTime: route == 0 ? start : null);
+        var modern = new ProjectPrivilegeChange(
+            [new(ProjectRoleSubject.Secrets, ProjectRoleAction.Read)], lifetime, Slug);
+        using var request = route switch
+        {
+            0 => IdentityPrivilegeChangeOperations.UpdateLegacyPrivilege(Selection(), Slug, legacy),
+            2 => IdentityPrivilegeChangeOperations.CreateTemporaryLegacyPrivilege(Selection(), legacy, lifetime),
+            3 => IdentityPrivilegeChangeOperations.CreateProjectPrivilege(Selection(), modern),
+            _ => IdentityPrivilegeChangeOperations.UpdateProjectPrivilege(Selection(), Id, modern)
+        };
+        var target = route < 3
+            ? IdentityPrivilegeChangeOperations.LegacyChangeTarget(Selection(), legacy,
+                route == 0 ? Slug : null, route == 0 ? null : lifetime)
+            : IdentityPrivilegeChangeOperations.ProjectChangeTarget(Selection(), modern, route == 4 ? Id : null);
+        var wire = new Wire(route);
+        using var transport = Transport(wire);
+        var client = new ManagementClient(transport);
+        var authority = Authority(client);
+        var receipt = client.CreateReceipt(request);
+        var result = await client.ExecuteAsync(request, authority, authority.IssueGrant(Operation(route), target), receipt);
+        await Assert.That(result.Status).IsEqualTo(SecretStatus.Success);
+        await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.Applied);
+        var validity = route == 0 ? wire.LastBody!["privilegeDetails"]! :
+            route == 2 ? wire.LastBody! : wire.LastBody!["type"]!;
+        string serialized = validity["temporaryAccessStartTime"]!.GetValue<string>();
+        await Assert.That(DateTimeOffset.Parse(serialized, CultureInfo.InvariantCulture)).IsEqualTo(instant);
+        await Assert.That(serialized).IsEqualTo("2026-10-09T12:00:00.1234567Z");
+    }
 
     [Test]
     [Arguments(0)]

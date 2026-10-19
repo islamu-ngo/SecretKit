@@ -148,12 +148,15 @@ public sealed class InventorySelectorVariantTests
     }
 
     [Test]
-    public async Task ForeignOrganizationGroupEchoFailsClosed()
+    public async Task ParentOwnedOrganizationGroupInventoryPreservesOwner()
     {
         using var request = MembershipOperations.ListOrganizationGroups(OrgId, limit: 1);
         var result = await Execute(request, MembershipOperations.OrganizationGroupListTarget(OrgId, limit: 1),
             GroupResponse(ForeignId), "/api/v1/organizations/memberships/groups", "?offset=0&limit=1");
-        await Assert.That(result.Status).IsEqualTo(SecretStatus.Invalid);
+        await Assert.That(result.Status).IsEqualTo(SecretStatus.Success);
+        await Assert.That(request.Target.OrganizationId).IsEqualTo(OrgId);
+        await Assert.That(result.Value.Items.Single().PrincipalId).IsEqualTo(GroupId);
+        await Assert.That(result.Value.Items.Single().Group!.OrganizationId.Value).IsEqualTo(ForeignId);
     }
 
     [Test]

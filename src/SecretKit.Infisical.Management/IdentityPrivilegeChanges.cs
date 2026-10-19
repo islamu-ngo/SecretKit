@@ -109,7 +109,7 @@ public sealed class PrivilegeLifetime
         {
             writer.WriteString("temporaryMode", "relative");
             writer.WriteString("temporaryRange", _range);
-            writer.WriteString("temporaryAccessStartTime", _start!.Value);
+            writer.WriteString("temporaryAccessStartTime", _start!.Value.UtcDateTime.ToString("O", CultureInfo.InvariantCulture));
         }
     }
     public override string ToString() => "[PrivilegeLifetime]";
@@ -161,7 +161,7 @@ public sealed class LegacyPrivilegeChange
         if (_temporary is { } temporary) writer.WriteBoolean("isTemporary", temporary);
         if (_mode is not null) writer.WriteString("temporaryMode", "relative");
         if (_range is not null) writer.WriteString("temporaryRange", _range);
-        if (_start is { } start) writer.WriteString("temporaryAccessStartTime", start);
+        if (_start is { } start) writer.WriteString("temporaryAccessStartTime", start.UtcDateTime.ToString("O", CultureInfo.InvariantCulture));
     }
     public override string ToString() => "[LegacyPrivilegeChange]";
 }

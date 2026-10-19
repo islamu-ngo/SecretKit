@@ -35,7 +35,8 @@ public sealed class RotationProgressTests
             AllowAutoRedirect = false,
             UseCookies = false,
             ActivityHeadersPropagator = null
-        }) { Timeout = Timeout.InfiniteTimeSpan })
+        })
+        { Timeout = Timeout.InfiniteTimeSpan })
         {
             byte[] body = JsonSerializer.SerializeToUtf8Bytes(new
             {

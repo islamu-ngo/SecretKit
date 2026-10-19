@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using SecretKit.Core;
 using SecretKit.Infisical.Management;
+using SecretKit.TestFixtures;
 
 namespace SecretKit.Infisical.Conformance.Tests;
 
@@ -114,23 +115,20 @@ public sealed class IdentitySetupTests
                 scenario);
         if (scenario == OwnedConformanceScenario.InstalledWorkflows)
         {
+            var candidate = PackageCandidate.FromEnvironment(root);
             string fixture = Path.Combine(root, "tests", "fixtures", "SecretKit.PackageConsumer");
             string outputs = Path.Combine(root, "artifacts", "package-consumers", Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(outputs);
-            string intermediate = Path.Combine(outputs, "obj") + Path.DirectorySeparatorChar;
-            string binary = Path.Combine(outputs, "bin") + Path.DirectorySeparatorChar;
-            string[] properties =
-            [
-                $"-p:RestorePackagesPath={Path.Combine(outputs, "packages")}",
-                $"-p:BaseIntermediateOutputPath={intermediate}",
-                $"-p:MSBuildProjectExtensionsPath={intermediate}",
-                $"-p:BaseOutputPath={binary}"
-            ];
+            var installation = candidate.PrepareConsumer(outputs);
+            string intermediate = installation.Intermediate;
+            string binary = installation.Binary;
+            string[] properties = installation.Properties;
             var restore = await OwnedProcess.RunAsync("dotnet",
                 ["restore", Path.Combine(fixture, "SecretKit.PackageConsumer.csproj"),
-                    "--configfile", Path.Combine(fixture, "NuGet.Config"), .. properties], root,
+                    "--configfile", installation.Configuration, .. properties], root,
                 cancellationToken: deadline.Token);
             if (restore.ExitCode != 0) throw new InvalidOperationException("Installed fixture restore failed.");
+            candidate.VerifyRestored(Path.Combine(intermediate, "project.assets.json"), installation.Packages);
             var build = await OwnedProcess.RunAsync("dotnet",
                 ["build", Path.Combine(fixture, "SecretKit.PackageConsumer.csproj"), "--no-restore",
                     "--configuration", "Release", .. properties], root, cancellationToken: deadline.Token);

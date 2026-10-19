@@ -23,6 +23,7 @@ public sealed class MembershipAuditWitnessTests
     [Arguments("org-get")]
     [Arguments("org-update")]
     [Arguments("org-add")]
+    [Arguments("org-list")]
     [Arguments("project-list")]
     [Arguments("project-delete")]
     [Arguments("project-add")]
@@ -55,6 +56,13 @@ public sealed class MembershipAuditWitnessTests
     [Arguments("org-get", "groupMembership.createdAt", "malformed", "field-08874")]
     [Arguments("org-get", "groupMembership.group", "missing", "field-08879")]
     [Arguments("org-get", "groupMembership.group", "malformed", "field-08879")]
+    [Arguments("org-get", "groupMembership.group.orgId", "malformed", "field-08882")]
+    [Arguments("org-update", "groupMembership.group.orgId", "malformed", "field-08882")]
+    [Arguments("org-add", "groupMembership.group.orgId", "malformed", "field-08882")]
+    [Arguments("org-list", "groupMemberships[].group.orgId", "malformed", "field-08882")]
+    [Arguments("org-list", "groupMemberships[].createdAt", "malformed", "field-08874")]
+    [Arguments("org-list", "groupMemberships[].roles", "missing", "field-08884")]
+    [Arguments("org-list", "groupMemberships[].group.name", "malformed", "field-08881")]
     [Arguments("org-get", "groupMembership.group.id", "missing", "field-08880")]
     [Arguments("org-get", "groupMembership.group.id", "malformed", "field-08880")]
     [Arguments("org-get", "groupMembership.group.name", "missing", "field-08881")]
@@ -246,13 +254,12 @@ public sealed class MembershipAuditWitnessTests
     [Arguments("org-delete", "groupMembership.orgId", "field-08877")]
     [Arguments("org-get", "groupMembership.groupId", "field-08875")]
     [Arguments("org-get", "groupMembership.group.id", "field-08880")]
-    [Arguments("org-get", "groupMembership.group.orgId", "field-08882")]
     [Arguments("org-update", "groupMembership.groupId", "field-08875")]
     [Arguments("org-update", "groupMembership.group.id", "field-08880")]
-    [Arguments("org-update", "groupMembership.group.orgId", "field-08882")]
     [Arguments("org-add", "groupMembership.groupId", "field-08875")]
     [Arguments("org-add", "groupMembership.group.id", "field-08880")]
-    [Arguments("org-add", "groupMembership.group.orgId", "field-08882")]
+    [Arguments("org-list", "groupMemberships[].group.id", "field-08880")]
+    [Arguments("org-list", "groupMemberships[].groupId", "field-08875")]
     [Arguments("project-list", "groupMemberships[].groupId", "field-08855")]
     [Arguments("project-list", "groupMemberships[].group.id", "field-08851")]
     [Arguments("project-list", "groupMemberships[].group.orgId", "field-08853")]
@@ -273,6 +280,31 @@ public sealed class MembershipAuditWitnessTests
         JsonNode body = Fixture(route);
         ChangeField(body, field, false, JsonValue.Create(Foreign));
         await VerifyResponse(route, body.ToJsonString(), SecretStatus.Invalid);
+    }
+
+    [Test]
+    [Arguments("org-get")]
+    [Arguments("org-add")]
+    [Arguments("org-update")]
+    [Arguments("org-list")]
+    public async Task OrganizationGroupTargetCannotReuseAnotherOrganizationGrant(string route)
+    {
+        if (route == "org-list")
+        {
+            using var request = MembershipOperations.ListOrganizationGroups(Foreign);
+            await Execute(request, MembershipOperations.OrganizationGroupListTarget(Org),
+                Fixture(route).ToJsonString(), SecretStatus.Denied);
+            return;
+        }
+        using var detail = route switch
+        {
+            "org-get" => MembershipOperations.GetOrganizationGroup(Foreign, Group),
+            "org-add" => MembershipOperations.AddOrganizationGroup(Foreign, Group, [new("viewer")]),
+            _ => MembershipOperations.UpdateOrganizationGroupRoles(Foreign, Group, [new("viewer")])
+        };
+        var approved = route == "org-get" ? new ManagementTarget(Org, resourceId: Group)
+            : MembershipOperations.RoleChangeTarget(Org, null, Group, new MembershipRole[] { new("viewer") });
+        await Execute(detail, approved, Fixture(route).ToJsonString(), SecretStatus.Denied);
     }
 
     // I03: same coordinates, one body choice at a time, both approval directions.
@@ -386,8 +418,13 @@ public sealed class MembershipAuditWitnessTests
                 ["isTemporary"] = false
             });
         }
-        return route == "project-list" ? new JsonObject { ["groupMemberships"] = new JsonArray(row) }
-            : new JsonObject { [identity ? "identityMembership" : "groupMembership"] = row };
+        if (route is "project-list" or "org-list")
+        {
+            var result = new JsonObject { ["groupMemberships"] = new JsonArray(row) };
+            if (route == "org-list") result["totalCount"] = 1;
+            return result;
+        }
+        return new JsonObject { [identity ? "identityMembership" : "groupMembership"] = row };
     }
 
     private static void ChangeField(JsonNode root, string path, bool remove, JsonNode? replacement)
@@ -407,6 +444,12 @@ public sealed class MembershipAuditWitnessTests
 
     private static async Task VerifyResponse(string route, string body, SecretStatus expected)
     {
+        if (route == "org-list")
+        {
+            using var list = MembershipOperations.ListOrganizationGroups(Org);
+            await Execute(list, MembershipOperations.OrganizationGroupListTarget(Org), body, expected);
+            return;
+        }
         if (route == "project-list")
         {
             using var list = MembershipOperations.ListProjectGroups(Org, Project);

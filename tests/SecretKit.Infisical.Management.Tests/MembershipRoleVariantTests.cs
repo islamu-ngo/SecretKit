@@ -13,6 +13,36 @@ public sealed class MembershipRoleVariantTests
     private const string Identity = "20000000-0000-4000-8000-000000000002";
 
     [Test]
+    [Arguments("create-identity", 0)]
+    [Arguments("create-identity", 330)]
+    [Arguments("add-identity", 0)]
+    [Arguments("add-identity", 330)]
+    [Arguments("add-group", 0)]
+    [Arguments("add-group", 330)]
+    [Arguments("update-identity", 0)]
+    [Arguments("update-identity", 330)]
+    [Arguments("update-group", 0)]
+    [Arguments("update-group", 330)]
+    [Arguments("add-org-group", 0)]
+    [Arguments("add-org-group", 330)]
+    [Arguments("update-org-group", 0)]
+    [Arguments("update-org-group", 330)]
+    [Arguments("update-user", 0)]
+    [Arguments("update-user", 330)]
+    public async Task RelativeAssignmentsWriteUtcZWithoutLosingFractionalTicks(string operation, int offsetMinutes)
+    {
+        var instant = new DateTimeOffset(2026, 10, 13, 12, 34, 56, TimeSpan.Zero).AddTicks(1234567);
+        var start = instant.ToOffset(TimeSpan.FromMinutes(offsetMinutes));
+        MembershipRole[] roles = [new("viewer", start, "1m")];
+        MembershipRole[] approved = [new("viewer", instant, "1m")];
+        var wire = await Run(operation, roles, approved, SecretStatus.Success);
+        using var body = JsonDocument.Parse(wire.Body!);
+        var timestamp = body.RootElement.GetProperty("roles")[0].GetProperty("temporaryAccessStartTime");
+        await Assert.That(timestamp.GetString()).IsEqualTo("2026-10-13T12:34:56.1234567Z");
+        await Assert.That(timestamp.GetDateTimeOffset().UtcTicks).IsEqualTo(instant.UtcTicks);
+    }
+
+    [Test]
     [Arguments("create-identity")]
     [Arguments("add-identity")]
     [Arguments("add-group")]

@@ -243,6 +243,52 @@ public sealed class MembershipMetadataVariantTests
     }
 
     [Test]
+    [Arguments("org-get", true)]
+    [Arguments("org-get", false)]
+    [Arguments("org-add", true)]
+    [Arguments("org-add", false)]
+    [Arguments("org-update", true)]
+    [Arguments("org-update", false)]
+    [Arguments("org-list", true)]
+    [Arguments("org-list", false)]
+    public async Task OrganizationGroupProjectsOptionalOwnerRatherThanTargetOrganization(string route, bool includesOwner)
+    {
+        const string owner = "90000000-0000-4000-8000-000000000009";
+        var group = Group();
+        if (includesOwner) group["orgId"] = owner;
+        else group.Remove("orgId");
+        var row = GroupMembership(group);
+        row.Remove("projectId");
+        MembershipSummary returned;
+        if (route == "org-list")
+        {
+            using var request = MembershipOperations.ListOrganizationGroups(Org);
+            var result = await Execute(request, JsonSerializer.Serialize(new { groupMemberships = new[] { row }, totalCount = 1 }));
+            await Assert.That(result.Status).IsEqualTo(SecretStatus.Success);
+            returned = result.Value.Items.Single();
+        }
+        else
+        {
+            using var request = route switch
+            {
+                "org-get" => MembershipOperations.GetOrganizationGroup(Org, GroupId),
+                "org-add" => MembershipOperations.AddOrganizationGroup(Org, GroupId, [new("viewer")]),
+                _ => MembershipOperations.UpdateOrganizationGroupRoles(Org, GroupId, [new("viewer")])
+            };
+            var result = await Execute(request, JsonSerializer.Serialize(new { groupMembership = row }));
+            await Assert.That(result.Status).IsEqualTo(SecretStatus.Success);
+            returned = result.Value;
+        }
+        await Assert.That(returned.PrincipalId).IsEqualTo(GroupId);
+        await Assert.That(returned.Group!.Id).IsEqualTo(GroupId);
+        await Assert.That(returned.Group.OrganizationId.IsPresent).IsEqualTo(includesOwner);
+        if (includesOwner) await Assert.That(returned.Group.OrganizationId.Value).IsEqualTo(owner);
+        await Assert.That(returned.Roles.Value.Single().Role).IsEqualTo("viewer");
+        await Assert.That(returned.CreatedAt.Value).IsEqualTo(Time);
+        await Assert.That(returned.UpdatedAt.Value).IsEqualTo(Time);
+    }
+
+    [Test]
     [Arguments(false)]
     [Arguments(true)]
     public async Task GroupInventoryIncludesKnownMetadataAndEmptyRoles(bool organization)

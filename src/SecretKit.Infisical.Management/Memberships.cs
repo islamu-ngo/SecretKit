@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using SecretKit.Core;
@@ -72,7 +73,7 @@ public sealed class MembershipRole
             if (role.IsTemporary is { } temporary) writer.WriteBoolean("isTemporary", temporary);
             if (role.StartsAt is { } start)
             {
-                writer.WriteString("temporaryAccessStartTime", start);
+                writer.WriteString("temporaryAccessStartTime", start.UtcDateTime.ToString("O", CultureInfo.InvariantCulture));
                 writer.WriteString("temporaryMode", "relative");
                 writer.WriteString("temporaryRange", role.RelativeDuration);
             }
@@ -284,7 +285,9 @@ public static class MembershipOperations
     {
         JsonElement group = ManagementJson.Object(value, "group");
         string? returnedOrg = ManagementJson.Optional(group, "orgId");
-        if (returnedOrg is not null && returnedOrg != org) throw new ManagementContractException(SecretStatus.Invalid);
+        // Organization membership details report the group's owner, which may be a parent organization.
+        if (project is not null && returnedOrg is not null && returnedOrg != org)
+            throw new ManagementContractException(SecretStatus.Invalid);
         ManagementJson.RequireEqual(group, "id", ManagementJson.Required(value, "groupId"));
         return new(value, "groupId", groupId, project is null ? null : "projectId", project, groupDetails: true);
     }
