@@ -13,6 +13,12 @@ using SecretKit.Infisical;
 using SecretKit.Samples.ProviderAssessment;
 using SecretKit.Samples.RuntimeConfiguration;
 
+if (args is ["native", var nativeProvider, var nativeOutput])
+{
+    Environment.ExitCode = await NativeProgram.RunAsync(nativeProvider, nativeOutput);
+    return;
+}
+
 if (args is ["live-infisical"])
 {
     try { await InstalledInfisical.RunAsync(); }

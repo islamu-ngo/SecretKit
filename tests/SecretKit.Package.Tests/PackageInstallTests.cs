@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.IO.Compression;
 using System.Text.Json;
 using System.Xml.Linq;
+using SecretKit.TestFixtures;
 
 namespace SecretKit.Package.Tests;
 
@@ -10,19 +11,24 @@ public sealed class PackageInstallTests
     [Test]
     public async Task MinimalFamilyInstallsAndRunsWithoutProjectReferencesOrApplicationFrameworks()
     {
+        DateTimeOffset startedAt = DateTimeOffset.UtcNow;
+        string? sourceCommit = null;
         string root = Path.GetFullPath("../../../../../", AppContext.BaseDirectory);
-        string packages = Path.Combine(root, "artifacts", "packages");
+        var candidate = PackageCandidate.FromEnvironment(root);
         string fixture = Path.Combine(root, "tests", "fixtures", "SecretKit.PackageConsumer");
         string outputs = Path.Combine(root, "artifacts", "package-consumers", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(outputs);
-        foreach (string package in new[] { "SecretKit.Core", "SecretKit.Infisical", "SecretKit.AzureKeyVault", "SecretKit.Extensions.Configuration", "SecretKit.Extensions.Hosting", "SecretKit.Infisical.Management", "SecretKit.AzureKeyVault.Management" })
+        foreach (string package in PackageCandidate.PackageIds)
         {
-            using ZipArchive archive = ZipFile.OpenRead(Path.Combine(packages, $"{package}.0.1.0-preview.1.nupkg"));
+            using ZipArchive archive = ZipFile.OpenRead(candidate.ArchivePath(package));
             await Assert.That(archive.GetEntry("README.md") is not null).IsTrue();
             await Assert.That(archive.GetEntry("THIRD-PARTY-NOTICES.md") is not null).IsTrue();
             using Stream manifest = archive.GetEntry($"{package}.nuspec")!.Open();
             XDocument metadata = XDocument.Load(manifest);
             XNamespace ns = metadata.Root!.Name.Namespace;
+            string commit = metadata.Descendants(ns + "repository").Single().Attribute("commit")!.Value;
+            sourceCommit ??= commit;
+            await Assert.That(commit).IsEqualTo(sourceCommit);
             await Assert.That(metadata.Root.Element(ns + "metadata")!.Element(ns + "license")!.Value).IsEqualTo("MIT");
             if (package == "SecretKit.Core")
             {
@@ -30,17 +36,13 @@ public sealed class PackageInstallTests
             }
         }
 
-        string intermediate = Path.Combine(outputs, "obj") + Path.DirectorySeparatorChar;
-        string binary = Path.Combine(outputs, "bin") + Path.DirectorySeparatorChar;
-        string[] properties =
-        [
-            $"-p:RestorePackagesPath={Path.Combine(outputs, "packages")}",
-            $"-p:BaseIntermediateOutputPath={intermediate}",
-            $"-p:MSBuildProjectExtensionsPath={intermediate}",
-            $"-p:BaseOutputPath={binary}"
-        ];
+        var installation = candidate.PrepareConsumer(outputs);
+        string intermediate = installation.Intermediate;
+        string binary = installation.Binary;
+        string[] properties = installation.Properties;
         await Run(root, ["restore", Path.Combine(fixture, "SecretKit.PackageConsumer.csproj"),
-            "--configfile", Path.Combine(fixture, "NuGet.Config"), .. properties]);
+            "--configfile", installation.Configuration, .. properties]);
+        candidate.VerifyRestored(Path.Combine(intermediate, "project.assets.json"), installation.Packages);
         await Run(root, ["build", Path.Combine(fixture, "SecretKit.PackageConsumer.csproj"), "--no-restore",
             "--configuration", "Release", .. properties]);
         string result = await Run(root, [Path.Combine(binary, "Release", "net10.0", "SecretKit.PackageConsumer.dll")]);
@@ -62,6 +64,8 @@ public sealed class PackageInstallTests
             await Assert.That(framework.Value.GetProperty("frameworkReferences")
                 .EnumerateObject().Any(reference => reference.Name == "Microsoft.AspNetCore.App")).IsFalse();
         }
+        string sdkVersion = (await Run(root, ["--version"])).Trim();
+        await PlatformInstallTests.ObserveAsync(candidate, sourceCommit!, startedAt, 0, 0, sdkVersion);
     }
 
     private static async Task<string> Run(string root, string[] arguments)
@@ -99,8 +103,8 @@ public sealed class PackageInstallTests
         }
 
         string output = await standardOutput;
-        string error = await standardError;
-        await Assert.That(process.ExitCode).IsEqualTo(0).Because(output + error);
+        _ = await standardError;
+        await Assert.That(process.ExitCode).IsEqualTo(0).Because("Installed consumer process failed; protected diagnostics withheld.");
         return output;
     }
 }
