@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "family": "SecretKit",
   "version": "0.1.0-preview.1",
   "sourceCommit": "",

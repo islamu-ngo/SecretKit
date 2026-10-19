@@ -8,6 +8,7 @@ namespace SecretKit.Release;
 public sealed class NativeFeed(string certificateSha256, string owner, string? apiKey = null) : IPackageFeed
 {
     internal Func<HttpClient> ClientFactory { get; init; } = CreateClient;
+    internal Action? AuthorizePush { get; init; }
 
     public async Task<byte[]?> DownloadAsync(string id, string version, CancellationToken cancellationToken)
     {
@@ -66,6 +67,8 @@ public sealed class NativeFeed(string certificateSha256, string owner, string? a
         content.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
         body.Add(content, "package", id + ".nupkg");
         request.Content = body;
+        Guard.Require(AuthorizePush is not null, "mutation-authorization-required");
+        AuthorizePush!();
         using HttpResponseMessage response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
         return response.StatusCode is HttpStatusCode.Created or HttpStatusCode.Accepted;
     }

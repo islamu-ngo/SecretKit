@@ -6,6 +6,85 @@ namespace SecretKit.Release.Tests;
 public sealed class NativeFeedTests
 {
     [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task ExpiryDuringNativeObservationCannotReachPut(bool originalExpires)
+    {
+        using var bundle = new TestBundle();
+        DateTimeOffset now = new(2026, 10, 12, 12, 0, 0, TimeSpan.Zero);
+        var clock = new Clock { Now = now };
+        VerifiedRelease release = bundle.Verify();
+        using var journal = new Journal(bundle.JournalPath, release);
+        journal.Save(journal.Head.Packages);
+        Approval approval = bundle.Approval with { JournalHead = journal.HeadSha256 };
+        DateTimeOffset produced = now - (originalExpires ? TimeSpan.FromDays(90) : TimeSpan.FromDays(30))
+            + TimeSpan.FromTicks(1);
+        var original = new OriginalAdmission(1, approval.ManifestSha256, approval.EvidenceSha256,
+            approval.ArtifactId, approval.ArtifactDigest, produced, produced);
+        var action = new ActionAuthorization(1, "protected-mutation-action", release.ManifestSha256,
+            journal.HeadSha256, now - (originalExpires ? TimeSpan.FromHours(1) : TimeSpan.FromHours(24))
+                + TimeSpan.FromTicks(1), "independent-reviewer", true, true, false,
+            Manifest.PackageIds[0], release.Manifest.Packages[0].Sha256, "12-1", TestBundle.Commit);
+        var observed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var resume = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        int puts = 0;
+        using var transport = new Transport(async (request, token) =>
+        {
+            if (request.Method == HttpMethod.Get)
+            {
+                observed.TrySetResult();
+                await resume.Task.WaitAsync(token);
+                return new HttpResponseMessage(HttpStatusCode.NotFound);
+            }
+            puts++;
+            return new HttpResponseMessage(HttpStatusCode.Created);
+        });
+        NativeFeed feed = new(new string('a', 64), "test-owner", "synthetic-test-key")
+        {
+            ClientFactory = () => new HttpClient(transport, disposeHandler: false),
+            AuthorizePush = () => ReleaseAuthorization.Validate(AuthorizationPurpose.MutationAction,
+                original, approval, release.ManifestSha256, action.JournalHead, true, action, clock)
+        };
+        var publication = new Publication(release, journal, feed);
+        ReleaseAuthorization.Validate(AuthorizationPurpose.MutationAction, original, approval,
+            release.ManifestSha256, action.JournalHead, true, action, clock);
+        publication.Prepare(Manifest.PackageIds[0], "12-1");
+        string head = journal.HeadSha256;
+        Task dispatch = publication.DispatchAsync(Manifest.PackageIds[0], "12-1", CancellationToken.None);
+        await observed.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        clock.Now = now.AddTicks(2);
+        resume.TrySetResult();
+        await Assert.That(async () => await dispatch.WaitAsync(TimeSpan.FromSeconds(10))).Throws<ReleaseException>();
+        await Assert.That(puts).IsEqualTo(0);
+        await Assert.That(journal.HeadSha256).IsEqualTo(head);
+        await Assert.That(journal.Head.Packages[0].State).IsEqualTo("unknown");
+    }
+
+    private sealed class Clock : TimeProvider
+    {
+        public DateTimeOffset Now { get; set; }
+        public override DateTimeOffset GetUtcNow() => Now;
+    }
+
+    [Test]
+    public async Task PublishingKeyWithoutActionValidationCannotSend()
+    {
+        int requests = 0;
+        using var transport = new Transport((_, _) =>
+        {
+            requests++;
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.Created));
+        });
+        NativeFeed feed = new(new string('a', 64), "test-owner", "synthetic-test-key")
+        {
+            ClientFactory = () => new HttpClient(transport, disposeHandler: false)
+        };
+        await Assert.That(() => feed.PushAsync(Manifest.PackageIds[0], [1], CancellationToken.None))
+            .Throws<ReleaseException>();
+        await Assert.That(requests).IsEqualTo(0);
+    }
+
+    [Test]
     public async Task NativePutCarriesExactlyTheVerifiedArchiveAndRequiredProtocol()
     {
         byte[] package = ArchiveTests.Zip(("a", "test"));
@@ -78,7 +157,8 @@ public sealed class NativeFeedTests
 
     private static NativeFeed Feed(HttpMessageHandler handler) => new(new string('a', 64), "test-owner", "synthetic-test-key")
     {
-        ClientFactory = () => new HttpClient(handler, disposeHandler: false)
+        ClientFactory = () => new HttpClient(handler, disposeHandler: false),
+        AuthorizePush = () => { } // Transport-only fixture; expiry uses the real authorization above.
     };
 
     private sealed class Transport(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> send)

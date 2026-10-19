@@ -105,7 +105,7 @@ public static class PackageArchive
                     deflate.ReadExactly(content);
                     Guard.Require(deflate.ReadByte() == -1, "zip-expanded-length");
                 }
-                catch (IOException)
+                catch (Exception error) when (error is IOException or InvalidDataException)
                 {
                     throw new ReleaseException("zip-deflate");
                 }

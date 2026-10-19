@@ -2,12 +2,96 @@ using System.Buffers.Binary;
 using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.RegularExpressions;
+using System.Xml;
+using System.Xml.Linq;
 using SecretKit.Release;
 
 namespace SecretKit.Release.Tests;
 
 public sealed class ArchiveTests
 {
+    [Test]
+    public async Task FreshlyPackedSevenPackageFamilyPreservesOriginalsAndEmbeddedMetadata()
+    {
+        string[] ids =
+        [
+            "SecretKit.Core", "SecretKit.Infisical", "SecretKit.AzureKeyVault",
+            "SecretKit.Extensions.Configuration", "SecretKit.Extensions.Hosting",
+            "SecretKit.Infisical.Management", "SecretKit.AzureKeyVault.Management"
+        ];
+        DirectoryInfo? root = new(AppContext.BaseDirectory);
+        while (root is not null && !File.Exists(Path.Combine(root.FullName, "SecretKit.slnx")))
+        {
+            root = root.Parent;
+        }
+
+        if (root is null) throw new InvalidOperationException("Candidate repository missing.");
+        string directory = Path.GetFullPath(
+            Environment.GetEnvironmentVariable("SECRETKIT_CANDIDATE_DIRECTORY") ??
+            Path.Combine("artifacts", "packages"), root.FullName);
+        string? version = Environment.GetEnvironmentVariable("SECRETKIT_CANDIDATE_VERSION");
+        // Native pack includes symbols beside the originals. Never choose another
+        // directory, a latest version, or a subset of an ambiguous original family.
+        string[] paths = Directory.EnumerateFiles(directory, "*.nupkg").Take(8).ToArray();
+        await Assert.That(paths.Length).IsEqualTo(ids.Length);
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        string? source = null;
+        byte[] notices = await File.ReadAllBytesAsync(Path.Combine(root.FullName, "THIRD-PARTY-NOTICES.md"));
+        foreach (string path in paths)
+        {
+            byte[] original = Manifest.ReadFile(directory, Path.GetFileName(path), PackageArchive.MaximumBytes);
+            ArchiveContent archive = PackageArchive.Read(original);
+            await Assert.That(archive.HasSignature).IsFalse();
+            await Assert.That(archive.Original.SequenceEqual(original)).IsTrue();
+            await Assert.That(SHA256.HashData(archive.Original).SequenceEqual(SHA256.HashData(original))).IsTrue();
+            string[] manifests = archive.Files.Keys.Where(name =>
+                name.EndsWith(".nuspec", StringComparison.OrdinalIgnoreCase)).Take(2).ToArray();
+            await Assert.That(manifests.Length).IsEqualTo(1);
+            using var stream = new MemoryStream(archive.Files[manifests[0]]);
+            using XmlReader reader = XmlReader.Create(stream, new XmlReaderSettings
+            {
+                DtdProcessing = DtdProcessing.Prohibit,
+                XmlResolver = null,
+                MaxCharactersInDocument = 65536
+            });
+            XDocument document = XDocument.Load(reader);
+            XElement package = document.Root ?? throw new InvalidOperationException("Candidate nuspec missing.");
+            XNamespace ns = package.Name.Namespace;
+            await Assert.That(package.Name.LocalName).IsEqualTo("package");
+            XElement metadata = package.Elements(ns + "metadata").Single();
+            string id = metadata.Elements(ns + "id").Single().Value;
+            string declaredVersion = metadata.Elements(ns + "version").Single().Value;
+            await Assert.That(ids.Contains(id, StringComparer.Ordinal) && seen.Add(id)).IsTrue();
+            await Assert.That(manifests[0]).IsEqualTo(id + ".nuspec");
+            await Assert.That(Regex.IsMatch(declaredVersion,
+                @"\A(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})(-[a-z][a-z0-9-]*(\.(0|[1-9][0-9]{0,8}|[a-z][a-z0-9-]*))*)?\z",
+                RegexOptions.CultureInvariant | RegexOptions.NonBacktracking)).IsTrue();
+            version ??= declaredVersion;
+            await Assert.That(declaredVersion).IsEqualTo(version);
+            await Assert.That(Path.GetFileName(path)).IsEqualTo($"{id}.{version}.nupkg");
+            XElement repository = metadata.Elements(ns + "repository").Single();
+            await Assert.That(repository.Attribute("type")?.Value).IsEqualTo("git");
+            await Assert.That(repository.Attribute("url")?.Value).IsEqualTo("https://github.com/islamu-ngo/SecretKit");
+            string commit = repository.Attribute("commit")?.Value ??
+                throw new InvalidOperationException("Candidate source missing.");
+            await Assert.That(commit.Length == 40 && commit.All(character =>
+                character is >= '0' and <= '9' or >= 'a' and <= 'f')).IsTrue();
+            source ??= commit;
+            await Assert.That(commit).IsEqualTo(source);
+            XElement license = metadata.Elements(ns + "license").Single();
+            await Assert.That(license.Value).IsEqualTo("MIT");
+            await Assert.That(license.Attribute("type")?.Value).IsEqualTo("expression");
+            string readmePath = metadata.Elements(ns + "readme").Single().Value;
+            await Assert.That(archive.Files[readmePath].Length > 0).IsTrue();
+            await Assert.That(archive.Files["README.md"].Length > 0).IsTrue();
+            await Assert.That(archive.Files["THIRD-PARTY-NOTICES.md"].SequenceEqual(notices)).IsTrue();
+            await Assert.That(archive.Files.ContainsKey($"lib/net10.0/{id}.dll")).IsTrue();
+        }
+
+        await Assert.That(seen.SetEquals(ids)).IsTrue();
+    }
+
     [Test]
     public async Task UnsignedArchiveIsPreservedByteForByte()
     {
@@ -75,6 +159,10 @@ public sealed class ArchiveTests
     [Arguments("extra")]
     [Arguments("symlink")]
     [Arguments("local-name")]
+    [Arguments("descriptor")]
+    [Arguments("local-extra")]
+    [Arguments("expanded-size")]
+    [Arguments("compressed-size")]
     public async Task CorruptAndUnsupportedLayoutsFailClosed(string fault)
     {
         byte[] bytes = Zip(("a.txt", "data"));
@@ -92,6 +180,79 @@ public sealed class ArchiveTests
             case "extra": bytes[central + 30] = 1; break;
             case "symlink": BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(central + 38), 0xa0000000); break;
             case "local-name": bytes[30] = (byte)'b'; break;
+            case "descriptor": bytes[central + 8] = 8; bytes[6] = 8; break;
+            case "local-extra": bytes[28] = 1; break;
+            case "expanded-size":
+                BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(central + 24), 128 * 1024 * 1024 + 1);
+                break;
+            case "compressed-size":
+                BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(central + 20), PackageArchive.MaximumBytes);
+                BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(central + 24), PackageArchive.MaximumBytes);
+                BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(18), PackageArchive.MaximumBytes);
+                BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(22), PackageArchive.MaximumBytes);
+                break;
+        }
+
+        await Assert.That(() => PackageArchive.Read(bytes)).Throws<ReleaseException>();
+    }
+
+    [Test]
+    [Arguments("crc")]
+    [Arguments("truncated-content")]
+    [Arguments("overlong-content")]
+    [Arguments("invalid-deflate")]
+    public async Task DeflatedContentStillRequiresExactLengthAndCrc(string fault)
+    {
+        using var stream = new MemoryStream();
+        using (var archive = new ZipArchive(stream, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            ZipArchiveEntry entry = archive.CreateEntry("a.txt", CompressionLevel.Optimal);
+            entry.ExternalAttributes = 0;
+            using Stream output = entry.Open();
+            output.Write(Encoding.ASCII.GetBytes(new string('a', 1024)));
+        }
+
+        byte[] bytes = stream.ToArray();
+        int central = (int)BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(bytes.Length - 6));
+        await Assert.That(BinaryPrimitives.ReadUInt16LittleEndian(bytes.AsSpan(central + 10))).IsEqualTo((ushort)8);
+        await Assert.That(PackageArchive.Read(bytes).Files["a.txt"].Length).IsEqualTo(1024);
+        switch (fault)
+        {
+            case "crc":
+                bytes[14] ^= 1;
+                bytes[central + 16] ^= 1;
+                break;
+            case "truncated-content":
+            case "overlong-content":
+                uint length = fault == "truncated-content" ? 1025u : 1023u;
+                BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(22), length);
+                BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(central + 24), length);
+                break;
+            case "invalid-deflate": bytes[35] = 7; break; // Reserved DEFLATE block type.
+        }
+
+        await Assert.That(() => PackageArchive.Read(bytes)).Throws<ReleaseException>();
+    }
+
+    [Test]
+    [Arguments("empty")]
+    [Arguments("deflated")]
+    [Arguments("utf8-flag")]
+    public async Task SignatureRestrictionsRemainIndependentOfOrdinaryDeflateSupport(string fault)
+    {
+        byte[] bytes = Zip(("a.txt", "data"), (".signature.p7s", fault == "empty" ? "" : "signature"));
+        int central = (int)BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(bytes.Length - 6));
+        int signatureCentral = central + 46 + 5;
+        int signatureLocal = (int)BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(signatureCentral + 42));
+        if (fault == "deflated")
+        {
+            BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(signatureLocal + 8), 8);
+            BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(signatureCentral + 10), 8);
+        }
+        else if (fault == "utf8-flag")
+        {
+            BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(signatureLocal + 6), 0x800);
+            BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(signatureCentral + 8), 0x800);
         }
 
         await Assert.That(() => PackageArchive.Read(bytes)).Throws<ReleaseException>();

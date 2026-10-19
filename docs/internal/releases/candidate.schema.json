@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Source-owned SecretKit candidate proposal",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "version", "publisher", "owner", "providerScopes"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "version": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[a-z][a-z0-9-]*(\\.(0|[1-9][0-9]*|[a-z][a-z0-9-]*))*)?$"
+    },
+    "publisher": { "$ref": "#/$defs/identity" },
+    "owner": { "$ref": "#/$defs/identity" },
+    "providerScopes": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["label", "provider", "deployment", "apiVersion", "runtimeIdentity", "observerIdentity", "setupIdentity", "deniedIdentity", "administrativeIdentity"],
+        "properties": {
+          "label": { "$ref": "#/$defs/label" },
+          "provider": { "enum": ["Infisical", "AzureKeyVault"] },
+          "deployment": { "$ref": "#/$defs/label" },
+          "apiVersion": { "$ref": "#/$defs/label" },
+          "runtimeIdentity": { "$ref": "#/$defs/label" },
+          "observerIdentity": { "$ref": "#/$defs/label" },
+          "setupIdentity": { "$ref": "#/$defs/label" },
+          "deniedIdentity": { "$ref": "#/$defs/label" },
+          "administrativeIdentity": { "$ref": "#/$defs/label" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "identity": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,80}$" },
+    "label": { "type": "string", "minLength": 1, "maxLength": 200, "pattern": "^[A-Za-z0-9._:-]+$" }
+  }
+}

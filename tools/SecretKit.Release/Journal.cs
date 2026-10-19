@@ -10,6 +10,7 @@ public sealed class Journal : IDisposable
     private readonly string directory;
     private readonly FileStream lease;
     public Checkpoint Head { get; private set; }
+    public Checkpoint? Previous { get; private set; }
     public string HeadSha256 { get; private set; }
 
     public Journal(string directory, VerifiedRelease release, string? approvedHead = null)
@@ -30,6 +31,7 @@ public sealed class Journal : IDisposable
                 byte[] bytes = Manifest.ReadFile(this.directory, Path.GetFileName(path), 1024 * 1024);
                 Checkpoint checkpoint = Manifest.Parse<Checkpoint>(bytes);
                 Validate(checkpoint, previous, previousHash, release);
+                Previous = previous;
                 previous = checkpoint;
                 previousHash = Manifest.Hash(bytes);
             }
@@ -58,6 +60,7 @@ public sealed class Journal : IDisposable
             output.Flush(flushToDisk: true);
         }
 
+        Previous = Head;
         Head = next;
         HeadSha256 = Manifest.Hash(bytes);
     }

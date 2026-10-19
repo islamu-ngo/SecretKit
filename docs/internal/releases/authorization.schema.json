@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Purpose-specific SecretKit release authorization",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "manifestSha256", "evidenceSha256", "artifactId", "artifactDigest", "admittedAt", "producerCompletedAt"],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "manifestSha256": { "$ref": "#/$defs/hash" },
+        "evidenceSha256": { "$ref": "#/$defs/hash" },
+        "artifactId": { "type": "integer", "minimum": 1 },
+        "artifactDigest": { "$ref": "#/$defs/hash" },
+        "admittedAt": { "type": "string", "format": "date-time" },
+        "producerCompletedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "kind", "manifestSha256", "journalHead", "approvedAt", "reviewer", "rightsConfirmed", "environmentConfirmed", "revoked", "packageId", "packageSha256", "executionAttempt", "workflowCommit"],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "kind": { "const": "protected-mutation-action" },
+        "manifestSha256": { "$ref": "#/$defs/hash" },
+        "journalHead": { "$ref": "#/$defs/hash" },
+        "approvedAt": { "type": "string", "format": "date-time" },
+        "reviewer": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "rightsConfirmed": { "const": true },
+        "environmentConfirmed": { "const": true },
+        "revoked": { "const": false },
+        "packageId": { "enum": ["SecretKit.Core", "SecretKit.Infisical", "SecretKit.AzureKeyVault", "SecretKit.Extensions.Configuration", "SecretKit.Extensions.Hosting", "SecretKit.Infisical.Management", "SecretKit.AzureKeyVault.Management"] },
+        "packageSha256": { "$ref": "#/$defs/hash" },
+        "executionAttempt": { "type": "string", "pattern": "^[1-9][0-9]*-[1-9][0-9]*$" },
+        "workflowCommit": { "type": "string", "pattern": "^[0-9a-f]{40}$" }
+      }
+    }
+  ],
+  "$defs": {
+    "hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  }
+}

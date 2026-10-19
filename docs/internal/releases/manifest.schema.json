@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "SecretKit publication evidence manifest",
-  "description": "Describes evidence only. Schema validity grants no publishing authority, signer trust, namespace rights, or conformance. Protected independent hash approval and native verification remain mandatory.",
+  "description": "Semantic release schema 2. Related serialized documents use the named $defs. Schema validity grants no authority. Independently fetched raw reports, exact job/run/artifact origins, source admission, and a protected approved evidence-index hash are mandatory verifier inputs outside the bundle. Schema 1 is rejected.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -22,7 +22,7 @@
   ],
   "properties": {
     "schemaVersion": {
-      "const": 1
+      "const": 2
     },
     "family": {
       "const": "SecretKit"
@@ -139,6 +139,212 @@
     }
   },
   "$defs": {
+    "hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "label": { "type": "string", "minLength": 1, "maxLength": 200, "pattern": "^[A-Za-z0-9._:-]+$" },
+    "identity": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,80}$" },
+    "platform": { "enum": ["linux-x64-net10.0", "windows-x64-net10.0"] },
+    "reportPlatform": { "enum": ["linux-x64-net10.0", "windows-x64-net10.0", "none"] },
+    "gateKind": { "enum": ["native-operations", "live-conformance", "compatibility-install", "provenance", "notices", "namespace-rights", "publisher-rights", "oidc-registration", "protected-environment"] },
+    "package": { "$ref": "#/properties/packages/items" },
+    "providerScope": {
+      "type": "object", "additionalProperties": false,
+      "required": ["label", "provider", "deployment", "apiVersion", "runtimeIdentity", "observerIdentity", "setupIdentity", "deniedIdentity", "administrativeIdentity"],
+      "properties": {
+        "label": { "$ref": "#/$defs/label" },
+        "provider": { "enum": ["Infisical", "AzureKeyVault"] },
+        "deployment": { "$ref": "#/$defs/label" },
+        "apiVersion": { "$ref": "#/$defs/label" },
+        "runtimeIdentity": { "$ref": "#/$defs/label" },
+        "observerIdentity": { "$ref": "#/$defs/label" },
+        "setupIdentity": { "$ref": "#/$defs/label" },
+        "deniedIdentity": { "$ref": "#/$defs/label" },
+        "administrativeIdentity": { "$ref": "#/$defs/label" }
+      }
+    },
+    "nativeOperation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["provider", "operation", "variant", "scope", "depth"],
+      "properties": {
+        "provider": { "enum": ["Infisical", "AzureKeyVault"] },
+        "operation": { "$ref": "#/$defs/label" },
+        "variant": { "type": "string", "minLength": 1, "maxLength": 4096 },
+        "scope": { "$ref": "#/$defs/label" },
+        "depth": { "const": "complete" }
+      }
+    },
+    "scope": {
+      "type": "object", "additionalProperties": false,
+      "required": ["version", "sourceCommit", "packageIds", "nativeOperations", "platforms", "inventories", "policy", "providerScopes"],
+      "properties": {
+        "version": { "$ref": "#/properties/version" },
+        "sourceCommit": { "$ref": "#/properties/sourceCommit" },
+        "packageIds": { "type": "array", "minItems": 7, "maxItems": 7, "uniqueItems": true, "items": { "$ref": "#/properties/packages/items/properties/id" } },
+        "nativeOperations": { "type": "array", "minItems": 1, "maxItems": 65536, "uniqueItems": true, "items": { "$ref": "#/$defs/nativeOperation" } },
+        "platforms": { "type": "array", "minItems": 2, "maxItems": 2, "uniqueItems": true, "items": { "$ref": "#/$defs/platform" } },
+        "inventories": { "type": "array", "minItems": 2, "maxItems": 2, "uniqueItems": true, "items": { "$ref": "#/$defs/fileDigest" } },
+        "policy": { "const": "complete-live" },
+        "providerScopes": { "type": "array", "minItems": 2, "maxItems": 64, "uniqueItems": true, "items": { "$ref": "#/$defs/providerScope" } }
+      }
+    },
+    "gateEvidence": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "status", "version", "sourceCommit", "scopeSha256", "packageIds", "checks", "record"],
+      "properties": {
+        "kind": { "$ref": "#/$defs/gateKind" },
+        "status": { "const": "passed" },
+        "version": { "$ref": "#/properties/version" },
+        "sourceCommit": { "$ref": "#/properties/sourceCommit" },
+        "scopeSha256": { "$ref": "#/$defs/hash" },
+        "packageIds": { "$ref": "#/$defs/scope/properties/packageIds" },
+        "checks": { "type": "array", "minItems": 1, "maxItems": 65536, "uniqueItems": true, "items": { "type": "string", "maxLength": 13000 } },
+        "record": { "$ref": "#/$defs/fileDigest" }
+      }
+    },
+    "checkObservation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["key", "passed", "reasonCode"],
+      "properties": {
+        "key": { "type": "string", "minLength": 1, "maxLength": 13000 },
+        "passed": { "type": "boolean" },
+        "reasonCode": { "$ref": "#/$defs/label" }
+      }
+    },
+    "nativeCase": {
+      "type": "object", "additionalProperties": false,
+      "required": ["provider", "operation", "variant", "scope", "case", "passed", "effectObserved", "reasonCode"],
+      "properties": {
+        "provider": { "enum": ["Infisical", "AzureKeyVault"] },
+        "operation": { "$ref": "#/$defs/label" },
+        "variant": { "type": "string", "minLength": 1, "maxLength": 4096 },
+        "scope": { "$ref": "#/$defs/label" },
+        "case": { "$ref": "#/$defs/label" },
+        "passed": { "type": "boolean" },
+        "effectObserved": { "type": "boolean" },
+        "reasonCode": { "$ref": "#/$defs/label" }
+      }
+    },
+    "prerequisite": {
+      "type": "object", "additionalProperties": false,
+      "required": ["provider", "scope", "prerequisite", "confirmed"],
+      "properties": {
+        "provider": { "enum": ["Infisical", "AzureKeyVault"] },
+        "scope": { "$ref": "#/$defs/label" },
+        "prerequisite": { "$ref": "#/$defs/label" },
+        "confirmed": { "type": "boolean" }
+      }
+    },
+    "installation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["operatingSystem", "architecture", "framework", "processExitCode", "projectReferences", "isolatedCache", "packageSource"],
+      "properties": {
+        "operatingSystem": { "enum": ["linux", "windows"] },
+        "architecture": { "const": "x64" },
+        "framework": { "const": "net10.0" },
+        "processExitCode": { "const": 0 },
+        "projectReferences": { "const": 0 },
+        "isolatedCache": { "const": true },
+        "packageSource": { "const": "candidate-only" }
+      }
+    },
+    "machineReport": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schemaVersion", "purpose", "kind", "version", "sourceCommit", "runId", "runAttempt", "jobId", "platform", "environment", "scopeSha256", "inventories", "packages", "providerScopes", "startedAt", "completedAt", "discovered", "failed", "skipped", "exitCode", "checks", "nativeCases", "prerequisites", "installation"],
+      "properties": {
+        "schemaVersion": { "const": 2 },
+        "purpose": { "const": "release-observation" },
+        "kind": { "enum": ["native-operations", "live-conformance", "compatibility-install", "provenance", "notices"] },
+        "version": { "$ref": "#/properties/version" },
+        "sourceCommit": { "$ref": "#/properties/sourceCommit" },
+        "runId": { "type": "integer", "minimum": 1 },
+        "runAttempt": { "type": "integer", "minimum": 1 },
+        "jobId": { "type": "integer", "minimum": 1 },
+        "platform": { "$ref": "#/$defs/reportPlatform" },
+        "environment": { "enum": ["release-evidence", "none"] },
+        "scopeSha256": { "$ref": "#/$defs/hash" },
+        "inventories": { "$ref": "#/$defs/scope/properties/inventories" },
+        "packages": { "$ref": "#/properties/packages" },
+        "providerScopes": { "$ref": "#/$defs/scope/properties/providerScopes" },
+        "startedAt": { "type": "string", "format": "date-time" },
+        "completedAt": { "type": "string", "format": "date-time" },
+        "discovered": { "type": "integer", "minimum": 0, "maximum": 131072 },
+        "failed": { "type": "integer", "minimum": 0 },
+        "skipped": { "type": "integer", "minimum": 0 },
+        "exitCode": { "type": "integer" },
+        "checks": { "type": "array", "maxItems": 65536, "items": { "$ref": "#/$defs/checkObservation" } },
+        "nativeCases": { "type": "array", "maxItems": 65536, "items": { "$ref": "#/$defs/nativeCase" } },
+        "prerequisites": { "type": "array", "maxItems": 65536, "items": { "$ref": "#/$defs/prerequisite" } },
+        "installation": { "oneOf": [{ "$ref": "#/$defs/installation" }, { "type": "null" }] }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "kind": { "enum": ["native-operations", "live-conformance", "compatibility-install"] } }, "required": ["kind"] },
+          "then": { "properties": { "installation": { "$ref": "#/$defs/installation" }, "platform": { "$ref": "#/$defs/platform" } } },
+          "else": { "properties": { "installation": { "type": "null" } } }
+        },
+        {
+          "if": { "properties": { "platform": { "const": "linux-x64-net10.0" } }, "required": ["platform"] },
+          "then": { "properties": { "installation": { "properties": { "operatingSystem": { "const": "linux" } } } } }
+        },
+        {
+          "if": { "properties": { "platform": { "const": "windows-x64-net10.0" } }, "required": ["platform"] },
+          "then": { "properties": { "installation": { "properties": { "operatingSystem": { "const": "windows" } } } } }
+        }
+      ]
+    },
+    "attestation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "subject", "issuer", "reviewer", "observedAt", "evidenceLocator", "evidenceSha256", "checks"],
+      "properties": {
+        "kind": { "enum": ["namespace-rights", "publisher-rights", "oidc-registration", "protected-environment"] },
+        "subject": { "$ref": "#/$defs/identity" },
+        "issuer": { "$ref": "#/$defs/identity" },
+        "reviewer": { "$ref": "#/$defs/identity" },
+        "observedAt": { "type": "string", "format": "date-time" },
+        "evidenceLocator": { "$ref": "#/$defs/label" },
+        "evidenceSha256": { "$ref": "#/$defs/hash" },
+        "checks": { "type": "array", "minItems": 1, "maxItems": 8, "items": { "$ref": "#/$defs/checkObservation" } }
+      }
+    },
+    "semanticGateRecord": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schemaVersion", "reports", "attestation"],
+      "properties": {
+        "schemaVersion": { "const": 2 },
+        "reports": { "type": "array", "maxItems": 2, "items": { "$ref": "#/$defs/machineReport" } },
+        "attestation": { "oneOf": [{ "$ref": "#/$defs/attestation" }, { "type": "null" }] }
+      }
+    },
+    "reportOrigin": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "platform", "jobId", "artifactId", "artifactDigest", "report", "environment", "environmentEvidence"],
+      "properties": {
+        "kind": { "$ref": "#/$defs/machineReport/properties/kind" },
+        "platform": { "$ref": "#/$defs/reportPlatform" },
+        "jobId": { "type": "integer", "minimum": 1 },
+        "artifactId": { "type": "integer", "minimum": 1 },
+        "artifactDigest": { "$ref": "#/$defs/hash" },
+        "report": { "$ref": "#/$defs/fileDigest" },
+        "environment": { "enum": ["release-evidence", "none"] },
+        "environmentEvidence": { "$ref": "#/$defs/label" }
+      }
+    },
+    "evidenceIndex": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schemaVersion", "kind", "repository", "sourceCommit", "version", "runId", "runAttempt", "reviewedAt", "inventories", "reports", "attestations"],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "kind": { "const": "independent-release-evidence" },
+        "repository": { "const": "islamu-ngo/SecretKit" },
+        "sourceCommit": { "$ref": "#/properties/sourceCommit" },
+        "version": { "$ref": "#/properties/version" },
+        "runId": { "type": "integer", "minimum": 1 },
+        "runAttempt": { "type": "integer", "minimum": 1 },
+        "reviewedAt": { "type": "string", "format": "date-time" },
+        "inventories": { "$ref": "#/$defs/scope/properties/inventories" },
+        "reports": { "type": "array", "minItems": 8, "maxItems": 8, "uniqueItems": true, "items": { "$ref": "#/$defs/reportOrigin" } },
+        "attestations": { "type": "array", "minItems": 4, "maxItems": 4, "uniqueItems": true, "items": { "$ref": "#/$defs/attestation" } }
+      }
+    },
     "fileDigest": {
       "type": "object",
       "additionalProperties": false,

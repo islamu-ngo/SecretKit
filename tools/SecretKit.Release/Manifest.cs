@@ -10,13 +10,17 @@ namespace SecretKit.Release;
 public sealed record FileDigest(string File, string Sha256);
 public sealed record PackageRecord(string Id, string File, string Sha256);
 public sealed record GateRecord(string Kind, string File, string Sha256);
-public sealed record NativeOperation(string Provider, string Operation, string Scope, string Depth)
+public sealed record NativeOperation(string Provider, string Operation, string Variant, string Scope, string Depth)
 {
     [JsonIgnore]
-    public string Key => $"{Provider}/{Operation}/{Scope}/{Depth}";
+    public string Key => $"{Provider}/{Operation}/{Uri.EscapeDataString(Variant)}/{Scope}/{Depth}";
 }
+public sealed record ProviderScope(string Label, string Provider, string Deployment, string ApiVersion,
+    string RuntimeIdentity, string ObserverIdentity, string SetupIdentity, string DeniedIdentity,
+    string AdministrativeIdentity);
 public sealed record ReleaseScope(string Version, string SourceCommit, string[] PackageIds,
-    NativeOperation[] NativeOperations, string[] Platforms, FileDigest[] Registries);
+    NativeOperation[] NativeOperations, string[] Platforms, FileDigest[] Inventories, string Policy,
+    ProviderScope[] ProviderScopes);
 public sealed record GateEvidence(string Kind, string Status, string Version, string SourceCommit,
     string ScopeSha256, string[] PackageIds, string[] Checks, FileDigest Record);
 public sealed record ReleaseManifest(int SchemaVersion, string Family, string Version, string SourceCommit,
@@ -24,7 +28,7 @@ public sealed record ReleaseManifest(int SchemaVersion, string Family, string Ve
     string Environment, string NoticesSha256, FileDigest Scope, PackageRecord[] Packages, GateRecord[] Gates);
 public sealed record Approval(string ManifestSha256, string SourceCommit, string Version, long SourceRunId,
     long ArtifactId, string ArtifactDigest, string ScopeSha256, string Publisher, string Owner,
-    string RepositoryCertificateSha256, string JournalHead);
+    string RepositoryCertificateSha256, string JournalHead, string EvidenceSha256);
 
 public sealed record VerifiedRelease(ReleaseManifest Manifest, string ManifestSha256,
     IReadOnlyDictionary<string, byte[]> Packages);
@@ -57,62 +61,98 @@ public static partial class Manifest
     public static string Hash(byte[] bytes) => Convert.ToHexStringLower(SHA256.HashData(bytes));
     public static bool IsHash(string value) => value is not null && HashPattern().IsMatch(value);
 
-    public static T Parse<T>(byte[] bytes)
+    public static T Parse<T>(byte[] bytes, int maximumBytes = 4 * 1024 * 1024)
     {
-        Guard.Require(bytes.Length is > 0 and <= 4 * 1024 * 1024, "json-size");
-        using JsonDocument document = JsonDocument.Parse(bytes, new JsonDocumentOptions { MaxDepth = 32 });
-        RejectDuplicateProperties(document.RootElement);
-        return JsonSerializer.Deserialize<T>(bytes, JsonOptions) ?? throw new ReleaseException("json-null");
+        Guard.Require(maximumBytes is > 0 and <= EvidenceLimits.RecordBytes &&
+            bytes.Length > 0 && bytes.Length <= maximumBytes, "json-size");
+        try
+        {
+            using JsonDocument document = JsonDocument.Parse(bytes, new JsonDocumentOptions { MaxDepth = 32 });
+            RejectDuplicateProperties(document.RootElement);
+            return JsonSerializer.Deserialize<T>(bytes, JsonOptions) ?? throw new ReleaseException("json-null");
+        }
+        catch (JsonException)
+        {
+            throw new ReleaseException("json-contract");
+        }
     }
 
-    public static VerifiedRelease Verify(string directory, Approval approval)
+    public static VerifiedRelease Verify(string directory, Approval approval, IndependentEvidence independent)
     {
         byte[] manifestBytes = ReadFile(directory, "manifest.json", 4 * 1024 * 1024);
+        ReleaseManifest manifest = Parse<ReleaseManifest>(manifestBytes);
+        Guard.Require(manifest.SchemaVersion == 2, "release-schema");
         Guard.Require(IsHash(approval.ManifestSha256) && Hash(manifestBytes) == approval.ManifestSha256,
             "manifest-approval");
-        ReleaseManifest manifest = Parse<ReleaseManifest>(manifestBytes);
-        Guard.Require(manifest.SchemaVersion == 1 && manifest.Family == "SecretKit" &&
-            VersionPattern().IsMatch(manifest.Version) && manifest.Version == approval.Version, "family-version");
-        Guard.Require(CommitPattern().IsMatch(manifest.SourceCommit) &&
-            manifest.SourceCommit == approval.SourceCommit && manifest.Repository == Repository, "source-approval");
-        Guard.Require(manifest.SourceRunId > 0 && manifest.SourceRunId == approval.SourceRunId &&
-            approval.ArtifactId > 0 &&
+        Guard.Require(manifest.Version == approval.Version, "family-version");
+        Guard.Require(manifest.SourceCommit == approval.SourceCommit, "source-approval");
+        Guard.Require(manifest.SourceRunId == approval.SourceRunId && approval.ArtifactId > 0 &&
             IsHash(approval.ArtifactDigest), "artifact-approval");
+        Guard.Require(manifest.Publisher == approval.Publisher && manifest.Owner == approval.Owner &&
+            IsHash(approval.RepositoryCertificateSha256), "publisher-approval");
+        Guard.Require(manifest.Scope.Sha256 == approval.ScopeSha256, "scope-approval");
+        Guard.Require(IsHash(approval.EvidenceSha256) && independent.IndexSha256 == approval.EvidenceSha256,
+            "independent-evidence-approval");
+        Program.VerifyArtifactMetadata(independent.Directory, approval);
+        return new(manifest, approval.ManifestSha256, VerifyContent(directory, manifest, independent, candidate: false));
+    }
+
+    // Content consistency only: this route cannot construct a VerifiedRelease,
+    // open a journal, assign the final artifact ID or grant publication authority.
+    public static void CheckCandidate(string directory, IndependentEvidence independent)
+    {
+        ReleaseManifest manifest = Parse<ReleaseManifest>(ReadFile(directory, "manifest.json", 4 * 1024 * 1024));
+        _ = VerifyContent(directory, manifest, independent, candidate: true);
+    }
+
+    private static IReadOnlyDictionary<string, byte[]> VerifyContent(string directory, ReleaseManifest manifest,
+        IndependentEvidence independent, bool candidate)
+    {
+        Guard.Require(manifest.SchemaVersion == 2, "release-schema");
+        Guard.Require(manifest.Family == "SecretKit" && VersionPattern().IsMatch(manifest.Version), "family-version");
+        Guard.Require(CommitPattern().IsMatch(manifest.SourceCommit) && manifest.Repository == Repository &&
+            manifest.SourceRunId > 0, "source-binding");
         Guard.Require(manifest.Environment == "release" && manifest.Prefix == "SecretKit." &&
             SafeIdentity(manifest.Publisher) && SafeIdentity(manifest.Owner) &&
-            manifest.Publisher == approval.Publisher && manifest.Owner == approval.Owner &&
-            IsHash(approval.RepositoryCertificateSha256), "publisher-approval");
-        Guard.Require(IsHash(manifest.NoticesSha256) && manifest.Scope.Sha256 == approval.ScopeSha256, "scope-approval");
+            IsHash(manifest.NoticesSha256), "publisher-binding");
+        Guard.Require(Path.GetFullPath(directory).TrimEnd(Path.DirectorySeparatorChar) !=
+            Path.GetFullPath(independent.Directory).TrimEnd(Path.DirectorySeparatorChar), "independent-evidence-directory");
         ExactSet(manifest.Packages.Select(p => p.Id), PackageIds, "package-family");
         ExactSet(manifest.Gates.Select(g => g.Kind), GateKinds, "gate-coverage");
         ReleaseScope scope = Parse<ReleaseScope>(ReadDigest(directory, manifest.Scope));
         Guard.Require(scope.Version == manifest.Version && scope.SourceCommit == manifest.SourceCommit, "scope-binding");
         ExactSet(scope.PackageIds, PackageIds, "scope-family");
-        Guard.Require(scope.Platforms.Length > 0 && scope.Platforms.All(SafeLabel), "platform-coverage");
-        Guard.Require(scope.NativeOperations.Length > 0 && scope.NativeOperations.All(o =>
-            o.Provider is "Infisical" or "AzureKeyVault" && SafeLabel(o.Operation) && SafeLabel(o.Scope) &&
-            o.Depth == "complete") && scope.NativeOperations.Select(o => o.Key).Distinct().Count() ==
-            scope.NativeOperations.Length &&
-            scope.NativeOperations.Select(o => o.Provider).Distinct().Count() == 2, "native-scope");
-        ExactSet(scope.Registries.Select(r => r.File),
-            ["infisical-operations.json", "azure-key-vault-operations.json"], "registry-coverage");
-        foreach (FileDigest registry in scope.Registries)
+        ExactSet(scope.Platforms, GateSemantics.Platforms, "platform-coverage");
+        Guard.Require(scope.Policy == "complete-live" && scope.ProviderScopes.Length is > 0 and <= 64 &&
+            scope.ProviderScopes.All(s => SafeLabel(s.Label) && s.Provider is "Infisical" or "AzureKeyVault" &&
+                SafeLabel(s.Deployment) && SafeLabel(s.ApiVersion) && ValidScopeIdentities(s)) &&
+            scope.ProviderScopes.Select(s => s.Label).Distinct().Count() == scope.ProviderScopes.Length, "provider-scope");
+        Guard.Require(scope.NativeOperations.Length is > 0 and <= 65536 &&
+            scope.NativeOperations.All(o => SafeLabel(o.Operation) && SafeLabel(o.Scope) &&
+                o.Depth == "complete" && scope.ProviderScopes.Any(s => s.Label == o.Scope && s.Provider == o.Provider)),
+            "native-scope");
+        ExactSet(scope.ProviderScopes.Select(s => s.Label),
+            scope.NativeOperations.Select(o => o.Scope).Distinct(), "unused-provider-scope");
+        ExactSet(scope.Inventories.Select(r => r.File), ["infisical.json", "azure-key-vault.json"], "inventory-coverage");
+        independent.Validate(manifest, scope, candidate);
+        var inventories = new List<AdmissionInventory>();
+        foreach (FileDigest inventoryFile in scope.Inventories)
         {
-            using JsonDocument document = JsonDocument.Parse(ReadDigest(directory, registry),
-                new JsonDocumentOptions { MaxDepth = 32 });
-            RejectDuplicateProperties(document.RootElement);
-            string provider = registry.File == "infisical-operations.json" ? "Infisical" : "AzureKeyVault";
-            Guard.Require(document.RootElement.GetProperty("provider").GetString() == provider, "registry-provider");
-            JsonElement[] rows = document.RootElement.GetProperty("operations").EnumerateArray().ToArray();
-            string[] allIds = rows.Select(row => row.GetProperty("id").GetString()!).ToArray();
-            Guard.Require(allIds.Length == allIds.Distinct(StringComparer.Ordinal).Count(), "registry-duplicate");
-            JsonElement[] admitted = rows.Where(row => row.GetProperty("admitted").GetBoolean()).ToArray();
-            Guard.Require(admitted.Length > 0 && admitted.All(row => row.GetProperty("implemented").GetBoolean() &&
-                row.GetProperty("liveVerified").GetBoolean() &&
-                (!row.TryGetProperty("fullOperationImplemented", out JsonElement full) || full.GetBoolean())),
-                "registry-incomplete");
-            ExactSet(scope.NativeOperations.Where(o => o.Provider == provider).Select(o => o.Operation).Distinct(),
-                admitted.Select(row => row.GetProperty("id").GetString()!), "registry-scope");
+            // Independent source-fetched bytes define admission, never the bundle.
+            _ = ReadDigest(directory, inventoryFile);
+            AdmissionInventory inventory = Parse<AdmissionInventory>(ReadDigest(independent.Directory, inventoryFile));
+            Admission.Validate(inventory, inventory.Operations.Select(o => o.Member).ToArray());
+            Guard.Require(inventory.Provider == (inventoryFile.File == "infisical.json" ? "Infisical" : "AzureKeyVault") &&
+                inventory.Operations.All(o => o.Contract == "implemented-subset" &&
+                    o.RequiredCases.Distinct().Count() == o.RequiredCases.Length &&
+                    o.Prerequisites.Distinct().Count() == o.Prerequisites.Length), "inventory-incomplete");
+            foreach (ProviderScope providerScope in scope.ProviderScopes.Where(s => s.Provider == inventory.Provider))
+                ExactSet(scope.NativeOperations.Where(o => o.Scope == providerScope.Label).Select(o => o.Key),
+                    inventory.Operations.SelectMany(o => o.Variants.Select(v =>
+                        new NativeOperation(inventory.Provider, o.Id, v, providerScope.Label, "complete").Key)),
+                    "inventory-scope");
+            Guard.Require(scope.ProviderScopes.Any(s => s.Provider == inventory.Provider), "inventory-provider");
+            inventories.Add(inventory);
         }
         foreach (GateRecord gate in manifest.Gates)
         {
@@ -134,7 +174,8 @@ public static partial class Manifest
                 _ => throw new ReleaseException("gate-kind")
             };
             ExactSet(evidence.Checks, expected, "gate-checks");
-            _ = ReadDigest(directory, evidence.Record);
+            GateSemantics.Validate(Parse<SemanticGateRecord>(ReadDigest(directory, evidence.Record), EvidenceLimits.RecordBytes),
+                evidence, manifest, scope, inventories, independent);
         }
 
         var packages = new Dictionary<string, byte[]>(StringComparer.Ordinal);
@@ -152,7 +193,7 @@ public static partial class Manifest
             .Where(path => path.EndsWith(".nupkg", StringComparison.OrdinalIgnoreCase) ||
                 path.EndsWith(".snupkg", StringComparison.OrdinalIgnoreCase))
             .Select(Path.GetFileName).Select(name => name!), manifest.Packages.Select(p => p.File), "artifact-family");
-        return new(manifest, approval.ManifestSha256, packages);
+        return packages;
     }
 
     public static byte[] ReadDigest(string directory, FileDigest file)
@@ -243,8 +284,15 @@ public static partial class Manifest
         }
     }
 
-    private static bool SafeIdentity(string value) => IdentityPattern().IsMatch(value);
-    private static bool SafeLabel(string value) => value.Length is > 0 and <= 200 &&
+    internal static bool SafeIdentity(string value) => IdentityPattern().IsMatch(value);
+    internal static bool ValidScopeIdentities(ProviderScope scope)
+    {
+        string[] identities = [scope.RuntimeIdentity, scope.ObserverIdentity, scope.SetupIdentity,
+            scope.DeniedIdentity, scope.AdministrativeIdentity];
+        return identities.All(SafeLabel) && identities.Distinct(StringComparer.Ordinal).Count() == 5;
+    }
+
+    internal static bool SafeLabel(string value) => value.Length is > 0 and <= 200 &&
         value.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '-' or '_' or ':');
     [GeneratedRegex("^[0-9a-f]{64}$", RegexOptions.CultureInvariant)]
     private static partial Regex HashPattern();

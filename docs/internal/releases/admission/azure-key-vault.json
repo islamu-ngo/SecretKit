@@ -1,0 +1,1512 @@
+{
+  "schemaVersion": 1,
+  "kind": "current-admission",
+  "provider": "AzureKeyVault",
+  "policy": "complete-live",
+  "sources": [
+    {
+      "file": "src/SecretKit.AzureKeyVault.Management/AuditDiagnostics.cs",
+      "sha256": "2ed2a9fcde491448620c1765685b2abcc027f7923a0bef4ee01923e00ee5b5b5"
+    },
+    {
+      "file": "src/SecretKit.AzureKeyVault.Management/ControlledTransport.cs",
+      "sha256": "678654fb0c94f35ee124117129475a18fbf67be8ae937f99dd18784d3330b991"
+    },
+    {
+      "file": "src/SecretKit.AzureKeyVault.Management/ManagementOperation.cs",
+      "sha256": "088977d59b3c506284d8955d842d9f328d9c645306cffb9f01c7d3d4f1b3a587"
+    },
+    {
+      "file": "src/SecretKit.AzureKeyVault.Management/NativeModels.cs",
+      "sha256": "864ee441d4f742149cfa364a8846ba088e3e9c3d9ec9f7d85cf28c463e134ddb"
+    },
+    {
+      "file": "src/SecretKit.AzureKeyVault.Management/NotificationAdministration.cs",
+      "sha256": "e92bfaef902d236a0f786b533bff3df944442e26f426f79335b26bd715cb44e7"
+    },
+    {
+      "file": "src/SecretKit.AzureKeyVault.Management/NotificationModels.cs",
+      "sha256": "110ad2686a07b701b6dfe4b36418aa7fd035a9e7e71f61e1ec27b07b3b41a401"
+    },
+    {
+      "file": "src/SecretKit.AzureKeyVault.Management/OperationSupport.cs",
+      "sha256": "ebdf6e6a1fd8a91bdbdd36f6883ba1847bb3f985a20b499d5caef47a154ff167"
+    },
+    {
+      "file": "src/SecretKit.AzureKeyVault.Management/RoleAdministration.cs",
+      "sha256": "7f00d8480cc4193d42926abedc30dfa33a1d0a4872304fcc22abfa6a6cc482ed"
+    },
+    {
+      "file": "src/SecretKit.AzureKeyVault.Management/Scopes.cs",
+      "sha256": "719fa2d70f58da530d51b81690609af7754040dc77eafca045ff817d158a0fae"
+    },
+    {
+      "file": "src/SecretKit.AzureKeyVault.Management/VaultAdministration.cs",
+      "sha256": "6e449c7c04fb39475ed64317c9e03eb8051435362d1382b52e220d697f74635d"
+    },
+    {
+      "file": "src/SecretKit.AzureKeyVault/AzureKeyVaultClient.cs",
+      "sha256": "7c99904b7e92d2be82689762f471b12250e62210b3f95d6088c5db753930524e"
+    },
+    {
+      "file": "src/SecretKit.AzureKeyVault/AzureNativeLifecycle.cs",
+      "sha256": "00d0c32b91fecd4a1fbba4d4039a45d388895b18c842e27b69e06476bf5fe005"
+    },
+    {
+      "file": "src/SecretKit.AzureKeyVault/AzureNativeModels.cs",
+      "sha256": "029106ba86c30737180a0f945975856575e7e6ca5a4e30557693dfa958e7ca6b"
+    },
+    {
+      "file": "src/SecretKit.AzureKeyVault/AzureSecretAddress.cs",
+      "sha256": "316ab95936ce57f76539ea4fff6b50e013db2fa659a38eeb8bce1ddc12cb18da"
+    },
+    {
+      "file": "src/SecretKit.AzureKeyVault/AzureSetSecret.cs",
+      "sha256": "b7bf42aa18bc956248927c7650dd6eb50ca8737cd45468b92c6634b13f2bd4b3"
+    }
+  ],
+  "operations": [
+    {
+      "id": "a.runtime.AzureKeyVaultClient.BackupSecretAsync",
+      "member": "SecretKit.AzureKeyVault.AzureKeyVaultClient.BackupSecretAsync(SecretKit.Core.SecretReference,System.Threading.CancellationToken)",
+      "variants": [
+        "selector.exact"
+      ],
+      "contract": "implemented-subset",
+      "effect": "Validate an opaque all-version backup by restoring into an authorized compatible target and independently comparing version/material state; artifact acquisition is not portable export or rename.",
+      "requiredCases": [
+        "selected-contract",
+        "denied-authority",
+        "cancellation-boundary",
+        "independent-effect"
+      ],
+      "prerequisites": [
+        "owned-origin-api-revision",
+        "selected-runtime-identity",
+        "separate-observer-identity",
+        "approved-sandbox-cleanup",
+        "azure-tenant-subscription",
+        "azure-selected-cloud-endpoint",
+        "azure-backup-restore-rights",
+        "same-subscription-geography"
+      ]
+    },
+    {
+      "id": "a.runtime.AzureKeyVaultClient.CheckLifecycleStatusAsync",
+      "member": "SecretKit.AzureKeyVault.AzureKeyVaultClient.CheckLifecycleStatusAsync(SecretKit.AzureKeyVault.AzureLifecycleOperation,System.Threading.CancellationToken)",
+      "variants": [
+        "kind.Delete.Pending",
+        "kind.Delete.Applied",
+        "kind.Recover.Pending",
+        "kind.Recover.Applied"
+      ],
+      "contract": "implemented-subset",
+      "effect": "Independently observe the selected vault secret/version, material or lifecycle transition with a separate credential; returned version, metadata or acknowledgement alone does not establish downstream access.",
+      "requiredCases": [
+        "selected-contract",
+        "denied-authority",
+        "cancellation-boundary",
+        "independent-effect"
+      ],
+      "prerequisites": [
+        "owned-origin-api-revision",
+        "selected-runtime-identity",
+        "separate-observer-identity",
+        "approved-sandbox-cleanup",
+        "azure-tenant-subscription",
+        "azure-selected-cloud-endpoint"
+      ]
+    },
+    {
+      "id": "a.runtime.AzureKeyVaultClient.GetDeletedSecretAsync",
+      "member": "SecretKit.AzureKeyVault.AzureKeyVaultClient.GetDeletedSecretAsync(SecretKit.Core.SecretReference,System.Threading.CancellationToken)",
+      "variants": [
+        "selector.exact"
+      ],
+      "contract": "implemented-subset",
+      "effect": "Independently observe the selected vault secret/version, material or lifecycle transition with a separate credential; returned version, metadata or acknowledgement alone does not establish downstream access.",
+      "requiredCases": [
+        "selected-contract",
+        "denied-authority",
+        "cancellation-boundary",
+        "independent-effect"
+      ],
+      "prerequisites": [
+        "owned-origin-api-revision",
+        "selected-runtime-identity",
+        "separate-observer-identity",
+        "approved-sandbox-cleanup",
+        "azure-tenant-subscription",
+        "azure-selected-cloud-endpoint",
+        "azure-delete-recover-purge-rights",
+        "azure-retention-policy"
+      ]
+    },
+    {
+      "id": "a.runtime.AzureKeyVaultClient.GetDeletedSecretsAsync",
+      "member": "SecretKit.AzureKeyVault.AzureKeyVaultClient.GetDeletedSecretsAsync(SecretKit.AzureKeyVault.AzureInventoryScope,System.Threading.CancellationToken)",
+      "variants": [
+        "selector.exact",
+        "page.complete",
+        "page.page-budget",
+        "page.item-budget"
+      ],
+      "contract": "implemented-subset",
+      "effect": "Independently observe the selected vault secret/version, material or lifecycle transition with a separate credential; returned version, metadata or acknowledgement alone does not establish downstream access.",
+      "requiredCases": [
+        "selected-contract",
+        "denied-authority",
+        "cancellation-boundary",
+        "independent-effect"
+      ],
+      "prerequisites": [
+        "owned-origin-api-revision",
+        "selected-runtime-identity",
+        "separate-observer-identity",
+        "approved-sandbox-cleanup",
+        "azure-tenant-subscription",
+        "azure-selected-cloud-endpoint",
+        "azure-delete-recover-purge-rights",
+        "azure-retention-policy"
+      ]
+    },
+    {
+      "id": "a.runtime.AzureKeyVaultClient.GetSecretVersionAsync",
+      "member": "SecretKit.AzureKeyVault.AzureKeyVaultClient.GetSecretVersionAsync(SecretKit.Core.SecretReference,System.Threading.CancellationToken)",
+      "variants": [
+        "version.exact.valid",
+        "version.exact.disabled",
+        "version.exact.not-yet-valid",
+        "version.exact.expired"
+      ],
+      "contract": "implemented-subset",
+      "effect": "Independently observe the selected vault secret/version, material or lifecycle transition with a separate credential; returned version, metadata or acknowledgement alone does not establish downstream access.",
+      "requiredCases": [
+        "selected-contract",
+        "denied-authority",
+        "cancellation-boundary",
+        "independent-effect"
+      ],
+      "prerequisites": [
+        "owned-origin-api-revision",
+        "selected-runtime-identity",
+        "separate-observer-identity",
+        "approved-sandbox-cleanup",
+        "azure-tenant-subscription",
+        "azure-selected-cloud-endpoint"
+      ]
+    },
+    {
+      "id": "a.runtime.AzureKeyVaultClient.GetSecretVersionsAsync",
+      "member": "SecretKit.AzureKeyVault.AzureKeyVaultClient.GetSecretVersionsAsync(SecretKit.Core.SecretReference,SecretKit.AzureKeyVault.AzureInventoryScope,System.Threading.CancellationToken)",
+      "variants": [
+        "selector.exact",
+        "page.complete",
+        "page.page-budget",
+        "page.item-budget"
+      ],
+      "contract": "implemented-subset",
+      "effect": "Independently observe the selected vault secret/version, material or lifecycle transition with a separate credential; returned version, metadata or acknowledgement alone does not establish downstream access.",
+      "requiredCases": [
+        "selected-contract",
+        "denied-authority",
+        "cancellation-boundary",
+        "independent-effect"
+      ],
+      "prerequisites": [
+        "owned-origin-api-revision",
+        "selected-runtime-identity",
+        "separate-observer-identity",
+        "approved-sandbox-cleanup",
+        "azure-tenant-subscription",
+        "azure-selected-cloud-endpoint"
+      ]
+    },
+    {
+      "id": "a.runtime.AzureKeyVaultClient.InspectAsync",
+      "member": "SecretKit.AzureKeyVault.AzureKeyVaultClient.InspectAsync(SecretKit.Core.SecretInventoryScope,System.Threading.CancellationToken)",
+      "variants": [
+        "selector.exact",
+        "page.complete",
+        "page.page-budget",
+        "page.item-budget"
+      ],
+      "contract": "implemented-subset",
+      "effect": "Independently observe the selected vault secret/version, material or lifecycle transition with a separate credential; returned version, metadata or acknowledgement alone does not establish downstream access.",
+      "requiredCases": [
+        "selected-contract",
+        "denied-authority",
+        "cancellation-boundary",
+        "independent-effect"
+      ],
+      "prerequisites": [
+        "owned-origin-api-revision",
+        "selected-runtime-identity",
+        "separate-observer-identity",
+        "approved-sandbox-cleanup",
+        "azure-tenant-subscription",
+        "azure-selected-cloud-endpoint"
+      ]
+    },
+    {
+      "id": "a.runtime.AzureKeyVaultClient.PurgeDeletedSecretAsync",
+      "member": "SecretKit.AzureKeyVault.AzureKeyVaultClient.PurgeDeletedSecretAsync(SecretKit.Core.SecretReference,SecretKit.Core.MutationReceipt,System.Threading.CancellationToken)",
+      "variants": [
+        "input.target"
+      ],
+      "contract": "implemented-subset",
+      "effect": "Independently observe the selected vault secret/version, material or lifecycle transition with a separate credential; returned version, metadata or acknowledgement alone does not establish downstream access.",
+      "requiredCases": [
+        "selected-contract",
+        "denied-authority",
+        "cancellation-boundary",
+        "independent-effect",
+        "lost-response-no-replay"
+      ],
+      "prerequisites": [
+        "owned-origin-api-revision",
+        "selected-runtime-identity",
+        "separate-observer-identity",
+        "approved-sandbox-cleanup",
+        "azure-tenant-subscription",
+        "azure-selected-cloud-endpoint",
+        "azure-delete-recover-purge-rights",
+        "azure-retention-policy"
+      ]
+    },
+    {
+      "id": "a.runtime.AzureKeyVaultClient.ReadAsync",
+      "member": "SecretKit.AzureKeyVault.AzureKeyVaultClient.ReadAsync(SecretKit.Core.SecretReference,System.Threading.CancellationToken)",
+      "variants": [
+        "version.latest",
+        "version.exact",
+        "validity.enabled",
+        "validity.disabled-denied",
+        "validity.not-yet-valid",
+        "validity.expired"
+      ],
+      "contract": "implemented-subset",
+      "effect": "Independently observe the selected vault secret/version, material or lifecycle transition with a separate credential; returned version, metadata or acknowledgement alone does not establish downstream access.",
+      "requiredCases": [
+        "selected-contract",
+        "denied-authority",
+        "cancellation-boundary",
+        "independent-effect"
+      ],
+      "prerequisites": [
+        "owned-origin-api-revision",
+        "selected-runtime-identity",
+        "separate-observer-identity",
+        "approved-sandbox-cleanup",
+        "azure-tenant-subscription",
+        "azure-selected-cloud-endpoint"
+      ]
+    },
+    {
+      "id": "a.runtime.AzureKeyVaultClient.RestoreSecretBackupAsync",
+      "member": "SecretKit.AzureKeyVault.AzureKeyVaultClient.RestoreSecretBackupAsync(SecretKit.AzureKeyVault.AzureRestoreSecretRequest,SecretKit.Core.MutationReceipt,System.Threading.CancellationToken)",
+      "variants": [
+        "precondition.None",
+        "precondition.CreateOnly.rejected",
+        "precondition.MatchVersion.rejected"
+      ],
+      "contract": "implemented-subset",
+      "effect": "Validate an opaque all-version backup by restoring into an authorized compatible target and independently comparing version/material state; artifact acquisition is not portable export or rename.",
+      "requiredCases": [
+        "selected-contract",
+        "denied-authority",
+        "cancellation-boundary",
+        "independent-effect",
+        "lost-response-no-replay"
+      ],
+      "prerequisites": [
+        "owned-origin-api-revision",
+        "selected-runtime-identity",
+        "separate-observer-identity",
+        "approved-sandbox-cleanup",
+        "azure-tenant-subscription",
+        "azure-selected-cloud-endpoint",
+        "azure-backup-restore-rights",
+        "same-subscription-geography"
+      ]
+    },
+    {
+      "id": "a.runtime.AzureKeyVaultClient.SetSecretAsync",
+      "member": "SecretKit.AzureKeyVault.AzureKeyVaultClient.SetSecretAsync(SecretKit.AzureKeyVault.AzureSetSecretRequest,SecretKit.Core.MutationReceipt,System.Threading.CancellationToken)",
+      "variants": [
+        "precondition.None",
+        "precondition.CreateOnly.rejected",
+        "precondition.MatchVersion.rejected"
+      ],
+      "contract": "implemented-subset",
+      "effect": "Independently observe the selected vault secret/version, material or lifecycle transition with a separate credential; returned version, metadata or acknowledgement alone does not establish downstream access.",
+      "requiredCases": [
+        "selected-contract",
+        "denied-authority",
+        "cancellation-boundary",
+        "independent-effect",
+        "lost-response-no-replay"
+      ],
+      "prerequisites": [
+        "owned-origin-api-revision",
+        "selected-runtime-identity",
+        "separate-observer-identity",
+        "approved-sandbox-cleanup",
+        "azure-tenant-subscription",
+        "azure-selected-cloud-endpoint"
+      ]
+    },
+    {
+      "id": "a.runtime.AzureKeyVaultClient.StartDeleteSecretAsync",
+      "member": "SecretKit.AzureKeyVault.AzureKeyVaultClient.StartDeleteSecretAsync(SecretKit.Core.SecretReference,SecretKit.Core.MutationReceipt,System.Threading.CancellationToken)",
+      "variants": [
+        "input.target"
+      ],
+      "contract": "implemented-subset",
+      "effect": "Independently observe the selected vault secret/version, material or lifecycle transition with a separate credential; returned version, metadata or acknowledgement alone does not establish downstream access.",
+      "requiredCases": [
+        "selected-contract",
+        "denied-authority",
+        "cancellation-boundary",
+        "independent-effect",
+        "lost-response-no-replay"
+      ],
+      "prerequisites": [
+        "owned-origin-api-revision",
+        "selected-runtime-identity",
+        "separate-observer-identity",
+        "approved-sandbox-cleanup",
+        "azure-tenant-subscription",
+        "azure-selected-cloud-endpoint",
+        "azure-delete-recover-purge-rights",
+        "azure-retention-policy"
+      ]
+    },
+    {
+      "id": "a.runtime.AzureKeyVaultClient.StartRecoverDeletedSecretAsync",
+      "member": "SecretKit.AzureKeyVault.AzureKeyVaultClient.StartRecoverDeletedSecretAsync(SecretKit.Core.SecretReference,SecretKit.Core.MutationReceipt,System.Threading.CancellationToken)",
+      "variants": [
+        "input.target"
+      ],
+      "contract": "implemented-subset",
+      "effect": "Independently observe the selected vault secret/version, material or lifecycle transition with a separate credential; returned version, metadata or acknowledgement alone does not establish downstream access.",
+      "requiredCases": [
+        "selected-contract",
+        "denied-authority",
+        "cancellation-boundary",
+        "independent-effect",
+        "lost-response-no-replay"
+      ],
+      "prerequisites": [
+        "owned-origin-api-revision",
+        "selected-runtime-identity",
+        "separate-observer-identity",
+        "approved-sandbox-cleanup",
+        "azure-tenant-subscription",
+        "azure-selected-cloud-endpoint",
+        "azure-delete-recover-purge-rights",
+        "azure-retention-policy"
+      ]
+    },
+    {
+      "id": "a.runtime.AzureKeyVaultClient.UpdatePropertiesAsync",
+      "member": "SecretKit.AzureKeyVault.AzureKeyVaultClient.UpdatePropertiesAsync(SecretKit.AzureKeyVault.AzureUpdatePropertiesRequest,SecretKit.Core.MutationReceipt,System.Threading.CancellationToken)",
+      "variants": [
+        "precondition.None",
+        "precondition.CreateOnly.rejected",
+        "precondition.MatchVersion.rejected",
+        "AzureUpdatePropertiesRequest.enabled.omitted",
+        "AzureUpdatePropertiesRequest.enabled.false",
+        "AzureUpdatePropertiesRequest.enabled.true",
+        "AzureUpdatePropertiesRequest.notBefore.omitted",
+        "AzureUpdatePropertiesRequest.notBefore.value",
+        "AzureUpdatePropertiesRequest.expiresOn.omitted",
+        "AzureUpdatePropertiesRequest.expiresOn.value",
+        "AzureUpdatePropertiesRequest.contentType.omitted",
+        "AzureUpdatePropertiesRequest.contentType.value",
+        "AzureUpdatePropertiesRequest.precondition.None",
+        "AzureUpdatePropertiesRequest.precondition.CreateOnly",
+        "AzureUpdatePropertiesRequest.precondition.MatchVersion",
+        "tags.omitted",
+        "tags.nonempty",
+        "tags.empty.clear"
+      ],
+      "contract": "contract-gap",
+      "effect": "Independently observe the selected vault secret/version, material or lifecycle transition with a separate credential; returned version, metadata or acknowledgement alone does not establish downstream access.",
+      "requiredCases": [
+        "selected-contract",
+        "denied-authority",
+        "cancellation-boundary",
+        "independent-effect",
+        "lost-response-no-replay"
+      ],
+      "prerequisites": [
+        "owned-origin-api-revision",
+        "selected-runtime-identity",
+        "separate-observer-identity",
+        "approved-sandbox-cleanup",
+        "azure-tenant-subscription",
+        "azure-selected-cloud-endpoint",
+        "primary-azure-empty-tag-clear-contract"
+      ]
+    },
+    {
+      "id": "a.management.AuditDiagnostics.QueryAsync",
+      "member": "SecretKit.AzureKeyVault.Management.AuditDiagnostics.QueryAsync(SecretKit.AzureKeyVault.Management.AuditQuery,System.Threading.CancellationToken)",
+      "variants": [
+        "query.resource",
+        "query.workspace",
+        "result.complete",
+        "result.partial-failure",
+        "result.row-limit",
+        "result.deadline",
+        "operation.Unknown",
+        "operation.SecretGet",
+        "operation.SecretList",
+        "operation.SecretSet",
+        "operation.SecretDelete",
+        "operation.SecretRecover",
+        "operation.SecretBackup",
+        "operation.SecretRestore",
+        "operation.SecretPurge"
+      ],
+      "contract": "implemented-subset",
+      "effect": "Independently trigger and observe a known vault AuditEvent then compare bounded resource/workspace query events, time window, operation and result; partial results and deadlines remain incomplete, and batch progress preserves input order.",
+      "requiredCases": [
+        "selected-contract",
+        "denied-authority",
+        "cancellation-boundary",
+        "independent-effect"
+      ],
+      "prerequisites": [
+        "owned-origin-api-revision",
+        "selected-runtime-identity",
+        "separate-observer-identity",
+        "approved-sandbox-cleanup",
+        "selected-administrative-identity",
+        "scoped-administrative-rights",
+        "azure-tenant-subscription",
+        "azure-selected-cloud-endpoint",
+        "azure-arm-public-cloud-rights",
+        "separate-monitoring-identity",
+        "azure-diagnostics-routing",
+        "log-analytics-query-rights",
+        "audit-ingestion-observer"
+      ]
+    },
+    {
+      "id": "a.management.AuditDiagnostics.QueryBatchAsync",
+      "member": "SecretKit.AzureKeyVault.Management.AuditDiagnostics.QueryBatchAsync(System.Collections.Generic.IReadOnlyList<SecretKit.AzureKeyVault.Management.AuditQuery>,SecretKit.AzureKeyVault.Management.AuditBatchProgress,System.TimeSpan,System.Threading.CancellationToken)",
+      "variants": [
+        "query.resource",
+        "query.workspace",
+        "result.complete",
+        "result.partial-failure",
+        "result.row-limit",
+        "result.deadline",
+        "operation.Unknown",
+        "operation.SecretGet",
+        "operation.SecretList",
+        "operation.SecretSet",
+        "operation.SecretDelete",
+        "operation.SecretRecover",
+        "operation.SecretBackup",
+        "operation.SecretRestore",
+        "operation.SecretPurge",
+        "batch.single",
+        "batch.multiple",
+        "batch.mixed-resource-workspace",
+        "batch.caller-cancellation-progress"
+      ],
+      "contract": "implemented-subset",
+      "effect": "Independently trigger and observe a known vault AuditEvent then compare bounded resource/workspace query events, time window, operation and result; partial results and deadlines remain incomplete, and batch progress preserves input order.",
+      "requiredCases": [
+        "selected-contract",
+        "denied-authority",
+        "cancellation-boundary",
+        "independent-effect"
+      ],
+      "prerequisites": [
+        "owned-origin-api-revision",
+        "selected-runtime-identity",
+        "separate-observer-identity",
+        "approved-sandbox-cleanup",
+        "selected-administrative-identity",
+        "scoped-administrative-rights",
+        "azure-tenant-subscription",
+        "azure-selected-cloud-endpoint",
+        "azure-arm-public-cloud-rights",
+        "separate-monitoring-identity",
+        "azure-diagnostics-routing",
+        "log-analytics-query-rights",
+        "audit-ingestion-observer"
+      ]
+    },
+    {
+      "id": "a.management.ManagementOperation.CheckStatusAsync",
+      "member": "SecretKit.AzureKeyVault.Management.ManagementOperation.CheckStatusAsync(System.Threading.CancellationToken)",
+      "variants": [
+        "operation.CreateOrUpdateVault",
+        "operation.RecoverVault",
+        "operation.DeleteVault",
+        "operation.PurgeDeletedVault",
+        "operation.UpdatePrivateConnection",
+        "operation.DeletePrivateConnection",
+        "operation.DeleteRoleAssignment",
+        "operation.CreateOrUpdateNotification",
+        "operation.UpdateNotification",
+        "operation.DeleteNotification",
+        "status.Pending",
+        "status.Succeeded",
+        "status.Failed",
+        "status.Canceled",
+        "status.Unknown"
+      ],
+      "contract": "implemented-subset",
+      "effect": "CheckStatus in the selected ManagementOperation scope: compare the returned selected resource, metadata or bounded collection against independently prepared native state; visibility is not effective permission.",
+      "requiredCases": [
+        "selected-contract",
+        "denied-authority",
+        "cancellation-boundary",
+        "independent-effect"
+      ],
+      "prerequisites": [
+        "owned-origin-api-revision",
+        "selected-runtime-identity",
+        "separate-observer-identity",
+        "approved-sandbox-cleanup",
+        "selected-administrative-identity",
+        "scoped-administrative-rights",
+        "azure-tenant-subscription",
+        "azure-selected-cloud-endpoint",
+        "azure-arm-public-cloud-rights"
+      ]
+    },
+    {
+      "id": "a.management.VaultAdministration.ChangeAccessPoliciesAsync",
+      "member": "SecretKit.AzureKeyVault.Management.VaultAdministration.ChangeAccessPoliciesAsync(SecretKit.AzureKeyVault.Management.VaultScope,SecretKit.AzureKeyVault.Management.AccessPolicyChange,System.Collections.Generic.IReadOnlyList<SecretKit.AzureKeyVault.Management.SecretAccessPolicy>,SecretKit.AzureKeyVault.Management.ManagementReceipt,System.Threading.CancellationToken)",
+      "variants": [
+        "change.Add",
+        "change.Replace",
+        "change.Remove",
+        "permission.Get",
+        "permission.List",
+        "permission.Set",
+        "permission.Delete",
+        "permission.Recover",
+        "permission.Backup",
+        "permission.Restore",
+        "permission.Purge",
+        "applicationId.omitted",
+        "applicationId.value",
+        "permissions.empty",
+        "policies.multiple"
+      ],
+      "contract": "implemented-subset",
+      "effect": "Observe exact add/replace/remove access-policy state and then actual allowed/denied data-plane operations under the intended principal; ARM policy metadata does not grant or prove runtime delivery.",
+      "requiredCases": [
+        "selected-contract",
+        "denied-authority",
+        "cancellation-boundary",
+        "independent-effect",
+        "lost-response-no-replay"
+      ],
+      "prerequisites": [
+        "owned-origin-api-revision",
+        "selected-runtime-identity",
+        "separate-observer-identity",
+        "approved-sandbox-cleanup",
+        "selected-administrative-identity",
+        "scoped-administrative-rights",
+        "azure-tenant-subscription",
+        "azure-selected-cloud-endpoint",
+        "azure-arm-public-cloud-rights",
+        "intended-principal-permission-observer"
+      ]
+    },
+    {
+      "id": "a.management.VaultAdministration.CheckNameAvailabilityAsync",
+      "member": "SecretKit.AzureKeyVault.Management.VaultAdministration.CheckNameAvailabilityAsync(SecretKit.AzureKeyVault.Management.SubscriptionScope,System.String,System.Threading.CancellationToken)",
+      "variants": [
+        "selector.exact"
+      ],
+      "contract": "implemented-subset",
+      "effect": "CheckNameAvailability in the selected Vault scope: compare the returned selected resource, metadata or bounded collection against independently prepared native state; visibility is not effective permission.",
+      "requiredCases": [
+        "selected-contract",
+        "denied-authority",
+        "cancellation-boundary",
+        "independent-effect"
+      ],
+      "prerequisites": [
+        "owned-origin-api-revision",
+        "selected-runtime-identity",
+        "separate-observer-identity",
+        "approved-sandbox-cleanup",
+        "selected-administrative-identity",
+        "scoped-administrative-rights",
+        "azure-tenant-subscription",
+        "azure-selected-cloud-endpoint",
+        "azure-arm-public-cloud-rights"
+      ]
+    },
+    {
+      "id": "a.management.VaultAdministration.CreateOrUpdateNotificationAsync",
+      "member": "SecretKit.AzureKeyVault.Management.VaultAdministration.CreateOrUpdateNotificationAsync(SecretKit.AzureKeyVault.Management.NotificationScope,SecretKit.AzureKeyVault.Management.NotificationConfiguration,SecretKit.AzureKeyVault.Management.ManagementReceipt,System.Threading.CancellationToken)",
+      "variants": [
+        "event.SecretNewVersionCreated",
+        "event.SecretNearExpiry",
+        "event.SecretExpired",
+        "events.multiple",
+        "attributes.omitted",
+        "attributes.empty",
+        "attribute.Static.secret",
+        "attribute.Static.nonsecret",
+        "attribute.Dynamic",
+        "lro.started",
+        "lro.completed"
+      ],
+      "contract": "implemented-subset",
+      "effect": "Independently inspect the selected Event Grid subscription and receive a correlated selected Key Vault event at the owned HTTPS webhook, including delivery attributes and denied/wrong event filtering; provisioning success is not delivery.",
+      "requiredCases": [
+        "selected-contract",
+        "denied-authority",
+        "cancellation-boundary",
+        "independent-effect",
+        "lost-response-no-replay"
+      ],
+      "prerequisites": [
+        "owned-origin-api-revision",
+        "selected-runtime-identity",
+        "separate-observer-identity",
+        "approved-sandbox-cleanup",
+        "selected-administrative-identity",
+        "scoped-administrative-rights",
+        "azure-tenant-subscription",
+        "azure-selected-cloud-endpoint",
+        "azure-arm-public-cloud-rights",
+        "event-grid-registration-rights",
+        "owned-https-webhook-observer",
+        "event-grid-delivery-authority"
+      ]
+    },
+    {
+      "id": "a.management.VaultAdministration.CreateOrUpdateVaultAsync",
+      "member": "SecretKit.AzureKeyVault.Management.VaultAdministration.CreateOrUpdateVaultAsync(SecretKit.AzureKeyVault.Management.VaultScope,SecretKit.AzureKeyVault.Management.VaultConfiguration,SecretKit.AzureKeyVault.Management.ManagementReceipt,System.Threading.CancellationToken)",
+      "variants": [
+        "sku.Standard",
+        "sku.Premium",
+        "authorization.rbac",
+        "authorization.access-policy",
+        "purgeProtection.false",
+        "purgeProtection.true",
+        "publicNetworkAccess.false",
+        "publicNetworkAccess.true",
+        "accessPolicies.empty",
+        "accessPolicies.selected",
+        "lro.started",
+        "lro.completed"
+      ],
+      "contract": "implemented-subset",
+      "effect": "CreateOrUpdateVault in the selected Vault scope: independent native readback must confirm the requested changed fields or removal; an acknowledgement alone is not an effect.",
+      "requiredCases": [
+        "selected-contract",
+        "denied-authority",
+        "cancellation-boundary",
+        "independent-effect",
+        "lost-response-no-replay"
+      ],
+      "prerequisites": [
+        "owned-origin-api-revision",
+        "selected-runtime-identity",
+        "separate-observer-identity",
+        "approved-sandbox-cleanup",
+        "selected-administrative-identity",
+        "scoped-administrative-rights",
+        "azure-tenant-subscription",
+        "azure-selected-cloud-endpoint",
+        "azure-arm-public-cloud-rights"
+      ]
+    },
+    {
+      "id": "a.management.VaultAdministration.CreateRoleAssignmentAsync",
+      "member": "SecretKit.AzureKeyVault.Management.VaultAdministration.CreateRoleAssignmentAsync(SecretKit.AzureKeyVault.Management.RoleAssignmentScope,SecretKit.AzureKeyVault.Management.RoleDefinitionScope,System.Guid,SecretKit.AzureKeyVault.Management.ManagementReceipt,System.Threading.CancellationToken)",
+      "variants": [
+        "scope.vault"
+      ],
+      "contract": "implemented-subset",
+      "effect": "Independently observe the exact role assignment at its declared scope and verify intended-principal data-plane access/denial, including inherited assignments on reads. Assignment existence is not effective access.",
+      "requiredCases": [
+        "selected-contract",
+        "denied-authority",
+        "cancellation-boundary",
+        "independent-effect",
+        "lost-response-no-replay"
+      ],
+      "prerequisites": [
+        "owned-origin-api-revision",
+        "selected-runtime-identity",
+        "separate-observer-identity",
+        "approved-sandbox-cleanup",
+        "selected-administrative-identity",
+        "scoped-administrative-rights",
+        "azure-tenant-subscription",
+        "azure-selected-cloud-endpoint",
+        "azure-arm-public-cloud-rights",
+        "azure-role-assignment-rights",
+        "intended-principal-permission-observer"
+      ]
+    },
+    {
+      "id": "a.management.VaultAdministration.DeleteNotificationAsync",
+      "member": "SecretKit.AzureKeyVault.Management.VaultAdministration.DeleteNotificationAsync(SecretKit.AzureKeyVault.Management.NotificationScope,SecretKit.AzureKeyVault.Management.ManagementReceipt,System.Threading.CancellationToken)",
+      "variants": [
+        "input.scope"
+      ],
+      "contract": "implemented-subset",
+      "effect": "Independently inspect the selected Event Grid subscription and receive a correlated selected Key Vault event at the owned HTTPS webhook, including delivery attributes and denied/wrong event filtering; provisioning success is not delivery.",
+      "requiredCases": [
+        "selected-contract",
+        "denied-authority",
+        "cancellation-boundary",
+        "independent-effect",
+        "lost-response-no-replay"
+      ],
+      "prerequisites": [
+        "owned-origin-api-revision",
+        "selected-runtime-identity",
+        "separate-observer-identity",
+        "approved-sandbox-cleanup",
+        "selected-administrative-identity",
+        "scoped-administrative-rights",
+        "azure-tenant-subscription",
+        "azure-selected-cloud-endpoint",
+        "azure-arm-public-cloud-rights",
+        "event-grid-registration-rights",
+        "owned-https-webhook-observer",
+        "event-grid-delivery-authority"
+      ]
+    },
+    {
+      "id": "a.management.VaultAdministration.DeletePrivateConnectionAsync",
+      "member": "SecretKit.AzureKeyVault.Management.VaultAdministration.DeletePrivateConnectionAsync(SecretKit.AzureKeyVault.Management.PrivateConnectionScope,SecretKit.AzureKeyVault.Management.ManagementReceipt,System.Threading.CancellationToken)",
+      "variants": [
+        "input.scope"
+      ],
+      "contract": "implemented-subset",
+      "effect": "Observe selected private-link metadata or approval/rejection/removal and test access from the owned private network independently; SDK connection administration does not provision a private endpoint.",
+      "requiredCases": [
+        "selected-contract",
+        "denied-authority",
+        "cancellation-boundary",
+        "independent-effect",
+        "lost-response-no-replay"
+      ],
+      "prerequisites": [
+        "owned-origin-api-revision",
+        "selected-runtime-identity",
+        "separate-observer-identity",
+        "approved-sandbox-cleanup",
+        "selected-administrative-identity",
+        "scoped-administrative-rights",
+        "azure-tenant-subscription",
+        "azure-selected-cloud-endpoint",
+        "azure-arm-public-cloud-rights",
+        "owned-private-endpoint",
+        "private-network-observer"
+      ]
+    },
+    {
+      "id": "a.management.VaultAdministration.DeleteRoleAssignmentAsync",
+      "member": "SecretKit.AzureKeyVault.Management.VaultAdministration.DeleteRoleAssignmentAsync(SecretKit.AzureKeyVault.Management.RoleAssignmentScope,SecretKit.AzureKeyVault.Management.ManagementReceipt,System.Threading.CancellationToken)",
+      "variants": [
+        "scope.vault"
+      ],
+      "contract": "implemented-subset",
+      "effect": "Independently observe the exact role assignment at its declared scope and verify intended-principal data-plane access/denial, including inherited assignments on reads. Assignment existence is not effective access.",
+      "requiredCases": [
+        "selected-contract",
+        "denied-authority",
+        "cancellation-boundary",
+        "independent-effect",
+        "lost-response-no-replay"
+      ],
+      "prerequisites": [
+        "owned-origin-api-revision",
+        "selected-runtime-identity",
+        "separate-observer-identity",
+        "approved-sandbox-cleanup",
+        "selected-administrative-identity",
+        "scoped-administrative-rights",
+        "azure-tenant-subscription",
+        "azure-selected-cloud-endpoint",
+        "azure-arm-public-cloud-rights",
+        "azure-role-assignment-rights",
+        "intended-principal-permission-observer"
+      ]
+    },
+    {
+      "id": "a.management.VaultAdministration.DeleteVaultAsync",
+      "member": "SecretKit.AzureKeyVault.Management.VaultAdministration.DeleteVaultAsync(SecretKit.AzureKeyVault.Management.VaultScope,SecretKit.AzureKeyVault.Management.ManagementReceipt,System.Threading.CancellationToken)",
+      "variants": [
+        "input.scope"
+      ],
+      "contract": "implemented-subset",
+      "effect": "DeleteVault in the selected Vault scope: independent native readback must confirm the requested changed fields or removal; an acknowledgement alone is not an effect.",
+      "requiredCases": [
+        "selected-contract",
+        "denied-authority",
+        "cancellation-boundary",
+        "independent-effect",
+        "lost-response-no-replay"
+      ],
+      "prerequisites": [
+        "owned-origin-api-revision",
+        "selected-runtime-identity",
+        "separate-observer-identity",
+        "approved-sandbox-cleanup",
+        "selected-administrative-identity",
+        "scoped-administrative-rights",
+        "azure-tenant-subscription",
+        "azure-selected-cloud-endpoint",
+        "azure-arm-public-cloud-rights"
+      ]
+    },
+    {
+      "id": "a.management.VaultAdministration.GetDeletedVaultAsync",
+      "member": "SecretKit.AzureKeyVault.Management.VaultAdministration.GetDeletedVaultAsync(SecretKit.AzureKeyVault.Management.DeletedVaultScope,System.Threading.CancellationToken)",
+      "variants": [
+        "selector.exact"
+      ],
+      "contract": "implemented-subset",
+      "effect": "GetDeletedVault in the selected Vault scope: compare the returned selected resource, metadata or bounded collection against independently prepared native state; visibility is not effective permission.",
+      "requiredCases": [
+        "selected-contract",
+        "denied-authority",
+        "cancellation-boundary",
+        "independent-effect"
+      ],
+      "prerequisites": [
+        "owned-origin-api-revision",
+        "selected-runtime-identity",
+        "separate-observer-identity",
+        "approved-sandbox-cleanup",
+        "selected-administrative-identity",
+        "scoped-administrative-rights",
+        "azure-tenant-subscription",
+        "azure-selected-cloud-endpoint",
+        "azure-arm-public-cloud-rights"
+      ]
+    },
+    {
+      "id": "a.management.VaultAdministration.GetNotificationAsync",
+      "member": "SecretKit.AzureKeyVault.Management.VaultAdministration.GetNotificationAsync(SecretKit.AzureKeyVault.Management.NotificationScope,System.Threading.CancellationToken)",
+      "variants": [
+        "selector.exact",
+        "response.destination.Unknown",
+        "response.destination.WebHook",
+        "response.destination.Other"
+      ],
+      "contract": "implemented-subset",
+      "effect": "Independently inspect the selected Event Grid subscription and receive a correlated selected Key Vault event at the owned HTTPS webhook, including delivery attributes and denied/wrong event filtering; provisioning success is not delivery.",
+      "requiredCases": [
+        "selected-contract",
+        "denied-authority",
+        "cancellation-boundary",
+        "independent-effect"
+      ],
+      "prerequisites": [
+        "owned-origin-api-revision",
+        "selected-runtime-identity",
+        "separate-observer-identity",
+        "approved-sandbox-cleanup",
+        "selected-administrative-identity",
+        "scoped-administrative-rights",
+        "azure-tenant-subscription",
+        "azure-selected-cloud-endpoint",
+        "azure-arm-public-cloud-rights",
+        "event-grid-registration-rights",
+        "owned-https-webhook-observer",
+        "event-grid-delivery-authority"
+      ]
+    },
+    {
+      "id": "a.management.VaultAdministration.GetNotificationDeliveryAttributesAsync",
+      "member": "SecretKit.AzureKeyVault.Management.VaultAdministration.GetNotificationDeliveryAttributesAsync(SecretKit.AzureKeyVault.Management.NotificationScope,SecretKit.AzureKeyVault.Management.CollectionLimits,System.Threading.CancellationToken)",
+      "variants": [
+        "selector.exact",
+        "attribute.Static.secret",
+        "attribute.Static.nonsecret",
+        "attribute.Dynamic",
+        "page.complete",
+        "page.bounded"
+      ],
+      "contract": "implemented-subset",
+      "effect": "Independently inspect the selected Event Grid subscription and receive a correlated selected Key Vault event at the owned HTTPS webhook, including delivery attributes and denied/wrong event filtering; provisioning success is not delivery.",
+      "requiredCases": [
+        "selected-contract",
+        "denied-authority",
+        "cancellation-boundary",
+        "independent-effect"
+      ],
+      "prerequisites": [
+        "owned-origin-api-revision",
+        "selected-runtime-identity",
+        "separate-observer-identity",
+        "approved-sandbox-cleanup",
+        "selected-administrative-identity",
+        "scoped-administrative-rights",
+        "azure-tenant-subscription",
+        "azure-selected-cloud-endpoint",
+        "azure-arm-public-cloud-rights",
+        "event-grid-registration-rights",
+        "owned-https-webhook-observer",
+        "event-grid-delivery-authority"
+      ]
+    },
+    {
+      "id": "a.management.VaultAdministration.GetNotificationFullUrlAsync",
+      "member": "SecretKit.AzureKeyVault.Management.VaultAdministration.GetNotificationFullUrlAsync(SecretKit.AzureKeyVault.Management.NotificationScope,System.Threading.CancellationToken)",
+      "variants": [
+        "selector.exact"
+      ],
+      "contract": "implemented-subset",
+      "effect": "Independently inspect the selected Event Grid subscription and receive a correlated selected Key Vault event at the owned HTTPS webhook, including delivery attributes and denied/wrong event filtering; provisioning success is not delivery.",
+      "requiredCases": [
+        "selected-contract",
+        "denied-authority",
+        "cancellation-boundary",
+        "independent-effect"
+      ],
+      "prerequisites": [
+        "owned-origin-api-revision",
+        "selected-runtime-identity",
+        "separate-observer-identity",
+        "approved-sandbox-cleanup",
+        "selected-administrative-identity",
+        "scoped-administrative-rights",
+        "azure-tenant-subscription",
+        "azure-selected-cloud-endpoint",
+        "azure-arm-public-cloud-rights",
+        "event-grid-registration-rights",
+        "owned-https-webhook-observer",
+        "event-grid-delivery-authority"
+      ]
+    },
+    {
+      "id": "a.management.VaultAdministration.GetPrivateConnectionAsync",
+      "member": "SecretKit.AzureKeyVault.Management.VaultAdministration.GetPrivateConnectionAsync(SecretKit.AzureKeyVault.Management.PrivateConnectionScope,System.Threading.CancellationToken)",
+      "variants": [
+        "selector.exact"
+      ],
+      "contract": "implemented-subset",
+      "effect": "Observe selected private-link metadata or approval/rejection/removal and test access from the owned private network independently; SDK connection administration does not provision a private endpoint.",
+      "requiredCases": [
+        "selected-contract",
+        "denied-authority",
+        "cancellation-boundary",
+        "independent-effect"
+      ],
+      "prerequisites": [
+        "owned-origin-api-revision",
+        "selected-runtime-identity",
+        "separate-observer-identity",
+        "approved-sandbox-cleanup",
+        "selected-administrative-identity",
+        "scoped-administrative-rights",
+        "azure-tenant-subscription",
+        "azure-selected-cloud-endpoint",
+        "azure-arm-public-cloud-rights",
+        "owned-private-endpoint",
+        "private-network-observer"
+      ]
+    },
+    {
+      "id": "a.management.VaultAdministration.GetRoleAssignmentAsync",
+      "member": "SecretKit.AzureKeyVault.Management.VaultAdministration.GetRoleAssignmentAsync(SecretKit.AzureKeyVault.Management.RoleAssignmentScope,System.Threading.CancellationToken)",
+      "variants": [
+        "selector.exact",
+        "scope.vault",
+        "scope.resource-group",
+        "scope.subscription"
+      ],
+      "contract": "implemented-subset",
+      "effect": "Independently observe the exact role assignment at its declared scope and verify intended-principal data-plane access/denial, including inherited assignments on reads. Assignment existence is not effective access.",
+      "requiredCases": [
+        "selected-contract",
+        "denied-authority",
+        "cancellation-boundary",
+        "independent-effect"
+      ],
+      "prerequisites": [
+        "owned-origin-api-revision",
+        "selected-runtime-identity",
+        "separate-observer-identity",
+        "approved-sandbox-cleanup",
+        "selected-administrative-identity",
+        "scoped-administrative-rights",
+        "azure-tenant-subscription",
+        "azure-selected-cloud-endpoint",
+        "azure-arm-public-cloud-rights",
+        "azure-role-assignment-rights",
+        "intended-principal-permission-observer"
+      ]
+    },
+    {
+      "id": "a.management.VaultAdministration.GetRoleDefinitionAsync",
+      "member": "SecretKit.AzureKeyVault.Management.VaultAdministration.GetRoleDefinitionAsync(SecretKit.AzureKeyVault.Management.RoleDefinitionScope,System.Threading.CancellationToken)",
+      "variants": [
+        "selector.exact"
+      ],
+      "contract": "implemented-subset",
+      "effect": "GetRoleDefinition in the selected Vault scope: compare the returned selected resource, metadata or bounded collection against independently prepared native state; visibility is not effective permission.",
+      "requiredCases": [
+        "selected-contract",
+        "denied-authority",
+        "cancellation-boundary",
+        "independent-effect"
+      ],
+      "prerequisites": [
+        "owned-origin-api-revision",
+        "selected-runtime-identity",
+        "separate-observer-identity",
+        "approved-sandbox-cleanup",
+        "selected-administrative-identity",
+        "scoped-administrative-rights",
+        "azure-tenant-subscription",
+        "azure-selected-cloud-endpoint",
+        "azure-arm-public-cloud-rights"
+      ]
+    },
+    {
+      "id": "a.management.VaultAdministration.GetVaultAsync",
+      "member": "SecretKit.AzureKeyVault.Management.VaultAdministration.GetVaultAsync(SecretKit.AzureKeyVault.Management.VaultScope,System.Threading.CancellationToken)",
+      "variants": [
+        "selector.exact"
+      ],
+      "contract": "implemented-subset",
+      "effect": "GetVault in the selected Vault scope: compare the returned selected resource, metadata or bounded collection against independently prepared native state; visibility is not effective permission.",
+      "requiredCases": [
+        "selected-contract",
+        "denied-authority",
+        "cancellation-boundary",
+        "independent-effect"
+      ],
+      "prerequisites": [
+        "owned-origin-api-revision",
+        "selected-runtime-identity",
+        "separate-observer-identity",
+        "approved-sandbox-cleanup",
+        "selected-administrative-identity",
+        "scoped-administrative-rights",
+        "azure-tenant-subscription",
+        "azure-selected-cloud-endpoint",
+        "azure-arm-public-cloud-rights"
+      ]
+    },
+    {
+      "id": "a.management.VaultAdministration.ListDeletedVaultsAsync",
+      "member": "SecretKit.AzureKeyVault.Management.VaultAdministration.ListDeletedVaultsAsync(SecretKit.AzureKeyVault.Management.SubscriptionScope,SecretKit.AzureKeyVault.Management.CollectionLimits,System.Threading.CancellationToken)",
+      "variants": [
+        "collection.bounded"
+      ],
+      "contract": "implemented-subset",
+      "effect": "ListDeletedVaults in the selected Vault scope: compare the returned selected resource, metadata or bounded collection against independently prepared native state; visibility is not effective permission.",
+      "requiredCases": [
+        "selected-contract",
+        "denied-authority",
+        "cancellation-boundary",
+        "independent-effect"
+      ],
+      "prerequisites": [
+        "owned-origin-api-revision",
+        "selected-runtime-identity",
+        "separate-observer-identity",
+        "approved-sandbox-cleanup",
+        "selected-administrative-identity",
+        "scoped-administrative-rights",
+        "azure-tenant-subscription",
+        "azure-selected-cloud-endpoint",
+        "azure-arm-public-cloud-rights"
+      ]
+    },
+    {
+      "id": "a.management.VaultAdministration.ListNotificationsAsync",
+      "member": "SecretKit.AzureKeyVault.Management.VaultAdministration.ListNotificationsAsync(SecretKit.AzureKeyVault.Management.VaultScope,SecretKit.AzureKeyVault.Management.CollectionLimits,System.Threading.CancellationToken)",
+      "variants": [
+        "collection.bounded",
+        "response.destination.Unknown",
+        "response.destination.WebHook",
+        "response.destination.Other"
+      ],
+      "contract": "implemented-subset",
+      "effect": "Independently inspect the selected Event Grid subscription and receive a correlated selected Key Vault event at the owned HTTPS webhook, including delivery attributes and denied/wrong event filtering; provisioning success is not delivery.",
+      "requiredCases": [
+        "selected-contract",
+        "denied-authority",
+        "cancellation-boundary",
+        "independent-effect"
+      ],
+      "prerequisites": [
+        "owned-origin-api-revision",
+        "selected-runtime-identity",
+        "separate-observer-identity",
+        "approved-sandbox-cleanup",
+        "selected-administrative-identity",
+        "scoped-administrative-rights",
+        "azure-tenant-subscription",
+        "azure-selected-cloud-endpoint",
+        "azure-arm-public-cloud-rights",
+        "event-grid-registration-rights",
+        "owned-https-webhook-observer",
+        "event-grid-delivery-authority"
+      ]
+    },
+    {
+      "id": "a.management.VaultAdministration.ListPrivateConnectionsAsync",
+      "member": "SecretKit.AzureKeyVault.Management.VaultAdministration.ListPrivateConnectionsAsync(SecretKit.AzureKeyVault.Management.VaultScope,SecretKit.AzureKeyVault.Management.CollectionLimits,System.Threading.CancellationToken)",
+      "variants": [
+        "collection.bounded"
+      ],
+      "contract": "implemented-subset",
+      "effect": "Observe selected private-link metadata or approval/rejection/removal and test access from the owned private network independently; SDK connection administration does not provision a private endpoint.",
+      "requiredCases": [
+        "selected-contract",
+        "denied-authority",
+        "cancellation-boundary",
+        "independent-effect"
+      ],
+      "prerequisites": [
+        "owned-origin-api-revision",
+        "selected-runtime-identity",
+        "separate-observer-identity",
+        "approved-sandbox-cleanup",
+        "selected-administrative-identity",
+        "scoped-administrative-rights",
+        "azure-tenant-subscription",
+        "azure-selected-cloud-endpoint",
+        "azure-arm-public-cloud-rights",
+        "owned-private-endpoint",
+        "private-network-observer"
+      ]
+    },
+    {
+      "id": "a.management.VaultAdministration.ListPrivateLinkResourcesAsync",
+      "member": "SecretKit.AzureKeyVault.Management.VaultAdministration.ListPrivateLinkResourcesAsync(SecretKit.AzureKeyVault.Management.VaultScope,SecretKit.AzureKeyVault.Management.CollectionLimits,System.Threading.CancellationToken)",
+      "variants": [
+        "collection.bounded"
+      ],
+      "contract": "implemented-subset",
+      "effect": "Observe selected private-link metadata or approval/rejection/removal and test access from the owned private network independently; SDK connection administration does not provision a private endpoint.",
+      "requiredCases": [
+        "selected-contract",
+        "denied-authority",
+        "cancellation-boundary",
+        "independent-effect"
+      ],
+      "prerequisites": [
+        "owned-origin-api-revision",
+        "selected-runtime-identity",
+        "separate-observer-identity",
+        "approved-sandbox-cleanup",
+        "selected-administrative-identity",
+        "scoped-administrative-rights",
+        "azure-tenant-subscription",
+        "azure-selected-cloud-endpoint",
+        "azure-arm-public-cloud-rights",
+        "owned-private-endpoint",
+        "private-network-observer"
+      ]
+    },
+    {
+      "id": "a.management.VaultAdministration.ListRoleAssignmentsAsync",
+      "member": "SecretKit.AzureKeyVault.Management.VaultAdministration.ListRoleAssignmentsAsync(SecretKit.AzureKeyVault.Management.VaultScope,SecretKit.AzureKeyVault.Management.CollectionLimits,System.Threading.CancellationToken)",
+      "variants": [
+        "collection.bounded",
+        "scope.vault",
+        "scope.resource-group",
+        "scope.subscription"
+      ],
+      "contract": "implemented-subset",
+      "effect": "Independently observe the exact role assignment at its declared scope and verify intended-principal data-plane access/denial, including inherited assignments on reads. Assignment existence is not effective access.",
+      "requiredCases": [
+        "selected-contract",
+        "denied-authority",
+        "cancellation-boundary",
+        "independent-effect"
+      ],
+      "prerequisites": [
+        "owned-origin-api-revision",
+        "selected-runtime-identity",
+        "separate-observer-identity",
+        "approved-sandbox-cleanup",
+        "selected-administrative-identity",
+        "scoped-administrative-rights",
+        "azure-tenant-subscription",
+        "azure-selected-cloud-endpoint",
+        "azure-arm-public-cloud-rights",
+        "azure-role-assignment-rights",
+        "intended-principal-permission-observer"
+      ]
+    },
+    {
+      "id": "a.management.VaultAdministration.ListRoleDefinitionsAsync",
+      "member": "SecretKit.AzureKeyVault.Management.VaultAdministration.ListRoleDefinitionsAsync(SecretKit.AzureKeyVault.Management.SubscriptionScope,SecretKit.AzureKeyVault.Management.CollectionLimits,System.Threading.CancellationToken)",
+      "variants": [
+        "collection.bounded"
+      ],
+      "contract": "implemented-subset",
+      "effect": "ListRoleDefinitions in the selected Vault scope: compare the returned selected resource, metadata or bounded collection against independently prepared native state; visibility is not effective permission.",
+      "requiredCases": [
+        "selected-contract",
+        "denied-authority",
+        "cancellation-boundary",
+        "independent-effect"
+      ],
+      "prerequisites": [
+        "owned-origin-api-revision",
+        "selected-runtime-identity",
+        "separate-observer-identity",
+        "approved-sandbox-cleanup",
+        "selected-administrative-identity",
+        "scoped-administrative-rights",
+        "azure-tenant-subscription",
+        "azure-selected-cloud-endpoint",
+        "azure-arm-public-cloud-rights"
+      ]
+    },
+    {
+      "id": "a.management.VaultAdministration.ListVaultsAsync.ResourceGroup",
+      "member": "SecretKit.AzureKeyVault.Management.VaultAdministration.ListVaultsAsync(SecretKit.AzureKeyVault.Management.ResourceGroupScope,SecretKit.AzureKeyVault.Management.CollectionLimits,System.Threading.CancellationToken)",
+      "variants": [
+        "collection.bounded"
+      ],
+      "contract": "implemented-subset",
+      "effect": "ListVaults in the selected Vault scope: compare the returned selected resource, metadata or bounded collection against independently prepared native state; visibility is not effective permission.",
+      "requiredCases": [
+        "selected-contract",
+        "denied-authority",
+        "cancellation-boundary",
+        "independent-effect"
+      ],
+      "prerequisites": [
+        "owned-origin-api-revision",
+        "selected-runtime-identity",
+        "separate-observer-identity",
+        "approved-sandbox-cleanup",
+        "selected-administrative-identity",
+        "scoped-administrative-rights",
+        "azure-tenant-subscription",
+        "azure-selected-cloud-endpoint",
+        "azure-arm-public-cloud-rights"
+      ]
+    },
+    {
+      "id": "a.management.VaultAdministration.ListVaultsAsync.Subscription",
+      "member": "SecretKit.AzureKeyVault.Management.VaultAdministration.ListVaultsAsync(SecretKit.AzureKeyVault.Management.SubscriptionScope,SecretKit.AzureKeyVault.Management.CollectionLimits,System.Threading.CancellationToken)",
+      "variants": [
+        "collection.bounded"
+      ],
+      "contract": "implemented-subset",
+      "effect": "ListVaults in the selected Vault scope: compare the returned selected resource, metadata or bounded collection against independently prepared native state; visibility is not effective permission.",
+      "requiredCases": [
+        "selected-contract",
+        "denied-authority",
+        "cancellation-boundary",
+        "independent-effect"
+      ],
+      "prerequisites": [
+        "owned-origin-api-revision",
+        "selected-runtime-identity",
+        "separate-observer-identity",
+        "approved-sandbox-cleanup",
+        "selected-administrative-identity",
+        "scoped-administrative-rights",
+        "azure-tenant-subscription",
+        "azure-selected-cloud-endpoint",
+        "azure-arm-public-cloud-rights"
+      ]
+    },
+    {
+      "id": "a.management.VaultAdministration.PurgeDeletedVaultAsync",
+      "member": "SecretKit.AzureKeyVault.Management.VaultAdministration.PurgeDeletedVaultAsync(SecretKit.AzureKeyVault.Management.DeletedVaultScope,SecretKit.AzureKeyVault.Management.ManagementReceipt,System.Threading.CancellationToken)",
+      "variants": [
+        "input.scope"
+      ],
+      "contract": "implemented-subset",
+      "effect": "PurgeDeletedVault in the selected Vault scope: independent native readback must confirm the requested changed fields or removal; an acknowledgement alone is not an effect.",
+      "requiredCases": [
+        "selected-contract",
+        "denied-authority",
+        "cancellation-boundary",
+        "independent-effect",
+        "lost-response-no-replay"
+      ],
+      "prerequisites": [
+        "owned-origin-api-revision",
+        "selected-runtime-identity",
+        "separate-observer-identity",
+        "approved-sandbox-cleanup",
+        "selected-administrative-identity",
+        "scoped-administrative-rights",
+        "azure-tenant-subscription",
+        "azure-selected-cloud-endpoint",
+        "azure-arm-public-cloud-rights"
+      ]
+    },
+    {
+      "id": "a.management.VaultAdministration.RecoverVaultAsync",
+      "member": "SecretKit.AzureKeyVault.Management.VaultAdministration.RecoverVaultAsync(SecretKit.AzureKeyVault.Management.VaultScope,SecretKit.AzureKeyVault.Management.VaultConfiguration,SecretKit.AzureKeyVault.Management.ManagementReceipt,System.Threading.CancellationToken)",
+      "variants": [
+        "sku.Standard",
+        "sku.Premium",
+        "authorization.rbac",
+        "authorization.access-policy",
+        "purgeProtection.false",
+        "purgeProtection.true",
+        "publicNetworkAccess.false",
+        "publicNetworkAccess.true",
+        "accessPolicies.empty",
+        "accessPolicies.selected",
+        "lro.started",
+        "lro.completed"
+      ],
+      "contract": "implemented-subset",
+      "effect": "RecoverVault in the selected Vault scope: independent native readback must confirm the requested changed fields or removal; an acknowledgement alone is not an effect.",
+      "requiredCases": [
+        "selected-contract",
+        "denied-authority",
+        "cancellation-boundary",
+        "independent-effect",
+        "lost-response-no-replay"
+      ],
+      "prerequisites": [
+        "owned-origin-api-revision",
+        "selected-runtime-identity",
+        "separate-observer-identity",
+        "approved-sandbox-cleanup",
+        "selected-administrative-identity",
+        "scoped-administrative-rights",
+        "azure-tenant-subscription",
+        "azure-selected-cloud-endpoint",
+        "azure-arm-public-cloud-rights"
+      ]
+    },
+    {
+      "id": "a.management.VaultAdministration.UpdateNotificationAsync",
+      "member": "SecretKit.AzureKeyVault.Management.VaultAdministration.UpdateNotificationAsync(SecretKit.AzureKeyVault.Management.NotificationScope,SecretKit.AzureKeyVault.Management.NotificationConfiguration,SecretKit.AzureKeyVault.Management.ManagementReceipt,System.Threading.CancellationToken)",
+      "variants": [
+        "event.SecretNewVersionCreated",
+        "event.SecretNearExpiry",
+        "event.SecretExpired",
+        "events.multiple",
+        "attributes.omitted",
+        "attributes.empty",
+        "attribute.Static.secret",
+        "attribute.Static.nonsecret",
+        "attribute.Dynamic",
+        "lro.started",
+        "lro.completed"
+      ],
+      "contract": "implemented-subset",
+      "effect": "Independently inspect the selected Event Grid subscription and receive a correlated selected Key Vault event at the owned HTTPS webhook, including delivery attributes and denied/wrong event filtering; provisioning success is not delivery.",
+      "requiredCases": [
+        "selected-contract",
+        "denied-authority",
+        "cancellation-boundary",
+        "independent-effect",
+        "lost-response-no-replay"
+      ],
+      "prerequisites": [
+        "owned-origin-api-revision",
+        "selected-runtime-identity",
+        "separate-observer-identity",
+        "approved-sandbox-cleanup",
+        "selected-administrative-identity",
+        "scoped-administrative-rights",
+        "azure-tenant-subscription",
+        "azure-selected-cloud-endpoint",
+        "azure-arm-public-cloud-rights",
+        "event-grid-registration-rights",
+        "owned-https-webhook-observer",
+        "event-grid-delivery-authority"
+      ]
+    },
+    {
+      "id": "a.management.VaultAdministration.UpdatePrivateConnectionAsync",
+      "member": "SecretKit.AzureKeyVault.Management.VaultAdministration.UpdatePrivateConnectionAsync(SecretKit.AzureKeyVault.Management.PrivateConnectionScope,SecretKit.AzureKeyVault.Management.PrivateConnectionState,SecretKit.AzureKeyVault.Management.ManagementReceipt,System.Threading.CancellationToken)",
+      "variants": [
+        "state.Unknown.rejected",
+        "state.Pending.rejected",
+        "state.Approved",
+        "state.Rejected",
+        "state.Disconnected.rejected"
+      ],
+      "contract": "implemented-subset",
+      "effect": "Observe selected private-link metadata or approval/rejection/removal and test access from the owned private network independently; SDK connection administration does not provision a private endpoint.",
+      "requiredCases": [
+        "selected-contract",
+        "denied-authority",
+        "cancellation-boundary",
+        "independent-effect",
+        "lost-response-no-replay"
+      ],
+      "prerequisites": [
+        "owned-origin-api-revision",
+        "selected-runtime-identity",
+        "separate-observer-identity",
+        "approved-sandbox-cleanup",
+        "selected-administrative-identity",
+        "scoped-administrative-rights",
+        "azure-tenant-subscription",
+        "azure-selected-cloud-endpoint",
+        "azure-arm-public-cloud-rights",
+        "owned-private-endpoint",
+        "private-network-observer"
+      ]
+    },
+    {
+      "id": "a.management.VaultAdministration.UpdateSettingsAsync",
+      "member": "SecretKit.AzureKeyVault.Management.VaultAdministration.UpdateSettingsAsync(SecretKit.AzureKeyVault.Management.VaultScope,SecretKit.AzureKeyVault.Management.VaultSettingsPatch,SecretKit.AzureKeyVault.Management.ManagementReceipt,System.Threading.CancellationToken)",
+      "variants": [
+        "rbac.omitted",
+        "rbac.false",
+        "rbac.true",
+        "purgeProtection.omitted",
+        "purgeProtection.true",
+        "purgeProtection.false.rejected",
+        "publicNetworkAccess.omitted",
+        "publicNetworkAccess.false",
+        "publicNetworkAccess.true"
+      ],
+      "contract": "implemented-subset",
+      "effect": "UpdateSettings in the selected Vault scope: independent native readback must confirm the requested changed fields or removal; an acknowledgement alone is not an effect.",
+      "requiredCases": [
+        "selected-contract",
+        "denied-authority",
+        "cancellation-boundary",
+        "independent-effect",
+        "lost-response-no-replay"
+      ],
+      "prerequisites": [
+        "owned-origin-api-revision",
+        "selected-runtime-identity",
+        "separate-observer-identity",
+        "approved-sandbox-cleanup",
+        "selected-administrative-identity",
+        "scoped-administrative-rights",
+        "azure-tenant-subscription",
+        "azure-selected-cloud-endpoint",
+        "azure-arm-public-cloud-rights"
+      ]
+    }
+  ],
+  "exclusions": [
+    "Only SecretKit-owned secret APIs are admitted; vendor SDK escape surfaces, key/certificate administration and unexposed endpoints are not callable SecretKit claims.",
+    "Management, Event Grid and Log Analytics are public-cloud bounded contracts. Sovereign management endpoints, arbitrary KQL, deprecated server batch, arbitrary Event Grid destinations/settings and private-endpoint provisioning are intentionally out of contract.",
+    "Runtime accepts its hashed trusted vault suffixes; endpoint syntax alone does not certify any cloud. Each selected deployment requires its own credentials, rights and complete retained evidence.",
+    "CreateOnly and MatchVersion preconditions are explicit local Unsupported outcomes, not fabricated conditional Azure writes. Purge-protection disable and unselected private-connection states are rejected inputs, not supported mutations.",
+    "Host credential/transport interfaces and local model/disposal methods are excluded. Both ListVaultsAsync overloads, runtime and management explicit status methods remain admitted.",
+    "Primitive value domains are bounded by the hashed types. Variant labels enumerate semantic dimensions rather than every value or Cartesian product; rejection labels require proof of no unauthorized remote effect."
+  ]
+}

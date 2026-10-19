@@ -1,28 +1,116 @@
 using System.Text;
-using SecretKit.Release;
 
 namespace SecretKit.Release.Tests;
 
 public sealed class ManifestTests
 {
     [Test]
-    [Arguments(false)]
-    [Arguments(true)]
-    public async Task AdmittedRegistryCannotBeIncompleteOrOmittedFromScope(bool omit)
+    [Arguments("runtime")]
+    [Arguments("observer")]
+    [Arguments("setup")]
+    [Arguments("denied")]
+    [Arguments("administrative")]
+    public async Task ProtectedScopeRequiresDistinctSafeRoles(string role)
+    {
+        using var bundle = new TestBundle();
+        ReleaseScope scope = Manifest.Parse<ReleaseScope>(
+            File.ReadAllBytes(Path.Combine(bundle.Root, bundle.Data.Scope.File)));
+        ProviderScope selected = scope.ProviderScopes[0];
+        ProviderScope duplicate = role switch
+        {
+            "runtime" => selected with { RuntimeIdentity = selected.SetupIdentity },
+            "observer" => selected with { ObserverIdentity = selected.RuntimeIdentity },
+            "setup" => selected with { SetupIdentity = selected.DeniedIdentity },
+            "denied" => selected with { DeniedIdentity = selected.AdministrativeIdentity },
+            "administrative" => selected with { AdministrativeIdentity = selected.ObserverIdentity },
+            _ => throw new InvalidOperationException()
+        };
+        bundle.ReviewScope(scope with { ProviderScopes = [duplicate, .. scope.ProviderScopes[1..]] });
+        await Assert.That(bundle.Verify).Throws<ReleaseException>();
+    }
+
+    [Test]
+    [Arguments("historical")]
+    [Arguments("duplicate-operation")]
+    [Arguments("duplicate-variant")]
+    [Arguments("missing-variant")]
+    [Arguments("missing-case")]
+    [Arguments("source-copy")]
+    [Arguments("platform")]
+    [Arguments("duplicate-scope")]
+    [Arguments("depth")]
+    public async Task ReviewedScopeCannotShrinkOrReplaceCurrentAdmission(string fault)
     {
         using var bundle = new TestBundle();
         ReleaseScope scope = Manifest.Parse<ReleaseScope>(File.ReadAllBytes(Path.Combine(bundle.Root, bundle.Data.Scope.File)));
-        FileDigest registry = bundle.Write("infisical-operations.json", new
+        if (fault is "platform" or "duplicate-scope" or "depth" or "missing-variant")
         {
-            provider = "Infisical",
-            operations = omit
-                ? new[] { new { id = "read", admitted = true, implemented = true, liveVerified = true },
-                    new { id = "additional", admitted = true, implemented = true, liveVerified = true } }
-                : [new { id = "read", admitted = true, implemented = false, liveVerified = false }]
-        });
+            bundle.ReviewScope(fault switch
+            {
+                "platform" => scope with { Platforms = ["linux-x64-net10.0"] },
+                "duplicate-scope" => scope with { NativeOperations = [.. scope.NativeOperations, scope.NativeOperations[0]] },
+                "depth" => scope with { Policy = "offline-only" },
+                "missing-variant" => scope with { NativeOperations = scope.NativeOperations[..^1] },
+                _ => throw new InvalidOperationException()
+            });
+        }
+        else
+        {
+            AdmissionInventory inventory = Manifest.Parse<AdmissionInventory>(
+                File.ReadAllBytes(Path.Combine(bundle.Root, "infisical.json")));
+            AdmissionInventory changed = fault switch
+            {
+                "historical" => inventory with { Kind = "ContractResearchOnly" },
+                "duplicate-operation" => inventory with { Operations = [.. inventory.Operations, inventory.Operations[0]] },
+                "duplicate-variant" => inventory with
+                {
+                    Operations = [inventory.Operations[0] with { Variants = ["selected-version", "selected-version"] }]
+                },
+                "missing-case" => inventory with { Operations = [inventory.Operations[0] with { RequiredCases = [] }] },
+                "source-copy" => inventory with { Exclusions = ["Unreviewed bundled exclusion."] },
+                _ => throw new InvalidOperationException()
+            };
+            FileDigest file = bundle.Write("infisical.json", changed);
+            if (fault != "source-copy")
+                bundle.WriteOracle("infisical.json", changed);
+            bundle.Index = bundle.Index with
+            {
+                Inventories = bundle.Index.Inventories.Select(i => i.File == file.File ? file : i).ToArray()
+            };
+            bundle.SaveIndex();
+            bundle.ReviewScope(scope with
+            {
+                Inventories = scope.Inventories.Select(i => i.File == file.File ? file : i).ToArray()
+            });
+        }
+        await Assert.That(bundle.Verify).Throws<ReleaseException>();
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task CurrentAdmissionCannotBeIncompleteOrOmittedFromScope(bool omit)
+    {
+        using var bundle = new TestBundle();
+        ReleaseScope scope = Manifest.Parse<ReleaseScope>(File.ReadAllBytes(Path.Combine(bundle.Root, bundle.Data.Scope.File)));
+        AdmissionInventory original = Manifest.Parse<AdmissionInventory>(
+            File.ReadAllBytes(Path.Combine(bundle.Root, "infisical.json")));
+        AdmissionInventory changed = original with
+        {
+            Operations = omit
+                ? [.. original.Operations, original.Operations[0] with { Id = "additional", Member = "Other.ReadAsync" }]
+                : [original.Operations[0] with { Contract = "contract-gap" }]
+        };
+        FileDigest registry = bundle.Write("infisical.json", changed);
+        bundle.WriteOracle("infisical.json", changed);
+        bundle.Index = bundle.Index with
+        {
+            Inventories = bundle.Index.Inventories.Select(r => r.File == registry.File ? registry : r).ToArray()
+        };
+        bundle.SaveIndex();
         bundle.ReviewScope(scope with
         {
-            Registries = scope.Registries.Select(r => r.File == registry.File ? registry : r).ToArray()
+            Inventories = scope.Inventories.Select(r => r.File == registry.File ? registry : r).ToArray()
         });
         await Assert.That(bundle.Verify).Throws<ReleaseException>();
     }
@@ -84,7 +172,8 @@ public sealed class ManifestTests
         using var bundle = new TestBundle();
         File.AppendAllText(Path.Combine(bundle.Root, "live-conformance.json"), " ");
         await Assert.That(bundle.Verify).Throws<ReleaseException>();
-        await Assert.That(() => Manifest.Verify(bundle.Root, bundle.Approval with { ManifestSha256 = new string('e', 64) }))
+        await Assert.That(() => Manifest.Verify(bundle.Root, bundle.Approval with { ManifestSha256 = new string('e', 64) },
+            new IndependentEvidence(bundle.OracleRoot)))
             .Throws<ReleaseException>();
     }
 

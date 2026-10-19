@@ -5,6 +5,146 @@ namespace SecretKit.Release.Tests;
 public sealed class PublicationTests
 {
     [Test]
+    [Arguments("valid")]
+    [Arguments("missing-journal")]
+    [Arguments("expired-original")]
+    [Arguments("wrong-head")]
+    [Arguments("wrong-original-hash")]
+    [Arguments("initial-short-retention")]
+    [Arguments("initial-valid")]
+    public async Task RecoveryCliVerifiesOriginalUnknownHistoryWithoutCredentials(string fault)
+    {
+        using var bundle = new TestBundle();
+        bool initial = fault.StartsWith("initial-", StringComparison.Ordinal);
+        bool valid = fault is "valid" or "initial-valid";
+        DateTimeOffset produced = initial
+            ? DateTimeOffset.UtcNow.AddMinutes(-30)
+            : DateTimeOffset.UtcNow.AddDays(fault == "expired-original" ? -100 : -30);
+        bundle.Index = bundle.Index with { ReviewedAt = produced.AddMinutes(1) };
+        bundle.SaveIndex();
+        VerifiedRelease release = bundle.Verify();
+        string head;
+        using (var journal = new Journal(bundle.JournalPath, release))
+        {
+            journal.Save(journal.Head.Packages);
+            journal.Set(journal.Head.Packages[0] with { State = "unknown", Attempt = "12-1" });
+            head = journal.HeadSha256;
+        }
+        var original = new OriginalAdmission(1, bundle.Approval.ManifestSha256,
+            bundle.Approval.EvidenceSha256, bundle.Approval.ArtifactId, bundle.Approval.ArtifactDigest,
+            bundle.Index.ReviewedAt, produced);
+        FileDigest originalFile = bundle.WriteOracle("original-admission.json", original);
+        bundle.WriteOracle("producer-job.json", new
+        {
+            run_id = 12,
+            run_attempt = 1,
+            head_sha = TestBundle.Commit,
+            name = "candidate",
+            status = "completed",
+            conclusion = "success",
+            completed_at = produced
+        });
+        if (initial)
+        {
+            bundle.WriteOracle("artifact-metadata.json", new
+            {
+                id = bundle.Approval.ArtifactId,
+                expired = false,
+                digest = "sha256:" + bundle.Approval.ArtifactDigest,
+                workflow_run = new { id = bundle.Approval.SourceRunId, head_sha = TestBundle.Commit },
+                expires_at = produced.AddDays(fault == "initial-short-retention" ? 30 : 120)
+            });
+            foreach (ReportOrigin report in bundle.Index.Reports)
+            {
+                bundle.WriteOracle($"{report.ArtifactId}-artifact.json", new
+                {
+                    id = report.ArtifactId,
+                    expired = false,
+                    digest = "sha256:" + report.ArtifactDigest,
+                    name = $"secretkit-report-{report.JobId}",
+                    workflow_run = new { id = bundle.Approval.SourceRunId, head_sha = TestBundle.Commit },
+                    created_at = TestBundle.RunStart.AddMinutes(3),
+                    expires_at = produced.AddDays(120)
+                });
+            }
+        }
+        Approval approval = bundle.Approval with { JournalHead = fault == "wrong-head" ? new string('f', 64) : head };
+        string testAssembly = typeof(PublicationTests).Assembly.Location;
+        var start = new System.Diagnostics.ProcessStartInfo("dotnet")
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false
+        };
+        start.ArgumentList.Add("exec");
+        start.ArgumentList.Add("--runtimeconfig");
+        start.ArgumentList.Add(Path.ChangeExtension(testAssembly, ".runtimeconfig.json"));
+        start.ArgumentList.Add("--depsfile");
+        start.ArgumentList.Add(Path.ChangeExtension(testAssembly, ".deps.json"));
+        start.ArgumentList.Add(typeof(Program).Assembly.Location);
+        start.ArgumentList.Add("verify");
+        start.ArgumentList.Add(bundle.Root);
+        if (!initial)
+            start.ArgumentList.Add(fault == "missing-journal" ? Path.Combine(bundle.Root, "absent") : bundle.JournalPath);
+        start.Environment.Clear();
+        start.Environment["PATH"] = Environment.GetEnvironmentVariable("PATH");
+        var inputs = new Dictionary<string, string>
+        {
+            ["SECRETKIT_APPROVED_MANIFEST_SHA256"] = approval.ManifestSha256,
+            ["SECRETKIT_APPROVED_SOURCE_COMMIT"] = approval.SourceCommit,
+            ["SECRETKIT_APPROVED_VERSION"] = approval.Version,
+            ["SECRETKIT_APPROVED_SOURCE_RUN_ID"] = approval.SourceRunId.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            ["SECRETKIT_APPROVED_ARTIFACT_ID"] = approval.ArtifactId.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            ["SECRETKIT_APPROVED_ARTIFACT_DIGEST"] = approval.ArtifactDigest,
+            ["SECRETKIT_APPROVED_SCOPE_SHA256"] = approval.ScopeSha256,
+            ["SECRETKIT_APPROVED_EVIDENCE_SHA256"] = approval.EvidenceSha256,
+            ["SECRETKIT_NUGET_USER"] = approval.Publisher,
+            ["SECRETKIT_NUGET_OWNER"] = approval.Owner,
+            ["SECRETKIT_NUGET_REPOSITORY_CERT_SHA256"] = approval.RepositoryCertificateSha256,
+            ["SECRETKIT_APPROVED_JOURNAL_HEAD"] = approval.JournalHead,
+            ["SECRETKIT_EVIDENCE_DIRECTORY"] = bundle.OracleRoot,
+            ["SECRETKIT_VERIFY_PURPOSE"] = initial ? "initial-admission" : "read-only-recovery",
+            ["SECRETKIT_ORIGINAL_ADMISSION_FILE"] = Path.Combine(bundle.OracleRoot, originalFile.File),
+            ["SECRETKIT_APPROVED_ORIGINAL_ADMISSION_SHA256"] = fault == "wrong-original-hash" ? new string('f', 64) : originalFile.Sha256
+        };
+        foreach (var input in inputs)
+            start.Environment[input.Key] = input.Value;
+        string[] checkpoints = Directory.GetFiles(bundle.JournalPath, "*.json").Order().ToArray();
+        byte[][] before = checkpoints.Select(File.ReadAllBytes).ToArray();
+        using var process = System.Diagnostics.Process.Start(start)!;
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        Task<string> stdout = process.StandardOutput.ReadToEndAsync(deadline.Token);
+        Task<string> stderr = process.StandardError.ReadToEndAsync(deadline.Token);
+        try
+        {
+            await process.WaitForExitAsync(deadline.Token);
+        }
+        finally
+        {
+            if (!process.HasExited)
+                process.Kill(entireProcessTree: true);
+        }
+        await Assert.That(process.ExitCode).IsEqualTo(valid ? 0 : 1);
+        await Assert.That((await stdout).Contains(initial ? "exact-artifacts-verified"
+            : "original-artifacts-and-history-verified")).IsEqualTo(valid);
+        string expectedError = fault switch
+        {
+            "valid" or "initial-valid" => "",
+            "missing-journal" => "existing-journal-required",
+            "expired-original" => "recovery-window-expired",
+            "wrong-head" => "journal-approval",
+            "wrong-original-hash" => "protected-authorization-hash",
+            "initial-short-retention" => "candidate-retention-window",
+            _ => throw new InvalidOperationException()
+        };
+        await Assert.That((await stderr).Trim()).IsEqualTo(expectedError);
+        await Assert.That(Directory.GetFiles(bundle.JournalPath, "*.json").Length).IsEqualTo(checkpoints.Length);
+        for (int i = 0; i < checkpoints.Length; i++)
+            await Assert.That(File.ReadAllBytes(checkpoints[i]).SequenceEqual(before[i])).IsTrue();
+        await Assert.That(Directory.Exists(Path.Combine(bundle.Root, "absent"))).IsFalse();
+    }
+
+    [Test]
     public async Task IdenticalPayloadWithDifferentArchiveBytesIsNotTheApprovedPackage()
     {
         using var bundle = new TestBundle();
