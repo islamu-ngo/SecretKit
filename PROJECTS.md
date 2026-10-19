@@ -26,6 +26,11 @@ The application supplies identities and owns validation, activation, persistence
 
 Cross-cutting verification lives in [tests](tests/), including architecture, consumer, assessment, package, and release suites. The [internal hub](docs/internal/README.md) routes provider registries and compatibility evidence.
 
+The [shared provider suite](tests/SecretKit.ProviderContract.Tests/) exercises
+common invariants through actual Infisical and Azure adapters. It does not replace
+native effect tests. Follow [provider onboarding](docs/internal/PROVIDER_ONBOARDING.md)
+and [current support](docs/public/provider-support.md) before extending a provider.
+
 ## Samples and tools
 
 - [RuntimeConfiguration](samples/RuntimeConfiguration/): offline required bootstrap and generation ownership.

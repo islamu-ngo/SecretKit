@@ -1,5 +1,8 @@
 # SecretKit.Extensions.Configuration
 
+See [current support](../../docs/public/provider-support.md) for package
+boundaries and observed offline evidence.
+
 This optional package references Core and Microsoft.Extensions.Configuration.
 Core remains BCL-only. It installs no cache policy, TTL, worker or hosting lifecycle.
 Supplied readers and transports remain caller-owned.

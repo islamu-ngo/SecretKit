@@ -1,5 +1,8 @@
 # Explicit Infisical authentication maintenance
 
+See [current support](../../docs/public/provider-support.md) for current
+offline evidence and the separate native renewal/entitlement limits.
+
 This optional package references Core, the native Infisical provider,
 Hosting.Abstractions and HealthChecks.Abstractions. It does not require the
 configuration adapter. Merely constructing or registering a session/helper

@@ -1,5 +1,8 @@
 # SecretKit.Infisical.Management
 
+[Current support](../../docs/public/provider-support.md) records the latest
+offline foundation; historical counts below retain their original boundaries.
+
 Optional, unpublished Infisical administration for selected secret-management
 workflows. The broad third-party app-connection and secret-sync catalog has
 been removed under the [accepted scope decision](../../docs/public/connector-scope-decision.md).

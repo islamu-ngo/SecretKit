@@ -1,6 +1,6 @@
 # Native Infisical organization and import preview
 
-This is an uncommitted, offline implementation subset, not full Infisical support
+This is an implemented, offline-exercised subset, not full Infisical support
 or remote conformance. Handwritten internal Refit 16.3.0 interfaces build native
 requests with explicit cancellation. The existing `InfisicalClient` managed
 transport controls the actual send, dispatch receipt and bounded response parser.
@@ -8,6 +8,9 @@ Refit does not deserialize responses or construct error-body exceptions on this
 request-builder path; request-content and method-argument capture are disabled.
 Common reads, selected shared-secret writes and the host-owned token session keep
 their existing behavior.
+
+[Current support](../../docs/public/provider-support.md) separates current
+offline evidence from the dated native narratives and historical counts below.
 
 ## R6 authentication and definition inputs
 

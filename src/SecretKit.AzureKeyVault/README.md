@@ -1,5 +1,8 @@
 # Azure Key Vault native lifecycle
 
+See [current support](../../docs/public/provider-support.md) for current offline
+evidence and the outstanding Azure live/platform gates.
+
 This provider uses the official `SecretClient` (locked 4.11.2), selecting
 2025-07-01 at a fixed trusted HTTPS vault origin. Credentials and injected
 transports remain host-owned. SDK logging, tracing and retries are disabled;

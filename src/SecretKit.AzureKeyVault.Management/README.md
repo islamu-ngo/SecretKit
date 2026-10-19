@@ -1,5 +1,8 @@
 # SecretKit.AzureKeyVault.Management
 
+[Current support](../../docs/public/provider-support.md) distinguishes these
+offline-tested subsets from unverified remote effects and release admission.
+
 Optional, offline-tested administration and audit adapters. Depends inward on
 Core plus the approved `Azure.ResourceManager.KeyVault` 1.4.0 and
 `Azure.Monitor.Query` 1.7.1, `Azure.ResourceManager.Authorization` 1.1.7 and

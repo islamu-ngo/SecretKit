@@ -6,6 +6,7 @@ Choose the track for your task. SecretKit is an unpublished .NET SDK preview; pr
 
 - [Repository overview](../README.md): packages, quickstart, trust boundaries, and community.
 - [Current preview](public/current-preview.md): implemented subsets and verification limits.
+- [Current provider support](public/provider-support.md): package scope, executable offline evidence and unverified combinations.
 - [Public design hub](public/README.md): adoption, configuration, compatibility, and intended behavior.
 - [Scope and future orchestration](public/scope-and-orchestration.md): retained two-provider access, optional administration and future Configurator responsibility.
 - [Connector scope decision](public/connector-scope-decision.md): accepted/applied catalog removal, retained support and local verification.
@@ -17,6 +18,7 @@ Choose the track for your task. SecretKit is an unpublished .NET SDK preview; pr
 - [Project map](../PROJECTS.md): source owners, tests, samples, and tools.
 - [Agent contract](../AGENTS.md): SDK invariants and verification baseline.
 - [Internal documentation hub](internal/README.md): architecture, runtime contracts, provider inventories, and evidence.
+- [Provider onboarding](internal/PROVIDER_ONBOARDING.md): setup, ownership and evidence requirements for both current providers.
 - [Dependency provenance](../THIRD-PARTY-NOTICES.md): notices and distribution gates.
 
 ## Private reports and community conduct

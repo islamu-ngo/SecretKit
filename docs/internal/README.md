@@ -8,16 +8,25 @@ source while retaining selected administration, native SQL rotation and
 runtime features, and gateway/proxy administration. Local removal checks passed; live-provider and release gates remain separate. R4/R5 scope and research below are historical where superseded.
 
 > Audience: SDK contributors and maintainers
-> Status: Proposed / unimplemented
+> Status: Implemented SDK subsets; broader design and release evidence remain incomplete
 > Owner: SecretKit maintainers
-> Last Verified: 2026-10-09, local design evidence and documentation links only
+> Last Verified: 2026-10-12, local offline foundation; remote/release gates remain separate
 > Source Anchors: [historical research](RESEARCH_EVIDENCE.md), [architecture](SDK_ARCHITECTURE.md), [runtime contracts](RUNTIME_CONTRACTS.md)
 
-SecretKit is proposed as a reusable .NET secret-management SDK for Infisical and Azure Key Vault, with a small portable read boundary and legitimate typed provider-native features.
+SecretKit implements a .NET SDK for Infisical and Azure Key Vault in documented
+subsets. Start with [current support](../public/provider-support.md) for observed
+behavior and limits, and [provider onboarding](PROVIDER_ONBOARDING.md) for the
+repeatable contribution unit. Historical proposal sections below retain design
+provenance rather than asserting that every feature is implemented or certified.
 
 ## Status And Authority
 
-These pages describe intended behavior, not shipped packages, working security controls, verified provider compatibility, or approval to implement. R4's bounded research supplies historical observations; [R5 research evidence](RESEARCH_EVIDENCE.md) records refreshed tools, primary facts and source limits, and [review traceability](REVIEW_TRACEABILITY.md) maps all 79 items. Neither is a populated implementation registry or live conformance result. Official links preserve provenance, not remotely tested SDK behavior.
+The architecture/runtime pages describe contracts and broader design; current
+support records implemented and observed subsets. Neither grants remote authority
+or establishes complete live compatibility. R4's bounded research and
+[R5 research evidence](RESEARCH_EVIDENCE.md) are historical; the
+[review traceability](REVIEW_TRACEABILITY.md) map is not current admission.
+Official links preserve provenance, not remotely tested SDK behavior.
 
 R5 supersedes the five-package/speculative-capability/late-pilot portions of R4. The single active triad, public/internal guides, research/review map and I-VSD assessment share the revised design. This alignment is documentation evidence, not implementation approval.
 
@@ -32,7 +41,7 @@ R5 supersedes the five-package/speculative-capability/late-pilot portions of R4.
 | [Research evidence](RESEARCH_EVIDENCE.md) | Actual primary facts, MCP limitations and source boundary |
 | [Review traceability](REVIEW_TRACEABILITY.md) | All 79 requested items and acceptance evidence ownership |
 
-## Proposed Scope
+## Historical Design Scope
 
 The package family would contain exactly `SecretKit.Core`, `SecretKit.Infisical`, `SecretKit.Infisical.Management`, `SecretKit.AzureKeyVault`, `SecretKit.AzureKeyVault.Management`, `SecretKit.Extensions.Configuration`, and `SecretKit.Extensions.Hosting`. There would be no umbrella package requiring every provider and no application/database dependency in Core.
 

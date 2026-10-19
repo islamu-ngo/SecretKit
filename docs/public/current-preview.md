@@ -1,5 +1,9 @@
 # Current local preview
 
+The [current provider support view](provider-support.md) records the 2026-10-12
+offline foundation and its explicit live/platform limits. Dated narratives below
+retain their original scope; they are not complete current admission.
+
 Accepted scope correction (2026-10-11): the broad Infisical third-party
 app-connection and secret-sync catalog has been removed from local source.
 Core, Infisical/direct Azure runtime access, optional configuration/hosting,
