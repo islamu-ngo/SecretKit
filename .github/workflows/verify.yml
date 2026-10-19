@@ -1,0 +1,450 @@
+{
+  "name": "Credential-free SDK verification",
+  "on": {
+    "push": { "branches": ["main"] },
+    "pull_request": {}
+  },
+  "permissions": { "contents": "read" },
+  "jobs": {
+    "format": {
+      "runs-on": "ubuntu-24.04",
+      "timeout-minutes": 20,
+      "steps": [
+        {
+          "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "with": { "ref": "${{ github.sha }}", "persist-credentials": false }
+        },
+        {
+          "uses": "actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9",
+          "with": { "dotnet-version": "10.0.302" }
+        },
+        {
+          "run": "dotnet restore SecretKit.slnx --locked-mode\ndotnet format SecretKit.slnx --verify-no-changes --no-restore --verbosity quiet"
+        }
+      ]
+    },
+    "offline": {
+      "runs-on": "ubuntu-24.04",
+      "timeout-minutes": 45,
+      "defaults": { "run": { "shell": "bash" } },
+      "outputs": {
+        "candidate": "${{ steps.proposal.outputs.candidate }}",
+        "version": "${{ steps.proposal.outputs.version }}"
+      },
+      "env": {
+        "SECRETKIT_CANDIDATE_VERSION": "0.1.0-preview.1",
+        "SECRETKIT_CANDIDATE_DIRECTORY": "${{ github.workspace }}/artifacts/packages",
+        "SECRETKIT_TEST_HOSTS": "SecretKit.Core.Tests SecretKit.Infisical.Tests SecretKit.AzureKeyVault.Tests SecretKit.Package.Tests SecretKit.Consumer.Tests SecretKit.Assessment.Tests SecretKit.Configuration.Tests SecretKit.Hosting.Tests SecretKit.Infisical.Management.Tests SecretKit.AzureKeyVault.Management.Tests SecretKit.Release.Tests SecretKit.ProviderContract.Tests"
+      },
+      "steps": [
+        {
+          "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "with": { "ref": "${{ github.sha }}", "persist-credentials": false }
+        },
+        {
+          "uses": "actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9",
+          "with": { "dotnet-version": "10.0.302" }
+        },
+        {
+          "id": "proposal",
+          "env": {
+            "QUALIFYING_SOURCE": "${{ github.event_name == 'push' && github.repository == 'islamu-ngo/SecretKit' && github.ref == 'refs/heads/main' && github.ref_protected }}"
+          },
+          "run": "candidate=false\nif [[ \"$QUALIFYING_SOURCE\" == true && -f docs/internal/releases/candidate.json ]]; then\n  candidate=true\n  SECRETKIT_CANDIDATE_VERSION=$(jq -er '.version | select(test(\"^(0|[1-9][0-9]*)\\\\.(0|[1-9][0-9]*)\\\\.(0|[1-9][0-9]*)(-[a-z][a-z0-9-]*(\\\\.(0|[1-9][0-9]*|[a-z][a-z0-9-]*))*)?$\"))' docs/internal/releases/candidate.json)\nfi\nprintf 'candidate=%s\\nversion=%s\\n' \"$candidate\" \"$SECRETKIT_CANDIDATE_VERSION\" >> \"$GITHUB_OUTPUT\"\nprintf 'SECRETKIT_CANDIDATE_VERSION=%s\\n' \"$SECRETKIT_CANDIDATE_VERSION\" >> \"$GITHUB_ENV\""
+        },
+        {
+          "id": "restore",
+          "run": "dotnet restore SecretKit.slnx --locked-mode"
+        },
+        {
+          "id": "build",
+          "run": "dotnet build SecretKit.slnx --configuration Release --no-restore -p:Version=\"$SECRETKIT_CANDIDATE_VERSION\""
+        },
+        {
+          "id": "pack",
+          "run": "test ! -e \"$SECRETKIT_CANDIDATE_DIRECTORY\"\ndotnet pack SecretKit.slnx --configuration Release --no-build -p:Version=\"$SECRETKIT_CANDIDATE_VERSION\" --output \"$SECRETKIT_CANDIDATE_DIRECTORY\""
+        },
+        {
+          "id": "install_family",
+          "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
+          "with": {
+            "name": "offline-originals-${{ github.run_id }}-${{ github.run_attempt }}",
+            "path": "artifacts/packages/*.nupkg",
+            "if-no-files-found": "error",
+            "retention-days": 14
+          }
+        },
+        {
+          "id": "tests",
+          "run": "status=0\nfor host in $SECRETKIT_TEST_HOSTS; do\n  if ! dotnet \"tests/$host/bin/Release/net10.0/$host.dll\" --minimum-expected-tests 1 --zero-tests-policy strict --report-trx --results-directory \"artifacts/verification/$host\"; then\n    status=1\n  fi\ndone\nexit \"$status\""
+        },
+        {
+          "id": "samples",
+          "if": "${{ !cancelled() && steps.build.outcome == 'success' }}",
+          "run": "status=0\nfor sample in RuntimeConfiguration ProviderAssessment; do\n  if ! dotnet run --project \"samples/$sample\" --configuration Release --no-build; then\n    status=1\n  fi\ndone\nexit \"$status\""
+        },
+        {
+          "id": "candidate_inputs",
+          "if": "${{ steps.proposal.outputs.candidate == 'true' }}",
+          "run": "dotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll candidate-prepare . \"$SECRETKIT_CANDIDATE_DIRECTORY\" artifacts/candidate-inputs"
+        },
+        {
+          "if": "${{ steps.proposal.outputs.candidate == 'true' }}",
+          "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
+          "with": {
+            "name": "candidate-inputs-${{ github.run_id }}-${{ github.run_attempt }}",
+            "path": "artifacts/candidate-inputs",
+            "if-no-files-found": "error",
+            "retention-days": 120
+          }
+        },
+        {
+          "id": "metadata",
+          "if": "${{ always() }}",
+          "env": {
+            "PURPOSE": "offline-verification",
+            "SOURCE": "${{ github.sha }}",
+            "RESTORE_RESULT": "${{ steps.restore.outcome }}",
+            "BUILD_RESULT": "${{ steps.build.outcome }}",
+            "PACK_RESULT": "${{ steps.pack.outcome }}",
+            "TEST_RESULT": "${{ steps.tests.outcome }}",
+            "SAMPLE_RESULT": "${{ steps.samples.outcome }}"
+          },
+          "run": "mkdir -p artifacts/verification\nprintf 'purpose=%s\\nsource=%s\\nversion=%s\\nrestore=%s\\nbuild=%s\\npack=%s\\ntests=%s\\nsamples=%s\\n' \"$PURPOSE\" \"$SOURCE\" \"$SECRETKIT_CANDIDATE_VERSION\" \"$RESTORE_RESULT\" \"$BUILD_RESULT\" \"$PACK_RESULT\" \"$TEST_RESULT\" \"$SAMPLE_RESULT\" > artifacts/verification/checks.txt\ndotnet --version > artifacts/verification/sdk.txt\nfor archive in \"$SECRETKIT_CANDIDATE_DIRECTORY\"/*.nupkg; do\n  [[ -f \"$archive\" ]] || continue\n  sha256sum \"$archive\" >> artifacts/verification/packages.sha256\ndone"
+        },
+        {
+          "id": "reports",
+          "if": "${{ always() }}",
+          "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
+          "with": {
+            "name": "offline-verification-${{ github.run_id }}-${{ github.run_attempt }}",
+            "path": "artifacts/verification",
+            "if-no-files-found": "error",
+            "retention-days": 14
+          }
+        }
+      ]
+    },
+    "install": {
+      "needs": ["offline"],
+      "runs-on": "${{ matrix.runner }}",
+      "timeout-minutes": 30,
+      "strategy": {
+        "fail-fast": false,
+        "matrix": {
+          "include": [
+            { "runner": "ubuntu-24.04", "platform": "linux-x64-net10.0" },
+            { "runner": "windows-2025", "platform": "windows-x64-net10.0" }
+          ]
+        }
+      },
+      "defaults": { "run": { "shell": "bash" } },
+      "env": {
+        "SECRETKIT_CANDIDATE_VERSION": "${{ needs.offline.outputs.version }}",
+        "SECRETKIT_CANDIDATE_DIRECTORY": "${{ github.workspace }}/artifacts/packages",
+        "SECRETKIT_PLATFORM_OBSERVATION": "${{ github.workspace }}/artifacts/verification/${{ matrix.platform }}/installation.json"
+      },
+      "steps": [
+        {
+          "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "with": { "ref": "${{ github.sha }}", "persist-credentials": false }
+        },
+        {
+          "uses": "actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9",
+          "with": { "dotnet-version": "10.0.302" }
+        },
+        {
+          "uses": "actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333",
+          "with": {
+            "name": "offline-originals-${{ github.run_id }}-${{ github.run_attempt }}",
+            "path": "artifacts/packages"
+          }
+        },
+        {
+          "id": "restore",
+          "run": "dotnet restore tests/SecretKit.Package.Tests/SecretKit.Package.Tests.csproj --locked-mode"
+        },
+        {
+          "id": "build",
+          "run": "dotnet build tests/SecretKit.Package.Tests/SecretKit.Package.Tests.csproj --configuration Release --no-restore"
+        },
+        {
+          "id": "test",
+          "run": "dotnet tests/SecretKit.Package.Tests/bin/Release/net10.0/SecretKit.Package.Tests.dll --minimum-expected-tests 27 --zero-tests-policy strict --report-trx --results-directory \"artifacts/verification/${{ matrix.platform }}\""
+        },
+        {
+          "if": "${{ always() }}",
+          "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
+          "with": {
+            "name": "offline-install-${{ matrix.platform }}-${{ github.run_id }}-${{ github.run_attempt }}",
+            "path": "artifacts/verification",
+            "if-no-files-found": "error",
+            "retention-days": 14
+          }
+        }
+      ]
+    },
+    "prerequisites": {
+      "needs": ["offline"],
+      "if": "${{ needs.offline.outputs.candidate == 'true' && github.event_name == 'push' && github.repository == 'islamu-ngo/SecretKit' && github.ref == 'refs/heads/main' && github.ref_protected }}",
+      "runs-on": "ubuntu-24.04",
+      "timeout-minutes": 20,
+      "environment": "release-evidence",
+      "defaults": { "run": { "shell": "bash" } },
+      "steps": [
+        {
+          "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "with": { "ref": "${{ github.sha }}", "persist-credentials": false }
+        },
+        {
+          "uses": "actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9",
+          "with": { "dotnet-version": "10.0.302" }
+        },
+        {
+          "uses": "actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333",
+          "with": { "name": "candidate-inputs-${{ github.run_id }}-${{ github.run_attempt }}", "path": "inputs" }
+        },
+        {
+          "run": "dotnet restore tools/SecretKit.Release/SecretKit.Release.csproj --locked-mode\ndotnet build tools/SecretKit.Release/SecretKit.Release.csproj --configuration Release --no-restore"
+        },
+        {
+          "id": "preparation",
+          "env": { "SECRETKIT_REVIEWED_PREPARATION": "${{ secrets.SECRETKIT_REVIEWED_PREPARATION }}" },
+          "run": "dotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll candidate-preparation inputs preparation"
+        },
+        {
+          "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
+          "with": {
+            "name": "candidate-preparation-${{ github.run_id }}-${{ github.run_attempt }}",
+            "path": "preparation",
+            "if-no-files-found": "error",
+            "retention-days": 120
+          }
+        }
+      ]
+    },
+    "native": {
+      "name": "${{ matrix.kind }}-${{ matrix.platform }}",
+      "needs": ["offline", "prerequisites"],
+      "if": "${{ needs.offline.outputs.candidate == 'true' && github.event_name == 'push' && github.repository == 'islamu-ngo/SecretKit' && github.ref == 'refs/heads/main' && github.ref_protected }}",
+      "runs-on": "${{ matrix.runner }}",
+      "timeout-minutes": 45,
+      "environment": "release-evidence",
+      "permissions": { "contents": "read", "actions": "read" },
+      "defaults": { "run": { "shell": "bash" } },
+      "strategy": {
+        "fail-fast": false,
+        "matrix": {
+          "kind": ["native-operations", "live-conformance"],
+          "include": [
+            { "platform": "linux-x64-net10.0", "runner": "ubuntu-24.04" },
+            { "platform": "windows-x64-net10.0", "runner": "windows-2025" }
+          ],
+          "platform": ["linux-x64-net10.0", "windows-x64-net10.0"],
+          "exclude": []
+        }
+      },
+      "env": {
+        "SECRETKIT_CANDIDATE_VERSION": "${{ needs.offline.outputs.version }}",
+        "SECRETKIT_CANDIDATE_DIRECTORY": "${{ github.workspace }}/inputs",
+        "SECRETKIT_NATIVE_INPUTS": "${{ github.workspace }}/inputs/candidate-inputs.json",
+        "SECRETKIT_NATIVE_KIND": "${{ matrix.kind }}",
+        "SECRETKIT_NATIVE_PLATFORM": "${{ matrix.platform }}"
+      },
+      "steps": [
+        {
+          "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "with": { "ref": "${{ github.sha }}", "persist-credentials": false }
+        },
+        {
+          "uses": "actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9",
+          "with": { "dotnet-version": "10.0.302" }
+        },
+        {
+          "uses": "actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333",
+          "with": { "name": "candidate-inputs-${{ github.run_id }}-${{ github.run_attempt }}", "path": "inputs" }
+        },
+        {
+          "uses": "actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333",
+          "with": { "name": "candidate-preparation-${{ github.run_id }}-${{ github.run_attempt }}", "path": "preparation" }
+        },
+        {
+          "id": "job",
+          "env": { "GH_TOKEN": "${{ github.token }}", "REPORT_JOB_NAME": "${{ matrix.kind }}-${{ matrix.platform }}" },
+          "run": "gh api --paginate --slurp \"repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT/jobs?per_page=100\" > jobs.json\nid=$(jq -er --arg name \"$REPORT_JOB_NAME\" '[.[].jobs[] | select(.name == $name and .status == \"in_progress\")] | if length == 1 then .[0].id else error(\"ambiguous-report-job\") end' jobs.json)\nprintf 'id=%s\\n' \"$id\" >> \"$GITHUB_OUTPUT\"\nprintf 'SECRETKIT_REPORT_JOB_ID=%s\\n' \"$id\" >> \"$GITHUB_ENV\""
+        },
+        {
+          "id": "harness",
+          "env": { "SECRETKIT_NATIVE_SETTINGS": "${{ secrets.SECRETKIT_NATIVE_SETTINGS }}" },
+          "run": "test -n \"$SECRETKIT_NATIVE_SETTINGS\"\ntest -f tests/fixtures/NativeObservationReport.cs || { printf 'native-harness-unavailable\\n' >&2; exit 1; }\nfor provider in Infisical AzureKeyVault; do\n  project=\"tests/SecretKit.$provider.Conformance.Tests/SecretKit.$provider.Conformance.Tests.csproj\"\n  test -f \"$project\" || { printf 'native-host-unavailable\\n' >&2; exit 1; }\n  dotnet restore \"$project\" --locked-mode\n  dotnet build \"$project\" --configuration Release --no-restore\ndone\ndotnet restore tools/SecretKit.Release/SecretKit.Release.csproj --locked-mode\ndotnet build tools/SecretKit.Release/SecretKit.Release.csproj --configuration Release --no-restore\nmkdir -p observations\nfor provider in Infisical AzureKeyVault; do\n  export SECRETKIT_NATIVE_REPORT=\"$GITHUB_WORKSPACE/observations/$provider.json\"\n  dotnet \"tests/SecretKit.$provider.Conformance.Tests/bin/Release/net10.0/SecretKit.$provider.Conformance.Tests.dll\" --minimum-expected-tests 1 --zero-tests-policy strict\ndone\ndotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll candidate-measure inputs \"$SECRETKIT_NATIVE_KIND\" \"$SECRETKIT_NATIVE_PLATFORM\" observations report"
+        },
+        {
+          "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
+          "with": {
+            "name": "secretkit-report-${{ steps.job.outputs.id }}",
+            "path": "report/report.json",
+            "if-no-files-found": "error",
+            "retention-days": 120
+          }
+        }
+      ]
+    },
+    "compatibility": {
+      "name": "compatibility-install-${{ matrix.platform }}",
+      "needs": ["offline", "prerequisites"],
+      "if": "${{ needs.offline.outputs.candidate == 'true' && github.event_name == 'push' && github.repository == 'islamu-ngo/SecretKit' && github.ref == 'refs/heads/main' && github.ref_protected }}",
+      "runs-on": "${{ matrix.runner }}",
+      "timeout-minutes": 30,
+      "permissions": { "contents": "read", "actions": "read" },
+      "defaults": { "run": { "shell": "bash" } },
+      "strategy": {
+        "fail-fast": false,
+        "matrix": { "include": [
+          { "runner": "ubuntu-24.04", "platform": "linux-x64-net10.0" },
+          { "runner": "windows-2025", "platform": "windows-x64-net10.0" }
+        ] }
+      },
+      "env": {
+        "SECRETKIT_CANDIDATE_VERSION": "${{ needs.offline.outputs.version }}",
+        "SECRETKIT_CANDIDATE_DIRECTORY": "${{ github.workspace }}/inputs",
+        "SECRETKIT_PLATFORM_OBSERVATION": "${{ github.workspace }}/observations/installation.json"
+      },
+      "steps": [
+        {
+          "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "with": { "ref": "${{ github.sha }}", "persist-credentials": false }
+        },
+        {
+          "uses": "actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9",
+          "with": { "dotnet-version": "10.0.302" }
+        },
+        {
+          "uses": "actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333",
+          "with": { "name": "candidate-inputs-${{ github.run_id }}-${{ github.run_attempt }}", "path": "inputs" }
+        },
+        {
+          "id": "job",
+          "env": { "GH_TOKEN": "${{ github.token }}", "REPORT_JOB_NAME": "compatibility-install-${{ matrix.platform }}" },
+          "run": "gh api --paginate --slurp \"repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT/jobs?per_page=100\" > jobs.json\nid=$(jq -er --arg name \"$REPORT_JOB_NAME\" '[.[].jobs[] | select(.name == $name and .status == \"in_progress\")] | if length == 1 then .[0].id else error(\"ambiguous-report-job\") end' jobs.json)\nprintf 'id=%s\\n' \"$id\" >> \"$GITHUB_OUTPUT\"\nprintf 'SECRETKIT_REPORT_JOB_ID=%s\\n' \"$id\" >> \"$GITHUB_ENV\""
+        },
+        {
+          "id": "measured_install",
+          "run": "dotnet restore tests/SecretKit.Package.Tests/SecretKit.Package.Tests.csproj --locked-mode\ndotnet build tests/SecretKit.Package.Tests/SecretKit.Package.Tests.csproj --configuration Release --no-restore\ndotnet tests/SecretKit.Package.Tests/bin/Release/net10.0/SecretKit.Package.Tests.dll --minimum-expected-tests 27 --zero-tests-policy strict\ndotnet restore tools/SecretKit.Release/SecretKit.Release.csproj --locked-mode\ndotnet build tools/SecretKit.Release/SecretKit.Release.csproj --configuration Release --no-restore\ndotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll candidate-measure inputs compatibility-install \"${{ matrix.platform }}\" observations report"
+        },
+        {
+          "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
+          "with": {
+            "name": "secretkit-report-${{ steps.job.outputs.id }}",
+            "path": "report/report.json",
+            "if-no-files-found": "error",
+            "retention-days": 120
+          }
+        }
+      ]
+    },
+    "archive_evidence": {
+      "name": "${{ matrix.kind }}-none",
+      "needs": ["offline"],
+      "if": "${{ needs.offline.outputs.candidate == 'true' && github.event_name == 'push' && github.repository == 'islamu-ngo/SecretKit' && github.ref == 'refs/heads/main' && github.ref_protected }}",
+      "runs-on": "ubuntu-24.04",
+      "timeout-minutes": 20,
+      "permissions": { "contents": "read", "actions": "read" },
+      "defaults": { "run": { "shell": "bash" } },
+      "strategy": { "fail-fast": false, "matrix": { "kind": ["provenance", "notices"] } },
+      "steps": [
+        {
+          "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "with": { "ref": "${{ github.sha }}", "persist-credentials": false }
+        },
+        {
+          "uses": "actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9",
+          "with": { "dotnet-version": "10.0.302" }
+        },
+        {
+          "uses": "actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333",
+          "with": { "name": "candidate-inputs-${{ github.run_id }}-${{ github.run_attempt }}", "path": "inputs" }
+        },
+        {
+          "id": "job",
+          "env": { "GH_TOKEN": "${{ github.token }}", "REPORT_JOB_NAME": "${{ matrix.kind }}-none" },
+          "run": "gh api --paginate --slurp \"repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT/jobs?per_page=100\" > jobs.json\nid=$(jq -er --arg name \"$REPORT_JOB_NAME\" '[.[].jobs[] | select(.name == $name and .status == \"in_progress\")] | if length == 1 then .[0].id else error(\"ambiguous-report-job\") end' jobs.json)\nprintf 'id=%s\\n' \"$id\" >> \"$GITHUB_OUTPUT\"\nprintf 'SECRETKIT_REPORT_JOB_ID=%s\\n' \"$id\" >> \"$GITHUB_ENV\""
+        },
+        {
+          "run": "dotnet restore tools/SecretKit.Release/SecretKit.Release.csproj --locked-mode\ndotnet build tools/SecretKit.Release/SecretKit.Release.csproj --configuration Release --no-restore\ndotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll candidate-measure inputs \"${{ matrix.kind }}\" none . report"
+        },
+        {
+          "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
+          "with": {
+            "name": "secretkit-report-${{ steps.job.outputs.id }}",
+            "path": "report/report.json",
+            "if-no-files-found": "error",
+            "retention-days": 120
+          }
+        }
+      ]
+    },
+    "candidate": {
+      "needs": ["format", "offline", "install", "prerequisites", "native", "compatibility", "archive_evidence"],
+      "if": "${{ needs.offline.outputs.candidate == 'true' && github.event_name == 'push' && github.repository == 'islamu-ngo/SecretKit' && github.ref == 'refs/heads/main' && github.ref_protected }}",
+      "runs-on": "ubuntu-24.04",
+      "timeout-minutes": 30,
+      "environment": "release-candidate",
+      "permissions": { "contents": "read", "actions": "read" },
+      "defaults": { "run": { "shell": "bash" } },
+      "steps": [
+        {
+          "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "with": { "ref": "${{ github.sha }}", "persist-credentials": false }
+        },
+        {
+          "uses": "actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9",
+          "with": { "dotnet-version": "10.0.302" }
+        },
+        {
+          "uses": "actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333",
+          "with": { "name": "candidate-inputs-${{ github.run_id }}-${{ github.run_attempt }}", "path": "inputs" }
+        },
+        {
+          "uses": "actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333",
+          "with": { "name": "candidate-preparation-${{ github.run_id }}-${{ github.run_attempt }}", "path": "preparation" }
+        },
+        {
+          "id": "runner",
+          "run": "dotnet restore tools/SecretKit.Release/SecretKit.Release.csproj --locked-mode\ndotnet build tools/SecretKit.Release/SecretKit.Release.csproj --configuration Release --no-restore"
+        },
+        {
+          "id": "collect",
+          "env": {
+            "GH_TOKEN": "${{ github.token }}",
+            "SECRETKIT_REVIEWED_EVIDENCE_INDEX": "${{ secrets.SECRETKIT_REVIEWED_EVIDENCE_INDEX }}",
+            "SECRETKIT_REVIEWED_EVIDENCE_SHA256": "${{ secrets.SECRETKIT_REVIEWED_EVIDENCE_SHA256 }}"
+          },
+          "run": "test -n \"$SECRETKIT_REVIEWED_EVIDENCE_INDEX\"\n[[ \"$SECRETKIT_REVIEWED_EVIDENCE_SHA256\" =~ ^[0-9a-f]{64}$ ]]\nmkdir independent archives\nprintf '%s' \"$SECRETKIT_REVIEWED_EVIDENCE_INDEX\" > independent/evidence-index.json\nprintf '%s  independent/evidence-index.json\\n' \"$SECRETKIT_REVIEWED_EVIDENCE_SHA256\" | sha256sum --check --status\njq -e --arg source \"$GITHUB_SHA\" --argjson run \"$GITHUB_RUN_ID\" --argjson attempt \"$GITHUB_RUN_ATTEMPT\" '.sourceCommit == $source and .runId == $run and .runAttempt == $attempt and (.reports | length == 8) and (.attestations | length == 4)' independent/evidence-index.json > /dev/null\ngh api \"repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT\" > independent/run-metadata.json\nfor file in infisical.json azure-key-vault.json; do\n  gh api -H 'Accept: application/vnd.github.raw+json' \"repos/$GITHUB_REPOSITORY/contents/docs/internal/releases/admission/$file?ref=$GITHUB_SHA\" > \"independent/$file\"\ndone\ngh api -H 'Accept: application/vnd.github.raw+json' \"repos/$GITHUB_REPOSITORY/contents/THIRD-PARTY-NOTICES.md?ref=$GITHUB_SHA\" > independent/THIRD-PARTY-NOTICES.md\njq -er '.reports[] | [.jobId, .artifactId, .artifactDigest] | @tsv' independent/evidence-index.json > origins.tsv\nwhile IFS=$'\\t' read -r job artifact digest; do\n  [[ \"$job\" =~ ^[1-9][0-9]*$ && \"$artifact\" =~ ^[1-9][0-9]*$ && \"$digest\" =~ ^[0-9a-f]{64}$ ]]\n  gh api \"repos/$GITHUB_REPOSITORY/actions/jobs/$job\" > \"independent/$job-job.json\"\n  gh api \"repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact\" > \"independent/$artifact-artifact.json\"\n  gh api \"repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact/zip\" > \"archives/$artifact.zip\"\n  dotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll extract-report archives \"$artifact\" \"$digest\" independent\ndone < origins.tsv"
+        },
+        {
+          "id": "content",
+          "run": "dotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll candidate-assemble inputs independent preparation candidate\ndotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll candidate-check candidate independent"
+        },
+        {
+          "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
+          "with": {
+            "name": "candidate-independent-evidence-${{ github.run_id }}-${{ github.run_attempt }}",
+            "path": "independent",
+            "if-no-files-found": "error",
+            "retention-days": 120
+          }
+        },
+        {
+          "id": "candidate_upload",
+          "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
+          "with": {
+            "name": "secretkit-candidate-${{ github.run_id }}-${{ github.run_attempt }}",
+            "path": "candidate",
+            "if-no-files-found": "error",
+            "retention-days": 120
+          }
+        }
+      ]
+    }
+  }
+}
