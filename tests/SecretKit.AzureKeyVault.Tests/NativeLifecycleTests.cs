@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Azure.Security.KeyVault.Secrets;
 using SecretKit.Core;
 
 namespace SecretKit.AzureKeyVault.Tests;
@@ -447,7 +448,7 @@ public sealed class NativeLifecycleTests
     }
 
     [Test]
-    public async Task UpdateOmissionAndUnsupportedEmptyTagsPreserveNativePatch()
+    public async Task UpdateOmissionAndExplicitEmptyTagsPreserveNativePatch()
     {
         var backend = new NativeBackend();
         var client = backend.Client();
@@ -460,11 +461,112 @@ public sealed class NativeLifecycleTests
             await Assert.That(body.RootElement.TryGetProperty("contentType", out _)).IsFalse();
         }
         var receipt = new MutationReceipt(target);
-        var rejected = await client.UpdatePropertiesAsync(new AzureUpdatePropertiesRequest(target,
+        var cleared = await client.UpdatePropertiesAsync(new AzureUpdatePropertiesRequest(target,
             tags: new Dictionary<string, string>()), receipt);
-        await Assert.That(rejected.Status).IsEqualTo(SecretStatus.Unsupported);
-        await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.NotDispatched);
+        await Assert.That(cleared.Status).IsEqualTo(SecretStatus.Success);
+        await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.Applied);
+        using var clearedBody = JsonDocument.Parse(backend.LastBody!);
+        await Assert.That(clearedBody.RootElement.GetProperty("tags").EnumerateObject().Count()).IsEqualTo(0);
+        await Assert.That(backend.Updates).IsEqualTo(2);
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task SdkOmitsEmptyTagsEvenAfterExplicitClear(bool clear)
+    {
+        var vault = new Uri("https://tag-clear.vault.azure.net");
+        string? sent = null;
+        var wire = new WireTransport(async (request, cancellationToken) =>
+        {
+            if (request.Headers.Authorization is null)
+            {
+                return WireTransport.Challenge();
+            }
+            sent = await request.Content!.ReadAsStringAsync(cancellationToken);
+            return WireTransport.Json(200, JsonSerializer.Serialize(new
+            {
+                id = $"{vault}secrets/name-canary/{Version}",
+                tags = new Dictionary<string, string>()
+            }));
+        });
+        var sdk = new SecretClient(vault, new TestCredential(),
+            new SecretClientOptions(SecretClientOptions.ServiceVersion.V2025_07_01) { Transport = wire });
+        var properties = new SecretProperties(new Uri(vault, $"secrets/name-canary/{Version}"));
+        if (clear)
+        {
+            properties.Tags.Add("tag-canary", "value-canary");
+            properties.Tags.Clear();
+        }
+
+        await sdk.UpdateSecretPropertiesAsync(properties);
+
+        using var body = JsonDocument.Parse(sent!);
+        await Assert.That(body.RootElement.TryGetProperty("tags", out _)).IsFalse();
+    }
+
+    [Test]
+    public async Task EmptyTagsAreExplicitlyClearedWithoutWritingMaterial()
+    {
+        var backend = new NativeBackend { Ready = true };
+        backend.Tags.Add("tag-canary", "value-canary");
+        var client = backend.Client();
+        var target = Target(client, Version);
+        var receipt = new MutationReceipt(target);
+        var result = await client.UpdatePropertiesAsync(new AzureUpdatePropertiesRequest(target,
+            tags: new Dictionary<string, string>()), receipt);
+        await Assert.That(result.Status).IsEqualTo(SecretStatus.Success);
+        await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.Applied);
+        using var body = JsonDocument.Parse(backend.LastBody!);
+        await Assert.That(body.RootElement.GetProperty("tags").EnumerateObject().Count()).IsEqualTo(0);
+        await Assert.That(body.RootElement.TryGetProperty("value", out _)).IsFalse();
+        var observed = (await client.GetSecretVersionsAsync(Target(client),
+            new AzureInventoryScope(client.Authority))).Value;
+        await Assert.That(observed.Items.Single().Tags.Count).IsEqualTo(0);
+        using var read = (await client.GetSecretVersionAsync(target)).Value;
+        await Assert.That(read.Material.Reveal()).IsEqualTo("material-canary");
         await Assert.That(backend.Updates).IsEqualTo(1);
+        await Assert.That((await client.UpdatePropertiesAsync(new AzureUpdatePropertiesRequest(target,
+            tags: new Dictionary<string, string>()), receipt)).Status).IsEqualTo(SecretStatus.Invalid);
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task EmptyTagClearDenialAndLostResponseCannotReplay(bool lostResponse)
+    {
+        var backend = new NativeBackend { Denied = !lostResponse, DropResponse = lostResponse };
+        backend.Tags.Add("tag-canary", "value-canary");
+        var client = backend.Client();
+        var target = Target(client, Version);
+        var request = new AzureUpdatePropertiesRequest(target, tags: new Dictionary<string, string>());
+        var receipt = new MutationReceipt(target);
+        var result = await client.UpdatePropertiesAsync(request, receipt);
+        await Assert.That(receipt.Evidence).IsEqualTo(lostResponse
+            ? DispatchEvidence.PossiblyDispatched : DispatchEvidence.Rejected);
+        await Assert.That(result.Status == SecretStatus.Success).IsFalse();
+        await Assert.That(backend.Tags.Count).IsEqualTo(lostResponse ? 0 : 1);
+        await Assert.That((await client.UpdatePropertiesAsync(request, receipt)).Status).IsEqualTo(SecretStatus.Invalid);
+        await Assert.That(backend.Mutations).IsEqualTo(lostResponse ? 1 : 0);
+    }
+
+    [Test]
+    public async Task EmptyTagClearCancellationKeepsTheObservedUncertainEffect()
+    {
+        var backend = new NativeBackend { HoldResponse = true };
+        backend.Tags.Add("tag-canary", "value-canary");
+        var client = backend.Client();
+        var target = Target(client, Version);
+        var receipt = new MutationReceipt(target);
+        using var cancellation = new CancellationTokenSource();
+        var pending = client.UpdatePropertiesAsync(new AzureUpdatePropertiesRequest(target,
+            tags: new Dictionary<string, string>()), receipt, cancellation.Token);
+        await backend.Committed.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        cancellation.Cancel();
+        await Assert.That(async () => await pending).Throws<OperationCanceledException>();
+        await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.PossiblyDispatched);
+        await Assert.That(backend.Tags.Count).IsEqualTo(0);
+        await Assert.That(backend.Mutations).IsEqualTo(1);
     }
 
     [Test]
@@ -580,6 +682,7 @@ public sealed class NativeLifecycleTests
         public bool Enabled { get; set; }
         public bool Restored { get; private set; }
         public string Material { get; } = "material-canary";
+        public Dictionary<string, string> Tags { get; } = [];
         public bool DropResponse { get; init; }
         public bool HoldResponse { get; init; }
         public bool Oversized { get; init; }
@@ -620,7 +723,7 @@ public sealed class NativeLifecycleTests
                 scheduledPurgeDate = 2_001_000_000,
                 attributes = new { enabled = Enabled }
             }
-            : new { id = Id, value = Material, attributes = new { enabled = Enabled } };
+            : new { id = Id, value = Material, attributes = new { enabled = Enabled }, tags = Tags };
 
         private async Task<HttpResponseMessage> Respond(HttpRequestMessage request, CancellationToken cancellationToken)
         {
@@ -649,6 +752,13 @@ public sealed class NativeLifecycleTests
                 {
                     Updates++;
                     Enabled = true;
+                    using var body = JsonDocument.Parse(LastBody!);
+                    if (body.RootElement.TryGetProperty("tags", out var tags))
+                    {
+                        Tags.Clear();
+                        foreach (var tag in tags.EnumerateObject())
+                            Tags.Add(tag.Name, tag.Value.GetString()!);
+                    }
                 }
                 if (path.EndsWith("/recover", StringComparison.Ordinal))
                 {

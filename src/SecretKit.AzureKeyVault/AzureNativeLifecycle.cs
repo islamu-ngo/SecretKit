@@ -92,7 +92,7 @@ public sealed partial class AzureKeyVaultClient
                 var updated = (await client.UpdateSecretPropertiesAsync(properties, cancellationToken)
                     .ConfigureAwait(false)).Value;
                 return Metadata(updated, address, true);
-            }, cancellationToken, unsupported: request.Tags is { Count: 0 });
+            }, cancellationToken, clearTags: request.Tags is { Count: 0 });
     }
 
     public async ValueTask<SecretOutcome<AzureSecretMetadata>> GetDeletedSecretAsync(
@@ -395,7 +395,7 @@ public sealed partial class AzureKeyVaultClient
     private async ValueTask<SecretOutcome<T>> MutateNativeAsync<T>(SecretReference target, MutationReceipt receipt,
         bool exactVersion, AzureSetSecretPrecondition precondition, RequestMethod method,
         Func<AzureSecretAddress, string> path, Func<SecretClient, AzureSecretAddress, Task<T>> execute,
-        CancellationToken cancellationToken, bool pending = false, bool unsupported = false) where T : notnull
+        CancellationToken cancellationToken, bool pending = false, bool clearTags = false) where T : notnull
     {
         ArgumentNullException.ThrowIfNull(target);
         ArgumentNullException.ThrowIfNull(receipt);
@@ -417,13 +417,13 @@ public sealed partial class AzureKeyVaultClient
         {
             return SecretOutcome<T>.Failure(SecretStatus.Invalid);
         }
-        if (unsupported || exactVersion != (address.Version is not null) || precondition != AzureSetSecretPrecondition.None)
+        if (exactVersion != (address.Version is not null) || precondition != AzureSetSecretPrecondition.None)
         {
             return SecretOutcome<T>.Failure(SecretStatus.Unsupported);
         }
         try
         {
-            var result = await execute(CreateClient(receipt, target, path(address), method), address).ConfigureAwait(false);
+            var result = await execute(CreateClient(receipt, target, path(address), method, clearTags), address).ConfigureAwait(false);
             receipt.Record(pending ? DispatchEvidence.Pending : DispatchEvidence.Applied);
             cancellationToken.ThrowIfCancellationRequested();
             return SecretOutcome<T>.Success(result);

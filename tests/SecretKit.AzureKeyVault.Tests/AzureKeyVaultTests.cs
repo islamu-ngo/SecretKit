@@ -332,10 +332,12 @@ public sealed class AzureKeyVaultTests
     [Test]
     public async Task ValidChallengeUsesCallerCredentialWithVerifiedResource()
     {
+        var vault = new Uri($"https://valid-{Guid.NewGuid().ToString("N")[..16]}.vault.azure.net");
+        string secretJson = SecretJson.Replace(Vault.Host, vault.Host, StringComparison.Ordinal);
         var credential = new TestCredential();
         var wire = new WireTransport((request, _) => Task.FromResult(
-            request.Headers.Authorization is null ? WireTransport.Challenge() : WireTransport.Json(200, SecretJson)));
-        var client = new AzureKeyVaultClient(Vault, credential, wire);
+            request.Headers.Authorization is null ? WireTransport.Challenge() : WireTransport.Json(200, secretJson)));
+        var client = new AzureKeyVaultClient(vault, credential, wire);
         var outcome = await client.ReadAsync(Reference(client));
         await Assert.That(outcome.Status).IsEqualTo(SecretStatus.Success);
         using var read = outcome.Value;
@@ -346,9 +348,10 @@ public sealed class AzureKeyVaultTests
     [Test]
     public async Task ForgedChallengeCannotAcquireOrSendToken()
     {
+        var vault = new Uri($"https://forged-{Guid.NewGuid().ToString("N")[..16]}.vault.azure.net");
         var credential = new TestCredential();
         var wire = new WireTransport((_, _) => Task.FromResult(WireTransport.Challenge("https://evil.example")));
-        var client = new AzureKeyVaultClient(Vault, credential, wire);
+        var client = new AzureKeyVaultClient(vault, credential, wire);
         var outcome = await client.ReadAsync(Reference(client));
         await Assert.That(outcome.IsSuccess).IsFalse();
         await Assert.That(credential.Scopes.Count).IsEqualTo(0);

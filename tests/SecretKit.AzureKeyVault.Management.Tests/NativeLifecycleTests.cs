@@ -128,6 +128,48 @@ public sealed class NativeLifecycleTests
     }
 
     [Test]
+    public async Task PendingPurgeCanUseTheSameHandleForOneLaterTerminalCheck()
+    {
+        const string target = "https://management.azure.com/subscriptions/11111111-1111-1111-1111-111111111111/providers/Microsoft.KeyVault/locations/eastus/operations/55555555-5555-5555-5555-555555555555?api-version=2026-02-01";
+        var requests = new List<(HttpMethod Method, string Target)>();
+        bool terminal = false;
+        var backend = new WireBackend((request, _) =>
+        {
+            requests.Add((request.Method, request.RequestUri!.AbsoluteUri));
+            if (request.Method == HttpMethod.Post)
+            {
+                var response = WireBackend.Json(202, """{"status":"InProgress"}""");
+                response.Headers.TryAddWithoutValidation("Location", target);
+                response.Headers.TryAddWithoutValidation("Azure-AsyncOperation", target);
+                return Task.FromResult(response);
+            }
+            if (request.Method != HttpMethod.Get || request.RequestUri.AbsoluteUri != target)
+                throw new InvalidOperationException("unexpected-purge-status-request");
+            return Task.FromResult(WireBackend.Json(200, terminal
+                ? """{"status":"Succeeded"}""" : """{"status":"InProgress"}"""));
+        });
+        var client = new VaultAdministration(new Credential(), backend);
+        var scope = Deleted();
+        var receipt = client.PrepareReceipt(scope, ManagementMutation.PurgeDeletedVault);
+        var start = client.PurgeDeletedVaultAsync(scope, receipt).AsTask();
+        var result = await start;
+        await Assert.That(result.Status).IsEqualTo(SecretStatus.Success);
+        var handle = result.Value!;
+        var pending = handle.CheckStatusAsync().AsTask();
+        await Assert.That(await pending).IsEqualTo(SecretStatus.Pending);
+        await Assert.That(handle.State).IsEqualTo(NativeProvisioningState.Pending);
+        await Assert.That(requests.Count(r => r.Method == HttpMethod.Get)).IsEqualTo(1);
+        terminal = true;
+        var completed = handle.CheckStatusAsync().AsTask();
+        await Assert.That(await completed).IsEqualTo(SecretStatus.Success);
+        await Assert.That(handle.State).IsEqualTo(NativeProvisioningState.Succeeded);
+        await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.Pending);
+        await Assert.That(requests.Count(r => r.Method == HttpMethod.Post)).IsEqualTo(1);
+        await Assert.That(requests.Count(r => r.Method == HttpMethod.Get)).IsEqualTo(3);
+        await Assert.That(requests.Where(r => r.Method == HttpMethod.Get).All(r => r.Target == target)).IsTrue();
+    }
+
+    [Test]
     public async Task ForgedAsyncLocationNeverEscapesAndRetainsUncertainty()
     {
         bool requestedPurge = false;

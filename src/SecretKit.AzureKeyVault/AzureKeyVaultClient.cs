@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using System.Text;
+using System.Text.Json;
 using Azure;
 using Azure.Core;
 using Azure.Core.Pipeline;
@@ -57,7 +58,7 @@ public sealed partial class AzureKeyVaultClient : ISecretReader, ISecretInventor
     }
 
     private SecretClient CreateClient(MutationReceipt? receipt = null, SecretReference? target = null,
-        string? nativePath = null, RequestMethod? nativeMethod = null)
+        string? nativePath = null, RequestMethod? nativeMethod = null, bool clearTags = false)
     {
         var options = new SecretClientOptions(SecretClientOptions.ServiceVersion.V2025_07_01)
         {
@@ -69,7 +70,39 @@ public sealed partial class AzureKeyVaultClient : ISecretReader, ISecretInventor
         options.Diagnostics.IsLoggingContentEnabled = false;
         options.Diagnostics.IsDistributedTracingEnabled = false;
         options.Retry.MaxRetries = 0;
+        if (clearTags)
+        {
+            options.AddPolicy(new EmptyTagsPolicy(), HttpPipelinePosition.PerCall);
+        }
         return new SecretClient(_vault, _credential, options);
+    }
+
+    // The SDK omits an empty Tags dictionary. This selected update policy emits
+    // the explicit empty object required to clear tags, without touching values.
+    private sealed class EmptyTagsPolicy : HttpPipelineSynchronousPolicy
+    {
+        public override void OnSendingRequest(HttpMessage message)
+        {
+            using var source = new MemoryStream();
+            message.Request.Content!.WriteTo(source, message.CancellationToken);
+            source.Position = 0;
+            using var document = JsonDocument.Parse(source);
+            using var output = new MemoryStream();
+            using (var writer = new Utf8JsonWriter(output))
+            {
+                writer.WriteStartObject();
+                foreach (var property in document.RootElement.EnumerateObject())
+                {
+                    if (property.Name != "tags")
+                        property.WriteTo(writer);
+                }
+                writer.WriteStartObject("tags");
+                writer.WriteEndObject();
+                writer.WriteEndObject();
+            }
+            message.Request.Content.Dispose();
+            message.Request.Content = RequestContent.Create(output.ToArray());
+        }
     }
 
     public SecretAuthority Authority { get; } = new();
