@@ -291,6 +291,7 @@ public sealed partial class AzureVaultFixtureProvisionerTests
         private readonly bool statusDeniedNotificationUpdate;
         private readonly bool statusDeniedPrivateConnectionDelete;
         internal readonly bool statusDeniedVaultUpdate;
+        internal readonly bool statusDeniedVaultRecover;
         private readonly Credential deniedVaultReadCredential = new("resource-arm");
         internal readonly CancellationTokenSource UnknownContinuity = new();
         internal readonly Guid UnknownEpoch = Guid.NewGuid();
@@ -317,6 +318,8 @@ public sealed partial class AzureVaultFixtureProvisionerTests
         private readonly Credential statusSucceededResourceCredential = new("resource-arm");
         internal int SucceededBaselineReads, SucceededSelectedReads, SucceededCleanupReads;
         internal Action<JsonObject>? SucceededBaselineTransform, SucceededSelectedTransform;
+        internal Action<JsonObject>? DeniedRecoveryReadyTransform, DeniedRecoveryDeletedTransform;
+        internal int DeniedRecoveryReadyMutations, DeniedRecoveryDeletedMutations;
         internal int SucceededResourceMutations;
         internal readonly Guid NotificationNamespaceEpoch = Guid.NewGuid();
         private readonly PurgeCredential statusCredential;
@@ -375,7 +378,7 @@ public sealed partial class AzureVaultFixtureProvisionerTests
             bool statusPendingPurge = false, bool statusPendingPurgeIndependent = false, bool statusPendingPurgeCancellation = false, bool statusFailedPurge = false, bool statusFailedPurgeIndependent = false, bool statusFailedPurgeCancellation = false, bool statusCanceledPurge = false, bool statusCanceledPurgeIndependent = false, bool statusCanceledPurgeCancellation = false, bool statusUnknownNotificationUpdate = false, bool statusUnknownNotificationUpdateIndependent = false, bool statusUnknownNotificationUpdateCancellation = false,
             bool statusDeniedPurge = false, NativeProvisioningState? statusDeniedVariant = null,
             bool statusDeniedNotificationUpdate = false, bool statusDeniedPrivateConnectionDelete = false,
-            bool statusDeniedVaultUpdate = false)
+            bool statusDeniedVaultUpdate = false, bool statusDeniedVaultRecover = false)
         {
             Operation = operation;
             this.statusDeniedPurge = statusDeniedPurge;
@@ -383,6 +386,7 @@ public sealed partial class AzureVaultFixtureProvisionerTests
             this.statusDeniedNotificationUpdate = statusDeniedNotificationUpdate;
             this.statusDeniedPrivateConnectionDelete = statusDeniedPrivateConnectionDelete;
             this.statusDeniedVaultUpdate = statusDeniedVaultUpdate;
+            this.statusDeniedVaultRecover = statusDeniedVaultRecover;
             if (statusDeniedPrivateConnectionDelete) PrivateStartStatus = 202;
             this.exclusiveNotificationCreation = exclusiveNotificationCreation;
             this.statusSucceededDeleteVault = statusSucceededDeleteVault;
@@ -408,11 +412,11 @@ public sealed partial class AzureVaultFixtureProvisionerTests
             if ((statusPendingPurge ? 1 : 0) + (statusPendingPurgeIndependent ? 1 : 0) + (statusPendingPurgeCancellation ? 1 : 0) + (statusFailedPurge ? 1 : 0) + (statusFailedPurgeIndependent ? 1 : 0) + (statusFailedPurgeCancellation ? 1 : 0) + (statusCanceledPurge ? 1 : 0) + (statusCanceledPurgeIndependent ? 1 : 0) + (statusCanceledPurgeCancellation ? 1 : 0) > 1) throw new InvalidOperationException("test-profile-conflict");
             recoveryCancellation = operation == ManagementMutation.RecoverVault && boundary == "cancellation-boundary";
             updateCancellation = operation == ManagementMutation.CreateOrUpdateVault && boundary == "cancellation-boundary";
-            Native = new(rbac: statusDeniedPrivateConnectionDelete || PurgeStatusWire || succeededDeleteVaultWire || statusNotificationUpdateIndependent || UnknownNotificationWire || statusNotificationCreateIndependent || statusPrivateUpdateIndependent ||
+            Native = new(rbac: statusDeniedVaultRecover || statusDeniedPrivateConnectionDelete || PurgeStatusWire || succeededDeleteVaultWire || statusNotificationUpdateIndependent || UnknownNotificationWire || statusNotificationCreateIndependent || statusPrivateUpdateIndependent ||
                 operation == ManagementMutation.CreateOrUpdateVault || recoveryCancellation, allowPurge: true,
-                emptyPolicies: statusDeniedPrivateConnectionDelete || PurgeStatusWire || succeededDeleteVaultWire || statusNotificationUpdateIndependent || UnknownNotificationWire || statusNotificationCreateIndependent || statusPrivateUpdateIndependent ||
+                emptyPolicies: statusDeniedVaultRecover || statusDeniedPrivateConnectionDelete || PurgeStatusWire || succeededDeleteVaultWire || statusNotificationUpdateIndependent || UnknownNotificationWire || statusNotificationCreateIndependent || statusPrivateUpdateIndependent ||
                 operation == ManagementMutation.CreateOrUpdateVault || recoveryCancellation);
-            Baseline = statusDeniedPrivateConnectionDelete || PurgeStatusWire || recoveryCancellation || succeededDeleteVaultWire ? Native.Baseline with { PublicNetworkAccess = true } : Native.Baseline;
+            Baseline = statusDeniedVaultRecover || statusDeniedPrivateConnectionDelete || PurgeStatusWire || recoveryCancellation || succeededDeleteVaultWire ? Native.Baseline with { PublicNetworkAccess = true } : Native.Baseline;
             if (statusDeniedVaultUpdate) Baseline = Baseline with { PublicNetworkAccess = false };
             if (baselineOverride is not null) Baseline = baselineOverride(Baseline);
             Native.Selector = Native.Selector with
@@ -436,7 +440,12 @@ public sealed partial class AzureVaultFixtureProvisionerTests
             statusTransport = Wire("status-arm");
             resourceTransport = Wire("resource-arm");
             statusCredential = new("status-arm", this);
-            if (statusDeniedVaultUpdate)
+            if (statusDeniedVaultRecover)
+                provisioner = VaultFixtureProvisioner.ForStatusDeniedVaultRecover(Native.Journal,
+                    new(Subscription, "fixture-group", "eastus", Tenant, true, true), Baseline,
+                    new("setup-arm", new Credential("setup-arm"), setup),
+                    new("resource-reader", deniedVaultReadCredential, resourceTransport), new(65536, TimeSpan.FromSeconds(20)));
+            else if (statusDeniedVaultUpdate)
                 provisioner = VaultFixtureProvisioner.ForStatusDeniedVaultUpdate(Native.Journal,
                     new(Subscription, "fixture-group", "eastus", Tenant, true, true), Baseline,
                     new("setup-arm", new Credential("setup-arm"), setup),
@@ -887,6 +896,21 @@ public sealed partial class AzureVaultFixtureProvisionerTests
                         new(65536, 8192, 4096, 32, 16, TimeSpan.FromSeconds(20)),
                         new(65536, 65536, TimeSpan.FromSeconds(20)), time ?? TimeProvider.System, notification);
             }
+            if (statusDeniedVaultRecover)
+                return cleanupOnly
+                    ? OpService.ForStatusDeniedVaultRecoverCleanup(Origin, Owner, "purge-source", capability,
+                        declaredScope ?? new(Subscription, "fixture-group", "eastus", Tenant, true, true), parent ?? provisioner,
+                        new(65536, 65536, TimeSpan.FromSeconds(20)), time ?? TimeProvider.System)
+                    : OpService.ForStatusDeniedVaultRecover(Origin, Owner, "purge-source", capability,
+                        declaredScope ?? new(Subscription, "fixture-group", "eastus", Tenant, true, true), parent ?? provisioner,
+                        new("status-reader", statusCredential, statusTransport),
+                        new("resource-reader", deniedVaultReadCredential, resourceTransport), selectedTransport,
+                        new(65536, 8192, 512, TimeSpan.FromSeconds(20)),
+                        new(65536, 8192, 4096, 32, 16, TimeSpan.FromSeconds(20)),
+                        new(65536, 65536, TimeSpan.FromSeconds(20)), time ?? TimeProvider.System,
+                        UnknownExclusion ? new OpService.StatusDeniedVaultRecoverWriterExclusion(
+                            notificationEpoch ?? UnknownEpoch, continuousWriterExclusion, UnknownNoOlderInflight,
+                            UnknownNoNameReuse, UnknownNeverApplied, UnknownContinuity.Token) : null!);
             if (statusDeniedVaultUpdate)
                 return cleanupOnly
                     ? OpService.ForStatusDeniedVaultUpdateCleanup(Origin, Owner, "purge-source", capability,
@@ -1005,6 +1029,12 @@ public sealed partial class AzureVaultFixtureProvisionerTests
         internal ValueTask<VaultFixtureProvisioner.Result> SettleParentAsync() => provisioner.SettleAsync(Owner, Native.Selector);
         internal VaultFixtureProvisioner ReopenProvisioner(NativeProvisioningState? deniedStatusOverride = null)
         {
+            if (statusDeniedVaultRecover)
+                return VaultFixtureProvisioner.ForStatusDeniedVaultRecoverCleanup(Native.Journal,
+                    new(Subscription, "fixture-group", "eastus", Tenant, true, true),
+                    new("setup-arm", new Credential("setup-arm"), Wire("setup-arm")),
+                    new("read-arm", new Credential("read-arm"), Wire("read-arm")),
+                    new(65536, TimeSpan.FromSeconds(20)));
             if (statusDeniedVaultUpdate)
                 return VaultFixtureProvisioner.ForStatusDeniedVaultUpdateCleanup(Native.Journal,
                     new(Subscription, "fixture-group", "eastus", Tenant, true, true),
@@ -1145,7 +1175,7 @@ public sealed partial class AzureVaultFixtureProvisionerTests
         private ManagementOperation? PendingHandle;
         internal async Task<SecretOutcome<ManagementOperation>> Start(Op.Lease lease, CancellationToken token = default)
         {
-            var client = new VaultAdministration(new PurgeCredential(statusDeniedVaultUpdate || statusDeniedPurge || statusDeniedNotificationUpdate || statusDeniedPrivateConnectionDelete ? "denied-arm" : "selected-arm", this),
+            var client = new VaultAdministration(new PurgeCredential(statusDeniedVaultRecover || statusDeniedVaultUpdate || statusDeniedPurge || statusDeniedNotificationUpdate || statusDeniedPrivateConnectionDelete ? "denied-arm" : "selected-arm", this),
                 new PurgeSdkSeam(Source.SelectedTransport, this));
             ManagementScope scope = Operation is ManagementMutation.UpdateNotification or ManagementMutation.CreateOrUpdateNotification or ManagementMutation.DeleteNotification
                 ? new NotificationScope(new(new(new(Subscription), "fixture-group"), lease.VaultName), lease.NotificationName!)
@@ -1347,7 +1377,7 @@ public sealed partial class AzureVaultFixtureProvisionerTests
                 return endpointResponse;
             }
             if (request.RequestUri.Host != "management.azure.com" || request.RequestUri.Query != "?api-version=2026-02-01" ||
-                request.Headers.Authorization?.Parameter != ((statusDeniedVaultUpdate || statusDeniedPurge || statusDeniedNotificationUpdate || statusDeniedPrivateConnectionDelete) && role == "selected-arm" ? "denied-arm" : role))
+                request.Headers.Authorization?.Parameter != ((statusDeniedVaultRecover || statusDeniedVaultUpdate || statusDeniedPurge || statusDeniedNotificationUpdate || statusDeniedPrivateConnectionDelete) && role == "selected-arm" ? "denied-arm" : role))
             {
                 if (Operation is ManagementMutation.UpdateNotification or ManagementMutation.CreateOrUpdateNotification or ManagementMutation.DeleteNotification &&
                     request.RequestUri.Host == "management.azure.com" &&
@@ -1362,18 +1392,18 @@ public sealed partial class AzureVaultFixtureProvisionerTests
                 Native.Wire.VaultName = path[(path.LastIndexOf('/') + 1)..];
             }
             if ((succeededDeleteVaultWire && role == "resource-arm" ||
-                (statusDeniedVaultUpdate || statusDeniedPrivateConnectionDelete || PurgeStatusWire || statusNotificationUpdateIndependent || UnknownNotificationWire || statusNotificationCreateIndependent || statusPrivateUpdateIndependent) && role is "resource-arm" or "read-arm") && request.Method == HttpMethod.Get)
+                (statusDeniedVaultRecover || statusDeniedVaultUpdate || statusDeniedPrivateConnectionDelete || PurgeStatusWire || statusNotificationUpdateIndependent || UnknownNotificationWire || statusNotificationCreateIndependent || statusPrivateUpdateIndependent) && role is "resource-arm" or "read-arm") && request.Method == HttpMethod.Get)
             {
                 ResourceReads++;
                 bool closing = Native.Read().Closing, selected = SelectedDeletes > 0 || PurgeStatusWire && SelectedPurges > 0 ||
-                    statusDeniedVaultUpdate && SelectedUpdates > 0;
+                    statusDeniedVaultUpdate && SelectedUpdates > 0 || statusDeniedVaultRecover && SelectedRecoveries > 0;
                 if (UnknownNotificationWire && closing && !unknownFinalAbsenceHookCalled &&
                     !Native.Wire.Active && !Native.Wire.Deleted && Native.Read().Resources.Single(r => r.SelectedAttempted).Absent)
                 {
                     unknownFinalAbsenceHookCalled = true;
                     BeforeUnknownFinalAbsence?.Invoke();
                 }
-                if ((statusDeniedVaultUpdate || statusDeniedPrivateConnectionDelete || PurgeStatusWire || statusNotificationUpdateIndependent || UnknownNotificationWire || statusNotificationCreateIndependent || statusPrivateUpdateIndependent) && role == "read-arm" && closing)
+                if ((statusDeniedVaultRecover || statusDeniedVaultUpdate || statusDeniedPrivateConnectionDelete || PurgeStatusWire || statusNotificationUpdateIndependent || UnknownNotificationWire || statusNotificationCreateIndependent || statusPrivateUpdateIndependent) && role == "read-arm" && closing)
                     await Pause("parent-cleanup-read");
                 if (closing) SucceededCleanupReads++;
                 else if (selected) SucceededSelectedReads++;
@@ -1382,8 +1412,11 @@ public sealed partial class AzureVaultFixtureProvisionerTests
                 if (path != plan.VaultId && path != plan.DeletedId)
                     throw new InvalidOperationException("foreign-succeeded-resource");
                 bool deleted = path == plan.DeletedId;
-                if ((statusDeniedVaultUpdate || statusDeniedPurge || statusDeniedPrivateConnectionDelete) && closing && deleted && !deniedFinalAbsenceHookCalled &&
-                    !Native.Wire.Active && !Native.Wire.Deleted)
+                if ((statusDeniedVaultRecover || statusDeniedVaultUpdate || statusDeniedPurge || statusDeniedPrivateConnectionDelete) && closing && deleted && !deniedFinalAbsenceHookCalled &&
+                    !Native.Wire.Active && !Native.Wire.Deleted &&
+                    (!statusDeniedVaultRecover || Native.Read().Resources.Single(r => r.Id == plan.DeletedId) is
+                        { DeleteAttempted: true, InvocationTerminated: true, ActiveDispatch: var recoveryFinalPurgeDispatch } &&
+                        recoveryFinalPurgeDispatch == Guid.Empty))
                 {
                     deniedFinalAbsenceHookCalled = true;
                     BeforeDeniedFinalAbsence?.Invoke();
@@ -1449,6 +1482,19 @@ public sealed partial class AzureVaultFixtureProvisionerTests
                     SucceededResourceMutations++;
                     transform(payload);
                 }
+                if (statusDeniedVaultRecover && !selected)
+                {
+                    if (!deleted && DeniedRecoveryReadyTransform is { } readyTransform)
+                    {
+                        DeniedRecoveryReadyMutations++;
+                        readyTransform(payload);
+                    }
+                    if (deleted && DeniedRecoveryDeletedTransform is { } deletedTransform)
+                    {
+                        DeniedRecoveryDeletedMutations++;
+                        deletedTransform(payload);
+                    }
+                }
                 return Reply(200, payload.ToJsonString());
             }
             if (role == "read-arm" && request.Method == HttpMethod.Get &&
@@ -1497,13 +1543,13 @@ public sealed partial class AzureVaultFixtureProvisionerTests
                 Native.Wire.Vault["type"] = "Microsoft.KeyVault/vaults";
                 Native.Wire.Vault["properties"]!["vaultUri"] = $"https://{plan.VaultName}.vault.azure.net";
                 Native.Wire.Vault["properties"]!["provisioningState"] = "Succeeded";
-                if (statusDeniedVaultUpdate || recoveryCancellation || updateCancellation) Native.Wire.Vault["properties"]!["privateEndpointConnections"] = new JsonArray();
+                if (statusDeniedVaultRecover || statusDeniedVaultUpdate || recoveryCancellation || updateCancellation) Native.Wire.Vault["properties"]!["privateEndpointConnections"] = new JsonArray();
                 if (Fault == "missing-tags") Native.Wire.Vault.Remove("tags");
                 if (Fault == "foreign-tags") Native.Wire.Vault["tags"]!["secretkit-fixture"] = Guid.NewGuid().ToString("N");
                 if (Fault == "configuration") Native.Wire.Vault["properties"]!["softDeleteRetentionInDays"] = 7;
                 if (Fault == "ownership-configuration") Native.Wire.ReadFault = "configuration";
                 if (Fault == "unchanged") Native.Wire.Vault = previous;
-                Native.Wire.Active = true;
+                Native.Wire.Active = !(statusDeniedVaultRecover && Fault == "active-remains-absent");
                 Native.Wire.Deleted = Fault == "deleted-present";
                 await Pause("selected-send");
                 if (Fault == "lost") throw new IOException("controlled-selected-recovery-loss");
@@ -1553,7 +1599,7 @@ public sealed partial class AzureVaultFixtureProvisionerTests
                 if (Barrier == "selected-body") await Body(response, "selected-body");
                 return response;
             }
-            if ((statusDeniedVaultUpdate || statusDeniedPurge || statusDeniedPrivateConnectionDelete) && role is "selected-arm" or "status-arm" &&
+            if ((statusDeniedVaultRecover || statusDeniedVaultUpdate || statusDeniedPurge || statusDeniedPrivateConnectionDelete) && role is "selected-arm" or "status-arm" &&
                 request.Method == HttpMethod.Get && path == StatusPath)
             {
                 bool selected = role == "selected-arm";
@@ -1839,10 +1885,17 @@ public sealed partial class AzureVaultFixtureProvisionerTests
             if (role == "setup-arm" && request.Method == HttpMethod.Post) SetupPurges++;
             if (role == "setup-arm" && request.Method == HttpMethod.Delete) SetupDeletes++;
             var native = await Native.Wire.Respond(request, role, token);
-            if ((statusDeniedVaultUpdate || statusDeniedPrivateConnectionDelete || recoveryCancellation || updateCancellation || PurgeStatusWire || succeededDeleteVaultWire || statusNotificationUpdateIndependent || UnknownNotificationWire || statusNotificationCreateIndependent || statusPrivateUpdateIndependent) &&
+            if (statusDeniedVaultRecover && role == "setup-arm" && Native.Read().Closing &&
+                (Fault == "recover-cleanup-delete-lost" && request.Method == HttpMethod.Delete ||
+                    Fault == "recover-cleanup-purge-lost" && request.Method == HttpMethod.Post))
+            {
+                native.Dispose();
+                throw new IOException("controlled-recovery-cleanup-response-loss");
+            }
+            if ((statusDeniedVaultRecover || statusDeniedVaultUpdate || statusDeniedPrivateConnectionDelete || recoveryCancellation || updateCancellation || PurgeStatusWire || succeededDeleteVaultWire || statusNotificationUpdateIndependent || UnknownNotificationWire || statusNotificationCreateIndependent || statusPrivateUpdateIndependent) &&
                 Native.Wire.Vault is not null)
                 Native.Wire.Vault["properties"]!["privateEndpointConnections"] = new JsonArray();
-            if ((statusDeniedVaultUpdate || statusDeniedPrivateConnectionDelete || PurgeStatusWire || statusNotificationUpdateIndependent || UnknownNotificationWire || statusNotificationCreateIndependent || statusPrivateUpdateIndependent) && role == "setup-arm")
+            if ((statusDeniedVaultRecover || statusDeniedVaultUpdate || statusDeniedPrivateConnectionDelete || PurgeStatusWire || statusNotificationUpdateIndependent || UnknownNotificationWire || statusNotificationCreateIndependent || statusPrivateUpdateIndependent) && role == "setup-arm")
             {
                 if (request.Method == HttpMethod.Put) await Pause("parent-setup");
                 if (Barrier == "parent-cleanup-body" && request.Method == HttpMethod.Delete)
@@ -2171,7 +2224,7 @@ public sealed partial class AzureVaultFixtureProvisionerTests
         {
             if (requestContext.Scopes.Single() != "https://management.azure.com/.default") throw new InvalidOperationException("foreign-audience");
             await fixture.Pause(role == "selected-arm" ||
-                role == "denied-arm" && (fixture.Operation == ManagementMutation.DeletePrivateConnection || fixture.statusDeniedVaultUpdate)
+                role == "denied-arm" && (fixture.Operation == ManagementMutation.DeletePrivateConnection || fixture.statusDeniedVaultUpdate || fixture.statusDeniedVaultRecover)
                 ? "selected-credential" : "status-credential");
             cancellationToken.ThrowIfCancellationRequested();
             return new(role, DateTimeOffset.MaxValue);

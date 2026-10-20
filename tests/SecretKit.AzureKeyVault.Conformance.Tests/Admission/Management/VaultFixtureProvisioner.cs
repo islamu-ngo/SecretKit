@@ -23,6 +23,633 @@ namespace SecretKit.AzureKeyVault.Conformance.Tests.Admission.Management;
 // ARM PUT has no conditional-create guarantee; preflight alone is not isolation.
 internal sealed class VaultFixtureProvisioner : IAsyncDisposable
 {
+    private bool statusDeniedVaultRecoverProfile, statusDeniedVaultRecoverCleanup;
+    internal enum StatusDeniedVaultRecoverFixtureAction { PrepareVault, PrepareDeleted, CleanupDelete, CleanupPurge }
+    private sealed record DeniedVaultRecoverFacts(Plan Plan, RoleFixtureJournal.Snapshot? Before,
+        RoleFixtureJournal.Snapshot After, int Edge, string ResourceId, Guid Dispatch, StatusDeniedVaultRecoverFixtureAction Action, bool Settled,
+        CancellationToken[] Tokens, Task[] Tasks);
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<object, DeniedVaultRecoverFacts> deniedVaultRecoverFacts =
+        new(ReferenceEqualityComparer.Instance);
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<Plan, object> deniedVaultRecoverPending =
+        new(ReferenceEqualityComparer.Instance);
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<Plan, CancellationToken[]> deniedVaultRecoverTokens =
+        new(ReferenceEqualityComparer.Instance);
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<Plan, System.Action> deniedVaultRecoverLifetime =
+        new(ReferenceEqualityComparer.Instance);
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<Plan, Guid> deniedVaultRecoverDispatches =
+        new(ReferenceEqualityComparer.Instance);
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, byte> deniedVaultRecoverRevoked = [];
+    private sealed record DeniedVaultRecoverParentRead(RoleFixtureJournal.Snapshot Image, Task Task, string Id, int Status,
+        string? Digest, object? Native, DeniedVaultRecoverReadyRead? PhaseRead);
+    private readonly Dictionary<Plan, (DeniedVaultRecoverParentRead Active, DeniedVaultRecoverParentRead Deleted)> deniedVaultRecoverPreDelete =
+        new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<Plan, string> deniedVaultRecoverDeletedBaselines = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<Plan, (DeniedVaultRecoverParentRead? Active, DeniedVaultRecoverParentRead? Deleted)> deniedVaultRecoverReads =
+        new(ReferenceEqualityComparer.Instance);
+
+    internal static bool StatusDeniedVaultRecoverSelector(FixtureSelector selector) =>
+        selector is not null && selector.Operation == "a.management.ManagementOperation.CheckStatusAsync" &&
+        selector.Variant == "operation.RecoverVault" && selector.Case == "denied-authority";
+    internal static VaultFixtureProvisioner ForStatusDeniedVaultRecover(RoleFixtureJournal journal, HostScope host,
+        VaultAdministrationEffects.Configuration baseline, Authority setupArm, Authority readArm, Limits limits, TimeProvider? time = null)
+    {
+        var source = new VaultFixtureProvisioner(journal, host, setupArm, readArm, limits, time);
+        Require(limits.MaximumResponseBytes <= 1024 * 1024);
+        source.baselineConfiguration = CopyConfiguration(baseline);
+        Require(host.AllowPurge && source.baseline is { Rbac: true, PurgeProtection: false, PublicNetworkAccess: true, Policies.Length: 0 } &&
+            source.baseline.Location == host.Location && source.baseline.TenantId == host.TenantId);
+        _ = source.baseline.Build();
+        source.statusDeniedVaultRecoverProfile = true;
+        return source;
+    }
+    internal static VaultFixtureProvisioner ForStatusDeniedVaultRecoverCleanup(RoleFixtureJournal journal, HostScope host,
+        Authority setupArm, Authority readArm, Limits limits, TimeProvider? time = null)
+    {
+        Require(host.AllowPurge && limits is not null && limits.MaximumResponseBytes <= 1024 * 1024);
+        return new(journal, host, setupArm, readArm, limits, time)
+        { statusDeniedVaultRecoverProfile = true, statusDeniedVaultRecoverCleanup = true };
+    }
+    internal VaultAdministrationEffects.Configuration StatusDeniedVaultRecoverConfiguration(HostScope expected,
+        ManagementOperationStatusCollector.Authority statusReader, ManagementOperationResourceCollector.Authority resourceReader,
+        HttpPipelineTransport selectedBackend)
+    {
+        Require(statusDeniedVaultRecoverProfile && !statusDeniedVaultRecoverCleanup && !closed && host == expected &&
+            baselineConfiguration is not null && statusReader is { Credential: not null, Transport: not null } &&
+            resourceReader is { Credential: not null, Transport: not null } && selectedBackend is not null &&
+            ReferenceEquals(resourceReader.Credential, readArm.Credential) &&
+            ReferenceEquals(resourceReader.Transport, readArm.Transport) && resourceReader.Label == readArm.Label &&
+            new[] { setupArm, readArm }.All(a => a.Label != statusReader.Label &&
+                !ReferenceEquals(a.Credential, statusReader.Credential) && !ReferenceEquals(a.Transport, statusReader.Transport) &&
+                !ReferenceEquals(a.Transport, selectedBackend)) && !ReferenceEquals(statusReader.Transport, selectedBackend));
+        return CopyConfiguration(baseline);
+    }
+    private bool DeniedVaultRecoverLive(Plan plan) => !closed && !deniedVaultRecoverRevoked.ContainsKey(plan.Selector.Nonce) &&
+        deniedVaultRecoverTokens.GetValueOrDefault(plan, []).All(t => !t.IsCancellationRequested);
+    private void TrackDeniedVaultRecover(Plan plan, CancellationToken token, CancellationToken caller)
+    {
+        Require(DeniedVaultRecoverLive(plan) && !token.IsCancellationRequested && !caller.IsCancellationRequested);
+        deniedVaultRecoverTokens.AddOrUpdate(plan, [token, caller], (_, old) => [.. old, token, caller]);
+    }
+    private void CheckDeniedVaultRecoverLifetime(Plan plan, RoleFixtureJournal.Snapshot image)
+    {
+        Require(DeniedVaultRecoverLive(plan) && RoleFixtureJournal.StatusDeniedVaultRecoverRoot(image) &&
+            MatchesPlan(plan, image) && !plan.OriginalCreate && !plan.OriginalRecover);
+        if (!image.Closing)
+        {
+            Require(!plan.Restored);
+            Require(deniedVaultRecoverLifetime.TryGetValue(plan, out var validate));
+            validate();
+        }
+    }
+    internal bool OwnsStatusDeniedVaultRecoverPreparation(Plan originalPlan)
+    {
+        CheckPlan(originalPlan);
+        lock (plans)
+            return statusDeniedVaultRecoverProfile && !statusDeniedVaultRecoverCleanup && !originalPlan.Restored &&
+                !originalPlan.OriginalCreate && originalPlan.Preparation == Preparation.Deleted && !originalPlan.SeedCanary &&
+                deniedVaultRecoverPreDelete.ContainsKey(originalPlan) && deniedVaultRecoverDeletedBaselines.ContainsKey(originalPlan) &&
+                deniedVaultRecoverReadyReads.TryGetValue(originalPlan, out var ready) && ready.Length == 2 &&
+                ready.All(r => r.Reader.OwnsStatusDeniedVaultRecoverRead(r.Proof, r.Window, r.Binding, r.Proof.Phase, r.Task)) &&
+                originalReady.Contains(originalPlan) && prepared.Contains(originalPlan) && originalPlan.Consumed == 1 &&
+                originalPlan.Busy == 0 && DeniedVaultRecoverLive(originalPlan);
+    }
+    internal void BindStatusDeniedVaultRecoverLifetime(Plan originalPlan, System.Action validate)
+    {
+        CheckPlan(originalPlan);
+        Require(!statusDeniedVaultRecoverCleanup && !originalPlan.Restored && validate is not null &&
+            deniedVaultRecoverLifetime.TryAdd(originalPlan, validate));
+    }
+    internal void RetainStatusDeniedVaultRecoverDispatch(Plan originalPlan, Guid dispatch)
+    {
+        Require(OwnsStatusDeniedVaultRecoverPreparation(originalPlan) && dispatch != Guid.Empty);
+        var state = ReadPlan(originalPlan.Owner, originalPlan.Selector);
+        Require(!state.Closing && state.RecoverVault!.InvocationDispatch == dispatch &&
+            state.RecoverVaultUnsettled && deniedVaultRecoverDispatches.TryAdd(originalPlan, dispatch));
+    }
+
+    internal sealed class StatusDeniedVaultRecoverPreparation(VaultFixtureProvisioner source)
+    {
+        internal bool ValidateInitial(RoleFixtureJournal journal, string owner, FixtureSelector selector) =>
+            source.deniedVaultRecoverFacts.TryGetValue(this, out var f) && f.Before is null &&
+            f.Plan.Owner == owner && f.Plan.Selector == selector && source.ValidateDeniedVaultRecoverFixture(this, journal, f.After, 0, true);
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) => false;
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.ValidateDeniedVaultRecoverFixture(this, journal, state, 0, true);
+        internal RoleFixtureJournal.Snapshot Postimage => RoleFixtureJournal.CopyStatusDeniedVaultRecoverSnapshot(source.deniedVaultRecoverFacts[this].After);
+    }
+    internal sealed class StatusDeniedVaultRecoverFixtureAdmission(VaultFixtureProvisioner source)
+    {
+        internal string ResourceId => source.deniedVaultRecoverFacts.TryGetValue(this, out var f) ? f.ResourceId : "";
+        internal Guid Dispatch => source.deniedVaultRecoverFacts.TryGetValue(this, out var f) ? f.Dispatch : Guid.Empty;
+        internal StatusDeniedVaultRecoverFixtureAction Action => source.deniedVaultRecoverFacts[this].Action;
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) => source.ValidateDeniedVaultRecoverFixture(this, journal, state, 1, false);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) => source.ValidateDeniedVaultRecoverFixture(this, journal, state, 1, true);
+        internal RoleFixtureJournal.Snapshot Postimage => RoleFixtureJournal.CopyStatusDeniedVaultRecoverSnapshot(source.deniedVaultRecoverFacts[this].After);
+    }
+    internal sealed class StatusDeniedVaultRecoverFixtureDrain(VaultFixtureProvisioner source)
+    {
+        internal string ResourceId => source.deniedVaultRecoverFacts.TryGetValue(this, out var f) ? f.ResourceId : "";
+        internal Guid Dispatch => source.deniedVaultRecoverFacts.TryGetValue(this, out var f) ? f.Dispatch : Guid.Empty;
+        internal StatusDeniedVaultRecoverFixtureAction Action => source.deniedVaultRecoverFacts[this].Action;
+        internal bool Settled => source.deniedVaultRecoverFacts.TryGetValue(this, out var f) && f.Settled;
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) => source.ValidateDeniedVaultRecoverFixture(this, journal, state, 2, false);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) => source.ValidateDeniedVaultRecoverFixture(this, journal, state, 2, true);
+        internal RoleFixtureJournal.Snapshot Postimage => RoleFixtureJournal.CopyStatusDeniedVaultRecoverSnapshot(source.deniedVaultRecoverFacts[this].After);
+    }
+    internal sealed class StatusDeniedVaultRecoverAbsence(VaultFixtureProvisioner source)
+    {
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) => source.ValidateDeniedVaultRecoverFixture(this, journal, state, 3, false);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) => source.ValidateDeniedVaultRecoverFixture(this, journal, state, 3, true);
+        internal RoleFixtureJournal.Snapshot Postimage => RoleFixtureJournal.CopyStatusDeniedVaultRecoverSnapshot(source.deniedVaultRecoverFacts[this].After);
+    }
+    // Called under Jlock: immutable registry reads only. The host lifetime
+    // callback and native evidence are evaluated before this fact is issued.
+    private bool ValidateDeniedVaultRecoverFixture(object capability, RoleFixtureJournal candidateJournal,
+        RoleFixtureJournal.Snapshot state, int edge, bool post) =>
+        ReferenceEquals(journal, candidateJournal) && deniedVaultRecoverFacts.TryGetValue(capability, out var f) && f.Edge == edge &&
+        f.Tasks.All(t => t.IsCompleted) && (edge == 2 && !f.Settled ||
+            DeniedVaultRecoverLive(f.Plan) && f.Tokens.All(t => !t.IsCancellationRequested)) &&
+        (post || f.Before is not null) &&
+        RoleFixtureJournal.SameStatusDeniedVaultRecoverSnapshot(post ? f.After : f.Before!, state);
+    private void IssueDeniedVaultRecoverFixture(object candidate, DeniedVaultRecoverFacts facts)
+    {
+        var frozen = facts with
+        {
+            Before = facts.Before is null ? null : RoleFixtureJournal.CopyStatusDeniedVaultRecoverSnapshot(facts.Before),
+            After = RoleFixtureJournal.CopyStatusDeniedVaultRecoverSnapshot(facts.After),
+            Tokens = facts.Tokens.ToArray(), Tasks = facts.Tasks.ToArray()
+        };
+        Require(deniedVaultRecoverFacts.TryAdd(candidate, frozen) && deniedVaultRecoverPending.TryAdd(facts.Plan, candidate));
+    }
+    internal bool HasStatusDeniedVaultRecoverPersistence(Plan originalPlan) => deniedVaultRecoverPending.ContainsKey(originalPlan);
+    internal RoleFixtureJournal.Snapshot RetryStatusDeniedVaultRecoverPersistence(Plan originalPlan)
+    {
+        Require(deniedVaultRecoverPending.TryGetValue(originalPlan, out var candidate));
+        Require(deniedVaultRecoverFacts.TryGetValue(candidate, out var f));
+        try
+        {
+            var image = candidate switch
+            {
+                StatusDeniedVaultRecoverPreparation preparation => journal.PrepareStatusDeniedVaultRecover(f.Plan.Owner, f.Plan.Selector, preparation),
+                StatusDeniedVaultRecoverFixtureAdmission admission => journal.BeginStatusDeniedVaultRecoverFixtureDispatch(f.Plan.Owner, f.Plan.Selector, f.Plan.LeaseId, admission),
+                StatusDeniedVaultRecoverFixtureDrain drain => journal.EndStatusDeniedVaultRecoverFixtureDispatch(f.Plan.Owner, f.Plan.Selector, f.Plan.LeaseId, drain),
+                StatusDeniedVaultRecoverAbsence absence => journal.RecordStatusDeniedVaultRecoverAbsence(f.Plan.Owner, f.Plan.Selector, f.Plan.LeaseId, absence),
+                _ => throw Failure()
+            };
+            Require(RoleFixtureJournal.SameStatusDeniedVaultRecoverSnapshot(f.After, image));
+            deniedVaultRecoverPending.TryRemove(originalPlan, out _);
+            return image;
+        }
+        catch (IOException) { throw; }
+        catch { deniedVaultRecoverRevoked.TryAdd(originalPlan.Selector.Nonce, 0); throw; }
+    }
+    private Plan PlanDeniedVaultRecover(string owner, FixtureSelector selector, CancellationToken token, CancellationToken caller)
+    {
+        lock (plans)
+        {
+            Require(!closed && !statusDeniedVaultRecoverCleanup && !plans.ContainsKey(selector.Nonce));
+            string name = "skv" + Guid.NewGuid().ToString("N")[..21];
+            string vault = GroupId + "/providers/Microsoft.KeyVault/vaults/" + name;
+            string deleted = DeletedId(name);
+            RoleFixtureJournal.Resource[] rows = [new(vault, false), new(vault + "/secrets/" + Canary, false, CleanupOnly: true),
+                new(deleted, false)];
+            var plan = new Plan(source, owner, selector with { }, Guid.NewGuid(), vault, deleted, Preparation.Deleted, false, manifest: rows);
+            var image = new RoleFixtureJournal.Snapshot(owner, selector with { }, plan.LeaseId, false, rows,
+                RecoverVault: new(vault, deleted, CopyConfiguration(baseline), CopyConfiguration(baseline))) { Revision = 1 };
+            plans.Add(selector.Nonce, plan);
+            TrackDeniedVaultRecover(plan, token, caller);
+            IssueDeniedVaultRecoverFixture(new StatusDeniedVaultRecoverPreparation(this),
+                new(plan, null, image, 0, vault, Guid.Empty, StatusDeniedVaultRecoverFixtureAction.PrepareVault, false, deniedVaultRecoverTokens[plan], []));
+            return plan;
+        }
+    }
+    private VaultAdministrationEffects.Configuration DeniedVaultRecoverConfiguration(Plan plan, RoleFixtureJournal.Snapshot image)
+    {
+        CheckDeniedVaultRecoverLifetime(plan, image);
+        var slot = image.RecoverVault!;
+        if (slot.InvocationDispatch == Guid.Empty) return CopyConfiguration(slot.Baseline);
+        if (slot.SettledDispatch == slot.InvocationDispatch && slot.Disposition == RoleFixtureJournal.RecoverVaultDisposition.Recovered)
+            return CopyConfiguration(slot.Selected);
+        Require(!image.Closing && !plan.Restored && deniedVaultRecoverDispatches.TryGetValue(plan, out var d) &&
+            d == slot.InvocationDispatch && image.Resources[0].InvocationTerminated);
+        return CopyConfiguration(slot.Selected);
+    }
+
+    private async Task<State> MutateDeniedVaultRecover(Plan plan, string id, Action action,
+        Func<BoundaryTransport, CancellationToken, Task<Operation?>> invoke, CancellationToken token, CancellationToken caller)
+    {
+        TrackDeniedVaultRecover(plan, token, caller);
+        var pre = ReadPlan(plan.Owner, plan.Selector);
+        CheckDeniedVaultRecoverLifetime(plan, pre);
+        Require(!HasStatusDeniedVaultRecoverPersistence(plan) && action is Action.CreateVault or Action.PrepareDeletedVault or Action.DeleteVault or Action.PurgeVault);
+        var typedAction = action switch
+        {
+            Action.CreateVault => StatusDeniedVaultRecoverFixtureAction.PrepareVault,
+            Action.PrepareDeletedVault => StatusDeniedVaultRecoverFixtureAction.PrepareDeleted,
+            Action.DeleteVault => StatusDeniedVaultRecoverFixtureAction.CleanupDelete,
+            Action.PurgeVault => StatusDeniedVaultRecoverFixtureAction.CleanupPurge,
+            _ => throw Failure()
+        };
+        bool delete = action != Action.CreateVault;
+        DeniedVaultRecoverParentRead activeRead, deletedRead;
+        lock (plans)
+        {
+            var reads = deniedVaultRecoverReads.GetValueOrDefault(plan);
+            Require(reads.Active is not null && reads.Deleted is not null);
+            activeRead = reads.Active; deletedRead = reads.Deleted;
+        }
+        Require(RoleFixtureJournal.SameStatusDeniedVaultRecoverSnapshot(pre, activeRead.Image) &&
+            RoleFixtureJournal.SameStatusDeniedVaultRecoverSnapshot(pre, deletedRead.Image) &&
+            (action == Action.CreateVault ? activeRead.Status == 404 && deletedRead.Status == 404 :
+                action is Action.DeleteVault or Action.PrepareDeletedVault ? activeRead.Status == 200 && deletedRead.Status == 404 :
+                activeRead.Status == 404 && deletedRead.Status == 200));
+        if (pre.Closing)
+            Require(OwnsDeniedVaultRecoverPhase(activeRead.PhaseRead) && OwnsDeniedVaultRecoverPhase(deletedRead.PhaseRead));
+        if (typedAction == StatusDeniedVaultRecoverFixtureAction.PrepareDeleted)
+        {
+            Require(!plan.Restored && activeRead.Native is KeyVaultResource && activeRead.Task.IsCompletedSuccessfully &&
+                deletedRead.Task.IsFaulted && activeRead.Digest is not null);
+            await CaptureDeniedVaultRecoverReady(plan, pre, token, caller).ConfigureAwait(false);
+            lock (plans) Require(deniedVaultRecoverPreDelete.TryAdd(plan, (activeRead, deletedRead)));
+        }
+        var dispatch = Guid.NewGuid();
+        var post = RoleFixtureJournal.StatusDeniedVaultRecoverFixtureImage(pre, id, dispatch, typedAction, false, false);
+        IssueDeniedVaultRecoverFixture(new StatusDeniedVaultRecoverFixtureAdmission(this),
+            new(plan, pre, post, 1, id, dispatch, typedAction, false, deniedVaultRecoverTokens[plan],
+                [activeRead.Task, deletedRead.Task, .. new Task?[] { activeRead.PhaseRead?.Task, deletedRead.PhaseRead?.Task }.OfType<Task>()]));
+        var admitted = RetryStatusDeniedVaultRecoverPersistence(plan);
+        var receipt = new Receipt(action, id) { Dispatch = dispatch, Attempted = true };
+        lock (plan.History) plan.History.Add(receipt);
+        using var boundary = new BoundaryTransport(setupArm.Transport, ArmOrigin,
+            action == Action.PurgeVault ? plan.DeletedId + "/purge" : plan.VaultId, Revision,
+            action == Action.PurgeVault ? RequestMethod.Post : delete ? RequestMethod.Delete : RequestMethod.Put,
+            limits.MaximumResponseBytes, false, SubscriptionId, host.Location,
+            beforeSend: () =>
+            {
+                token.ThrowIfCancellationRequested(); caller.ThrowIfCancellationRequested();
+                Require(RoleFixtureJournal.SameStatusDeniedVaultRecoverSnapshot(admitted, ReadPlan(plan.Owner, plan.Selector)));
+                CheckDeniedVaultRecoverLifetime(plan, admitted);
+            }, shape: action == Action.CreateVault ? VaultShape : null,
+            statusSucceededCancellationMutation: true, notificationUpdateIndependentMutation: true);
+        receipt.Boundary = boundary;
+        bool settled = false;
+        Task[] postReads = [];
+        try
+        {
+            receipt.NativeTask = invoke(boundary, token);
+            receipt.NativeOperation = await receipt.NativeTask.ConfigureAwait(false);
+            if (action is Action.CreateVault or Action.PurgeVault && boundary.Status == 200 && !boundary.HasAsync &&
+                receipt.NativeOperation is { HasCompleted: false } operation)
+            {
+                boundary.BeginStatus();
+                receipt.StatusTask = operation.UpdateStatusAsync(token).AsTask();
+                using var response = await receipt.StatusTask.ConfigureAwait(false);
+            }
+            settled = DeniedVaultRecoverLive(plan) && !token.IsCancellationRequested && !caller.IsCancellationRequested &&
+                boundary.Valid && !boundary.HasAsync && boundary.Status is 200 or 201 or 204 &&
+                receipt.NativeTask.IsCompletedSuccessfully && receipt.NativeOperation is { HasCompleted: true } &&
+                (receipt.StatusTask is null || receipt.StatusTask.IsCompletedSuccessfully);
+        }
+        catch (Exception) { settled = false; }
+        finally
+        {
+            receipt.Terminated = true; receipt.HttpStatus = boundary.Status; receipt.NativeRequestId = boundary.RequestId;
+            try { boundary.Dispose(); } catch { settled = false; }
+            settled &= boundary.FixtureDrainComplete;
+            if (settled)
+            {
+                try
+                {
+                    var activeAfter = await ReadVault(plan, token).ConfigureAwait(false);
+                    var deletedAfter = await ReadDeleted(plan, token).ConfigureAwait(false);
+                    settled = action switch
+                    {
+                        Action.CreateVault => activeAfter is not null && deletedAfter is null,
+                        Action.PrepareDeletedVault or Action.DeleteVault => activeAfter is null && deletedAfter is not null,
+                        Action.PurgeVault => activeAfter is null && deletedAfter is null,
+                        _ => false
+                    };
+                    lock (plans)
+                    {
+                        var joined = deniedVaultRecoverReads[plan];
+                        Require(joined.Active is not null && joined.Deleted is not null);
+                        postReads = [joined.Active.Task, joined.Deleted.Task,
+                            .. new Task?[] { joined.Active.PhaseRead?.Task, joined.Deleted.PhaseRead?.Task }.OfType<Task>()];
+                    }
+                }
+                catch (Exception) { settled = false; }
+            }
+            receipt.RemoteSettled = settled;
+            receipt.Outcome = settled ? State.Ready : State.Uncertain;
+            if (receipt.NativeTask is { IsCompleted: true } native && boundary.FixturePhysicalDrainComplete)
+            {
+                var drainedPre = ReadPlan(plan.Owner, plan.Selector);
+                var drainedPost = RoleFixtureJournal.StatusDeniedVaultRecoverFixtureImage(drainedPre, id, dispatch, typedAction, true, settled);
+                IssueDeniedVaultRecoverFixture(new StatusDeniedVaultRecoverFixtureDrain(this),
+                    new(plan, drainedPre, drainedPost, 2, id, dispatch, typedAction, settled, deniedVaultRecoverTokens[plan],
+                        [.. postReads, native, .. receipt.StatusTask is null ? Array.Empty<Task>() : [receipt.StatusTask]]));
+                RetryStatusDeniedVaultRecoverPersistence(plan);
+            }
+        }
+        token.ThrowIfCancellationRequested(); caller.ThrowIfCancellationRequested();
+        return receipt.Outcome;
+    }
+
+    private async Task<T?> ReadDeniedVaultRecoverArm<T>(Plan plan, string id,
+        Func<ArmClient, CancellationToken, Task<Response<T>>> read, CancellationToken token) where T : class
+    {
+        var pre = ReadPlan(plan.Owner, plan.Selector);
+        CheckDeniedVaultRecoverLifetime(plan, pre);
+        Require(!HasStatusDeniedVaultRecoverPersistence(plan));
+        var expected = DeniedVaultRecoverConfiguration(plan, pre);
+        lock (plans)
+        {
+            var old = deniedVaultRecoverReads.GetValueOrDefault(plan);
+            deniedVaultRecoverReads[plan] = id == plan.VaultId ? (null, null) : (old.Active, null);
+        }
+        using var boundary = new DeniedVaultRecoverReadTransport(this, plan, id, pre);
+        var options = new ArmClientOptions { Environment = new(new Uri(ArmOrigin), ArmOrigin), Transport = boundary };
+        Quiet(options);
+        options.SetApiVersion("Microsoft.KeyVault/vaults", Revision);
+        options.SetApiVersion("Microsoft.KeyVault/locations/deletedVaults", Revision);
+        options.SetApiVersion("Microsoft.KeyVault/deletedVaults", Revision);
+        var client = new ArmClient(new AudienceCredential(readArm.Credential, ArmOrigin + "/.default"), null, options);
+        Task<Response<T>> task = read(client, token);
+        T? result = null;
+        string? digest = null;
+        try
+        {
+            var response = await task.ConfigureAwait(false);
+            Require(boundary.Body is { Response.Status: 200 } && boundary.Parser is { Complete: true, Invalid: false } &&
+                boundary.Parser.Owns(response.GetRawResponse()));
+            result = response.Value;
+            using var raw = JsonDocument.Parse(boundary.Body.Bytes);
+            if (result is KeyVaultResource vault)
+            {
+                Require(pre.Resources[0].CreateAttempted && !pre.Resources[0].DeleteAttempted &&
+                    VaultAdministrationEffects.SameConfiguration(Configuration(vault.Data), expected));
+                ValidateDeniedVaultRecoverActive(plan, raw.RootElement, vault.Data, expected);
+            }
+            else if (result is DeletedKeyVaultResource deleted)
+            {
+                Require(pre.Resources[2].CreateAttempted || pre.Closing && pre.Resources[0].DeleteAttempted);
+                ManagementOperationResourceCollector.ValidateStatusSucceededDeleted(raw.RootElement, deleted.Data,
+                    plan.DeletedId, plan.VaultId, plan.Selector.Nonce, expected);
+            }
+            else throw Failure();
+            digest = boundary.Body.Sha256;
+        }
+        catch (RequestFailedException error) when (error.Status == 404)
+        {
+            Require(task.IsFaulted && boundary.Body is { Response.Status: 404 } && boundary.Parser is { Complete: true, Invalid: false });
+            using var raw = JsonDocument.Parse(boundary.Body.Bytes);
+            Require(raw.RootElement.EnumerateObject().Count() == 1 &&
+                raw.RootElement.GetProperty("error").GetProperty("code").GetString() == error.ErrorCode &&
+                error.ErrorCode is "NotFound" or "ResourceNotFound" or "VaultNotFound");
+        }
+        boundary.Dispose();
+        token.ThrowIfCancellationRequested();
+        CheckDeniedVaultRecoverLifetime(plan, pre);
+        Require(boundary.Parser is { Complete: true, Invalid: false } &&
+            RoleFixtureJournal.SameStatusDeniedVaultRecoverSnapshot(pre, ReadPlan(plan.Owner, plan.Selector)));
+        DeniedVaultRecoverReadyRead? phaseRead = null;
+        if (pre.Closing)
+        {
+            bool final = !pre.Resources[0].CreateAttempted || pre.Resources[2].DeleteAttempted;
+            bool activeExpected = !final && !pre.Resources[0].DeleteAttempted &&
+                (!pre.Resources[2].CreateAttempted || pre.RecoverVault!.Disposition == RoleFixtureJournal.RecoverVaultDisposition.Recovered);
+            var phase = id == plan.VaultId
+                ? final ? ManagementOperationResourceCollector.StatusDeniedVaultRecoverReadPhase.FinalActiveAbsent :
+                    activeExpected ? ManagementOperationResourceCollector.StatusDeniedVaultRecoverReadPhase.CleanupActiveRecovered :
+                    ManagementOperationResourceCollector.StatusDeniedVaultRecoverReadPhase.CleanupActiveAbsent
+                : final ? ManagementOperationResourceCollector.StatusDeniedVaultRecoverReadPhase.FinalDeletedAbsent :
+                    activeExpected ? ManagementOperationResourceCollector.StatusDeniedVaultRecoverReadPhase.CleanupDeletedAbsent :
+                    ManagementOperationResourceCollector.StatusDeniedVaultRecoverReadPhase.CleanupDeletedPresent;
+            phaseRead = await CollectDeniedVaultRecoverPhase(plan, pre, id == plan.VaultId, phase, token, token).ConfigureAwait(false);
+            Require(phaseRead.Proof.HttpStatus == (result is null ? 404 : 200) &&
+                (result is null || phaseRead.Proof.ResponseSha256 == digest));
+        }
+        lock (plans)
+        {
+            var fact = new DeniedVaultRecoverParentRead(RoleFixtureJournal.CopyStatusDeniedVaultRecoverSnapshot(pre),
+                task, id, result is null ? 404 : 200, digest, result, phaseRead);
+            var old = deniedVaultRecoverReads.GetValueOrDefault(plan);
+            deniedVaultRecoverReads[plan] = id == plan.VaultId ? (fact, null) : (old.Active, fact);
+            if (id == plan.DeletedId && result is not null && !pre.Closing && pre.RecoverVault!.InvocationDispatch == Guid.Empty)
+            {
+                Require(deniedVaultRecoverPreDelete.ContainsKey(plan) && digest is not null);
+                if (deniedVaultRecoverDeletedBaselines.TryGetValue(plan, out var original)) Require(original == digest);
+                else deniedVaultRecoverDeletedBaselines.Add(plan, digest);
+            }
+        }
+        return result;
+    }
+    private sealed class DeniedVaultRecoverReadTransport(VaultFixtureProvisioner source, Plan plan, string id,
+        RoleFixtureJournal.Snapshot preimage) : HttpPipelineTransport, IDisposable
+    {
+        private readonly OwnedArmResponse.Storage storage = new();
+        private Request? request;
+        private int sends;
+        internal OwnedArmResponse.Body? Body;
+        internal OwnedArmResponse.ParserCustody? Parser;
+        public override Request CreateRequest() { Require(request is null); return request = source.readArm.Transport.CreateRequest(); }
+        public override void Process(HttpMessage message) => throw Failure();
+        public override async ValueTask ProcessAsync(HttpMessage message)
+        {
+            Require(++sends == 1);
+            var headers = message.Request.Headers.ToArray();
+            void Check()
+            {
+                message.CancellationToken.ThrowIfCancellationRequested();
+                source.CheckDeniedVaultRecoverLifetime(plan, preimage);
+                Require(ReferenceEquals(request, message.Request) && message.Request.Method == RequestMethod.Get &&
+                    message.Request.Content is null && message.Request.Uri.ToUri().OriginalString == ArmOrigin + id + "?api-version=" + Revision &&
+                    headers.SequenceEqual(message.Request.Headers) && headers.Length <= 32 &&
+                    headers.Sum(h => h.Name.Length + h.Value.Length) <= 32768 &&
+                    headers.Select(h => h.Name).Distinct(StringComparer.OrdinalIgnoreCase).Count() == headers.Length &&
+                    headers.All(h => h.Name.Length is > 0 and <= 128 && h.Value.Length <= 16384 &&
+                        !h.Name.Any(char.IsControl) && !h.Value.Any(char.IsControl)) &&
+                    !headers.Any(h => new[] { "Content-Length", "Content-Encoding", "Transfer-Encoding", "Range", "Content-Range" }
+                        .Contains(h.Name, StringComparer.OrdinalIgnoreCase)) &&
+                    message.Request.Headers.TryGetValue("Authorization", out var auth) && auth.StartsWith("Bearer ", StringComparison.Ordinal) && auth.Length > 7 &&
+                    RoleFixtureJournal.SameStatusDeniedVaultRecoverSnapshot(preimage, source.ReadPlan(plan.Owner, plan.Selector)));
+                if (message.Request.Headers.TryGetValue("Host", out var host)) Require(host == "management.azure.com");
+            }
+            Check();
+            message.BufferResponse = false;
+            try { await source.readArm.Transport.ProcessAsync(message).ConfigureAwait(false); }
+            finally { if (message.HasResponse) storage.Own(message.Response); }
+            Check();
+            Require(message.HasResponse);
+            var response = message.Response;
+            var stream = response.ContentStream;
+            Body = await OwnedArmResponse.CaptureAsync(message, source.limits.MaximumResponseBytes, storage).ConfigureAwait(false);
+            Check();
+            Require(ReferenceEquals(response.ContentStream, stream) && Body.Response.Status is 200 or 404);
+            using var raw = JsonDocument.Parse(Body.Bytes, new JsonDocumentOptions { MaxDepth = 32 });
+            BoundaryTransport.Unique(raw.RootElement);
+            if (Body.Response.Status == 404)
+            {
+                Require(raw.RootElement.ValueKind == JsonValueKind.Object && raw.RootElement.EnumerateObject().Count() == 1);
+                Require(raw.RootElement.TryGetProperty("error", out var error) && error.ValueKind == JsonValueKind.Object);
+                Require(error.EnumerateObject().All(p => p.Name is "code" or "message") &&
+                    error.TryGetProperty("code", out var code) && code.ValueKind == JsonValueKind.String &&
+                    code.GetString() is "NotFound" or "ResourceNotFound" or "VaultNotFound");
+                if (error.TryGetProperty("message", out var text))
+                    Require(text.ValueKind == JsonValueKind.String && text.GetString()!.Length <= 4096 &&
+                        !text.GetString()!.Any(char.IsControl));
+            }
+            Parser = OwnedArmResponse.ParserCustody.Install(message, Body.Response, Body.Bytes, storage,
+                requireRebuffer: false, requireDownstreamRead: true);
+        }
+        public void Dispose() => storage.Dispose();
+    }
+    private async Task<Result> ReleaseDeniedVaultRecover(Plan plan, CancellationToken token, CancellationToken caller)
+    {
+        TrackDeniedVaultRecover(plan, token, caller);
+        var image = ReadPlan(plan.Owner, plan.Selector);
+        Require(image.Closing && image.Idle && RoleFixtureJournal.StatusDeniedVaultRecoverRoot(image));
+        if (image.Released) return Finish(State.Released, plan);
+        _ = DeniedVaultRecoverConfiguration(plan, image);
+        var vault = await ReadVault(plan, token).ConfigureAwait(false);
+        var deleted = await ReadDeleted(plan, token).ConfigureAwait(false);
+        if (image.Resources[0].CreateAttempted && !image.Resources[0].DeleteAttempted &&
+            (!image.Resources[2].CreateAttempted || image.RecoverVault!.InvocationDispatch != Guid.Empty))
+        {
+            Require(vault is not null && deleted is null && image.Resources[0] is { CreateAttempted: true, InvocationTerminated: true });
+            if (await MutateDeniedVaultRecover(plan, plan.VaultId, Action.DeleteVault,
+                async (boundary, ct) => await Arm(setupArm, boundary).GetKeyVaultResource(new(plan.VaultId))
+                    .DeleteAsync(WaitUntil.Started, ct).ConfigureAwait(false), token, caller).ConfigureAwait(false) != State.Ready)
+                return Finish(State.Uncertain, plan);
+        }
+        else Require(vault is null);
+        image = ReadPlan(plan.Owner, plan.Selector);
+        if (!image.Idle) return Finish(State.Pending, plan);
+        vault = await ReadVault(plan, token).ConfigureAwait(false);
+        deleted = await ReadDeleted(plan, token).ConfigureAwait(false);
+        Require(vault is null);
+        if (image.Resources[0].CreateAttempted && !image.Resources[2].DeleteAttempted)
+        {
+            Require(host.AllowPurge && deleted is not null);
+            if (await MutateDeniedVaultRecover(plan, plan.DeletedId, Action.PurgeVault,
+                async (boundary, ct) => await Arm(setupArm, boundary).GetDeletedKeyVaultResource(new(plan.DeletedId))
+                    .PurgeDeletedAsync(WaitUntil.Started, ct).ConfigureAwait(false), token, caller).ConfigureAwait(false) != State.Ready)
+                return Finish(State.Uncertain, plan);
+        }
+        image = ReadPlan(plan.Owner, plan.Selector);
+        if (!image.Idle) return Finish(State.Pending, plan);
+        Require(await ReadVault(plan, token).ConfigureAwait(false) is null &&
+            await ReadDeleted(plan, token).ConfigureAwait(false) is null);
+        DeniedVaultRecoverParentRead activeRead, deletedRead;
+        lock (plans)
+        {
+            var reads = deniedVaultRecoverReads[plan];
+            Require(reads.Active is not null && reads.Deleted is not null);
+            activeRead = reads.Active; deletedRead = reads.Deleted;
+        }
+        Require(activeRead.Status == 404 && deletedRead.Status == 404 && activeRead.Task.IsFaulted && deletedRead.Task.IsFaulted &&
+            OwnsDeniedVaultRecoverPhase(activeRead.PhaseRead) && OwnsDeniedVaultRecoverPhase(deletedRead.PhaseRead) &&
+            activeRead.PhaseRead!.Proof.Phase == ManagementOperationResourceCollector.StatusDeniedVaultRecoverReadPhase.FinalActiveAbsent &&
+            deletedRead.PhaseRead!.Proof.Phase == ManagementOperationResourceCollector.StatusDeniedVaultRecoverReadPhase.FinalDeletedAbsent &&
+            RoleFixtureJournal.SameStatusDeniedVaultRecoverSnapshot(image, activeRead.Image) &&
+            RoleFixtureJournal.SameStatusDeniedVaultRecoverSnapshot(image, deletedRead.Image));
+        IssueDeniedVaultRecoverFixture(new StatusDeniedVaultRecoverAbsence(this),
+            new(plan, image, RoleFixtureJournal.StatusDeniedVaultRecoverAbsenceImage(image), 3, plan.VaultId, Guid.Empty,
+                StatusDeniedVaultRecoverFixtureAction.CleanupPurge, false, deniedVaultRecoverTokens[plan],
+                [activeRead.Task, deletedRead.Task, activeRead.PhaseRead.Task, deletedRead.PhaseRead.Task]));
+        var committed = RetryStatusDeniedVaultRecoverPersistence(plan);
+        return Finish(committed.Released ? State.Released : State.Closing, plan);
+    }
+
+    internal void RequireStatusDeniedVaultRecoverCleanup(HostScope expected) =>
+        Require(statusDeniedVaultRecoverProfile && statusDeniedVaultRecoverCleanup && !closed && host == expected);
+
+    internal bool OwnsStatusDeniedVaultRecoverDeletedBaseline(Plan plan, string digest)
+    {
+        CheckPlan(plan);
+        lock (plans)
+            return !plan.Restored && DeniedVaultRecoverLive(plan) && deniedVaultRecoverPreDelete.ContainsKey(plan) &&
+                deniedVaultRecoverDeletedBaselines.TryGetValue(plan, out var original) && original == digest &&
+                deniedVaultRecoverReads.TryGetValue(plan, out var pair) && pair.Active is { Status: 404 } &&
+                pair.Deleted is { Status: 200 } current && current.Digest == original &&
+                pair.Active.Task.IsFaulted && current.Task.IsCompletedSuccessfully;
+    }
+
+    private sealed record DeniedVaultRecoverReadyRead(ManagementOperationResourceCollector Reader,
+        ManagementOperationNativeCapture.Binding Binding, ManagementOperationResourceCollector.Window Window,
+        Task<ManagementOperationResourceCollector.Measurement> Task,
+        ManagementOperationResourceCollector.StatusDeniedVaultRecoverReadProof Proof);
+    private readonly Dictionary<Plan, DeniedVaultRecoverReadyRead[]> deniedVaultRecoverReadyReads = new(ReferenceEqualityComparer.Instance);
+    private static bool OwnsDeniedVaultRecoverPhase(DeniedVaultRecoverReadyRead? read) =>
+        read is not null && read.Reader.OwnsStatusDeniedVaultRecoverRead(read.Proof, read.Window, read.Binding, read.Proof.Phase, read.Task);
+
+    private async Task CaptureDeniedVaultRecoverReady(Plan plan, RoleFixtureJournal.Snapshot image,
+        CancellationToken token, CancellationToken caller)
+    {
+        Require(!plan.Restored && !image.Closing && image.Idle && image.RecoverVault!.InvocationDispatch == Guid.Empty);
+        var facts = new List<DeniedVaultRecoverReadyRead>();
+        foreach (bool active in new[] { true, false })
+        {
+            var phase = active ? ManagementOperationResourceCollector.StatusDeniedVaultRecoverReadPhase.ReadyActive :
+                ManagementOperationResourceCollector.StatusDeniedVaultRecoverReadPhase.ReadyDeletedAbsent;
+            facts.Add(await CollectDeniedVaultRecoverPhase(plan, image, active, phase, token, caller).ConfigureAwait(false));
+        }
+        token.ThrowIfCancellationRequested(); caller.ThrowIfCancellationRequested();
+        CheckDeniedVaultRecoverLifetime(plan, image);
+        Require(RoleFixtureJournal.SameStatusDeniedVaultRecoverSnapshot(image, ReadPlan(plan.Owner, plan.Selector)));
+        lock (plans) Require(deniedVaultRecoverReadyReads.TryAdd(plan, facts.ToArray()));
+    }
+
+    private async Task<DeniedVaultRecoverReadyRead> CollectDeniedVaultRecoverPhase(Plan plan, RoleFixtureJournal.Snapshot image,
+        bool active, ManagementOperationResourceCollector.StatusDeniedVaultRecoverReadPhase phase,
+        CancellationToken token, CancellationToken caller)
+    {
+        var reader = new ManagementOperationResourceCollector(new(readArm.Label, readArm.Credential, readArm.Transport),
+            new(limits.MaximumResponseBytes, limits.MaximumResponseBytes, 65536, 4096, 32, limits.Timeout), time, host.TenantId);
+        ManagementScope resource = active ? new VaultScope(new(new(host.SubscriptionId), host.ResourceGroup), plan.VaultName) :
+            new DeletedVaultScope(new(host.SubscriptionId), host.Location, plan.VaultName);
+        var binding = new ManagementOperationNativeCapture.Binding(plan.Selector, plan.LeaseId, resource,
+            ManagementMutation.RecoverVault, host.Location, Revision);
+        var window = reader.ArmStatusDeniedVaultRecover(binding, CopyConfiguration(image.RecoverVault!.Baseline), phase);
+        var task = reader.CollectAsync(window, binding, token, caller).AsTask();
+        using var result = await task.ConfigureAwait(false);
+        Require(reader.TryGetStatusDeniedVaultRecoverRead(window, binding, phase, task, out var proof));
+        token.ThrowIfCancellationRequested(); caller.ThrowIfCancellationRequested();
+        CheckDeniedVaultRecoverLifetime(plan, image);
+        Require(RoleFixtureJournal.SameStatusDeniedVaultRecoverSnapshot(image, ReadPlan(plan.Owner, plan.Selector)));
+        return new(reader, binding, window, task, proof);
+    }
+
+    private void ValidateDeniedVaultRecoverActive(Plan plan, JsonElement raw, KeyVaultData native,
+        VaultAdministrationEffects.Configuration expected)
+    {
+        _ = ParseOwnedVaultResource(plan.VaultId, plan.Selector.Nonce, raw, expected, "Succeeded", recover: true);
+        JoinRecoverActive(plan, native, expected);
+        Require(Only(raw, "id", "name", "type", "location", "tags", "properties", "systemData"));
+        var properties = raw.GetProperty("properties");
+        Require(Only(properties, "tenantId", "sku", "vaultUri", "provisioningState", "enableRbacAuthorization",
+            "enablePurgeProtection", "enableSoftDelete", "softDeleteRetentionInDays", "publicNetworkAccess", "accessPolicies",
+            "privateEndpointConnections", "createMode", "enabledForDeployment", "enabledForDiskEncryption",
+            "enabledForTemplateDeployment", "networkAcls") && Only(properties.GetProperty("sku"), "family", "name"));
+        string? mode = properties.TryGetProperty("createMode", out var suppliedMode) ? suppliedMode.GetString() : null;
+        Require(string.Equals(native.Properties.CreateMode?.ToString(), mode, StringComparison.OrdinalIgnoreCase));
+        using var serialized = JsonDocument.Parse(ModelReaderWriter.Write(native).ToMemory());
+        var model = serialized.RootElement.GetProperty("properties");
+        Require(model.GetProperty("privateEndpointConnections") is { ValueKind: JsonValueKind.Array } children &&
+            children.GetArrayLength() == 0 && native.Properties.AccessPolicies.Count == 0);
+        foreach (string field in new[] { "enabledForDeployment", "enabledForDiskEncryption", "enabledForTemplateDeployment", "networkAcls" })
+            Join(properties, model, field);
+        Join(raw, serialized.RootElement, "systemData");
+        static bool Only(JsonElement node, params string[] fields) => node.ValueKind == JsonValueKind.Object &&
+            node.EnumerateObject().All(p => fields.Contains(p.Name, StringComparer.Ordinal));
+        static void Join(JsonElement raw, JsonElement native, string name)
+        {
+            bool supplied = raw.TryGetProperty(name, out var a), projected = native.TryGetProperty(name, out var b);
+            Require(supplied ? projected && System.Text.Json.Nodes.JsonNode.DeepEquals(
+                System.Text.Json.Nodes.JsonNode.Parse(a.GetRawText()), System.Text.Json.Nodes.JsonNode.Parse(b.GetRawText())) :
+                !projected || b.ValueKind == JsonValueKind.Null);
+        }
+    }
     private bool statusDeniedVaultUpdateProfile, statusDeniedVaultUpdateCleanup;
     private sealed record DeniedVaultUpdateFacts(Plan Plan, RoleFixtureJournal.Snapshot? Before,
         RoleFixtureJournal.Snapshot After, int Edge, string ResourceId, Guid Dispatch, bool Delete, bool Settled,
@@ -6350,6 +6977,7 @@ internal sealed class VaultFixtureProvisioner : IAsyncDisposable
 
     internal VaultAdministrationEffects.Configuration StatusVaultRecoverCancellationConfiguration(HostScope expected)
     {
+        Require(!statusDeniedVaultRecoverProfile);
         lock (plans)
         {
             Require(!closed && host == expected && host.AllowPurge && baselineConfiguration is not null &&
@@ -6409,6 +7037,7 @@ internal sealed class VaultFixtureProvisioner : IAsyncDisposable
 
     internal VaultAdministrationEffects.Configuration StatusVaultUpdateCancellationConfiguration(HostScope expected)
     {
+        Require(!statusDeniedVaultRecoverProfile);
         lock (plans)
         {
             Require(!closed && host == expected && host.AllowPurge && baselineConfiguration is not null &&
@@ -6506,6 +7135,14 @@ internal sealed class VaultFixtureProvisioner : IAsyncDisposable
         string[]? ownedNotificationNames = null, PrivateEndpointSpecification? privateEndpoint = null,
         CancellationToken originalCallerToken = default, CancellationToken preparationToken = default)
     {
+        Require(statusDeniedVaultRecoverProfile == StatusDeniedVaultRecoverSelector(selector));
+        if (statusDeniedVaultRecoverProfile)
+        {
+            Require(!statusDeniedVaultRecoverCleanup && preparation == Preparation.Deleted && !seedCanary &&
+                borrowedResourceIds is { Length: 0 } && (policyChildren is null || policyChildren.Length == 0) &&
+                (ownedNotificationNames is null || ownedNotificationNames.Length == 0) && privateEndpoint is null);
+            return PlanDeniedVaultRecover(owner, selector, preparationToken, originalCallerToken);
+        }
         Require(statusDeniedVaultUpdateProfile == StatusDeniedVaultUpdateSelector(selector));
         if (statusDeniedVaultUpdateProfile)
         {
@@ -6716,6 +7353,7 @@ internal sealed class VaultFixtureProvisioner : IAsyncDisposable
 
     internal RoleFixtureJournal.Snapshot CloseSelectedRoot(string owner, FixtureSelector selector)
     {
+        Require(statusDeniedVaultRecoverProfile == StatusDeniedVaultRecoverSelector(selector));
         Require(statusDeniedVaultUpdateProfile == StatusDeniedVaultUpdateSelector(selector));
         Require(statusDeniedPrivateDeleteProfile == StatusDeniedPrivateConnectionDeleteSelector(selector));
         Require(!NotificationFixtureProvisioner.StatusDeniedNotificationUpdateSelector(selector) ||
@@ -6743,6 +7381,13 @@ internal sealed class VaultFixtureProvisioner : IAsyncDisposable
     {
         cancellationToken.ThrowIfCancellationRequested();
         CheckPlan(plan);
+        if (StatusDeniedVaultRecoverSelector(plan.Selector))
+        {
+            TrackDeniedVaultRecover(plan, cancellationToken, originalCallerToken ?? cancellationToken);
+            if (HasStatusDeniedVaultRecoverPersistence(plan)) RetryStatusDeniedVaultRecoverPersistence(plan);
+            CheckDeniedVaultRecoverLifetime(plan, ReadPlan(plan.Owner, plan.Selector));
+            Require(!HasStatusDeniedVaultRecoverPersistence(plan));
+        }
         if (StatusDeniedVaultUpdateSelector(plan.Selector))
         {
             TrackDeniedVaultUpdate(plan, cancellationToken, originalCallerToken ?? cancellationToken);
@@ -6844,6 +7489,7 @@ internal sealed class VaultFixtureProvisioner : IAsyncDisposable
     {
         cancellationToken.ThrowIfCancellationRequested();
         CheckPlan(plan);
+        Require(!StatusDeniedVaultRecoverSelector(plan.Selector));
         Require(!StatusDeniedVaultUpdateSelector(plan.Selector));
         Require(!StatusDeniedPrivateConnectionDeleteSelector(plan.Selector));
         Require(!PendingSelector(plan.Selector) && !StatusPrivateConnectionUpdateIndependentSelector(plan.Selector) && !PurgeDeletedVaultSelector(plan.Selector) && !plan.OriginalCreate && !plan.OriginalRecover &&
@@ -6956,6 +7602,11 @@ internal sealed class VaultFixtureProvisioner : IAsyncDisposable
     {
         cancellationToken.ThrowIfCancellationRequested();
         var plan = Reconstruct(ReadPlan(owner, selector));
+        if (statusDeniedVaultRecoverProfile)
+        {
+            Require(!statusDeniedVaultRecoverCleanup && !plan.Restored && !ReadPlan(owner, selector).Closing);
+            TrackDeniedVaultRecover(plan, cancellationToken, cancellationToken);
+        }
         if (!TryEnter(plan)) return Finish(State.Pending, plan);
         try
         {
@@ -6995,6 +7646,19 @@ internal sealed class VaultFixtureProvisioner : IAsyncDisposable
         CancellationToken? originalCallerToken = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        Require(statusDeniedVaultRecoverProfile == StatusDeniedVaultRecoverSelector(selector));
+        if (statusDeniedVaultRecoverProfile)
+        {
+            Require(purge && !requireActiveVaultAbsent && !requireOriginalDeletedReadRoot && privateEndpointCleanup is null);
+            Plan? retained;
+            lock (plans) plans.TryGetValue(selector.Nonce, out retained);
+            if (retained is not null && HasStatusDeniedVaultRecoverPersistence(retained))
+            {
+                if (!TryEnter(retained)) return Finish(State.Pending, retained);
+                try { return Finish(RetryStatusDeniedVaultRecoverPersistence(retained).Released ? State.Released : State.Closing, retained); }
+                finally { Exit(retained); }
+            }
+        }
         Require(statusDeniedVaultUpdateProfile == StatusDeniedVaultUpdateSelector(selector));
         if (statusDeniedVaultUpdateProfile)
         {
@@ -7188,7 +7852,7 @@ internal sealed class VaultFixtureProvisioner : IAsyncDisposable
         Require(snapshot.CreateOrUpdateVault is null ||
             (StatusDeniedVaultUpdateSelector(selector) || CreateOrUpdateVaultSelector(selector)) && purge && !requireActiveVaultAbsent &&
             !requireOriginalDeletedReadRoot && privateEndpointCleanup is null);
-        Require(snapshot.RecoverVault is null || RecoverVaultSelector(selector) && purge &&
+        Require(snapshot.RecoverVault is null || (StatusDeniedVaultRecoverSelector(selector) || RecoverVaultSelector(selector)) && purge &&
             !requireActiveVaultAbsent && !requireOriginalDeletedReadRoot && privateEndpointCleanup is null);
         bool originalDelete = DeleteVaultSelector(selector);
         Require(!originalDelete || snapshot.Resources.Length == 0 || snapshot.DeleteVault is not null);
@@ -7214,6 +7878,8 @@ internal sealed class VaultFixtureProvisioner : IAsyncDisposable
                 : CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
             snapshot = ReadPlan(owner, selector);
             if (!snapshot.Idle) return Finish(State.Pending, plan);
+            if (StatusDeniedVaultRecoverSelector(selector))
+                return await ReleaseDeniedVaultRecover(plan, linked.Token, originalCallerToken ?? cancellationToken).ConfigureAwait(false);
             if (StatusDeniedVaultUpdateSelector(selector))
                 return await ReleaseDeniedVaultUpdate(plan, linked.Token, originalCallerToken ?? cancellationToken).ConfigureAwait(false);
             if (PendingSelector(selector))
@@ -7875,6 +8541,7 @@ internal sealed class VaultFixtureProvisioner : IAsyncDisposable
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        Require(statusDeniedVaultRecoverProfile == StatusDeniedVaultRecoverSelector(selector));
         Require(statusDeniedVaultUpdateProfile == StatusDeniedVaultUpdateSelector(selector));
         Require(statusDeniedPrivateDeleteProfile == StatusDeniedPrivateConnectionDeleteSelector(selector));
         var snapshot = journal.Read(owner, selector);
@@ -7889,6 +8556,16 @@ internal sealed class VaultFixtureProvisioner : IAsyncDisposable
     {
         cancellationToken.ThrowIfCancellationRequested();
         CheckPlan(plan);
+        if (StatusDeniedVaultRecoverSelector(plan.Selector))
+        {
+            if (!TryEnter(plan)) return Finish(State.Pending, plan);
+            try
+            {
+                if (HasStatusDeniedVaultRecoverPersistence(plan)) RetryStatusDeniedVaultRecoverPersistence(plan);
+                return Finish(State.Pending, plan);
+            }
+            finally { Exit(plan); }
+        }
         if (StatusDeniedVaultUpdateSelector(plan.Selector))
         {
             if (!TryEnter(plan)) return Finish(State.Pending, plan);
@@ -8153,6 +8830,8 @@ internal sealed class VaultFixtureProvisioner : IAsyncDisposable
         StatusSucceededDeleteVaultCancellationCleanupAdmission? statusSucceededCancellationCleanup = null,
         CancellationToken fixtureCallerCancellation = default)
     {
+        if (StatusDeniedVaultRecoverSelector(plan.Selector))
+            return await MutateDeniedVaultRecover(plan, journalId, action, invoke, token, fixtureCallerCancellation).ConfigureAwait(false);
         if (StatusDeniedVaultUpdateSelector(plan.Selector))
             return await MutateDeniedVaultUpdate(plan, journalId, action, invoke, token, fixtureCallerCancellation).ConfigureAwait(false);
         if (StatusDeniedPrivateConnectionDeleteSelector(plan.Selector))
@@ -9141,6 +9820,12 @@ internal sealed class VaultFixtureProvisioner : IAsyncDisposable
         PrivateConnectionUpdateLoan? privateUpdateLoan = null,
         PrivateConnectionDeleteLoan? privateDeleteLoan = null) where T : class
     {
+        if (StatusDeniedVaultRecoverSelector(plan.Selector))
+        {
+            Require(readLoan is null && settingsLoan is null && purgeLoan is null && createLoan is null &&
+                recoverLoan is null && privateUpdateLoan is null && privateDeleteLoan is null);
+            return await ReadDeniedVaultRecoverArm(plan, id, read, token).ConfigureAwait(false);
+        }
         if (StatusDeniedVaultUpdateSelector(plan.Selector))
         {
             Require(readLoan is null && settingsLoan is null && purgeLoan is null && createLoan is null &&
@@ -9391,7 +10076,9 @@ internal sealed class VaultFixtureProvisioner : IAsyncDisposable
         var actual = Configuration(vault);
         // A selected invocation is the parent's separately fenced authority.
         // Its intentional settings change is not mistaken for baseline setup.
-        Require(StatusDeniedVaultUpdateSelector(plan.Selector)
+        Require(StatusDeniedVaultRecoverSelector(plan.Selector)
+            ? VaultAdministrationEffects.SameConfiguration(actual, DeniedVaultRecoverConfiguration(plan, ReadPlan(plan.Owner, plan.Selector)))
+            : StatusDeniedVaultUpdateSelector(plan.Selector)
             ? VaultAdministrationEffects.SameConfiguration(actual, DeniedVaultUpdateConfiguration(plan, ReadPlan(plan.Owner, plan.Selector)))
             : StatusVaultUpdateCancellationSelector(plan.Selector)
             ? VaultAdministrationEffects.SameConfiguration(actual, StatusVaultUpdateCancellationConfiguration(plan))
@@ -9427,9 +10114,10 @@ internal sealed class VaultFixtureProvisioner : IAsyncDisposable
             properties.PurgeProtectionEnabled is not null &&
             (StatusVaultUpdateCancellationSelector(plan.Selector) || StatusVaultRecoverCancellationSelector(plan.Selector) || baselineConfiguration is null ||
                 !baseline.PurgeProtection || properties.PurgeProtectionEnabled == true));
-        if (StatusVaultUpdateCancellationSelector(plan.Selector) || StatusVaultRecoverCancellationSelector(plan.Selector) || plan.OriginalPrivateConnectionDelete || plan.OriginalPrivateConnectionUpdate || plan.OriginalRecover || plan.OriginalCreate || SettingsSelector(plan.Selector) || DeleteVaultSelector(plan.Selector) || PurgeDeletedVaultSelector(plan.Selector))
+        if (StatusDeniedVaultRecoverSelector(plan.Selector) || StatusVaultUpdateCancellationSelector(plan.Selector) || StatusVaultRecoverCancellationSelector(plan.Selector) || plan.OriginalPrivateConnectionDelete || plan.OriginalPrivateConnectionUpdate || plan.OriginalRecover || plan.OriginalCreate || SettingsSelector(plan.Selector) || DeleteVaultSelector(plan.Selector) || PurgeDeletedVaultSelector(plan.Selector))
         {
-            var expected = StatusVaultUpdateCancellationSelector(plan.Selector) ? StatusVaultUpdateCancellationConfiguration(plan) :
+            var expected = StatusDeniedVaultRecoverSelector(plan.Selector) ? DeniedVaultRecoverConfiguration(plan, ReadPlan(plan.Owner, plan.Selector)) :
+                StatusVaultUpdateCancellationSelector(plan.Selector) ? StatusVaultUpdateCancellationConfiguration(plan) :
                 StatusVaultRecoverCancellationSelector(plan.Selector) ? StatusVaultRecoverCancellationConfiguration(plan) :
                 plan.OriginalPrivateConnectionDelete ? PrivateDeleteConfiguration(plan) :
                 plan.OriginalPrivateConnectionUpdate ? PrivateUpdateConfiguration(plan) :
@@ -9511,12 +10199,15 @@ internal sealed class VaultFixtureProvisioner : IAsyncDisposable
 
     private RoleFixtureJournal.Snapshot ReadPlan(string owner, FixtureSelector selector)
     {
+        Require(statusDeniedVaultRecoverProfile == StatusDeniedVaultRecoverSelector(selector));
         Require(statusDeniedVaultUpdateProfile == StatusDeniedVaultUpdateSelector(selector));
         Require(statusDeniedPrivateDeleteProfile == StatusDeniedPrivateConnectionDeleteSelector(selector));
         Require(!NotificationFixtureProvisioner.StatusDeniedNotificationUpdateSelector(selector) ||
             MatchesStatusDeniedNotificationOperation(selector));
         RoleFixtureJournal.Snapshot snapshot;
         try { snapshot = journal.Read(owner, selector); }
+        catch (RoleFixtureJournal.StatusDeniedVaultRecoverHistoryException)
+        { deniedVaultRecoverRevoked.TryAdd(selector.Nonce, 0); throw; }
         catch (RoleFixtureJournal.StatusDeniedVaultUpdateHistoryException)
         { deniedVaultUpdateRevoked.TryAdd(selector.Nonce, 0); throw; }
         catch (RoleFixtureJournal.StatusDeniedPrivateConnectionDeleteHistoryException)
@@ -9559,6 +10250,13 @@ internal sealed class VaultFixtureProvisioner : IAsyncDisposable
             VaultAdministrationEffects.SameConfiguration(snapshot.PurgeDeletedVault!.Baseline, baseline));
     private bool MatchesHost(RoleFixtureJournal.Snapshot snapshot)
     {
+        if (statusDeniedVaultRecoverProfile != StatusDeniedVaultRecoverSelector(snapshot.Selector) ||
+            StatusDeniedVaultRecoverSelector(snapshot.Selector) &&
+            (!RoleFixtureJournal.StatusDeniedVaultRecoverRoot(snapshot) || deniedVaultRecoverRevoked.ContainsKey(snapshot.Selector.Nonce) ||
+                snapshot.RecoverVault!.Baseline.Location != host.Location ||
+                snapshot.RecoverVault.Baseline.TenantId != host.TenantId ||
+                baselineConfiguration is not null && !VaultAdministrationEffects.SameConfiguration(snapshot.RecoverVault.Baseline, baseline)))
+            return false;
         if (statusDeniedVaultUpdateProfile != StatusDeniedVaultUpdateSelector(snapshot.Selector) ||
             StatusDeniedVaultUpdateSelector(snapshot.Selector) &&
             (!RoleFixtureJournal.StatusDeniedVaultUpdateRoot(snapshot) || deniedVaultUpdateRevoked.ContainsKey(snapshot.Selector.Nonce) ||
@@ -9703,6 +10401,8 @@ internal sealed class VaultFixtureProvisioner : IAsyncDisposable
     }
     private Plan Reconstruct(RoleFixtureJournal.Snapshot snapshot)
     {
+        Require(statusDeniedVaultRecoverProfile == StatusDeniedVaultRecoverSelector(snapshot.Selector));
+        Require(!statusDeniedVaultRecoverProfile || MatchesHost(snapshot));
         Require(statusDeniedVaultUpdateProfile == StatusDeniedVaultUpdateSelector(snapshot.Selector));
         Require(!statusDeniedVaultUpdateProfile || MatchesHost(snapshot));
         Require(statusDeniedPrivateDeleteProfile == StatusDeniedPrivateConnectionDeleteSelector(snapshot.Selector));
@@ -9736,7 +10436,7 @@ internal sealed class VaultFixtureProvisioner : IAsyncDisposable
                     .Select(r => r.Id[(vault.Length + NotificationPrefix.Length)..]).ToArray(), manifest: snapshot.Resources,
                 privateEndpoint: snapshot.PrivateEndpoint?.Declaration,
                 originalCreate: snapshot.CreateOrUpdateVault is not null && CreateOrUpdateVaultSelector(snapshot.Selector),
-                originalRecover: snapshot.RecoverVault is not null,
+                originalRecover: snapshot.RecoverVault is not null && RecoverVaultSelector(snapshot.Selector),
                 originalPrivateConnectionUpdate: snapshot.PrivateEndpoint?.OriginalUpdate is not null,
                 originalPrivateConnectionDelete: snapshot.PrivateEndpoint?.OriginalDelete is not null,
                 statusSucceededDeleteVaultProfile: RoleFixtureJournal.StatusSucceededDeleteVaultRoot(snapshot),
@@ -9770,6 +10470,7 @@ internal sealed class VaultFixtureProvisioner : IAsyncDisposable
     private void CheckPlan(Plan plan)
     {
         Require(plan is not null && ReferenceEquals(plan.Source, source));
+        Require(statusDeniedVaultRecoverProfile == StatusDeniedVaultRecoverSelector(plan.Selector));
         Require(statusDeniedVaultUpdateProfile == StatusDeniedVaultUpdateSelector(plan.Selector));
         Require(statusDeniedPrivateDeleteProfile == StatusDeniedPrivateConnectionDeleteSelector(plan.Selector));
         Require(!NotificationFixtureProvisioner.StatusDeniedNotificationUpdateSelector(plan.Selector) ||
@@ -10793,6 +11494,7 @@ internal sealed class VaultFixtureProvisioner : IAsyncDisposable
     internal VaultAdministrationEffects.Configuration VaultReadBaseline(HostScope expected,
         VaultAdministrationCollector.Authority observer, HttpPipelineTransport selectedBackend)
     {
+        Require(!statusDeniedVaultRecoverProfile);
         lock (plans)
         {
             Require(!closed && baselineConfiguration is not null && host == expected &&
@@ -12421,6 +13123,10 @@ internal sealed class VaultFixtureProvisioner : IAsyncDisposable
         Task task;
         lock (plans)
         {
+            if (statusDeniedVaultRecoverProfile && !closed)
+                foreach (var plan in plans.Values.Where(p => p.Busy == 0 && HasStatusDeniedVaultRecoverPersistence(p)))
+                    try { RetryStatusDeniedVaultRecoverPersistence(plan); }
+                    catch (Exception exception) { publicationFailure ??= exception; }
             if (statusDeniedVaultUpdateProfile && !closed)
                 foreach (var plan in plans.Values.Where(p => p.Busy == 0 && HasStatusDeniedVaultUpdatePersistence(p)))
                     try { RetryStatusDeniedVaultUpdatePersistence(plan); }
@@ -12432,7 +13138,7 @@ internal sealed class VaultFixtureProvisioner : IAsyncDisposable
             closed = true;
             if (disposal is not null) return new(disposal);
             var retained = plans.Values.ToArray();
-            if (statusDeniedVaultUpdateProfile || statusDeniedPrivateDeleteProfile || statusPrivateUpdateIndependentProfile || retained.Any(p => StatusPrivateConnectionUpdateIndependentSelector(p.Selector)))
+            if (statusDeniedVaultRecoverProfile || statusDeniedVaultUpdateProfile || statusDeniedPrivateDeleteProfile || statusPrivateUpdateIndependentProfile || retained.Any(p => StatusPrivateConnectionUpdateIndependentSelector(p.Selector)))
                 start = new(TaskCreationOptions.RunContinuationsAsynchronously);
             task = disposal = Drain(retained, start?.Task ?? Task.CompletedTask);
         }
@@ -12532,6 +13238,11 @@ internal sealed class VaultFixtureProvisioner : IAsyncDisposable
     private void Presence(Plan plan, string id)
     {
         var current = journal.Read(plan.Owner, plan.Selector);
+        if (StatusDeniedVaultRecoverSelector(plan.Selector))
+        {
+            Require(!current.Resources.Single(r => r.Id == id).Absent);
+            return;
+        }
         if (StatusDeniedVaultUpdateSelector(plan.Selector))
         {
             Require(!current.Resources.Single(r => r.Id == id).Absent);

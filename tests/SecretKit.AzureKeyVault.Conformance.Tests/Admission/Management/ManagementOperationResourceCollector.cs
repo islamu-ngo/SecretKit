@@ -482,6 +482,307 @@ internal sealed class ManagementOperationResourceCollector
     private readonly Dictionary<Window, StatusCanceledPurgeCancellationReadRegistration> statusCanceledCancellationReads =
         new(ReferenceEqualityComparer.Instance);
 
+    internal enum StatusDeniedVaultRecoverReadPhase
+    {
+        ReadyActive, ReadyDeletedAbsent, BaselineActiveAbsent, BaselineDeleted,
+        SelectedActive, SelectedDeletedAbsent, CleanupActiveRecovered, CleanupActiveAbsent,
+        CleanupDeletedPresent, CleanupDeletedAbsent, FinalActiveAbsent, FinalDeletedAbsent
+    }
+
+    internal sealed class StatusDeniedVaultRecoverReadProof(
+        ManagementOperationResourceCollector source, Window window, Capture.Binding binding,
+        StatusDeniedVaultRecoverReadPhase phase, VaultAdministrationEffects.Configuration expected,
+        VaultConfiguration? configuration, DeletedVault? deletedVault, Task<Measurement> readTask,
+        Task nativeTask, RequestFailedException? nativeError, int httpStatus, int responseBytes,
+        string? originalVaultId, string? errorCode, string requestSha256, string responseSha256,
+        string nativeRequestId, DateTimeOffset startedAt, DateTimeOffset finishedAt,
+        CancellationToken callerToken, CancellationToken originalCallerToken)
+    {
+        internal ManagementOperationResourceCollector Source { get; } = source;
+        internal Window Window { get; } = window;
+        internal Capture.Binding Binding { get; } = binding;
+        internal StatusDeniedVaultRecoverReadPhase Phase { get; } = phase;
+        internal VaultAdministrationEffects.Configuration ExpectedConfiguration { get; } = expected;
+        internal VaultConfiguration? Configuration { get; } = configuration;
+        internal DeletedVault? DeletedVault { get; } = deletedVault;
+        internal Task<Measurement> ReadTask { get; } = readTask;
+        internal Task NativeTask { get; } = nativeTask;
+        internal RequestFailedException? NativeError { get; } = nativeError;
+        internal int HttpStatus { get; } = httpStatus;
+        internal int ResponseBytes { get; } = responseBytes;
+        internal string? OriginalVaultId { get; } = originalVaultId;
+        internal string? ErrorCode { get; } = errorCode;
+        internal string RequestSha256 { get; } = requestSha256;
+        internal string ResponseSha256 { get; } = responseSha256;
+        internal string NativeRequestId { get; } = nativeRequestId;
+        internal DateTimeOffset StartedAt { get; } = startedAt;
+        internal DateTimeOffset FinishedAt { get; } = finishedAt;
+        internal CancellationToken CallerToken { get; } = callerToken;
+        internal CancellationToken OriginalCallerToken { get; } = originalCallerToken;
+        public override string ToString() => "[StatusDeniedVaultRecoverReadProof]";
+    }
+
+    private sealed class StatusDeniedVaultRecoverReadRegistration(
+        VaultAdministrationEffects.Configuration expected, StatusDeniedVaultRecoverReadPhase phase,
+        ManagementScope resource)
+    {
+        internal readonly VaultAdministrationEffects.Configuration Expected = expected;
+        internal readonly StatusDeniedVaultRecoverReadPhase Phase = phase;
+        internal readonly ManagementScope Resource = resource;
+        internal readonly PrivateRead Read = new();
+        internal CancellationToken[] Tokens = [];
+        internal StatusDeniedVaultRecoverReadProof? Proof;
+    }
+    private readonly Dictionary<Window, StatusDeniedVaultRecoverReadRegistration> statusDeniedVaultRecoverReads =
+        new(ReferenceEqualityComparer.Instance);
+
+    private static bool StatusDeniedVaultRecoverBinding(Capture.Binding binding) =>
+        binding.Selector is not null &&
+        binding.Selector.Operation == "a.management.ManagementOperation.CheckStatusAsync" &&
+        binding.Selector.Variant == "operation.RecoverVault" &&
+        binding.Selector.Case == "denied-authority" &&
+        binding.Operation == ManagementMutation.RecoverVault;
+
+    internal Window ArmStatusDeniedVaultRecover(Capture.Binding binding,
+        VaultAdministrationEffects.Configuration expected, StatusDeniedVaultRecoverReadPhase phase)
+    {
+        Require(binding is not null && StatusDeniedVaultRecoverBinding(binding) && Enum.IsDefined(phase));
+        ValidateBinding(binding, statusDeniedVaultRecoverRead: true);
+        Require(expected is { Rbac: true, PurgeProtection: false, PublicNetworkAccess: true, Policies.Length: 0 } &&
+            expected.TenantId == tenantId && expected.Location == binding.Location);
+        _ = expected.Build();
+        bool active = phase is StatusDeniedVaultRecoverReadPhase.ReadyActive or
+            StatusDeniedVaultRecoverReadPhase.BaselineActiveAbsent or StatusDeniedVaultRecoverReadPhase.SelectedActive or
+            StatusDeniedVaultRecoverReadPhase.CleanupActiveRecovered or StatusDeniedVaultRecoverReadPhase.CleanupActiveAbsent or
+            StatusDeniedVaultRecoverReadPhase.FinalActiveAbsent;
+        Require(active ? binding.Resource is VaultScope :
+            binding.Resource is DeletedVaultScope deleted && deleted.Location == binding.Location);
+        string name = Path(binding.Resource).Split('/')[^1];
+        Require(name.Length == 24 && name.StartsWith("skv", StringComparison.Ordinal) && name[3..].All(char.IsAsciiHexDigit));
+        var snapshot = expected with { Policies = [] };
+        var armed = time.GetUtcNow();
+        var stamp = time.GetTimestamp();
+        lock (gate)
+        {
+            var window = ArmPurgeReadWindow(binding, armed, stamp);
+            statusDeniedVaultRecoverReads.Add(window, new(snapshot, phase, binding.Resource));
+            return window;
+        }
+    }
+
+    internal bool TryGetStatusDeniedVaultRecoverRead(Window window, Capture.Binding binding,
+        StatusDeniedVaultRecoverReadPhase phase, Task<Measurement> task,
+        [NotNullWhen(true)] out StatusDeniedVaultRecoverReadProof? proof)
+    {
+        lock (gate)
+        {
+            proof = null;
+            if (window is null || !windows.TryGetValue(window, out var registration) ||
+                !statusDeniedVaultRecoverReads.TryGetValue(window, out var selected) ||
+                !ReferenceEquals(window.Binding, binding) || !ReferenceEquals(selected.Resource, binding.Resource) ||
+                selected.Phase != phase || !ReferenceEquals(registration.Task, task) ||
+                !task.IsCompletedSuccessfully) return false;
+            if (selected.Tokens.Any(t => t.IsCancellationRequested)) selected.Proof = null;
+            if (selected.Proof is null) return false;
+            proof = selected.Proof;
+            return true;
+        }
+    }
+
+    internal bool OwnsStatusDeniedVaultRecoverRead(StatusDeniedVaultRecoverReadProof proof, Window window,
+        Capture.Binding binding, StatusDeniedVaultRecoverReadPhase phase, Task<Measurement> task) =>
+        TryGetStatusDeniedVaultRecoverRead(window, binding, phase, task, out var issued) && ReferenceEquals(issued, proof);
+
+    private async Task<Measurement> CollectStatusDeniedVaultRecoverAsync(Window window, Capture.Binding binding,
+        Registration registration, StatusDeniedVaultRecoverReadRegistration selected, Task admission)
+    {
+        await admission.ConfigureAwait(false);
+        var budget = new Budget(time, window.ArmedAt, registration.Timestamp, limits.Timeout);
+        budget.Check();
+        var started = budget.ObservedAt;
+        using var deadline = new CancellationTokenSource(budget.Remaining, time);
+        budget.Deadline = deadline;
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource([.. selected.Tokens, deadline.Token]);
+        var read = selected.Read;
+        Task? nativeTask = null;
+        RequestFailedException? nativeError = null;
+        int? status = null;
+        string? requestId = null, responseHash = null, originalVaultId = null, errorCode = null;
+        VaultConfiguration? configuration = null;
+        DeletedVault? deletedVault = null;
+        Failure failure = Failure.Unavailable;
+        SecretStatus outcome = SecretStatus.Unavailable;
+        bool valid = false;
+        try
+        {
+            linked.Token.ThrowIfCancellationRequested();
+            Require(ReferenceEquals(binding.Resource, selected.Resource));
+            var uri = new Uri(ArmOrigin + Path(selected.Resource) + "?api-version=" + binding.ApiRevision);
+            var options = new ArmClientOptions
+            {
+                Environment = new(new Uri(ArmOrigin), ArmOrigin),
+                Transport = new ReadTransport(authority.Transport, uri, budget, read, limits.MaximumResponseBytes,
+                    requireErrorRebuffer: true)
+            };
+            options.Retry.MaxRetries = 0;
+            options.Diagnostics.IsLoggingEnabled = false;
+            options.Diagnostics.IsLoggingContentEnabled = false;
+            options.Diagnostics.IsDistributedTracingEnabled = false;
+            options.SetApiVersion(Type(selected.Resource), binding.ApiRevision);
+            if (selected.Resource is DeletedVaultScope)
+                options.SetApiVersion("Microsoft.KeyVault/deletedVaults", binding.ApiRevision);
+            var client = new ArmClient(new ObserverCredential(authority.Credential, budget), null, options);
+            Response<KeyVaultResource>? activeResponse = null;
+            Response<DeletedKeyVaultResource>? deletedResponse = null;
+            try
+            {
+                if (selected.Resource is VaultScope vault)
+                {
+                    var actual = client.GetKeyVaultResource(new(vault.ExportResourceId())).GetAsync(linked.Token);
+                    nativeTask = actual;
+                    activeResponse = await actual.ConfigureAwait(false);
+                }
+                else
+                {
+                    var actual = client.GetDeletedKeyVaultResource(new(Path(selected.Resource))).GetAsync(linked.Token);
+                    nativeTask = actual;
+                    deletedResponse = await actual.ConfigureAwait(false);
+                }
+            }
+            catch (RequestFailedException exception) { nativeError = exception; }
+            if (read.Send is not null) await read.Send.ConfigureAwait(false);
+            budget.Check();
+            linked.Token.ThrowIfCancellationRequested();
+            Require(nativeTask is not null && read.Body is not null && read.Parser is { Complete: true, Invalid: false });
+            status = read.Body.Response.Status;
+            requestId = read.Body.NativeRequestId;
+            responseHash = read.Body.Sha256;
+            long? length = ResponseHeaders(read.Body.Response, out var headerRequestId);
+            Require(requestId == headerRequestId && (length is null || length == read.Body.Bytes.Length) &&
+                read.Body.Bytes.Length <= limits.MaximumRowBytes);
+            Shape(read.Body.Bytes.Span);
+            using var json = JsonDocument.Parse(read.Body.Bytes, new JsonDocumentOptions { MaxDepth = limits.MaximumDepth });
+            bool activePresent = selected.Phase is StatusDeniedVaultRecoverReadPhase.ReadyActive or
+                StatusDeniedVaultRecoverReadPhase.SelectedActive or StatusDeniedVaultRecoverReadPhase.CleanupActiveRecovered;
+            bool deletedPresent = selected.Phase is StatusDeniedVaultRecoverReadPhase.BaselineDeleted or
+                StatusDeniedVaultRecoverReadPhase.CleanupDeletedPresent;
+            Require(status == (activePresent || deletedPresent ? 200 : 404));
+            if (activePresent)
+            {
+                Require(selected.Resource is VaultScope && activeResponse is not null && deletedResponse is null &&
+                    nativeError is null && nativeTask.IsCompletedSuccessfully && read.Parser.Owns(activeResponse.GetRawResponse()));
+                originalVaultId = Path(selected.Resource);
+                ValidateStatusSucceededActive(json.RootElement, activeResponse.Value.Data, originalVaultId,
+                    binding.Selector.Nonce, selected.Expected, recover: true);
+                var p = Object(json.RootElement, "properties");
+                Require(OptionalText(p, "createMode") is null or "default" or "recover");
+                configuration = new(Text(json.RootElement, "location"), Guid.Parse(Text(p, "tenantId")),
+                    activeResponse.Value.Data.Properties.Sku.Name == Azure.ResourceManager.KeyVault.Models.KeyVaultSkuName.Standard
+                        ? VaultSku.Standard : VaultSku.Premium,
+                    p.GetProperty("enableRbacAuthorization").GetBoolean(), p.GetProperty("enablePurgeProtection").GetBoolean(),
+                    p.GetProperty("softDeleteRetentionInDays").GetInt32(), Text(p, "publicNetworkAccess") == "Enabled",
+                    [], OptionalText(p, "createMode"));
+                outcome = SecretStatus.Success;
+            }
+            else if (deletedPresent)
+            {
+                Require(selected.Resource is DeletedVaultScope && deletedResponse is not null && activeResponse is null &&
+                    nativeError is null && nativeTask.IsCompletedSuccessfully && read.Parser.Owns(deletedResponse.GetRawResponse()));
+                originalVaultId = Text(Object(json.RootElement, "properties"), "vaultId");
+                var coordinate = (DeletedVaultScope)selected.Resource;
+                string[] parts = originalVaultId.Split('/');
+                Require(parts.Length == 9 && parts[1] == "subscriptions" &&
+                    parts[2] == coordinate.Subscription.SubscriptionId.ToString("D") &&
+                    parts[3] == "resourceGroups" && Segment(parts[4], 90) && parts[5] == "providers" &&
+                    parts[6] == "Microsoft.KeyVault" && parts[7] == "vaults" && parts[8] == coordinate.VaultName);
+                ValidateStatusSucceededDeleted(json.RootElement, deletedResponse.Value.Data, Path(selected.Resource),
+                    originalVaultId, binding.Selector.Nonce, selected.Expected);
+                var p = deletedResponse.Value.Data.Properties;
+                deletedVault = new(originalVaultId, p.DeletedOn, p.ScheduledPurgeOn, p.PurgeProtectionEnabled);
+                outcome = SecretStatus.Success;
+            }
+            else
+            {
+                Require(nativeError is { Status: 404 } && nativeTask.IsFaulted &&
+                    activeResponse is null && deletedResponse is null &&
+                    Only(json.RootElement, "error") && json.RootElement.EnumerateObject().Count() == 1);
+                var error = Object(json.RootElement, "error");
+                errorCode = Text(error, "code");
+                Require(Only(error, "code", "message") &&
+                    errorCode is "NotFound" or "ResourceNotFound" or "VaultNotFound" &&
+                    nativeError.ErrorCode == errorCode);
+                if (error.TryGetProperty("message", out var message))
+                    Require(message.ValueKind == JsonValueKind.String && message.GetString()!.Length <= 4096 &&
+                        !message.GetString()!.Any(char.IsControl));
+                outcome = SecretStatus.Absent;
+            }
+            valid = true;
+        }
+        catch (Exception exception)
+        {
+            failure = deadline.IsCancellationRequested ? Failure.Deadline :
+                exception is Boundary boundary ? boundary.Reason : Failure.Unavailable;
+        }
+        finally
+        {
+            if (nativeTask is not null) try { await nativeTask.ConfigureAwait(false); } catch (Exception) { }
+            if (read.Send is not null) try { await read.Send.ConfigureAwait(false); } catch (Exception) { }
+            try { read.Storage.Dispose(); }
+            catch (Exception) { valid = false; failure = Failure.Unavailable; }
+        }
+        lock (gate)
+        {
+            if (selected.Tokens.Any(t => t.IsCancellationRequested))
+                throw new OperationCanceledException(selected.Tokens.First(t => t.IsCancellationRequested));
+            try
+            {
+                budget.Check();
+                linked.Token.ThrowIfCancellationRequested();
+                Require(valid && read.Parser is { Complete: true, Invalid: false } && nativeTask is { IsCompleted: true } &&
+                    read.Send is { IsCompletedSuccessfully: true } && ReferenceEquals(binding.Resource, selected.Resource) &&
+                    ReferenceEquals(statusDeniedVaultRecoverReads[window], selected) && selected.Proof is null &&
+                    registration.Task is not null && read.RequestSha256 is not null && read.Body is not null &&
+                    responseHash is not null && requestId is not null && started >= window.ArmedAt && budget.ObservedAt >= started);
+                selected.Proof = new(this, window, binding, selected.Phase, selected.Expected, configuration, deletedVault,
+                    registration.Task, nativeTask, nativeError, status!.Value, read.Body.Bytes.Length, originalVaultId, errorCode,
+                    read.RequestSha256, responseHash, requestId, started, budget.ObservedAt, selected.Tokens[0], selected.Tokens[1]);
+                failure = Failure.None;
+            }
+            catch (Exception exception)
+            {
+                failure = deadline.IsCancellationRequested ? Failure.Deadline :
+                    exception is Boundary boundary ? boundary.Reason : Failure.Unavailable;
+                outcome = SecretStatus.Unavailable;
+            }
+        }
+        bool exists = failure == Failure.None && outcome == SecretStatus.Success;
+        return new()
+        {
+            Binding = binding,
+            WindowId = window.Id,
+            ArmedAt = window.ArmedAt,
+            StartedAt = started,
+            FinishedAt = budget.ObservedAt,
+            Identity = authority.Label,
+            Failure = failure,
+            ResourceStatus = failure == Failure.None ? outcome : SecretStatus.Unavailable,
+            HttpStatus = status ?? read.ObservedStatus,
+            NativeRequestId = requestId,
+            ResourceId = exists ? Path(selected.Resource) : null,
+            ResourceName = exists ? Path(selected.Resource).Split('/')[^1] : null,
+            ResourceType = exists ? Type(selected.Resource) : null,
+            NativeState = exists && configuration is not null ? "Succeeded" : null,
+            Topic = null,
+            EventTypes = [],
+            VaultConfiguration = exists ? configuration : null,
+            ConnectionState = null,
+            NotificationConfiguration = null,
+            DeletedVault = exists ? deletedVault : null,
+            RoleAssignment = null,
+            PersistedStateEligible = exists
+        };
+    }
+
     internal enum StatusDeniedVaultUpdateReadPhase
     {
         ReadyActive, ReadyDeletedAbsent, BaselineActive, BaselineDeletedAbsent,
@@ -2206,9 +2507,9 @@ internal sealed class ManagementOperationResourceCollector
     }
 
     internal static void ValidateStatusSucceededActive(JsonElement root, KeyVaultData native, string vaultId, Guid nonce,
-        VaultAdministrationEffects.Configuration baseline)
+        VaultAdministrationEffects.Configuration baseline, bool recover = false)
     {
-        _ = VaultFixtureProvisioner.ParseOwnedVaultResource(vaultId, nonce, root, baseline, "Succeeded");
+        _ = VaultFixtureProvisioner.ParseOwnedVaultResource(vaultId, nonce, root, baseline, "Succeeded", recover: recover);
         Require(Only(root, "id", "name", "type", "location", "tags", "properties", "systemData"));
         var p = Object(root, "properties");
         Require(Only(p, "tenantId", "sku", "vaultUri", "provisioningState", "enableRbacAuthorization",
@@ -2584,7 +2885,18 @@ internal sealed class ManagementOperationResourceCollector
         Task<Measurement>? selectedTask = null;
         lock (gate)
         {
-            if (statusDeniedVaultUpdateReads.TryGetValue(window, out var vaultUpdate))
+            if (statusDeniedVaultRecoverReads.TryGetValue(window, out var vaultRecover))
+            {
+                Require(windows.TryGetValue(window, out var registration) && !registration.Consumed &&
+                    registration.Task is null && ReferenceEquals(window.Binding, binding) &&
+                    ReferenceEquals(vaultRecover.Resource, binding.Resource));
+                registration.Consumed = true;
+                vaultRecover.Tokens = [cancellationToken, originalCallerToken ?? cancellationToken];
+                admitted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                selectedTask = registration.Task = CollectStatusDeniedVaultRecoverAsync(window, binding,
+                    registration, vaultRecover, admitted.Task);
+            }
+            else if (statusDeniedVaultUpdateReads.TryGetValue(window, out var vaultUpdate))
             {
                 Require(windows.TryGetValue(window, out var registration) && !registration.Consumed &&
                     registration.Task is null && ReferenceEquals(window.Binding, binding));
@@ -3646,7 +3958,8 @@ internal sealed class ManagementOperationResourceCollector
 
     private static T Native<T>(BinaryData bytes) => ModelReaderWriter.Read<T>(bytes) ?? throw new Boundary();
 
-    private static void ValidateBinding(Capture.Binding b, bool statusDeniedVaultUpdateRead = false)
+    private static void ValidateBinding(Capture.Binding b, bool statusDeniedVaultUpdateRead = false,
+        bool statusDeniedVaultRecoverRead = false)
     {
         Require(b is not null && b.Selector is not null && b.Resource is not null && b.Selector.Nonce != Guid.Empty &&
             b.LeaseId != Guid.Empty && Segment(b.Location, 50) &&
@@ -3671,7 +3984,8 @@ internal sealed class ManagementOperationResourceCollector
                     statusDeniedVaultUpdateRead && StatusDeniedVaultUpdateBinding(b)) &&
                 b.Resource is DeletedVaultScope updated && Same(updated.Location, b.Location),
             ManagementMutation.RecoverVault => b.Resource is VaultScope ||
-                VaultFixtureProvisioner.StatusVaultRecoverCancellationSelector(b.Selector) &&
+                (VaultFixtureProvisioner.StatusVaultRecoverCancellationSelector(b.Selector) ||
+                    statusDeniedVaultRecoverRead && StatusDeniedVaultRecoverBinding(b)) &&
                 b.Resource is DeletedVaultScope recovered && Same(recovered.Location, b.Location),
             ManagementMutation.DeleteVault => b.Resource is VaultScope ||
                 VaultFixtureProvisioner.StatusVaultDeleteCancellationSelector(b.Selector) &&

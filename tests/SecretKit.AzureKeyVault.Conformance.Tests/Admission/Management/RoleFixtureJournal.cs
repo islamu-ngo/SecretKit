@@ -12,6 +12,313 @@ namespace SecretKit.AzureKeyVault.Conformance.Tests.Admission.Management;
 // Every transition is appended and flushed before its caller may dispatch.
 internal sealed class RoleFixtureJournal(string directory)
 {
+    internal sealed class StatusDeniedVaultRecoverHistoryException : InvalidOperationException
+    {
+        internal StatusDeniedVaultRecoverHistoryException() : base("fixture-journal-unavailable") { }
+    }
+    private readonly HashSet<(string Owner, Guid Nonce)> invalidDeniedVaultRecoverHistory = [];
+    private readonly Dictionary<(string Owner, Guid Nonce), (long Sequence, string Digest)> observedDeniedVaultRecoverHistory = [];
+    private readonly Dictionary<(string Owner, Guid Nonce), Snapshot> deniedVaultRecoverUnflushed = [];
+    private readonly Dictionary<(string Owner, Guid Nonce), Snapshot?> deniedVaultRecoverUnflushedBefore = [];
+    private readonly HashSet<(string Owner, Guid Nonce)> deniedVaultRecoverUnflushedTyped = [];
+    private (string Owner, FixtureSelector Selector, long Revision)? deniedVaultRecoverFlushFailure;
+    private bool deniedVaultRecoverFlushFailureArmed;
+
+    internal void FailStatusDeniedVaultRecoverFlushOnce(string owner, FixtureSelector selector, long revision)
+    {
+        lock (gate)
+        {
+            Require(!string.IsNullOrWhiteSpace(owner) && owner.Length <= 128 &&
+                VaultFixtureProvisioner.StatusDeniedVaultRecoverSelector(selector) &&
+                selector.Nonce != Guid.Empty && revision > 0 && !deniedVaultRecoverFlushFailureArmed);
+            deniedVaultRecoverFlushFailureArmed = true;
+            deniedVaultRecoverFlushFailure = (owner, selector with { }, revision);
+        }
+    }
+    internal static Snapshot CopyStatusDeniedVaultRecoverSnapshot(Snapshot state) => state with
+    {
+        Selector = state.Selector with { }, Resources = state.Resources.Select(r => r with { }).ToArray(),
+        RecoverVault = state.RecoverVault is not { } slot ? null : slot with
+        { Baseline = CopySettings(slot.Baseline), Selected = CopySettings(slot.Selected) }
+    };
+    internal static bool SameStatusDeniedVaultRecoverSnapshot(Snapshot expected, Snapshot actual) =>
+        expected is not null && actual is not null && expected.Resources.SequenceEqual(actual.Resources) &&
+        ((expected.RecoverVault is null && actual.RecoverVault is null) ||
+            expected.RecoverVault is { } e && actual.RecoverVault is { } a &&
+            VaultAdministrationEffects.SameConfiguration(e.Baseline, a.Baseline) &&
+            VaultAdministrationEffects.SameConfiguration(e.Selected, a.Selected) &&
+            (a with { Baseline = e.Baseline, Selected = e.Selected }) == e) &&
+        (actual with { Resources = expected.Resources, RecoverVault = expected.RecoverVault }) == expected;
+
+    internal static bool StatusDeniedVaultRecoverRoot(Snapshot state)
+    {
+        if (state is null || !VaultFixtureProvisioner.StatusDeniedVaultRecoverSelector(state.Selector) ||
+            string.IsNullOrWhiteSpace(state.Owner) || state.Owner.Length > 128 || state.Selector.Nonce == Guid.Empty ||
+            new[] { state.Selector.Scope, state.Selector.Operation, state.Selector.Variant, state.Selector.Case }
+                .Any(value => string.IsNullOrWhiteSpace(value) || value.Length > 1024) ||
+            state.LeaseId == Guid.Empty || state.Resources is not { Length: 3 } ||
+            state.Resources.Any(r => r is null || string.IsNullOrEmpty(r.Id) || r.Borrowed) ||
+            state.RecoverVault is not { Baseline: { Policies.Length: 0 } b, Selected: { Policies.Length: 0 } s } slot ||
+            string.IsNullOrEmpty(slot.VaultId) || string.IsNullOrEmpty(slot.DeletedVaultId) ||
+            state.PrivateEndpoint is not null || state.Settings is not null || state.DeleteVault is not null ||
+            state.PurgeDeletedVault is not null || state.CreateOrUpdateVault is not null ||
+            state.NotificationAbsentCreate is not null || state.StatusSucceededDeleteVault is not null ||
+            state.StatusVaultRecoverCancellationBaseline is not null || state.StatusVaultUpdateCancellationBaseline is not null ||
+            !b.Rbac || b.PurgeProtection || !b.PublicNetworkAccess ||
+            !VaultAdministrationEffects.SameConfiguration(b, s)) return false;
+        _ = b.Build(); _ = s.Build();
+        string[] v = slot.VaultId.Split('/');
+        if (!(v.Length == 9 && v[1] == "subscriptions" && Guid.TryParseExact(v[2], "D", out var subscription) &&
+            subscription != Guid.Empty && v[3] == "resourceGroups" && !string.IsNullOrEmpty(v[4]) &&
+            v[5] == "providers" && v[6] == "Microsoft.KeyVault" && v[7] == "vaults" &&
+            v[8].Length == 24 && v[8].StartsWith("skv", StringComparison.Ordinal) && v[8][3..].All(char.IsAsciiHexDigit) &&
+            state.Resources[0].Id == slot.VaultId && !state.Resources[0].CleanupOnly &&
+            state.Resources[1] is { CleanupOnly: true, CreateAttempted: false, DeleteAttempted: false,
+                SelectedAttempted: false, InvocationTerminated: false } secret &&
+            secret.ActiveDispatch == Guid.Empty && secret.Id == slot.VaultId + "/secrets/" + VaultFixtureProvisioner.Canary &&
+            state.Resources[2] is { CleanupOnly: false, SelectedAttempted: false } deleted &&
+            deleted.Id == slot.DeletedVaultId &&
+            deleted.Id == $"/subscriptions/{v[2]}/providers/Microsoft.KeyVault/locations/{b.Location}/deletedVaults/{v[8]}")) return false;
+        return slot.InvocationDispatch == Guid.Empty
+            ? slot.SettledDispatch == Guid.Empty && slot.Disposition == RecoverVaultDisposition.None &&
+                slot.DeletedBaselineSha256 is null && !state.Resources[0].SelectedAttempted
+            : slot.DeletedBaselineSha256 is { Length: 64 } hash && hash.All(char.IsAsciiHexDigit) &&
+                state.Resources[0].SelectedAttempted && state.Resources[0].CreateAttempted && state.Resources[2].CreateAttempted &&
+                (slot.SettledDispatch == Guid.Empty ? slot.Disposition == RecoverVaultDisposition.None &&
+                    state.Resources[0].ActiveDispatch == slot.InvocationDispatch && !state.Resources[0].DeleteAttempted :
+                    slot.SettledDispatch == slot.InvocationDispatch && slot.Disposition == RecoverVaultDisposition.Recovered);
+    }
+
+    internal static Snapshot StatusDeniedVaultRecoverSelectedImage(Snapshot state, Guid dispatch, int edge, string? baselineHash = null) => state with
+    {
+        Revision = state.Revision + 1,
+        RecoverVault = state.RecoverVault! with
+        {
+            InvocationDispatch = dispatch,
+            DeletedBaselineSha256 = edge == 1 ? baselineHash : state.RecoverVault!.DeletedBaselineSha256,
+            SettledDispatch = edge == 4 ? dispatch : Guid.Empty,
+            Disposition = edge == 4 ? RecoverVaultDisposition.Recovered : RecoverVaultDisposition.None
+        },
+        Resources = state.Resources.Select((r, i) => i == 0 ? r with
+        { SelectedAttempted = true, InvocationTerminated = edge is 2 or 4 or 5, ActiveDispatch = edge == 4 ? Guid.Empty : dispatch } : r).ToArray()
+    };
+    private static bool DeniedVaultRecoverSelectedEdge(Snapshot a, Snapshot b, Guid dispatch, int edge) =>
+        dispatch != Guid.Empty && (edge == 5 || !a.Closing) &&
+        a.RecoverVault is { SettledDispatch: var settled, Disposition: RecoverVaultDisposition.None } slot &&
+        settled == Guid.Empty && a.Resources[0] is { CreateAttempted: true, DeleteAttempted: false, Absent: false } row &&
+        a.Resources[2] is { CreateAttempted: true, DeleteAttempted: false, InvocationTerminated: true, Absent: false } tombstone &&
+        tombstone.ActiveDispatch == Guid.Empty &&
+        (edge == 1 ? a.Idle && slot.InvocationDispatch == Guid.Empty && !row.SelectedAttempted && row.InvocationTerminated &&
+            b.RecoverVault!.DeletedBaselineSha256 is { Length: 64 } hash && hash.All(char.IsAsciiHexDigit) :
+            slot.InvocationDispatch == dispatch && row.SelectedAttempted && row.ActiveDispatch == dispatch &&
+            row.InvocationTerminated == (edge == 3)) &&
+        SameStatusDeniedVaultRecoverSnapshot(StatusDeniedVaultRecoverSelectedImage(a, dispatch, edge, b.RecoverVault!.DeletedBaselineSha256), b);
+
+    internal static Snapshot StatusDeniedVaultRecoverFixtureImage(Snapshot a, string id, Guid dispatch,
+        VaultFixtureProvisioner.StatusDeniedVaultRecoverFixtureAction action, bool end, bool settled) => a with
+    {
+        Revision = a.Revision + 1,
+        Resources = a.Resources.Select(r => r.Id != id ? r : end
+            ? r with { InvocationTerminated = true, ActiveDispatch = settled ? Guid.Empty : dispatch }
+            : r with { CreateAttempted = r.CreateAttempted || action is VaultFixtureProvisioner.StatusDeniedVaultRecoverFixtureAction.PrepareVault or
+                    VaultFixtureProvisioner.StatusDeniedVaultRecoverFixtureAction.PrepareDeleted,
+                DeleteAttempted = r.DeleteAttempted || action is VaultFixtureProvisioner.StatusDeniedVaultRecoverFixtureAction.CleanupDelete or
+                    VaultFixtureProvisioner.StatusDeniedVaultRecoverFixtureAction.CleanupPurge,
+                InvocationTerminated = false, ActiveDispatch = dispatch }).ToArray()
+    };
+    private static bool DeniedVaultRecoverFixtureEdge(Snapshot a, Snapshot b, string id, Guid dispatch,
+        VaultFixtureProvisioner.StatusDeniedVaultRecoverFixtureAction action, bool end, bool settled)
+    {
+        var row = a.Resources.SingleOrDefault(r => r.Id == id);
+        if (row is null || dispatch == Guid.Empty || dispatch == a.RecoverVault!.InvocationDispatch || !Enum.IsDefined(action)) return false;
+        if (end)
+            return !row.InvocationTerminated && row.ActiveDispatch == dispatch &&
+                SameStatusDeniedVaultRecoverSnapshot(StatusDeniedVaultRecoverFixtureImage(a, id, dispatch, action, true, settled), b);
+        var vault = a.Resources[0]; var deleted = a.Resources[2];
+        bool allowed = action switch
+        {
+            VaultFixtureProvisioner.StatusDeniedVaultRecoverFixtureAction.PrepareVault => !a.Closing &&
+                id == vault.Id && !vault.CreateAttempted && !deleted.CreateAttempted,
+            VaultFixtureProvisioner.StatusDeniedVaultRecoverFixtureAction.PrepareDeleted => !a.Closing &&
+                id == deleted.Id && !deleted.CreateAttempted && vault is { CreateAttempted: true, InvocationTerminated: true, DeleteAttempted: false },
+            VaultFixtureProvisioner.StatusDeniedVaultRecoverFixtureAction.CleanupDelete => a.Closing &&
+                id == vault.Id && vault is { CreateAttempted: true, InvocationTerminated: true, DeleteAttempted: false } &&
+                (!deleted.CreateAttempted || a.RecoverVault.Disposition == RecoverVaultDisposition.Recovered),
+            VaultFixtureProvisioner.StatusDeniedVaultRecoverFixtureAction.CleanupPurge => a.Closing && id == deleted.Id &&
+                vault.CreateAttempted && !deleted.DeleteAttempted &&
+                (vault.DeleteAttempted && vault.InvocationTerminated || deleted.CreateAttempted && deleted.InvocationTerminated &&
+                    a.RecoverVault.InvocationDispatch == Guid.Empty),
+            _ => false
+        };
+        return a.Idle && !row.Absent && allowed &&
+            SameStatusDeniedVaultRecoverSnapshot(StatusDeniedVaultRecoverFixtureImage(a, id, dispatch, action, false, false), b);
+    }
+    internal static Snapshot StatusDeniedVaultRecoverAbsenceImage(Snapshot a) => a with
+    { Revision = a.Revision + (a.Released ? 0 : 1), Resources = a.Resources.Select(r => r with { Absent = true }).ToArray() };
+    private static bool DeniedVaultRecoverAbsenceEdge(Snapshot a, Snapshot b) =>
+        a.Closing && a.Idle && (!a.Resources[0].CreateAttempted ||
+            a.Resources[2] is { DeleteAttempted: true, InvocationTerminated: true } &&
+            (a.Resources[0] is { DeleteAttempted: true, InvocationTerminated: true } ||
+                a.RecoverVault!.InvocationDispatch == Guid.Empty && a.Resources[2].CreateAttempted)) &&
+        SameStatusDeniedVaultRecoverSnapshot(StatusDeniedVaultRecoverAbsenceImage(a), b);
+
+    private Snapshot DeniedVaultRecoverChange(string owner, FixtureSelector selector, Guid lease,
+        Func<RoleFixtureJournal, Snapshot, bool> validate, Func<RoleFixtureJournal, Snapshot, bool> accept,
+        Func<Snapshot> image, Func<Snapshot, Snapshot, bool> edge) =>
+        Change(owner, selector, state =>
+        {
+            Require(state is not null && StatusDeniedVaultRecoverRoot(state) && lease != Guid.Empty && state.LeaseId == lease);
+            if (accept(this, state)) return state;
+            Require(validate(this, state));
+            var next = image();
+            Require(next.Revision == state.Revision + 1 && edge(state, next));
+            return next;
+        }, statusDeniedVaultRecover: true, deniedVaultRecoverPersistence: true);
+    internal Snapshot PrepareStatusDeniedVaultRecover(string owner, FixtureSelector selector,
+        VaultFixtureProvisioner.StatusDeniedVaultRecoverPreparation preparation) =>
+        Change(owner, selector, state =>
+        {
+            if (state is not null) { Require(preparation.AcceptPostimage(this, state)); return state; }
+            Require(preparation.ValidateInitial(this, owner, selector));
+            var next = preparation.Postimage;
+            Require(StatusDeniedVaultRecoverRoot(next) && next.Revision == 1);
+            var maximum = next with
+            {
+                Resources = next.Resources.Select(r => r with { ActiveDispatch = next.LeaseId }).ToArray(),
+                RecoverVault = next.RecoverVault! with { InvocationDispatch = next.LeaseId,
+                    SettledDispatch = next.LeaseId, Disposition = RecoverVaultDisposition.Recovered, DeletedBaselineSha256 = new string('F', 64) }
+            };
+            Require(JsonSerializer.SerializeToUtf8Bytes(new Frame(long.MaxValue, new string('F', 64), maximum),
+                ManagementAdmission.Json).Length <= MaximumFrame);
+            return next;
+        }, statusDeniedVaultRecover: true, deniedVaultRecoverPersistence: true);
+    internal Snapshot BeginStatusDeniedVaultRecoverInvocation(string owner, FixtureSelector selector, Guid leaseId,
+        ManagementOperationFixtureObserverService.StatusDeniedVaultRecoverAdmission admission) =>
+        DeniedVaultRecoverChange(owner, selector, leaseId, admission.Validate, admission.AcceptPostimage, () => admission.Postimage,
+            (a, b) => DeniedVaultRecoverSelectedEdge(a, b, admission.Dispatch, 1));
+    internal Snapshot EndStatusDeniedVaultRecoverStart(string owner, FixtureSelector selector, Guid leaseId, Guid dispatch,
+        ManagementOperationFixtureObserverService.StatusDeniedVaultRecoverStartDrain drain) =>
+        DeniedVaultRecoverChange(owner, selector, leaseId, drain.Validate, drain.AcceptPostimage, () => drain.Postimage,
+            (a, b) => drain.Dispatch == dispatch && DeniedVaultRecoverSelectedEdge(a, b, dispatch, 2));
+    internal Snapshot AdmitStatusDeniedVaultRecoverRead(string owner, FixtureSelector selector, Guid leaseId, Guid dispatch,
+        ManagementOperationFixtureObserverService.StatusDeniedVaultRecoverReadAdmission admission) =>
+        DeniedVaultRecoverChange(owner, selector, leaseId, admission.Validate, admission.AcceptPostimage, () => admission.Postimage,
+            (a, b) => admission.Dispatch == dispatch && DeniedVaultRecoverSelectedEdge(a, b, dispatch, 3));
+    internal Snapshot CompleteStatusDeniedVaultRecoverRead(string owner, FixtureSelector selector, Guid leaseId, Guid dispatch,
+        ManagementOperationFixtureObserverService.StatusDeniedVaultRecoverObservation observation) =>
+        DeniedVaultRecoverChange(owner, selector, leaseId, observation.Validate, observation.AcceptPostimage, () => observation.Postimage,
+            (a, b) => observation.Dispatch == dispatch && DeniedVaultRecoverSelectedEdge(a, b, dispatch, 4));
+    internal Snapshot EndStatusDeniedVaultRecoverInvocation(string owner, FixtureSelector selector, Guid leaseId, Guid dispatch,
+        ManagementOperationFixtureObserverService.StatusDeniedVaultRecoverInvocationDrain drain) =>
+        DeniedVaultRecoverChange(owner, selector, leaseId, drain.Validate, drain.AcceptPostimage, () => drain.Postimage,
+            (a, b) => drain.Dispatch == dispatch && DeniedVaultRecoverSelectedEdge(a, b, dispatch, 5));
+    internal Snapshot BeginStatusDeniedVaultRecoverFixtureDispatch(string owner, FixtureSelector selector, Guid leaseId,
+        VaultFixtureProvisioner.StatusDeniedVaultRecoverFixtureAdmission admission) =>
+        DeniedVaultRecoverChange(owner, selector, leaseId, admission.Validate, admission.AcceptPostimage, () => admission.Postimage,
+            (a, b) => DeniedVaultRecoverFixtureEdge(a, b, admission.ResourceId, admission.Dispatch, admission.Action, false, false));
+    internal Snapshot EndStatusDeniedVaultRecoverFixtureDispatch(string owner, FixtureSelector selector, Guid leaseId,
+        VaultFixtureProvisioner.StatusDeniedVaultRecoverFixtureDrain drain) =>
+        DeniedVaultRecoverChange(owner, selector, leaseId, drain.Validate, drain.AcceptPostimage, () => drain.Postimage,
+            (a, b) => DeniedVaultRecoverFixtureEdge(a, b, drain.ResourceId, drain.Dispatch, drain.Action, true, drain.Settled));
+    internal Snapshot RecordStatusDeniedVaultRecoverAbsence(string owner, FixtureSelector selector, Guid leaseId,
+        VaultFixtureProvisioner.StatusDeniedVaultRecoverAbsence absence) =>
+        DeniedVaultRecoverChange(owner, selector, leaseId, absence.Validate, absence.AcceptPostimage, () => absence.Postimage,
+            DeniedVaultRecoverAbsenceEdge);
+
+    private static void ValidateDeniedVaultRecoverState(Snapshot state, Snapshot? previous, ref int stage, HashSet<Guid> dispatches)
+    {
+        if (!VaultFixtureProvisioner.StatusDeniedVaultRecoverSelector(state.Selector)) return;
+        if (state.Resources.Length == 0)
+        {
+            Require(state == new Snapshot(state.Owner, state.Selector, Guid.Empty, true, state.Resources) { Revision = state.Revision } &&
+                (previous is null || previous.Resources.Length == 0));
+            return;
+        }
+        Require(StatusDeniedVaultRecoverRoot(state));
+        if (previous is null)
+        {
+            Require(!state.Closing && state.RecoverVault is { InvocationDispatch: var d, SettledDispatch: var s,
+                Disposition: RecoverVaultDisposition.None, DeletedBaselineSha256: null } && d == Guid.Empty && s == Guid.Empty &&
+                state.Resources.All(r => !r.CreateAttempted && !r.DeleteAttempted && !r.SelectedAttempted &&
+                    !r.InvocationTerminated && !r.Absent && r.ActiveDispatch == Guid.Empty));
+            return;
+        }
+        Require(StatusDeniedVaultRecoverRoot(previous));
+        if (SameStatusDeniedVaultRecoverSnapshot(previous, state)) return; // Exact in-memory retry; never another frame.
+        Require(state.Revision == previous.Revision + 1);
+        if (!previous.Closing && SameStatusDeniedVaultRecoverSnapshot(previous with { Closing = true, Revision = state.Revision }, state)) return;
+        var old = previous.RecoverVault!;
+        var row = previous.Resources[0];
+        if (old.InvocationDispatch == Guid.Empty && state.RecoverVault!.InvocationDispatch != Guid.Empty)
+        {
+            Require(stage == 0 && dispatches.Add(state.RecoverVault.InvocationDispatch) &&
+                DeniedVaultRecoverSelectedEdge(previous, state, state.RecoverVault.InvocationDispatch, 1));
+            stage = 1; return;
+        }
+        if (old.InvocationDispatch != Guid.Empty && old.SettledDispatch == Guid.Empty)
+        {
+            if (DeniedVaultRecoverSelectedEdge(previous, state, old.InvocationDispatch, 5))
+            { Require(stage is 1 or 3); stage = stage == 1 && !previous.Closing ? 2 : -1; return; }
+            if (row.InvocationTerminated && DeniedVaultRecoverSelectedEdge(previous, state, old.InvocationDispatch, 3))
+            { Require(stage == 2); stage = 3; return; }
+            Require(stage == 3 && DeniedVaultRecoverSelectedEdge(previous, state, old.InvocationDispatch, 4));
+            stage = 4; return;
+        }
+        if (previous.Idle)
+        {
+            if (DeniedVaultRecoverAbsenceEdge(previous, state)) return;
+            var started = state.Resources.Where(r => r.ActiveDispatch != Guid.Empty).ToArray();
+            Require(started is [var startedRow] && dispatches.Add(startedRow.ActiveDispatch) &&
+                DeniedVaultRecoverFixtureEdge(previous, state, startedRow.Id, startedRow.ActiveDispatch,
+                    FixtureAction(previous.Closing, startedRow.Id == previous.Resources[0].Id), false, false));
+            return;
+        }
+        var activeRows = previous.Resources.Where(r => r.ActiveDispatch != Guid.Empty).ToArray();
+        Require(activeRows is [var activeRow] &&
+            DeniedVaultRecoverFixtureEdge(previous, state, activeRow.Id, activeRow.ActiveDispatch,
+                FixtureAction(activeRow.DeleteAttempted, activeRow.Id == previous.Resources[0].Id),
+                true, state.Resources.Single(r => r.Id == activeRow.Id).ActiveDispatch == Guid.Empty));
+
+        static VaultFixtureProvisioner.StatusDeniedVaultRecoverFixtureAction FixtureAction(bool cleanup, bool vault) => (cleanup, vault) switch
+        {
+            (false, true) => VaultFixtureProvisioner.StatusDeniedVaultRecoverFixtureAction.PrepareVault,
+            (false, false) => VaultFixtureProvisioner.StatusDeniedVaultRecoverFixtureAction.PrepareDeleted,
+            (true, true) => VaultFixtureProvisioner.StatusDeniedVaultRecoverFixtureAction.CleanupDelete,
+            (true, false) => VaultFixtureProvisioner.StatusDeniedVaultRecoverFixtureAction.CleanupPurge
+        };
+    }
+
+    private static void ValidateDeniedVaultRecoverFrame(byte[] payload)
+    {
+        using var document = JsonDocument.Parse(payload);
+        var root = document.RootElement;
+        Complete(root, "sequence", "previous", "state");
+        var state = root.GetProperty("state");
+        Fields(state, "owner", "selector", "leaseId", "closing", "resources", "recoverVault");
+        Require(new[] { "owner", "selector", "leaseId", "closing", "resources" }.All(n => state.TryGetProperty(n, out _)));
+        Complete(state.GetProperty("selector"), "scope", "operation", "variant", "case", "nonce");
+        foreach (var row in state.GetProperty("resources").EnumerateArray())
+            Complete(row, "id", "borrowed", "createAttempted", "deleteAttempted", "activeDispatch", "absent",
+                "cleanupOnly", "invocationTerminated", "selectedAttempted");
+        if (state.TryGetProperty("recoverVault", out var slot) && slot.ValueKind != JsonValueKind.Null)
+        {
+            Complete(slot, "vaultId", "deletedVaultId", "baseline", "selected", "invocationDispatch", "settledDispatch", "disposition", "deletedBaselineSha256");
+            foreach (var configuration in new[] { slot.GetProperty("baseline"), slot.GetProperty("selected") })
+            {
+                Complete(configuration, "location", "tenantId", "sku", "rbac", "purgeProtection", "retentionDays", "publicNetworkAccess", "policies");
+                Require(configuration.GetProperty("policies").ValueKind == JsonValueKind.Array &&
+                    configuration.GetProperty("policies").GetArrayLength() == 0);
+            }
+        }
+        static void Complete(JsonElement node, params string[] required)
+        { Fields(node, required); Require(node.EnumerateObject().Count() == required.Length); }
+        static void Fields(JsonElement node, params string[] allowed)
+        {
+            Require(node.ValueKind == JsonValueKind.Object);
+            var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var field in node.EnumerateObject()) Require(names.Add(field.Name) && allowed.Contains(field.Name, StringComparer.Ordinal));
+        }
+    }
     internal sealed class StatusDeniedVaultUpdateHistoryException : InvalidOperationException
     {
         internal StatusDeniedVaultUpdateHistoryException() : base("fixture-journal-unavailable") { }
@@ -3638,9 +3945,10 @@ internal sealed class RoleFixtureJournal(string directory)
         Change(owner, selector, state =>
         {
             if (state is null) return new(owner, selector, Guid.Empty, true, []); // Release can win before prepare.
-            Require(validate is null || validate(state));
+            Require(validate is null || validate(VaultFixtureProvisioner.StatusDeniedVaultRecoverSelector(selector)
+                ? CopyStatusDeniedVaultRecoverSnapshot(state) : state));
             return state with { Closing = true };
-        }, privateIndependent: true, statusDeniedUpdate: true, statusDenied: true, statusPending: true, statusPendingIndependent: true, statusPendingCancellation: true, statusFailed: true, statusFailedIndependent: true, statusFailedCancellation: true, statusCanceled: true, statusCanceledIndependent: true, statusCanceledCancellation: true, statusUnknown: true, statusUnknownCancellation: true, statusUnknownIndependent: true, statusDeniedPrivateDelete: true, statusDeniedVaultUpdate: true);
+        }, privateIndependent: true, statusDeniedUpdate: true, statusDenied: true, statusPending: true, statusPendingIndependent: true, statusPendingCancellation: true, statusFailed: true, statusFailedIndependent: true, statusFailedCancellation: true, statusCanceled: true, statusCanceledIndependent: true, statusCanceledCancellation: true, statusUnknown: true, statusUnknownCancellation: true, statusUnknownIndependent: true, statusDeniedPrivateDelete: true, statusDeniedVaultUpdate: true, statusDeniedVaultRecover: true);
 
     internal Guid BeginSelectedDispatch(string owner, FixtureSelector selector, string resourceId, bool delete) =>
         BeginSelectedDispatch(owner, selector, resourceId, delete, update: false);
@@ -9065,8 +9373,10 @@ internal sealed class RoleFixtureJournal(string directory)
         bool privateIndependent = false, bool statusPending = false, bool statusPendingIndependent = false,
         bool statusPendingCancellation = false, bool statusFailed = false, bool statusFailedIndependent = false, bool statusFailedCancellation = false, bool statusCanceled = false, bool statusCanceledIndependent = false, bool statusCanceledCancellation = false, bool statusUnknown = false, bool statusUnknownIndependent = false, bool statusUnknownCancellation = false, bool statusDenied = false, bool statusDeniedUpdate = false,
         bool statusDeniedPrivateDelete = false, bool deniedPrivateDeletePersistence = false,
-        bool statusDeniedVaultUpdate = false, bool deniedVaultUpdatePersistence = false)
+        bool statusDeniedVaultUpdate = false, bool deniedVaultUpdatePersistence = false,
+        bool statusDeniedVaultRecover = false, bool deniedVaultRecoverPersistence = false)
     {
+        Require(!VaultFixtureProvisioner.StatusDeniedVaultRecoverSelector(selector) || statusDeniedVaultRecover);
         Require(!VaultFixtureProvisioner.StatusDeniedVaultUpdateSelector(selector) || statusDeniedVaultUpdate);
         Require(!VaultFixtureProvisioner.StatusDeniedPrivateConnectionDeleteSelector(selector) || statusDeniedPrivateDelete);
         Require(!NotificationFixtureProvisioner.StatusUnknownNotificationUpdateCancellationSelector(selector) || statusUnknownCancellation);
@@ -9085,23 +9395,28 @@ internal sealed class RoleFixtureJournal(string directory)
         Require(!VaultFixtureProvisioner.StatusFailedPurgeIndependentSelector(selector) || statusFailedIndependent);
         Require(!VaultFixtureProvisioner.StatusFailedPurgeCancellationSelector(selector) || statusFailedCancellation);
         Require(!VaultFixtureProvisioner.StatusDeniedPurgeSelector(selector) || statusDenied);
-        return Access(owner, selector, change, deniedPrivateDeletePersistence, deniedVaultUpdatePersistence);
+        return Access(owner, selector, change, deniedPrivateDeletePersistence, deniedVaultUpdatePersistence, deniedVaultRecoverPersistence);
     }
 
     private Snapshot Access(string owner, FixtureSelector selector, Func<Snapshot?, Snapshot>? change,
-        bool deniedPrivateDeletePersistence = false, bool deniedVaultUpdatePersistence = false)
+        bool deniedPrivateDeletePersistence = false, bool deniedVaultUpdatePersistence = false,
+        bool deniedVaultRecoverPersistence = false)
     {
-        lock (gate) return AccessLocked(owner, selector, change, deniedPrivateDeletePersistence, deniedVaultUpdatePersistence);
+        lock (gate) return AccessLocked(owner, selector, change, deniedPrivateDeletePersistence, deniedVaultUpdatePersistence, deniedVaultRecoverPersistence);
     }
 
     private Snapshot AccessLocked(string owner, FixtureSelector selector, Func<Snapshot?, Snapshot>? change,
-        bool deniedPrivateDeletePersistence, bool deniedVaultUpdatePersistence)
+        bool deniedPrivateDeletePersistence, bool deniedVaultUpdatePersistence, bool deniedVaultRecoverPersistence)
     {
         Require(owner.Length is > 0 and <= 128 && selector.Nonce != Guid.Empty &&
             new[] { selector.Scope, selector.Operation, selector.Variant, selector.Case }
                 .All(s => !string.IsNullOrWhiteSpace(s) && s.Length <= 1024));
         bool deniedPrivateDelete = VaultFixtureProvisioner.StatusDeniedPrivateConnectionDeleteSelector(selector);
         bool deniedVaultUpdate = VaultFixtureProvisioner.StatusDeniedVaultUpdateSelector(selector);
+        bool deniedVaultRecover = VaultFixtureProvisioner.StatusDeniedVaultRecoverSelector(selector);
+        observedDeniedVaultRecoverHistory.TryGetValue((owner, selector.Nonce), out var deniedRecoverObserved);
+        if (deniedVaultRecover && invalidDeniedVaultRecoverHistory.Contains((owner, selector.Nonce)))
+            throw new StatusDeniedVaultRecoverHistoryException();
         observedDeniedVaultUpdateHistory.TryGetValue((owner, selector.Nonce), out var deniedVaultObserved);
         if (deniedVaultUpdate && invalidDeniedVaultUpdateHistory.Contains((owner, selector.Nonce)))
             throw new StatusDeniedVaultUpdateHistoryException();
@@ -9149,6 +9464,7 @@ internal sealed class RoleFixtureJournal(string directory)
                 options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
             using var file = new FileStream(Path.Combine(directory, selector.Nonce.ToString("N") + ".journal"), options);
             Require(file.Length <= MaximumJournal);
+            if (deniedVaultRecover) Require(file.Length != 0 || deniedRecoverObserved.Sequence == 0);
             if (deniedVaultUpdate) Require(file.Length != 0 || deniedVaultObserved.Sequence == 0);
             if (deniedPrivateDelete) Require(file.Length != 0 || deniedPrivateObserved.Sequence == 0);
             if (unknownNotificationUpdateCancellation) Require(file.Length != 0 || unknownCancellationObserved.Sequence == 0);
@@ -9172,6 +9488,8 @@ internal sealed class RoleFixtureJournal(string directory)
             int privateUpdateIndependentStage = 0;
             int deniedPrivateDeleteStage = 0;
             int deniedVaultUpdateStage = 0;
+            int deniedVaultRecoverStage = 0;
+            var deniedVaultRecoverDispatches = new HashSet<Guid>();
             Span<byte> header = stackalloc byte[4];
             while (file.Position < file.Length)
             {
@@ -9195,6 +9513,7 @@ internal sealed class RoleFixtureJournal(string directory)
                 if (VaultFixtureProvisioner.StatusPrivateConnectionUpdateIndependentSelector(selector)) ValidatePrivateUpdateIndependentFrame(payload);
                 if (deniedPrivateDelete) ValidatePrivateUpdateIndependentFrame(payload);
                 if (deniedVaultUpdate) ValidateDeniedVaultUpdateFrame(payload);
+                if (deniedVaultRecover) ValidateDeniedVaultRecoverFrame(payload);
                 Frame frame = JsonSerializer.Deserialize<Frame>(payload, ManagementAdmission.Json)
                     ?? throw Failure();
                 Require(frame.Sequence == ++sequence && frame.Previous == Convert.ToHexString(previous) &&
@@ -9222,6 +9541,8 @@ internal sealed class RoleFixtureJournal(string directory)
                 ValidatePrivateUpdateIndependentState(frame.State, state, ref privateUpdateIndependentStage);
                 ValidateDeniedPrivateDeleteState(frame.State, state, ref deniedPrivateDeleteStage);
                 ValidateDeniedVaultUpdateState(frame.State, state, ref deniedVaultUpdateStage);
+                ValidateDeniedVaultRecoverState(frame.State with { Revision = sequence }, state,
+                    ref deniedVaultRecoverStage, deniedVaultRecoverDispatches);
                 state = frame.State with { Revision = sequence };
                 ValidateSettingsState(state);
                 ValidateDeleteVaultState(state);
@@ -9244,8 +9565,16 @@ internal sealed class RoleFixtureJournal(string directory)
                 previous = digest;
                 if (deniedVaultUpdate && sequence == deniedVaultObserved.Sequence)
                     Require(Convert.ToHexString(digest) == deniedVaultObserved.Digest);
+                if (deniedVaultRecover && sequence == deniedRecoverObserved.Sequence)
+                    Require(Convert.ToHexString(digest) == deniedRecoverObserved.Digest);
                 if (deniedPrivateDelete && sequence == deniedPrivateObserved.Sequence)
                     Require(Convert.ToHexString(digest) == deniedPrivateObserved.Digest);
+            }
+            if (deniedVaultRecover)
+            {
+                Require(sequence >= deniedRecoverObserved.Sequence);
+                if (state is not null)
+                    observedDeniedVaultRecoverHistory[(owner, selector.Nonce)] = (sequence, Convert.ToHexString(previous));
             }
             if (deniedVaultUpdate)
             {
@@ -9298,11 +9627,14 @@ internal sealed class RoleFixtureJournal(string directory)
                 RequireNotificationUpdateIndependentHistory(selector);
                 RequireNotificationCreateIndependentHistory(selector);
                 RequirePrivateUpdateIndependentHistory(owner, selector);
-                if (state is null && (deniedVaultUpdate || deniedPrivateDelete || PendingSelector(selector)))
+                if (state is null && (deniedVaultRecover || deniedVaultUpdate || deniedPrivateDelete || PendingSelector(selector)))
                 { reading = false; throw Failure(); }
                 return CopyStatusRecoveryBaseline(state ?? throw Failure());
             }
             reading = false;
+            bool deniedRecoverUnflushed = deniedVaultRecover && deniedVaultRecoverUnflushed.ContainsKey((owner, selector.Nonce));
+            if (deniedRecoverUnflushed && deniedVaultRecoverUnflushedTyped.Contains((owner, selector.Nonce)) &&
+                !deniedVaultRecoverPersistence) throw new IOException("fixture-journal-unavailable");
             bool deniedVaultUnflushed = deniedVaultUpdate && deniedVaultUpdateUnflushed.ContainsKey((owner, selector.Nonce));
             if (deniedVaultUnflushed && deniedVaultUpdateUnflushedTyped.Contains((owner, selector.Nonce)) &&
                 !deniedVaultUpdatePersistence) throw new IOException("fixture-journal-unavailable");
@@ -9315,6 +9647,19 @@ internal sealed class RoleFixtureJournal(string directory)
                 !deniedPrivateDeletePersistence)
                 throw new IOException("fixture-journal-unavailable");
             Snapshot next = change(state);
+            if (deniedVaultRecover && next != state) next = next with { Revision = sequence + 1 };
+            if (deniedRecoverUnflushed)
+            {
+                var intended = deniedVaultRecoverUnflushed[(owner, selector.Nonce)];
+                Require(SameStatusDeniedVaultRecoverSnapshot(intended, next));
+                if (state is not null && SameStatusDeniedVaultRecoverSnapshot(intended, state)) next = state;
+                else
+                {
+                    var beforeAppend = deniedVaultRecoverUnflushedBefore[(owner, selector.Nonce)];
+                    Require(beforeAppend is null ? state is null :
+                        state is not null && SameStatusDeniedVaultRecoverSnapshot(beforeAppend, state));
+                }
+            }
             if (deniedVaultUnflushed)
             {
                 Require(state is not null && SameStatusDeniedVaultUpdateSnapshot(deniedVaultUpdateUnflushed[(owner, selector.Nonce)], state) &&
@@ -9348,6 +9693,8 @@ internal sealed class RoleFixtureJournal(string directory)
             ValidatePrivateUpdateIndependentState(next, state, ref privateUpdateIndependentStage);
             ValidateDeniedPrivateDeleteState(next, state, ref deniedPrivateDeleteStage);
             ValidateDeniedVaultUpdateState(next, state, ref deniedVaultUpdateStage);
+            ValidateDeniedVaultRecoverState(next == state ? next : next with { Revision = sequence + 1 }, state,
+                ref deniedVaultRecoverStage, deniedVaultRecoverDispatches);
             ValidateSettingsState(next);
             ValidateDeleteVaultState(next);
             ValidatePurgeDeletedVaultState(next);
@@ -9357,6 +9704,13 @@ internal sealed class RoleFixtureJournal(string directory)
             ValidatePrivateConnectionDeleteState(next);
             if (next == state)
             {
+                if (deniedVaultRecover)
+                {
+                    file.Flush(flushToDisk: true);
+                    deniedVaultRecoverUnflushed.Remove((owner, selector.Nonce));
+                    deniedVaultRecoverUnflushedBefore.Remove((owner, selector.Nonce));
+                    deniedVaultRecoverUnflushedTyped.Remove((owner, selector.Nonce));
+                }
                 if (deniedVaultUpdate)
                 {
                     file.Flush(flushToDisk: true);
@@ -9383,13 +9737,35 @@ internal sealed class RoleFixtureJournal(string directory)
             ValidateStatusPendingPurgeFrame(bytes, selector);
             if (deniedPrivateDelete) ValidatePrivateUpdateIndependentFrame(bytes);
             if (deniedVaultUpdate) ValidateDeniedVaultUpdateFrame(bytes);
+            if (deniedVaultRecover) ValidateDeniedVaultRecoverFrame(bytes);
             Require(bytes.Length <= MaximumFrame && file.Length + bytes.Length + 36 <= MaximumJournal);
             Span<byte> prefix = stackalloc byte[4];
             BinaryPrimitives.WriteInt32LittleEndian(prefix, bytes.Length);
+            if (deniedVaultRecover)
+            {
+                // Register before the first write: a write may throw after
+                // copying its bytes. Only this exact pre/post candidate may
+                // append from the intact preimage or acknowledge the postimage.
+                deniedVaultRecoverUnflushedBefore[(owner, selector.Nonce)] =
+                    state is null ? null : CopyStatusDeniedVaultRecoverSnapshot(state);
+                deniedVaultRecoverUnflushed[(owner, selector.Nonce)] =
+                    CopyStatusDeniedVaultRecoverSnapshot(next with { Revision = sequence + 1 });
+                if (deniedVaultRecoverPersistence) deniedVaultRecoverUnflushedTyped.Add((owner, selector.Nonce));
+            }
             file.Write(prefix);
             file.Write(bytes);
             byte[] nextDigest = SHA256.HashData(bytes);
             file.Write(nextDigest);
+            if (deniedVaultRecover)
+            {
+                observedDeniedVaultRecoverHistory[(owner, selector.Nonce)] = (sequence + 1, Convert.ToHexString(nextDigest));
+                if (deniedVaultRecoverFlushFailure is { } deniedRecoverAppendFault && deniedRecoverAppendFault.Owner == owner &&
+                    deniedRecoverAppendFault.Selector == selector && deniedRecoverAppendFault.Revision == sequence + 1)
+                {
+                    deniedVaultRecoverFlushFailure = null;
+                    throw new IOException("fixture-journal-unavailable");
+                }
+            }
             if (deniedVaultUpdate)
             {
                 deniedVaultUpdateUnflushed[(owner, selector.Nonce)] =
@@ -9513,6 +9889,12 @@ internal sealed class RoleFixtureJournal(string directory)
                 throw new IOException("fixture-journal-unavailable");
             }
             file.Flush(flushToDisk: true);
+            if (deniedVaultRecover)
+            {
+                deniedVaultRecoverUnflushed.Remove((owner, selector.Nonce));
+                deniedVaultRecoverUnflushedBefore.Remove((owner, selector.Nonce));
+                deniedVaultRecoverUnflushedTyped.Remove((owner, selector.Nonce));
+            }
             if (deniedVaultUpdate)
             {
                 deniedVaultUpdateUnflushed.Remove((owner, selector.Nonce));
@@ -9525,6 +9907,10 @@ internal sealed class RoleFixtureJournal(string directory)
             }
             return CopyStatusRecoveryBaseline(next with { Revision = sequence + 1 });
         }
+        catch (Exception exception) when (reading && deniedVaultRecover &&
+            exception is EndOfStreamException or InvalidOperationException or JsonException or ArgumentException or NullReferenceException)
+        { invalidDeniedVaultRecoverHistory.Add((owner, selector.Nonce)); throw new StatusDeniedVaultRecoverHistoryException(); }
+        catch (IOException) when (deniedVaultRecover) { throw; }
         catch (Exception exception) when (reading && deniedVaultUpdate &&
             exception is EndOfStreamException or InvalidOperationException or JsonException or ArgumentException or NullReferenceException)
         { invalidDeniedVaultUpdateHistory.Add((owner, selector.Nonce)); throw new StatusDeniedVaultUpdateHistoryException(); }
@@ -10270,6 +10656,8 @@ internal sealed class RoleFixtureJournal(string directory)
     }
 
     private static Snapshot CopyStatusRecoveryBaseline(Snapshot state) =>
+        VaultFixtureProvisioner.StatusDeniedVaultRecoverSelector(state.Selector)
+        ? CopyStatusDeniedVaultRecoverSnapshot(state) :
         VaultFixtureProvisioner.StatusDeniedVaultUpdateSelector(state.Selector)
         ? CopyStatusDeniedVaultUpdateSnapshot(state) :
         VaultFixtureProvisioner.StatusDeniedPrivateConnectionDeleteSelector(state.Selector)
@@ -10517,6 +10905,11 @@ internal sealed class RoleFixtureJournal(string directory)
 
     private static void ValidateRecoverVaultState(Snapshot state)
     {
+        if (VaultFixtureProvisioner.StatusDeniedVaultRecoverSelector(state.Selector))
+        {
+            Require(state.Resources.Length == 0 || StatusDeniedVaultRecoverRoot(state));
+            return;
+        }
         if (state.RecoverVault is not { } recovery)
         {
             Require(!VaultFixtureProvisioner.RecoverVaultSelector(state.Selector) || state.Resources.Length == 0);

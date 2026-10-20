@@ -20,6 +20,587 @@ internal sealed class ManagementOperationNativeCapture
 {
     internal enum WireState { Unavailable, Pending, Succeeded, Failed, Canceled, Denied, Unknown, Lost }
 
+    internal sealed class StatusDeniedVaultRecoverStartProof(Binding binding, StatusTarget target,
+        int responseBytes, string requestSha256, string nativeRequestId, Task startTask, VaultConfiguration configuration)
+    {
+        internal Binding Binding { get; } = binding;
+        internal StatusTarget Target { get; } = target;
+        internal Guid StartDispatch => Target.StartDispatch;
+        internal int HttpStatus => 201;
+        internal int ResponseBytes { get; } = responseBytes;
+        internal VaultConfiguration Configuration { get; } = configuration;
+        internal string ResponseSha256 => Target.StartResponseSha256;
+        internal string RequestSha256 { get; } = requestSha256;
+        internal string NativeRequestId { get; } = nativeRequestId;
+        internal Task StartTask { get; } = startTask;
+        internal Task ActualTask => StartTask;
+        internal SecretStatus Outcome => SecretStatus.Success;
+        internal NativeProvisioningState State => NativeProvisioningState.Pending;
+        internal DispatchEvidence ReceiptEvidence => DispatchEvidence.Pending;
+        public override string ToString() => "[StatusDeniedVaultRecoverStartProof]";
+    }
+
+    internal sealed class StatusDeniedVaultRecoverDeniedProof(StatusDeniedVaultRecoverStartProof start, Task checkTask,
+        int httpStatus, int responseBytes, string requestSha256, string responseSha256, string nativeRequestId)
+    {
+        internal StatusDeniedVaultRecoverStartProof Start { get; } = start;
+        internal Task CheckTask { get; } = checkTask;
+        internal Task ActualTask => CheckTask;
+        internal Binding Binding => Start.Binding;
+        internal StatusTarget Target => Start.Target;
+        internal Guid StartDispatch => Start.StartDispatch;
+        internal int ResponseBytes { get; } = responseBytes;
+        internal string RequestSha256 { get; } = requestSha256;
+        internal int HttpStatus { get; } = httpStatus;
+        internal string ResponseSha256 { get; } = responseSha256;
+        internal string NativeRequestId { get; } = nativeRequestId;
+        internal SecretStatus Outcome => SecretStatus.Denied;
+        internal NativeProvisioningState State => NativeProvisioningState.Failed;
+        internal DispatchEvidence ReceiptEvidence => DispatchEvidence.Pending;
+        public override string ToString() => "[StatusDeniedVaultRecoverDeniedProof]";
+    }
+
+    private sealed class StatusDeniedVaultRecoverSlot(CancellationToken token, CancellationToken caller)
+    {
+        internal readonly CancellationToken Token = token;
+        internal readonly CancellationToken Caller = caller;
+        internal readonly Invocation Invocation = new();
+        internal readonly TaskCompletionSource Drained = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal readonly HashSet<Request> Requests = new(ReferenceEqualityComparer.Instance);
+        internal readonly List<Task> Sends = [];
+        internal readonly List<StatusPendingPurgeResponse> Responses = [];
+        internal Task? NativeTask;
+        internal string? RequestSha256;
+        internal Action? ValidateCustody;
+        internal int Factories, SendCount;
+        internal bool FactoryActive, Sending, HookReturned, Success, Finished;
+    }
+
+    private sealed class StatusDeniedVaultRecoverRegistration(Window window)
+    {
+        internal readonly Window Window = window;
+        internal readonly List<OwnedArmResponse.Storage> Storage = [];
+        internal readonly List<StatusPendingPurgeResponse> Responses = [];
+        internal readonly ManagementScope InitialScope = window.Binding.Resource;
+        internal readonly FixtureSelector BindingSelector = window.Binding.Selector;
+        internal VaultConfiguration? Configuration;
+        internal bool DisposalComplete, DisposalFailed;
+        internal Action? BeforeSend;
+        internal VaultAdministration? Client;
+        internal VaultScope? Scope;
+        internal ManagementReceipt? Receipt;
+        internal ManagementOperation? Handle;
+        internal StatusDeniedVaultRecoverSlot? Start, Selected;
+        internal StatusPendingPurgeStartFacts? Candidate;
+        internal StatusDeniedVaultRecoverStartProof? StartProof;
+        internal StatusDeniedVaultRecoverDeniedProof? DeniedProof;
+        internal string? AuthorizationSha256;
+        internal Task<Capture>? SealTask;
+        internal bool Invalid, Revoked, Sealed, AdmissionClosed;
+    }
+
+    private sealed record StatusDeniedVaultRecoverContext(StatusDeniedVaultRecoverRegistration Registration,
+        StatusDeniedVaultRecoverSlot Slot, bool Start);
+    private readonly AsyncLocal<StatusDeniedVaultRecoverContext?> currentStatusDeniedVaultRecover = new();
+    private readonly Dictionary<Window, StatusDeniedVaultRecoverRegistration> statusDeniedVaultRecovers =
+        new(ReferenceEqualityComparer.Instance);
+
+    private static bool StatusDeniedVaultRecoverSelector(FixtureSelector selector) =>
+        selector is { Operation: "a.management.ManagementOperation.CheckStatusAsync",
+            Variant: "operation.RecoverVault", Case: "denied-authority" };
+
+    internal Window ArmStatusDeniedVaultRecover(Binding binding)
+    {
+        Require(binding is not null && StatusDeniedVaultRecoverSelector(binding.Selector) &&
+            binding.Operation == ManagementMutation.RecoverVault &&
+            binding.Resource is VaultScope && binding.ApiRevision == "2026-02-01");
+        var window = Arm(binding);
+        lock (gate) statusDeniedVaultRecovers.Add(window, new(window));
+        return window;
+    }
+
+    private StatusDeniedVaultRecoverRegistration RequireStatusDeniedVaultRecover(Window window, FixtureSelector selector)
+    {
+        Own(window, selector);
+        Require(ReferenceEquals(window.Binding.Selector, selector) && StatusDeniedVaultRecoverSelector(selector));
+        Require(statusDeniedVaultRecovers.TryGetValue(window, out var r) && ReferenceEquals(r.Window, window));
+        return r;
+    }
+
+    private bool StatusDeniedVaultRecoverTargetValid(StatusDeniedVaultRecoverRegistration r, Binding binding) =>
+        ReferenceEquals(r.Window.Binding, binding) && ReferenceEquals(binding.Resource, r.Scope) &&
+        StatusDeniedVaultRecoverLive(r) && !r.AdmissionClosed &&
+        r.Start is { Finished: true, HookReturned: true, Success: true } &&
+        r.Start.Drained.Task.IsCompletedSuccessfully && r.StartProof is { } proof &&
+        ReferenceEquals(proof.Binding, binding) && ReferenceEquals(proof.StartTask, r.Start.NativeTask) &&
+        ReferenceEquals(targets.GetValueOrDefault(r.Window), proof.Target) &&
+        r.Receipt!.Evidence == DispatchEvidence.Pending;
+
+    private static bool StatusDeniedVaultRecoverHistoryValid(StatusDeniedVaultRecoverRegistration r) =>
+        !r.Invalid && !r.DisposalFailed &&
+        r.Responses.All(response => response.Valid);
+
+    private static bool StatusDeniedVaultRecoverLive(StatusDeniedVaultRecoverRegistration r) =>
+        StatusDeniedVaultRecoverHistoryValid(r) && !r.Revoked && !r.Sealed && !r.Window.Closed &&
+        !(r.Start?.Token.IsCancellationRequested ?? false) &&
+        !(r.Start?.Caller.IsCancellationRequested ?? false) &&
+        !(r.Selected?.Token.IsCancellationRequested ?? false) &&
+        !(r.Selected?.Caller.IsCancellationRequested ?? false);
+
+    internal async Task<SecretOutcome<ManagementOperation>> StartStatusDeniedVaultRecoverAsync(Window window,
+        FixtureSelector selector, VaultAdministration client, ManagementScope scope, ManagementOperationEffects.Input input,
+        ManagementReceipt receipt, CancellationToken token = default, Action<Task>? retained = null,
+        Action? beforeSend = null)
+    {
+        ArgumentNullException.ThrowIfNull(client);
+        ArgumentNullException.ThrowIfNull(receipt);
+        StatusDeniedVaultRecoverRegistration r;
+        StatusDeniedVaultRecoverSlot slot;
+        lock (gate)
+        {
+            r = RequireStatusDeniedVaultRecover(window, selector);
+            bool valid = StatusDeniedVaultRecoverLive(r) && !r.AdmissionClosed && r.Start is null && window.Start is null &&
+                scope is VaultScope && ReferenceEquals(window.Binding.Resource, r.InitialScope) &&
+                Route(window.Binding with { Resource = scope }) == Route(window.Binding) &&
+                input is not null && InputMatches(window.Binding, input) &&
+                input.StatusOperation == ManagementMutation.RecoverVault &&
+                receipt.Evidence == DispatchEvidence.NotDispatched &&
+                !token.IsCancellationRequested && !startedWindows.Contains(window);
+            r.Invalid |= !valid;
+            Require(valid);
+            window.Binding.Resource = scope;
+            r.BeforeSend = beforeSend;
+            r.Client = client;
+            r.Scope = (VaultScope)scope;
+            r.Configuration = new(input!.Location, input.TenantId, input.Sku, true, false, input.RetentionDays, true);
+            r.Receipt = receipt;
+            r.Start = slot = new(token, token);
+            window.Start = slot.Invocation;
+            startedWindows.Add(window);
+        }
+        try
+        {
+            var previous = currentStatusDeniedVaultRecover.Value;
+            currentStatusDeniedVaultRecover.Value = new(r, slot, true);
+            Task<SecretOutcome<ManagementOperation>> task;
+            try
+            {
+                task = client.RecoverVaultAsync((VaultScope)scope, r.Configuration!, receipt, token).AsTask();
+                slot.NativeTask = slot.Invocation.SdkTask = task;
+            }
+            finally { currentStatusDeniedVaultRecover.Value = previous; }
+            try { retained?.Invoke(task); slot.HookReturned = true; }
+            finally
+            {
+                var result = await task.ConfigureAwait(false);
+                r.Handle = result.IsSuccess ? result.Value : null;
+                slot.Invocation.Outcome = result.Status;
+                slot.Invocation.WrapperState = r.Handle?.State;
+                slot.Invocation.HasNativeHandle = r.Handle is not null;
+                slot.Success = result.IsSuccess && r.Handle?.State == NativeProvisioningState.Pending &&
+                    receipt.Evidence == DispatchEvidence.Pending;
+            }
+            return await task.ConfigureAwait(false);
+        }
+        catch { r.Invalid = true; throw; }
+        finally { await FinishStatusDeniedVaultRecoverAsync(r, slot, start: true).ConfigureAwait(false); }
+    }
+
+    internal async Task<SecretStatus> CheckStatusDeniedVaultRecoverAsync(Window window, FixtureSelector selector,
+        ManagementOperation handle, CancellationToken token, Action<Task>? retained = null,
+        CancellationToken originalCallerToken = default)
+    {
+        StatusDeniedVaultRecoverRegistration r;
+        StatusDeniedVaultRecoverSlot slot;
+        lock (gate)
+        {
+            r = RequireStatusDeniedVaultRecover(window, selector);
+            // A foreign handle cannot consume or invalidate the owned one-use check.
+            Require(ReferenceEquals(r.Handle, handle));
+            bool valid = StatusDeniedVaultRecoverTargetValid(r, window.Binding) && r.StartProof is not null &&
+                r.Start is { Finished: true } && r.Start.Drained.Task.IsCompletedSuccessfully &&
+                r.Selected is null && ReferenceEquals(r.Handle, handle) &&
+                handle.State == NativeProvisioningState.Pending && r.Receipt!.Evidence == DispatchEvidence.Pending &&
+                !token.IsCancellationRequested && !originalCallerToken.IsCancellationRequested;
+            r.Invalid |= !valid;
+            Require(valid);
+            r.Selected = slot = new(token, originalCallerToken);
+            window.Status = slot.Invocation;
+        }
+        try
+        {
+            var previous = currentStatusDeniedVaultRecover.Value;
+            currentStatusDeniedVaultRecover.Value = new(r, slot, false);
+            Task<SecretStatus> task;
+            try
+            {
+                task = handle.CheckStatusAsync(token).AsTask();
+                slot.NativeTask = slot.Invocation.SdkTask = task;
+            }
+            finally { currentStatusDeniedVaultRecover.Value = previous; }
+            try { retained?.Invoke(task); slot.HookReturned = true; }
+            finally
+            {
+                var result = await task.ConfigureAwait(false);
+                slot.Invocation.Outcome = result;
+                slot.Invocation.WrapperState = handle.State;
+                slot.Success = result == SecretStatus.Denied && handle.State == NativeProvisioningState.Failed &&
+                    r.Receipt!.Evidence == DispatchEvidence.Pending;
+            }
+            return await task.ConfigureAwait(false);
+        }
+        catch { r.Invalid = true; throw; }
+        finally { await FinishStatusDeniedVaultRecoverAsync(r, slot, start: false).ConfigureAwait(false); }
+    }
+
+    private async Task FinishStatusDeniedVaultRecoverAsync(StatusDeniedVaultRecoverRegistration r, StatusDeniedVaultRecoverSlot slot, bool start)
+    {
+        try
+        {
+            if (slot.NativeTask is not null)
+                try { await slot.NativeTask.ConfigureAwait(false); } catch { r.Invalid = true; }
+            Task[] sends;
+            lock (gate) sends = slot.Sends.ToArray();
+            try { await Task.WhenAll(sends).ConfigureAwait(false); } catch { r.Invalid = true; }
+            try { slot.ValidateCustody?.Invoke(); } catch { r.Invalid = true; }
+            if (!start)
+            {
+                // Both actual native tasks, retention hooks and sends have ended.
+                // Validate the installed parsers before and after physical disposal.
+                try { r.Start?.ValidateCustody?.Invoke(); } catch { r.Invalid = true; }
+                r.Invalid |= !StatusDeniedVaultRecoverHistoryValid(r) || slot.FactoryActive || slot.Sending ||
+                    r.Start is not { Finished: true, FactoryActive: false, Sending: false };
+                foreach (var storage in r.Storage)
+                    try { storage.Dispose(); } catch { r.DisposalFailed = r.Invalid = true; }
+                r.Storage.Clear();
+                r.DisposalComplete = !r.DisposalFailed;
+                r.Invalid |= !StatusDeniedVaultRecoverHistoryValid(r);
+            }
+            lock (gate)
+            {
+                bool valid = StatusDeniedVaultRecoverLive(r) && !slot.Token.IsCancellationRequested &&
+                    slot.NativeTask is { IsCompletedSuccessfully: true } && slot.HookReturned && slot.Success &&
+                    slot.RequestSha256 is not null && slot.ValidateCustody is not null && !slot.FactoryActive && !slot.Sending && slot.Factories == 1 && slot.SendCount == 1 &&
+                    slot.Sends.Count == 1 && (start ? slot.Responses.Count == 1 && r.Candidate is not null :
+                        slot.Responses.Count == 1 && r.DisposalComplete) &&
+                    r.Receipt!.Evidence == DispatchEvidence.Pending;
+                r.Invalid |= !valid;
+                if (valid && start && r.Candidate is { } candidate)
+                {
+                    r.StartProof = new(candidate.Binding, candidate.Target, candidate.ResponseBytes,
+                        candidate.RequestSha256, candidate.NativeRequestId, slot.NativeTask!, r.Configuration!);
+                    targets[r.Window] = candidate.Target;
+                    eligible.Add(r.Window);
+                }
+                else if (valid && !start && r.StartProof is not null)
+                {
+                    var body = slot.Responses[0].Body;
+                    r.DeniedProof = new(r.StartProof, slot.NativeTask!, body.Response.Status, body.Bytes.Length,
+                        slot.RequestSha256!, body.Sha256, body.NativeRequestId);
+                }
+                else r.Invalid = true;
+            }
+        }
+        finally
+        {
+            lock (gate)
+            {
+                slot.Finished = slot.Invocation.Terminated = true;
+                slot.Invocation.Drained.TrySetResult();
+                slot.Drained.TrySetResult();
+            }
+        }
+    }
+
+    internal bool TryGetStatusDeniedVaultRecoverStart(Window window, Binding binding, VaultAdministration client,
+        VaultScope scope, ManagementReceipt receipt, Task startTask, ManagementOperation handle,
+        [NotNullWhen(true)] out StatusDeniedVaultRecoverStartProof? proof)
+    {
+        lock (gate)
+        {
+            proof = null;
+            if (window is null || binding is null || client is null || scope is null || receipt is null ||
+                startTask is null || handle is null || !ReferenceEquals(window.Owner, owner) ||
+                !statusDeniedVaultRecovers.TryGetValue(window, out var r) || !StatusDeniedVaultRecoverSelector(binding.Selector) ||
+                !ReferenceEquals(window.Binding, binding) || !ReferenceEquals(r.Window, window) ||
+                !ReferenceEquals(binding.Selector, r.BindingSelector) ||
+                !ReferenceEquals(r.Client, client) || !ReferenceEquals(r.Scope, scope) ||
+                !ReferenceEquals(binding.Resource, scope) || !ReferenceEquals(r.Receipt, receipt) ||
+                !ReferenceEquals(r.Handle, handle) || !ReferenceEquals(r.Start?.NativeTask, startTask) ||
+                r.Start is not { Finished: true, HookReturned: true, Success: true } ||
+                !r.Start.Drained.Task.IsCompletedSuccessfully || !startTask.IsCompletedSuccessfully ||
+                !StatusDeniedVaultRecoverHistoryValid(r) || r.AdmissionClosed || r.Sealed || r.Revoked || window.Closed ||
+                r.Start.Token.IsCancellationRequested || r.Start.Caller.IsCancellationRequested ||
+                (r.Selected?.Token.IsCancellationRequested ?? false) ||
+                (r.Selected?.Caller.IsCancellationRequested ?? false) ||
+                receipt.Evidence != DispatchEvidence.Pending || r.StartProof is not { } issued ||
+                !ReferenceEquals(issued.StartTask, startTask) ||
+                !ReferenceEquals(targets.GetValueOrDefault(window), issued.Target))
+                return false;
+            proof = issued;
+            return true;
+        }
+    }
+
+    internal bool TryGetStatusDeniedVaultRecoverDenied(Window window, Binding binding, VaultAdministration client,
+        VaultScope scope, ManagementReceipt receipt, Task startTask, ManagementOperation handle, Task checkTask,
+        [NotNullWhen(true)] out StatusDeniedVaultRecoverDeniedProof? proof)
+    {
+        lock (gate)
+        {
+            proof = null;
+            if (!TryGetStatusDeniedVaultRecoverStart(window, binding, client, scope, receipt, startTask, handle, out var start) ||
+                !statusDeniedVaultRecovers.TryGetValue(window, out var r) ||
+                r.Selected is not { Finished: true, HookReturned: true, Success: true } selected ||
+                !selected.Drained.Task.IsCompletedSuccessfully || !ReferenceEquals(selected.NativeTask, checkTask) ||
+                !checkTask.IsCompletedSuccessfully || handle.State != NativeProvisioningState.Failed ||
+                r.DeniedProof is not { } issued || !ReferenceEquals(issued.Start, start) ||
+                !ReferenceEquals(issued.CheckTask, checkTask))
+                return false;
+            proof = issued;
+            return true;
+        }
+    }
+
+    internal void RevokeStatusDeniedVaultRecoverSelected(Window window)
+    {
+        lock (gate)
+        {
+            var r = RequireStatusDeniedVaultRecover(window, window.Binding.Selector);
+            r.Invalid |= r.Start is not { Finished: true } || r.Selected is not { Finished: true } ||
+                r.DeniedProof is null || !StatusDeniedVaultRecoverHistoryValid(r) ||
+                r.Start.Token.IsCancellationRequested || r.Selected.Token.IsCancellationRequested ||
+                r.Selected.Caller.IsCancellationRequested;
+            r.Revoked = window.Closed = true;
+        }
+    }
+
+    private Task<Capture> SealStatusDeniedVaultRecoverAsync(Window window)
+    {
+        StatusDeniedVaultRecoverRegistration r;
+        TaskCompletionSource ready;
+        Task<Capture> task;
+        lock (gate)
+        {
+            r = RequireStatusDeniedVaultRecover(window, window.Binding.Selector);
+            r.AdmissionClosed = true;
+            if (r.SealTask is not null) return r.SealTask;
+            ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            task = r.SealTask = Drain(ready.Task);
+        }
+        ready.SetResult();
+        return task;
+
+        async Task<Capture> Drain(Task admission)
+        {
+            await admission.ConfigureAwait(false);
+            var tasks = new[] { r.Start, r.Selected }.OfType<StatusDeniedVaultRecoverSlot>()
+                .Select(slot => slot.Drained.Task).ToArray();
+            await Task.WhenAll(tasks).ConfigureAwait(false);
+            r.Invalid |= !StatusDeniedVaultRecoverHistoryValid(r);
+            foreach (var storage in r.Storage)
+                try { storage.Dispose(); } catch { r.DisposalFailed = r.Invalid = true; }
+            r.Storage.Clear();
+            r.DisposalComplete = !r.DisposalFailed;
+            r.Invalid |= !StatusDeniedVaultRecoverHistoryValid(r);
+            lock (gate) r.Sealed = r.Revoked = window.Closed = true;
+            r.AuthorizationSha256 = null;
+            Require(!r.DisposalFailed);
+            return new() { Binding = window.Binding, Start = r.Start?.Invocation, Status = r.Selected?.Invocation };
+        }
+    }
+
+    private async Task SendStatusDeniedVaultRecoverAsync(StatusDeniedVaultRecoverContext context, HttpMessage message)
+    {
+        var r = context.Registration;
+        var slot = context.Slot;
+        bool start = context.Start;
+        var request = message.Request;
+        var headers = request.Headers.ToArray();
+        var storage = new OwnedArmResponse.Storage();
+        RequestContent? frozen = null;
+        byte[]? dispatchBytes = null;
+        var attempt = new Attempt { Dispatch = Guid.NewGuid() };
+        try
+        {
+            lock (gate)
+            {
+                bool valid = StatusDeniedVaultRecoverLive(r) && !slot.Finished && !slot.Sending &&
+                    slot.Requests.Contains(request) && ++slot.SendCount == 1 && slot.Responses.Count == 0;
+                r.Invalid |= !valid;
+                Require(valid);
+                slot.Sending = slot.Invocation.Sending = true;
+                r.Storage.Add(storage);
+            }
+            if (start)
+            {
+                var originalContent = request.Content;
+                Require(originalContent is not null);
+                storage.Own(originalContent);
+                Require(originalContent.TryComputeLength(out long length) && length > 0 && length <= maximumBytes);
+                byte[] staging = new byte[maximumBytes];
+                storage.Own(staging);
+                using var buffer = new MemoryStream(staging, 0, staging.Length, true, true);
+                await originalContent.WriteToAsync(buffer, message.CancellationToken).ConfigureAwait(false);
+                Require(buffer.Position == length && ReferenceEquals(message.Request, request) &&
+                    ReferenceEquals(request.Content, originalContent) && headers.SequenceEqual(request.Headers));
+                dispatchBytes = staging.AsSpan(0, (int)length).ToArray();
+                storage.Own(dispatchBytes);
+                ValidateCreateVaultRequest(dispatchBytes, r.Configuration!, recover: true);
+                frozen = RequestContent.Create(dispatchBytes);
+                storage.Own(frozen);
+                request.Content = frozen;
+                if (request.Headers.TryGetValue("Content-Length", out var declared))
+                    Require(declared == length.ToString(CultureInfo.InvariantCulture));
+            }
+            void Check()
+            {
+                Require(StatusDeniedVaultRecoverLive(r) && !slot.Token.IsCancellationRequested &&
+                    !slot.Caller.IsCancellationRequested && !message.CancellationToken.IsCancellationRequested &&
+                    ReferenceEquals(message.Request, request) && headers.SequenceEqual(request.Headers));
+                if (start)
+                {
+                    var uri = request.Uri.ToUri();
+                    Require(Trusted(uri) && uri.AbsolutePath == r.Window.Path && uri.Query == "?api-version=2026-02-01" &&
+                        request.Method == RequestMethod.Put && ReferenceEquals(request.Content, frozen) &&
+                        request.Headers.TryGetValue("Authorization", out var auth) &&
+                        auth.StartsWith("Bearer ", StringComparison.Ordinal) && auth.Length > 7 &&
+                        request.Headers.TryGetValue("Content-Type", out var type) &&
+                        type.Split(';')[0].Trim().Equals("application/json", StringComparison.OrdinalIgnoreCase) &&
+                        !request.Headers.Contains("Content-Encoding") && !request.Headers.Contains("Transfer-Encoding") &&
+                        !request.Headers.Contains("Content-Range"));
+                    if (request.Headers.TryGetValue("Host", out var host)) Require(host == "management.azure.com");
+                }
+                else OriginalVaultRequest(message, r.Window.Path, RequestMethod.Get, r.StartProof!.Target.TargetUri.AbsoluteUri);
+                Headers(headers);
+                Require(!request.Headers.Contains("Range"));
+            }
+            Check();
+            Require(r.Receipt!.Evidence == (start ? DispatchEvidence.PossiblyDispatched : DispatchEvidence.Pending));
+            byte[] requestIdentity = System.Text.Encoding.UTF8.GetBytes(request.Method + " " + request.Uri.ToUri().AbsoluteUri);
+            storage.Own(requestIdentity);
+            attempt = new() { Dispatch = attempt.Dispatch,
+                RequestSha256 = Convert.ToHexString(SHA256.HashData(start ? dispatchBytes! : requestIdentity)) };
+            lock (gate)
+            {
+                slot.RequestSha256 = attempt.RequestSha256;
+                slot.Invocation.Attempts.Add(attempt);
+            }
+            request.Headers.TryGetValue("Authorization", out var authorization);
+            byte[] authorizationBytes = System.Text.Encoding.UTF8.GetBytes(authorization!);
+            string authorizationSha256;
+            try { authorizationSha256 = Convert.ToHexString(SHA256.HashData(authorizationBytes)); }
+            finally { CryptographicOperations.ZeroMemory(authorizationBytes); }
+            if (start) r.AuthorizationSha256 = authorizationSha256;
+            else Require(r.AuthorizationSha256 == authorizationSha256);
+            message.BufferResponse = false;
+            if (start) r.BeforeSend?.Invoke();
+            Check();
+            try { await backend.ProcessAsync(message).ConfigureAwait(false); }
+            finally { if (message.HasResponse) storage.Own(message.Response); }
+            Check();
+            Require(message.HasResponse);
+            var original = message.Response;
+            var stream = original.ContentStream;
+            var body = await OwnedArmResponse.CaptureAsync(message, maximumBytes, storage,
+                allowContinuation: start).ConfigureAwait(false);
+            Check();
+            Require(ReferenceEquals(original.ContentStream, stream) && body.Bytes.Length > 0 &&
+                (start ? body.Response.Status == 201 : body.Response.Status is 401 or 403));
+            Require(body.Response.Headers.TryGetValue("Content-Type", out var contentType));
+            string[] media = contentType.Split(';').Select(value => value.Trim()).ToArray();
+            Require(media.Length is 1 or 2 && media[0].Equals("application/json", StringComparison.OrdinalIgnoreCase) &&
+                (media.Length == 1 || media[1].Equals("charset=utf-8", StringComparison.OrdinalIgnoreCase)));
+            string? next = Continuation(r.Window, message);
+            using var json = JsonDocument.Parse(body.Bytes, new JsonDocumentOptions { MaxDepth = 16 });
+            int nodes = 512;
+            JsonRows(json.RootElement, ref nodes);
+            var root = json.RootElement;
+            if (start)
+            {
+                Require(next is not null && root.ValueKind == JsonValueKind.Object &&
+                    !new[] { "error", "errors", "partial", "nextLink", "value", "status" }
+                        .Any(name => root.TryGetProperty(name, out _)));
+                var state = root.GetProperty("properties").GetProperty("provisioningState").GetString();
+                Require(state is "Creating" or "Updating");
+                _ = VaultFixtureProvisioner.ParseOwnedVaultResource(r.Window.Path, r.BindingSelector.Nonce,
+                    root, CreateVaultConfiguration(r.Configuration!), state!, recover: true);
+                byte[] targetBytes = System.Text.Encoding.UTF8.GetBytes(next!);
+                try
+                {
+                    var target = new StatusTarget(r.Window.Binding, attempt.Dispatch, StatusTargetKind.Operation, new Uri(next!),
+                        Convert.ToHexString(SHA256.HashData(targetBytes)), body.Sha256);
+                    r.Candidate = new(r.Window.Binding, target, body.Bytes.Length, attempt.RequestSha256!, body.NativeRequestId);
+                }
+                finally { CryptographicOperations.ZeroMemory(targetBytes); }
+            }
+            else
+            {
+                Require(next is null && root.ValueKind == JsonValueKind.Object && root.EnumerateObject().All(p => p.Name == "error") &&
+                    root.TryGetProperty("error", out var error) && error.ValueKind == JsonValueKind.Object &&
+                    error.EnumerateObject().All(p => p.Name is "code" or "message") &&
+                    error.TryGetProperty("code", out var code) && code.ValueKind == JsonValueKind.String &&
+                    code.GetString() is { Length: > 0 and <= 128 } errorCode && !errorCode.Any(char.IsControl) &&
+                    error.TryGetProperty("message", out var text) && text.ValueKind == JsonValueKind.String &&
+                    text.GetString() is { Length: > 0 and <= 2048 } errorMessage && !errorMessage.Any(char.IsControl));
+            }
+            var parser = OwnedArmResponse.ParserCustody.Install(message, body.Response, body.Bytes, storage,
+                requireRebuffer: true, requireDownstreamRead: !start);
+            var frame = new StatusPendingPurgeResponse(body, parser, storage);
+            lock (gate)
+            {
+                slot.Responses.Add(frame);
+                r.Responses.Add(frame);
+                attempt.HttpStatus = body.Response.Status;
+                attempt.ResponseSha256 = body.Sha256;
+                attempt.ResponseObserved = true;
+                attempt.HasProviderContinuation = next is not null;
+                attempt.State = start ? WireState.Pending : WireState.Denied;
+                attempt.Valid = true;
+            }
+            // Inspect retained wire custody only after the real native borrower ends.
+            // SDK request disposal may dispose headers; it must not change the
+            // request route/content or the original host response identity.
+            var originalHeaders = body.Response.Headers.ToArray();
+            string originalRequestId = body.Response.ClientRequestId;
+            string originalReason = body.Response.ReasonPhrase;
+            int originalStatus = body.Response.Status;
+            string requestUri = request.Uri.ToUri().AbsoluteUri;
+            var requestMethod = request.Method;
+            slot.ValidateCustody = () =>
+            {
+                Require(ReferenceEquals(message.Request, request) && request.Method == requestMethod &&
+                    request.Uri.ToUri().AbsoluteUri == requestUri && ReferenceEquals(request.Content, frozen) &&
+                    original.Status == originalStatus && original.ReasonPhrase == originalReason &&
+                    original.ClientRequestId == originalRequestId && originalHeaders.SequenceEqual(original.Headers) &&
+                    ReferenceEquals(original.ContentStream, stream) &&
+                    Convert.ToHexString(SHA256.HashData(body.Bytes.Span)) == body.Sha256 &&
+                    (!start || Convert.ToHexString(SHA256.HashData(dispatchBytes!)) == attempt.RequestSha256));
+                try
+                {
+                    var remainingHeaders = request.Headers.ToArray();
+                    Require(remainingHeaders.Length == 0 || headers.SequenceEqual(remainingHeaders));
+                }
+                catch (ObjectDisposedException) { }
+            };
+            // Initial201 proves ControlledTransport EOF/exact rebuffer, not a
+            // deferred generated model read. Denial requires its native parser.
+            Require(!slot.Token.IsCancellationRequested && !slot.Caller.IsCancellationRequested &&
+                !message.CancellationToken.IsCancellationRequested && !r.Revoked && !r.Sealed && !r.Window.Closed &&
+                ReferenceEquals(message.Request, request) && ReferenceEquals(request.Content, frozen) &&
+                headers.SequenceEqual(request.Headers));
+        }
+        catch { r.Invalid = true; attempt.Valid = false; throw; }
+        finally
+        {
+            lock (gate)
+            {
+                attempt.TransportTerminated = true;
+                slot.Sending = slot.Invocation.Sending = false;
+            }
+        }
+    }
+
     internal sealed class StatusDeniedVaultUpdateStartProof(Binding binding, StatusTarget target,
         int responseBytes, string requestSha256, string nativeRequestId, Task startTask, VaultConfiguration configuration)
     {
@@ -12180,6 +12761,9 @@ internal sealed class ManagementOperationNativeCapture
             target = null;
             if (window is null || !ReferenceEquals(window.Owner, owner) || !eligible.Contains(window) ||
                 window.Binding != expectedBinding ||
+                StatusDeniedVaultRecoverSelector(window.Binding.Selector) &&
+                    (!statusDeniedVaultRecovers.TryGetValue(window, out var deniedVaultRecover) ||
+                        !StatusDeniedVaultRecoverTargetValid(deniedVaultRecover, expectedBinding)) ||
                 StatusDeniedVaultUpdateSelector(window.Binding.Selector) &&
                     (!statusDeniedVaultUpdates.TryGetValue(window, out var deniedVaultUpdate) ||
                         !StatusDeniedVaultUpdateTargetValid(deniedVaultUpdate, expectedBinding)) ||
@@ -12233,6 +12817,9 @@ internal sealed class ManagementOperationNativeCapture
         lock (gate)
             return target is not null && target.Binding == expectedBinding &&
                 targets.Any(pair => ReferenceEquals(pair.Value, target) && eligible.Contains(pair.Key) &&
+                    (!StatusDeniedVaultRecoverSelector(pair.Key.Binding.Selector) ||
+                        statusDeniedVaultRecovers.TryGetValue(pair.Key, out var deniedVaultRecover) &&
+                        StatusDeniedVaultRecoverTargetValid(deniedVaultRecover, expectedBinding)) &&
                     (!StatusDeniedVaultUpdateSelector(pair.Key.Binding.Selector) ||
                         statusDeniedVaultUpdates.TryGetValue(pair.Key, out var deniedVaultUpdate) &&
                         StatusDeniedVaultUpdateTargetValid(deniedVaultUpdate, expectedBinding)) &&
@@ -12282,6 +12869,8 @@ internal sealed class ManagementOperationNativeCapture
     {
         lock (gate)
             return window is not null && ReferenceEquals(window.Owner, owner) &&
+                !StatusDeniedVaultRecoverSelector(window.Binding.Selector) &&
+                !statusDeniedVaultRecovers.ContainsKey(window) &&
                 !StatusDeniedVaultUpdateSelector(window.Binding.Selector) &&
                 !statusDeniedVaultUpdates.ContainsKey(window) &&
                 !StatusDeniedPrivateConnectionDeleteSelector(window.Binding.Selector) &&
@@ -13378,6 +13967,7 @@ internal sealed class ManagementOperationNativeCapture
         lock (gate)
         {
             Own(window, selector);
+            Require(!statusDeniedVaultRecovers.ContainsKey(window));
             Require(!statusDeniedVaultUpdates.ContainsKey(window));
             Require(!statusDeniedPrivateConnectionDeletes.ContainsKey(window));
             Require(!statusDeniedPurges.ContainsKey(window));
@@ -13653,6 +14243,11 @@ internal sealed class ManagementOperationNativeCapture
         ManagementOperation handle, CancellationToken token = default, Action<Task>? retained = null,
         CancellationToken? originalCallerToken = null)
     {
+        bool deniedVaultRecover;
+        lock (gate) deniedVaultRecover = statusDeniedVaultRecovers.ContainsKey(window);
+        if (deniedVaultRecover)
+            return await CheckStatusDeniedVaultRecoverAsync(window, selector, handle, token, retained,
+                originalCallerToken ?? token).ConfigureAwait(false);
         bool deniedVaultUpdate;
         lock (gate) deniedVaultUpdate = statusDeniedVaultUpdates.ContainsKey(window);
         if (deniedVaultUpdate)
@@ -13947,6 +14542,9 @@ internal sealed class ManagementOperationNativeCapture
     // No cancellation/timeout may turn a still-running SDK task into a drain.
     internal async Task<Capture> SealAsync(Window window)
     {
+        bool deniedVaultRecover;
+        lock (gate) deniedVaultRecover = statusDeniedVaultRecovers.ContainsKey(window);
+        if (deniedVaultRecover) return await SealStatusDeniedVaultRecoverAsync(window).ConfigureAwait(false);
         bool deniedVaultUpdate;
         lock (gate) deniedVaultUpdate = statusDeniedVaultUpdates.ContainsKey(window);
         if (deniedVaultUpdate) return await SealStatusDeniedVaultUpdateAsync(window).ConfigureAwait(false);
@@ -14772,6 +15370,32 @@ internal sealed class ManagementOperationNativeCapture
     {
         public override Request CreateRequest()
         {
+            if (source.currentStatusDeniedVaultRecover.Value is { } deniedVaultRecover)
+            {
+                var r = deniedVaultRecover.Registration;
+                var slot = deniedVaultRecover.Slot;
+                lock (source.gate)
+                {
+                    bool valid = StatusDeniedVaultRecoverLive(r) && !slot.Token.IsCancellationRequested &&
+                        !slot.Caller.IsCancellationRequested && !slot.Finished && !slot.FactoryActive && !slot.Sending &&
+                        ++slot.Factories == 1 && slot.SendCount == 0;
+                    r.Invalid |= !valid;
+                    Require(valid);
+                    slot.FactoryActive = true;
+                }
+                try
+                {
+                    var request = source.backend.CreateRequest();
+                    lock (source.gate)
+                    {
+                        Require(StatusDeniedVaultRecoverLive(r) && !slot.Token.IsCancellationRequested &&
+                            !slot.Caller.IsCancellationRequested && slot.Requests.Add(request));
+                    }
+                    return request;
+                }
+                catch { r.Invalid = true; throw; }
+                finally { lock (source.gate) slot.FactoryActive = false; }
+            }
             if (source.currentStatusDeniedVaultUpdate.Value is { } deniedVaultUpdate)
             {
                 var r = deniedVaultUpdate.Registration;
@@ -15148,6 +15772,8 @@ internal sealed class ManagementOperationNativeCapture
         }
         public override void Process(HttpMessage message)
         {
+            if (source.currentStatusDeniedVaultRecover.Value is { } deniedVaultRecover)
+                deniedVaultRecover.Registration.Invalid = true;
             if (source.currentStatusDeniedVaultUpdate.Value is { } deniedVaultUpdate)
                 deniedVaultUpdate.Registration.Invalid = true;
             if (source.currentStatusDeniedPrivateConnectionDelete.Value is { } deniedPrivateDelete)
@@ -15208,6 +15834,12 @@ internal sealed class ManagementOperationNativeCapture
         }
         public override ValueTask ProcessAsync(HttpMessage message)
         {
+            if (source.currentStatusDeniedVaultRecover.Value is { } deniedVaultRecover)
+            {
+                var task = source.SendStatusDeniedVaultRecoverAsync(deniedVaultRecover, message);
+                lock (source.gate) deniedVaultRecover.Slot.Sends.Add(task);
+                return new(task);
+            }
             if (source.currentStatusDeniedVaultUpdate.Value is { } deniedVaultUpdate)
             {
                 var task = source.SendStatusDeniedVaultUpdateAsync(deniedVaultUpdate, message);

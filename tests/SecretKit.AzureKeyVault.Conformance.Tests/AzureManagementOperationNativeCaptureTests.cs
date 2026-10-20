@@ -1853,6 +1853,7 @@ public sealed partial class AzureManagementOperationNativeCaptureTests
         private readonly bool statusDeniedNotificationUpdate;
         private readonly bool statusDeniedPrivateConnectionDelete;
         private readonly bool statusDeniedVaultUpdate;
+        private readonly bool statusDeniedVaultRecover;
         private readonly bool statusNotificationCreateIndependent;
         private readonly bool statusPrivateUpdateIndependent;
         private readonly bool statusPendingPurge, statusPendingPurgeIndependent, statusPendingPurgeCancellation, statusFailedPurge, statusFailedPurgeIndependent, statusFailedPurgeCancellation, statusCanceledPurge, statusCanceledPurgeIndependent, statusCanceledPurgeCancellation;
@@ -1869,13 +1870,15 @@ public sealed partial class AzureManagementOperationNativeCaptureTests
             bool statusNotificationCreateIndependent = false, bool statusPrivateUpdateIndependent = false,
             bool statusPendingPurge = false, bool statusPendingPurgeIndependent = false, bool statusPendingPurgeCancellation = false, bool statusFailedPurge = false, bool statusFailedPurgeIndependent = false, bool statusFailedPurgeCancellation = false, bool statusCanceledPurge = false, bool statusCanceledPurgeIndependent = false, bool statusCanceledPurgeCancellation = false, bool statusUnknownNotificationUpdate = false, bool statusUnknownNotificationUpdateIndependent = false, bool statusUnknownNotificationUpdateCancellation = false,
             bool statusDeniedPurge = false, bool statusDeniedNotificationUpdate = false,
-            bool statusDeniedPrivateConnectionDelete = false, bool statusDeniedVaultUpdate = false)
+            bool statusDeniedPrivateConnectionDelete = false, bool statusDeniedVaultUpdate = false,
+            bool statusDeniedVaultRecover = false)
         {
             this.statusPrivateDeleteSelected = statusPrivateDeleteSelected;
             this.statusDeniedPurge = statusDeniedPurge;
             this.statusDeniedNotificationUpdate = statusDeniedNotificationUpdate;
             this.statusDeniedPrivateConnectionDelete = statusDeniedPrivateConnectionDelete;
             this.statusDeniedVaultUpdate = statusDeniedVaultUpdate;
+            this.statusDeniedVaultRecover = statusDeniedVaultRecover;
             this.statusNotificationDeleteIndependent = statusNotificationDeleteIndependent;
             this.statusSucceededDeleteVault = statusSucceededDeleteVault;
             this.statusSucceededDeleteVaultIndependent = statusSucceededDeleteVaultIndependent;
@@ -1914,7 +1917,7 @@ public sealed partial class AzureManagementOperationNativeCaptureTests
                 variant ?? "operation." + name, boundary), Guid.NewGuid(), scope, operation, "eastus", Revision);
             Input = new(null!, null!, Guid.Parse(Subscription), "capture-group", "eastus", Guid.Parse(Tenant),
                 VaultSku.Standard, 7, operation, Material, Guid.Parse(Assignment));
-            if (statusDeniedVaultUpdate || PurgeStatusWire || statusDeniedPurge)
+            if (statusDeniedVaultRecover || statusDeniedVaultUpdate || PurgeStatusWire || statusDeniedPurge)
             {
                 AudienceToken Arm(string role) => new(role, DateTimeOffset.MaxValue, "https://management.azure.com/.default");
                 Input = Input with { Arm = new(Arm("setup"), Arm("selected"), Arm("denied"), Arm("observer")) };
@@ -1981,13 +1984,14 @@ public sealed partial class AzureManagementOperationNativeCaptureTests
                 Backend.StatusPath = Notification;
             }
             Source = new(Backend, maximumBytes);
-            Window = statusDeniedVaultUpdate ? Source.ArmStatusDeniedVaultUpdate(Binding) :
+            Window = statusDeniedVaultRecover ? Source.ArmStatusDeniedVaultRecover(Binding) :
+                statusDeniedVaultUpdate ? Source.ArmStatusDeniedVaultUpdate(Binding) :
                 statusDeniedPrivateConnectionDelete ? Source.ArmStatusDeniedPrivateConnectionDelete(Binding) :
                 statusDeniedPurge ? Source.ArmStatusDeniedPurge(Binding) : Source.Arm(Binding);
             Scope = scope;
             Client = new(Credential, decorate?.Invoke(Source.SelectedTransport) ?? Source.SelectedTransport, maximumBytes);
             Receipt = Client.PrepareReceipt(Scope, operation);
-            if (statusDeniedVaultUpdate)
+            if (statusDeniedVaultRecover || statusDeniedVaultUpdate)
             {
                 Backend.StartBody = JsonSerializer.Serialize(new
                 {
@@ -1998,14 +2002,15 @@ public sealed partial class AzureManagementOperationNativeCaptureTests
                         tenantId = Tenant, sku = new { family = "A", name = "standard" },
                         provisioningState = "Updating", vaultUri = "https://capture-vault.vault.azure.net/",
                         enableRbacAuthorization = true, enableSoftDelete = true, enablePurgeProtection = false,
-                        softDeleteRetentionInDays = 7, publicNetworkAccess = "Enabled", createMode = "default",
+                        softDeleteRetentionInDays = 7, publicNetworkAccess = "Enabled", createMode = statusDeniedVaultRecover ? "recover" : "default",
                         accessPolicies = Array.Empty<object>(), privateEndpointConnections = Array.Empty<object>()
                     }
                 });
                 Backend.StartStatus = 201;
                 Backend.Targets.Add(("Location", StatusUrl));
                 Backend.Targets.Add(("Azure-AsyncOperation", StatusUrl));
-                Backend.ExtraHeaders.Add(("x-ms-request-id", "controlled-vault-update-denied"));
+                Backend.ExtraHeaders.Add(("x-ms-request-id", statusDeniedVaultRecover
+                    ? "controlled-vault-recover-denied" : "controlled-vault-update-denied"));
             }
             if (statusDeniedPrivateConnectionDelete)
             {
@@ -2061,7 +2066,9 @@ public sealed partial class AzureManagementOperationNativeCaptureTests
                 PendingClock ??= Source.EnrollStatusPendingPurge(Window, Binding, Client, (DeletedVaultScope)Scope,
                     Receipt, Input.Arm.Administrative.ExpiresAt, new(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(30)),
                     TimeSpan.FromSeconds(20), token);
-            var result = statusDeniedVaultUpdate
+            var result = statusDeniedVaultRecover
+                ? await Source.StartStatusDeniedVaultRecoverAsync(Window, Binding.Selector, Client, Scope, Input, Receipt, token, retained)
+                : statusDeniedVaultUpdate
                 ? await Source.StartStatusDeniedVaultUpdateAsync(Window, Binding.Selector, Client, Scope, Input, Receipt, token, retained)
                 : statusDeniedPurge
                 ? await Source.StartStatusDeniedPurgeAsync(Window, Binding.Selector, Client, Scope, Input, Receipt, token, retained)
@@ -2124,7 +2131,9 @@ public sealed partial class AzureManagementOperationNativeCaptureTests
             return result.Status;
         }
         internal Task<SecretStatus> Check(CancellationToken token = default, Action<Task>? retained = null) =>
-            statusDeniedVaultUpdate
+            statusDeniedVaultRecover
+                ? Source.CheckStatusDeniedVaultRecoverAsync(Window, Binding.Selector, Handle!, token, retained)
+                : statusDeniedVaultUpdate
                 ? Source.CheckStatusDeniedVaultUpdateAsync(Window, Binding.Selector, Handle!, token, retained)
                 : statusDeniedPurge
                 ? Source.CheckStatusDeniedPurgeAsync(Window, Binding.Selector, Handle!, token, retained).AsTask()
