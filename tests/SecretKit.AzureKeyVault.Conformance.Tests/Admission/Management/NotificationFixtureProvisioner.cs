@@ -67,6 +67,23 @@ internal sealed class NotificationFixtureProvisioner : IAsyncDisposable
         selector is not null && selector.Operation == "a.management.ManagementOperation.CheckStatusAsync" &&
         selector.Variant == "operation.UpdateNotification" && selector.Case == "independent-effect";
 
+    internal static bool StatusDeniedNotificationUpdateSelector(FixtureSelector selector) =>
+        selector is not null && selector.Operation == "a.management.ManagementOperation.CheckStatusAsync" &&
+        selector.Variant is "operation.UpdateNotification" or "operation.CreateOrUpdateNotification" &&
+        selector.Case == "denied-authority";
+
+    internal static bool StatusUnknownNotificationUpdateSelector(FixtureSelector selector) =>
+        selector is not null && selector.Operation == "a.management.ManagementOperation.CheckStatusAsync" &&
+        selector.Variant == "status.Unknown" && selector.Case == "selected-contract";
+
+    internal static bool StatusUnknownNotificationUpdateIndependentSelector(FixtureSelector selector) =>
+        selector is not null && selector.Operation == "a.management.ManagementOperation.CheckStatusAsync" &&
+        selector.Variant == "status.Unknown" && selector.Case == "independent-effect";
+
+    internal static bool StatusUnknownNotificationUpdateCancellationSelector(FixtureSelector selector) =>
+        selector is not null && selector.Operation == "a.management.ManagementOperation.CheckStatusAsync" &&
+        selector.Variant == "status.Unknown" && selector.Case == "cancellation-boundary";
+
     internal static bool StatusNotificationCreateIndependentSelector(FixtureSelector selector) =>
         selector is not null && selector.Operation == "a.management.ManagementOperation.CheckStatusAsync" &&
         selector.Variant == "operation.CreateOrUpdateNotification" && selector.Case == "independent-effect";
@@ -144,6 +161,102 @@ internal sealed class NotificationFixtureProvisioner : IAsyncDisposable
         internal DateTimeOffset StartedAt { get; } = startedAt;
         internal DateTimeOffset FinishedAt { get; } = finishedAt;
         public override string ToString() => "[StatusNotificationUpdateIndependentReadProof]";
+    }
+
+    internal enum StatusDeniedNotificationUpdateReadPhase { Baseline, Selected, Cleanup }
+
+    internal sealed class StatusDeniedNotificationUpdateReadProof(Plan plan, Guid dispatch, Task nativeTask,
+        string requestSha256, string responseSha256, string nativeRequestId, int httpStatus,
+        string nativeState, DateTimeOffset startedAt, DateTimeOffset finishedAt, StatusDeniedNotificationUpdateReadPhase phase)
+    {
+        internal Plan Plan { get; } = plan;
+        internal VaultFixtureProvisioner.Plan? Parent { get; } = plan.ObjectPlan;
+        internal string Owner { get; } = plan.Owner;
+        internal FixtureSelector Selector { get; } = plan.Selector;
+        internal Guid LeaseId { get; } = plan.LeaseId;
+        internal Guid SelectedDispatch { get; } = dispatch;
+        internal StatusDeniedNotificationUpdateReadPhase Phase { get; } = phase;
+        internal Task NativeTask { get; } = nativeTask;
+        internal string RequestSha256 { get; } = requestSha256;
+        internal string ResponseSha256 { get; } = responseSha256;
+        internal string NativeRequestId { get; } = nativeRequestId;
+        internal int HttpStatus { get; } = httpStatus;
+        internal string NativeState { get; } = nativeState;
+        internal DateTimeOffset StartedAt { get; } = startedAt;
+        internal DateTimeOffset FinishedAt { get; } = finishedAt;
+        public override string ToString() => "[StatusDeniedNotificationUpdateReadProof]";
+    }
+
+    internal enum StatusUnknownNotificationUpdateReadPhase { Baseline, SelectedUnknown, ReleaseTerminal }
+
+    internal sealed class StatusUnknownNotificationUpdateReadProof(Plan plan, Guid dispatch, Task nativeTask,
+        string requestSha256, string responseSha256, string nativeRequestId, int httpStatus,
+        string nativeState, DateTimeOffset startedAt, DateTimeOffset finishedAt, StatusUnknownNotificationUpdateReadPhase phase)
+    {
+        internal Plan Plan { get; } = plan;
+        internal VaultFixtureProvisioner.Plan? Parent { get; } = plan.ObjectPlan;
+        internal string Owner { get; } = plan.Owner;
+        internal FixtureSelector Selector { get; } = plan.Selector;
+        internal Guid LeaseId { get; } = plan.LeaseId;
+        internal Guid SelectedDispatch { get; } = dispatch;
+        internal StatusUnknownNotificationUpdateReadPhase Phase { get; } = phase;
+        internal Task NativeTask { get; } = nativeTask;
+        internal string RequestSha256 { get; } = requestSha256;
+        internal string ResponseSha256 { get; } = responseSha256;
+        internal string NativeRequestId { get; } = nativeRequestId;
+        internal int HttpStatus { get; } = httpStatus;
+        internal string NativeState { get; } = nativeState;
+        internal DateTimeOffset StartedAt { get; } = startedAt;
+        internal DateTimeOffset FinishedAt { get; } = finishedAt;
+        public override string ToString() => "[StatusUnknownNotificationUpdateReadProof]";
+    }
+
+    internal enum StatusUnknownNotificationUpdateIndependentReadPhase { Baseline, SelectedUnknown, ReleaseTerminal }
+
+    internal sealed class StatusUnknownNotificationUpdateIndependentReadProof(Plan plan, Guid dispatch, Task nativeTask,
+        string requestSha256, string responseSha256, string nativeRequestId, int httpStatus,
+        string nativeState, DateTimeOffset startedAt, DateTimeOffset finishedAt, StatusUnknownNotificationUpdateIndependentReadPhase phase)
+    {
+        internal Plan Plan { get; } = plan;
+        internal VaultFixtureProvisioner.Plan? Parent { get; } = plan.ObjectPlan;
+        internal string Owner { get; } = plan.Owner;
+        internal FixtureSelector Selector { get; } = plan.Selector;
+        internal Guid LeaseId { get; } = plan.LeaseId;
+        internal Guid SelectedDispatch { get; } = dispatch;
+        internal StatusUnknownNotificationUpdateIndependentReadPhase Phase { get; } = phase;
+        internal Task NativeTask { get; } = nativeTask;
+        internal string RequestSha256 { get; } = requestSha256;
+        internal string ResponseSha256 { get; } = responseSha256;
+        internal string NativeRequestId { get; } = nativeRequestId;
+        internal int HttpStatus { get; } = httpStatus;
+        internal string NativeState { get; } = nativeState;
+        internal DateTimeOffset StartedAt { get; } = startedAt;
+        internal DateTimeOffset FinishedAt { get; } = finishedAt;
+        public override string ToString() => "[StatusUnknownNotificationUpdateIndependentReadProof]";
+    }
+
+    internal enum StatusUnknownNotificationUpdateCancellationReadPhase { Baseline, SelectedUnknown, ReleaseTerminal }
+
+    internal sealed class StatusUnknownNotificationUpdateCancellationReadProof(Plan plan, Guid dispatch, Task nativeTask,
+        string requestSha256, string responseSha256, string nativeRequestId, int httpStatus,
+        string nativeState, DateTimeOffset startedAt, DateTimeOffset finishedAt, StatusUnknownNotificationUpdateCancellationReadPhase phase)
+    {
+        internal Plan Plan { get; } = plan;
+        internal VaultFixtureProvisioner.Plan? Parent { get; } = plan.ObjectPlan;
+        internal string Owner { get; } = plan.Owner;
+        internal FixtureSelector Selector { get; } = plan.Selector;
+        internal Guid LeaseId { get; } = plan.LeaseId;
+        internal Guid SelectedDispatch { get; } = dispatch;
+        internal StatusUnknownNotificationUpdateCancellationReadPhase Phase { get; } = phase;
+        internal Task NativeTask { get; } = nativeTask;
+        internal string RequestSha256 { get; } = requestSha256;
+        internal string ResponseSha256 { get; } = responseSha256;
+        internal string NativeRequestId { get; } = nativeRequestId;
+        internal int HttpStatus { get; } = httpStatus;
+        internal string NativeState { get; } = nativeState;
+        internal DateTimeOffset StartedAt { get; } = startedAt;
+        internal DateTimeOffset FinishedAt { get; } = finishedAt;
+        public override string ToString() => "[StatusUnknownNotificationUpdateCancellationReadProof]";
     }
 
     internal sealed class StatusNotificationCreateIndependentReadProof(Plan plan, Guid dispatch, Task nativeTask,
@@ -283,6 +396,10 @@ internal sealed class NotificationFixtureProvisioner : IAsyncDisposable
         internal StatusNotificationDeleteReadProof? StatusDeleteRead { get; init; }
         internal StatusNotificationDeleteIndependentReadProof? StatusDeleteIndependentRead { get; init; }
         internal StatusNotificationUpdateIndependentReadProof? StatusUpdateIndependentRead { get; init; }
+        internal StatusUnknownNotificationUpdateIndependentReadProof? StatusUnknownIndependentRead { get; init; }
+        internal StatusUnknownNotificationUpdateCancellationReadProof? StatusUnknownCancellationRead { get; init; }
+        internal StatusDeniedNotificationUpdateReadProof? StatusDeniedUpdateRead { get; init; }
+        internal StatusUnknownNotificationUpdateReadProof? StatusUnknownRead { get; init; }
         internal StatusNotificationCreateIndependentReadProof? StatusCreateIndependentRead { get; init; }
         internal StatusNotificationUpdateReadProof? StatusUpdateRead { get; init; }
         internal StatusNotificationCreateReadProof? StatusCreateRead { get; init; }
@@ -424,6 +541,558 @@ internal sealed class NotificationFixtureProvisioner : IAsyncDisposable
             preimage.Closing, settled, false, NotificationUpdateFixtureStage.Drain, [token, caller], tasks.ToArray())));
         lock (plans) notificationUpdatePending.Add(receipt, drain);
         PersistNotificationUpdateFixture(drain);
+    }
+
+    private enum DeniedNotificationUpdateFixtureStage { Admission, Drain, Absence }
+    private sealed record DeniedNotificationUpdateFixtureFacts(Plan Plan, RoleFixtureJournal.Snapshot Preimage,
+        RoleFixtureJournal.Snapshot Postimage, string ResourceId, Guid Dispatch, bool Delete, bool Settled, bool Final,
+        DeniedNotificationUpdateFixtureStage Stage, CancellationToken[] Tokens, Task[] Tasks)
+    {
+        public override string ToString() => "[DeniedNotificationUpdateFixtureFacts]";
+    }
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<object, DeniedNotificationUpdateFixtureFacts>
+        deniedNotificationUpdateFixtureFacts = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<Receipt, StatusDeniedNotificationUpdateFixtureDrain> deniedNotificationUpdatePending =
+        new(ReferenceEqualityComparer.Instance);
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, byte> deniedNotificationUpdateRevoked = new();
+
+    internal sealed class StatusDeniedNotificationUpdateFixtureAdmission(NotificationFixtureProvisioner source)
+    {
+        internal string ResourceId => source.deniedNotificationUpdateFixtureFacts.TryGetValue(this, out var f) ? f.ResourceId : "";
+        internal Guid Dispatch => source.deniedNotificationUpdateFixtureFacts.TryGetValue(this, out var f) ? f.Dispatch : Guid.Empty;
+        internal bool Delete => source.deniedNotificationUpdateFixtureFacts.TryGetValue(this, out var f) && f.Delete;
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.ValidateDeniedNotificationUpdateFixture(this, journal, state, DeniedNotificationUpdateFixtureStage.Admission);
+        public override string ToString() => "[StatusDeniedNotificationUpdateFixtureAdmission]";
+    }
+    internal sealed class StatusDeniedNotificationUpdateFixtureDrain(NotificationFixtureProvisioner source)
+    {
+        internal string ResourceId => source.deniedNotificationUpdateFixtureFacts.TryGetValue(this, out var f) ? f.ResourceId : "";
+        internal Guid Dispatch => source.deniedNotificationUpdateFixtureFacts.TryGetValue(this, out var f) ? f.Dispatch : Guid.Empty;
+        internal bool Settled => source.deniedNotificationUpdateFixtureFacts.TryGetValue(this, out var f) && f.Settled;
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.ValidateDeniedNotificationUpdateFixture(this, journal, state, DeniedNotificationUpdateFixtureStage.Drain);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.ValidateDeniedNotificationUpdateFixture(this, journal, state, DeniedNotificationUpdateFixtureStage.Drain, true);
+        public override string ToString() => "[StatusDeniedNotificationUpdateFixtureDrain]";
+    }
+    internal sealed class StatusDeniedNotificationUpdateAbsence(NotificationFixtureProvisioner source)
+    {
+        internal string ResourceId => source.deniedNotificationUpdateFixtureFacts.TryGetValue(this, out var f) ? f.ResourceId : "";
+        internal bool Final => source.deniedNotificationUpdateFixtureFacts.TryGetValue(this, out var f) && f.Final;
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.ValidateDeniedNotificationUpdateFixture(this, journal, state, DeniedNotificationUpdateFixtureStage.Absence);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.ValidateDeniedNotificationUpdateFixture(this, journal, state, DeniedNotificationUpdateFixtureStage.Absence, true);
+        internal bool ValidateParentDependency(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state,
+            VaultFixtureProvisioner.Plan parent) =>
+            source.deniedNotificationUpdateFixtureFacts.TryGetValue(this, out var f) &&
+            ReferenceEquals(f.Plan.ObjectPlan, parent) && f.Preimage.Closing && f.Postimage.Closing &&
+            source.ValidateDeniedNotificationUpdateFixture(this, journal, state, DeniedNotificationUpdateFixtureStage.Absence, true);
+        public override string ToString() => "[StatusDeniedNotificationUpdateAbsence]";
+    }
+    private bool ValidateDeniedNotificationUpdateFixture(object capability, RoleFixtureJournal candidateJournal,
+        RoleFixtureJournal.Snapshot state, DeniedNotificationUpdateFixtureStage stage, bool postimage = false) =>
+        ReferenceEquals(journal, candidateJournal) && deniedNotificationUpdateFixtureFacts.TryGetValue(capability, out var f) &&
+        !deniedNotificationUpdateRevoked.ContainsKey(f.Plan.Selector.Nonce) && !closed && f.Stage == stage &&
+        f.Tokens.All(t => !t.IsCancellationRequested) && f.Tasks.All(t => t.IsCompleted) &&
+        RoleFixtureJournal.SameStatusDeniedNotificationUpdateSnapshot(postimage ? f.Postimage : f.Preimage, state);
+
+    private static RoleFixtureJournal.Snapshot FreezeDeniedNotificationUpdateFixture(RoleFixtureJournal.Snapshot state) =>
+        state with { Selector = state.Selector with { }, Resources = state.Resources.Select(r => r with { }).ToArray() };
+
+    private void RevokeDeniedNotificationUpdateFixture(FixtureSelector selector)
+    {
+        deniedNotificationUpdateRevoked.TryAdd(selector.Nonce, 0);
+        foreach (var pair in deniedNotificationUpdateFixtureFacts)
+            if (pair.Value.Plan.Selector == selector) deniedNotificationUpdateFixtureFacts.TryRemove(pair.Key, out _);
+    }
+
+    private RoleFixtureJournal.Snapshot BeginDeniedNotificationUpdateFixture(Plan plan, string id, bool delete,
+        CancellationToken token, CancellationToken caller)
+    {
+        var preimage = FreezeDeniedNotificationUpdateFixture(ReadPlan(plan.Owner, plan.Selector));
+        Require(!deniedNotificationUpdateRevoked.ContainsKey(plan.Selector.Nonce) && !token.IsCancellationRequested &&
+            !caller.IsCancellationRequested && !closed && RoleFixtureJournal.StatusDeniedNotificationUpdateRoot(preimage));
+        Guid dispatch = Guid.NewGuid();
+        var postimage = preimage with
+        {
+            Revision = preimage.Revision + 1,
+            Resources = preimage.Resources.Select(r => r.Id == id ? r with
+            {
+                CreateAttempted = r.CreateAttempted || !delete,
+                DeleteAttempted = r.DeleteAttempted || delete,
+                InvocationTerminated = false,
+                ActiveDispatch = dispatch,
+                Absent = false
+            } : r with { Absent = false }).ToArray()
+        };
+        var capability = new StatusDeniedNotificationUpdateFixtureAdmission(this);
+        Require(deniedNotificationUpdateFixtureFacts.TryAdd(capability, new(plan, preimage, postimage, id, dispatch,
+            delete, false, false, DeniedNotificationUpdateFixtureStage.Admission, [token, caller], [])));
+        try
+        {
+            var committed = journal.BeginStatusDeniedNotificationUpdateFixtureDispatch(plan.Owner, plan.Selector, plan.LeaseId, capability);
+            Require(RoleFixtureJournal.SameStatusDeniedNotificationUpdateSnapshot(postimage, committed));
+            return FreezeDeniedNotificationUpdateFixture(committed);
+        }
+        finally { deniedNotificationUpdateFixtureFacts.TryRemove(capability, out _); }
+    }
+
+    private RoleFixtureJournal.Snapshot PersistDeniedNotificationUpdateFixture(StatusDeniedNotificationUpdateFixtureDrain drain)
+    {
+        Require(deniedNotificationUpdateFixtureFacts.TryGetValue(drain, out var f));
+        try
+        {
+            var committed = journal.EndStatusDeniedNotificationUpdateFixtureDispatch(f.Plan.Owner, f.Plan.Selector, f.Plan.LeaseId, drain);
+            lock (plans)
+                foreach (var receipt in deniedNotificationUpdatePending.Where(p => ReferenceEquals(p.Value, drain)).Select(p => p.Key).ToArray())
+                    deniedNotificationUpdatePending.Remove(receipt);
+            return committed;
+        }
+        catch (IOException) { throw; }
+        catch
+        {
+            RevokeDeniedNotificationUpdateFixture(f.Plan.Selector);
+            // The actual invocation is drained, but invalid or closed history
+            // can never become remote settlement authority.
+            try { journal.EndDispatch(f.Plan.Owner, f.Plan.Selector, f.ResourceId, f.Dispatch, nativeSettled: false); }
+            catch (InvalidOperationException) { }
+            catch (IOException) { }
+            throw;
+        }
+    }
+
+    private void RetainDeniedNotificationUpdateFixtureDrain(Plan plan, Receipt receipt, RoleFixtureJournal.Snapshot committed,
+        string id, Guid dispatch, bool settled, CancellationToken token, CancellationToken caller, params Task[] tasks)
+    {
+        Require(tasks.Length != 0 && tasks.All(t => t.IsCompleted) && !token.IsCancellationRequested && !caller.IsCancellationRequested);
+        var preimage = FreezeDeniedNotificationUpdateFixture(committed);
+        var postimage = preimage with
+        {
+            Revision = preimage.Revision + 1,
+            Resources = preimage.Resources.Select(r => r.Id == id ? r with
+            { InvocationTerminated = true, ActiveDispatch = settled ? Guid.Empty : dispatch } : r).ToArray()
+        };
+        var drain = new StatusDeniedNotificationUpdateFixtureDrain(this);
+        Require(deniedNotificationUpdateFixtureFacts.TryAdd(drain, new(plan, preimage, postimage, id, dispatch,
+            preimage.Closing, settled, false, DeniedNotificationUpdateFixtureStage.Drain, [token, caller], tasks.ToArray())));
+        lock (plans) deniedNotificationUpdatePending.Add(receipt, drain);
+        PersistDeniedNotificationUpdateFixture(drain);
+    }
+
+    private enum UnknownNotificationUpdateFixtureStage { Admission, Drain, Absence }
+    private sealed record UnknownNotificationUpdateFixtureFacts(Plan Plan, RoleFixtureJournal.Snapshot Preimage,
+        RoleFixtureJournal.Snapshot Postimage, string ResourceId, Guid Dispatch, bool Delete, bool Settled, bool Final,
+        UnknownNotificationUpdateFixtureStage Stage, CancellationToken[] Tokens, Task[] Tasks)
+    {
+        public override string ToString() => "[UnknownNotificationUpdateFixtureFacts]";
+    }
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<object, UnknownNotificationUpdateFixtureFacts>
+        unknownNotificationUpdateFixtureFacts = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<Receipt, StatusUnknownNotificationUpdateFixtureDrain> unknownNotificationUpdatePending =
+        new(ReferenceEqualityComparer.Instance);
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, byte> unknownNotificationUpdateRevoked = new();
+
+    internal sealed class StatusUnknownNotificationUpdateFixtureAdmission(NotificationFixtureProvisioner source)
+    {
+        internal string ResourceId => source.unknownNotificationUpdateFixtureFacts.TryGetValue(this, out var f) ? f.ResourceId : "";
+        internal Guid Dispatch => source.unknownNotificationUpdateFixtureFacts.TryGetValue(this, out var f) ? f.Dispatch : Guid.Empty;
+        internal bool Delete => source.unknownNotificationUpdateFixtureFacts.TryGetValue(this, out var f) && f.Delete;
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.ValidateUnknownNotificationUpdateFixture(this, journal, state, UnknownNotificationUpdateFixtureStage.Admission);
+        public override string ToString() => "[StatusUnknownNotificationUpdateFixtureAdmission]";
+    }
+    internal sealed class StatusUnknownNotificationUpdateFixtureDrain(NotificationFixtureProvisioner source)
+    {
+        internal string ResourceId => source.unknownNotificationUpdateFixtureFacts.TryGetValue(this, out var f) ? f.ResourceId : "";
+        internal Guid Dispatch => source.unknownNotificationUpdateFixtureFacts.TryGetValue(this, out var f) ? f.Dispatch : Guid.Empty;
+        internal bool Settled => source.unknownNotificationUpdateFixtureFacts.TryGetValue(this, out var f) && f.Settled;
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.ValidateUnknownNotificationUpdateFixture(this, journal, state, UnknownNotificationUpdateFixtureStage.Drain);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.ValidateUnknownNotificationUpdateFixture(this, journal, state, UnknownNotificationUpdateFixtureStage.Drain, true);
+        public override string ToString() => "[StatusUnknownNotificationUpdateFixtureDrain]";
+    }
+    internal sealed class StatusUnknownNotificationUpdateAbsence(NotificationFixtureProvisioner source)
+    {
+        internal string ResourceId => source.unknownNotificationUpdateFixtureFacts.TryGetValue(this, out var f) ? f.ResourceId : "";
+        internal bool Final => source.unknownNotificationUpdateFixtureFacts.TryGetValue(this, out var f) && f.Final;
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.ValidateUnknownNotificationUpdateFixture(this, journal, state, UnknownNotificationUpdateFixtureStage.Absence);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.ValidateUnknownNotificationUpdateFixture(this, journal, state, UnknownNotificationUpdateFixtureStage.Absence, true);
+        internal bool ValidateParentDependency(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state,
+            VaultFixtureProvisioner.Plan parent) =>
+            source.unknownNotificationUpdateFixtureFacts.TryGetValue(this, out var f) &&
+            ReferenceEquals(f.Plan.ObjectPlan, parent) && f.Preimage.Closing && f.Postimage.Closing &&
+            source.ValidateUnknownNotificationUpdateFixture(this, journal, state, UnknownNotificationUpdateFixtureStage.Absence, true);
+        public override string ToString() => "[StatusUnknownNotificationUpdateAbsence]";
+    }
+    private bool ValidateUnknownNotificationUpdateFixture(object capability, RoleFixtureJournal candidateJournal,
+        RoleFixtureJournal.Snapshot state, UnknownNotificationUpdateFixtureStage stage, bool postimage = false) =>
+        ReferenceEquals(journal, candidateJournal) && unknownNotificationUpdateFixtureFacts.TryGetValue(capability, out var f) &&
+        !unknownNotificationUpdateRevoked.ContainsKey(f.Plan.Selector.Nonce) && !closed && f.Stage == stage &&
+        f.Tokens.All(t => !t.IsCancellationRequested) && f.Tasks.All(t => t.IsCompleted) &&
+        RoleFixtureJournal.SameStatusUnknownNotificationUpdateSnapshot(postimage ? f.Postimage : f.Preimage, state);
+
+    private static RoleFixtureJournal.Snapshot FreezeUnknownNotificationUpdateFixture(RoleFixtureJournal.Snapshot state) =>
+        state with { Selector = state.Selector with { }, Resources = state.Resources.Select(r => r with { }).ToArray() };
+
+    private void RevokeUnknownNotificationUpdateFixture(FixtureSelector selector)
+    {
+        unknownNotificationUpdateRevoked.TryAdd(selector.Nonce, 0);
+        foreach (var pair in unknownNotificationUpdateFixtureFacts)
+            if (pair.Value.Plan.Selector == selector) unknownNotificationUpdateFixtureFacts.TryRemove(pair.Key, out _);
+    }
+
+    private RoleFixtureJournal.Snapshot BeginUnknownNotificationUpdateFixture(Plan plan, string id, bool delete,
+        CancellationToken token, CancellationToken caller)
+    {
+        var preimage = FreezeUnknownNotificationUpdateFixture(ReadPlan(plan.Owner, plan.Selector));
+        Require(!unknownNotificationUpdateRevoked.ContainsKey(plan.Selector.Nonce) && !token.IsCancellationRequested &&
+            !caller.IsCancellationRequested && !closed && RoleFixtureJournal.StatusUnknownNotificationUpdateRoot(preimage));
+        Guid dispatch = Guid.NewGuid();
+        var postimage = preimage with
+        {
+            Revision = preimage.Revision + 1,
+            Resources = preimage.Resources.Select(r => r.Id == id ? r with
+            {
+                CreateAttempted = r.CreateAttempted || !delete,
+                DeleteAttempted = r.DeleteAttempted || delete,
+                InvocationTerminated = false,
+                ActiveDispatch = dispatch,
+                Absent = false
+            } : r with { Absent = false }).ToArray()
+        };
+        var capability = new StatusUnknownNotificationUpdateFixtureAdmission(this);
+        Require(unknownNotificationUpdateFixtureFacts.TryAdd(capability, new(plan, preimage, postimage, id, dispatch,
+            delete, false, false, UnknownNotificationUpdateFixtureStage.Admission, [token, caller], [])));
+        try
+        {
+            var committed = journal.BeginStatusUnknownNotificationUpdateFixtureDispatch(plan.Owner, plan.Selector, plan.LeaseId, capability);
+            Require(RoleFixtureJournal.SameStatusUnknownNotificationUpdateSnapshot(postimage, committed));
+            return FreezeUnknownNotificationUpdateFixture(committed);
+        }
+        finally { unknownNotificationUpdateFixtureFacts.TryRemove(capability, out _); }
+    }
+
+    private RoleFixtureJournal.Snapshot PersistUnknownNotificationUpdateFixture(StatusUnknownNotificationUpdateFixtureDrain drain)
+    {
+        Require(unknownNotificationUpdateFixtureFacts.TryGetValue(drain, out var f));
+        try
+        {
+            var committed = journal.EndStatusUnknownNotificationUpdateFixtureDispatch(f.Plan.Owner, f.Plan.Selector, f.Plan.LeaseId, drain);
+            lock (plans)
+                foreach (var receipt in unknownNotificationUpdatePending.Where(p => ReferenceEquals(p.Value, drain)).Select(p => p.Key).ToArray())
+                    unknownNotificationUpdatePending.Remove(receipt);
+            return committed;
+        }
+        catch (IOException) { throw; }
+        catch
+        {
+            RevokeUnknownNotificationUpdateFixture(f.Plan.Selector);
+            // The actual invocation is drained, but invalid or closed history
+            // can never become remote settlement authority.
+            try { journal.EndDispatch(f.Plan.Owner, f.Plan.Selector, f.ResourceId, f.Dispatch, nativeSettled: false); }
+            catch (InvalidOperationException) { }
+            catch (IOException) { }
+            throw;
+        }
+    }
+
+    private void RetainUnknownNotificationUpdateFixtureDrain(Plan plan, Receipt receipt, RoleFixtureJournal.Snapshot committed,
+        string id, Guid dispatch, bool settled, CancellationToken token, CancellationToken caller, params Task[] tasks)
+    {
+        Require(tasks.Length != 0 && tasks.All(t => t.IsCompleted) && !token.IsCancellationRequested && !caller.IsCancellationRequested);
+        var preimage = FreezeUnknownNotificationUpdateFixture(committed);
+        var postimage = preimage with
+        {
+            Revision = preimage.Revision + 1,
+            Resources = preimage.Resources.Select(r => r.Id == id ? r with
+            { InvocationTerminated = true, ActiveDispatch = settled ? Guid.Empty : dispatch } : r).ToArray()
+        };
+        var drain = new StatusUnknownNotificationUpdateFixtureDrain(this);
+        Require(unknownNotificationUpdateFixtureFacts.TryAdd(drain, new(plan, preimage, postimage, id, dispatch,
+            preimage.Closing, settled, false, UnknownNotificationUpdateFixtureStage.Drain, [token, caller], tasks.ToArray())));
+        lock (plans) unknownNotificationUpdatePending.Add(receipt, drain);
+        PersistUnknownNotificationUpdateFixture(drain);
+    }
+
+    private enum UnknownNotificationUpdateIndependentFixtureStage { Admission, Drain, Absence }
+    private sealed record UnknownNotificationUpdateIndependentFixtureFacts(Plan Plan, RoleFixtureJournal.Snapshot Preimage,
+        RoleFixtureJournal.Snapshot Postimage, string ResourceId, Guid Dispatch, bool Delete, bool Settled, bool Final,
+        UnknownNotificationUpdateIndependentFixtureStage Stage, CancellationToken[] Tokens, Task[] Tasks)
+    {
+        public override string ToString() => "[UnknownNotificationUpdateIndependentFixtureFacts]";
+    }
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<object, UnknownNotificationUpdateIndependentFixtureFacts>
+        unknownNotificationUpdateIndependentFixtureFacts = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<Receipt, StatusUnknownNotificationUpdateIndependentFixtureDrain> unknownNotificationUpdateIndependentPending =
+        new(ReferenceEqualityComparer.Instance);
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, byte> unknownNotificationUpdateIndependentRevoked = new();
+
+    internal sealed class StatusUnknownNotificationUpdateIndependentFixtureAdmission(NotificationFixtureProvisioner source)
+    {
+        internal string ResourceId => source.unknownNotificationUpdateIndependentFixtureFacts.TryGetValue(this, out var f) ? f.ResourceId : "";
+        internal Guid Dispatch => source.unknownNotificationUpdateIndependentFixtureFacts.TryGetValue(this, out var f) ? f.Dispatch : Guid.Empty;
+        internal bool Delete => source.unknownNotificationUpdateIndependentFixtureFacts.TryGetValue(this, out var f) && f.Delete;
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.ValidateUnknownNotificationUpdateIndependentFixture(this, journal, state, UnknownNotificationUpdateIndependentFixtureStage.Admission);
+        public override string ToString() => "[StatusUnknownNotificationUpdateIndependentFixtureAdmission]";
+    }
+    internal sealed class StatusUnknownNotificationUpdateIndependentFixtureDrain(NotificationFixtureProvisioner source)
+    {
+        internal string ResourceId => source.unknownNotificationUpdateIndependentFixtureFacts.TryGetValue(this, out var f) ? f.ResourceId : "";
+        internal Guid Dispatch => source.unknownNotificationUpdateIndependentFixtureFacts.TryGetValue(this, out var f) ? f.Dispatch : Guid.Empty;
+        internal bool Settled => source.unknownNotificationUpdateIndependentFixtureFacts.TryGetValue(this, out var f) && f.Settled;
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.ValidateUnknownNotificationUpdateIndependentFixture(this, journal, state, UnknownNotificationUpdateIndependentFixtureStage.Drain);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.ValidateUnknownNotificationUpdateIndependentFixture(this, journal, state, UnknownNotificationUpdateIndependentFixtureStage.Drain, true);
+        public override string ToString() => "[StatusUnknownNotificationUpdateIndependentFixtureDrain]";
+    }
+    internal sealed class StatusUnknownNotificationUpdateIndependentAbsence(NotificationFixtureProvisioner source)
+    {
+        internal string ResourceId => source.unknownNotificationUpdateIndependentFixtureFacts.TryGetValue(this, out var f) ? f.ResourceId : "";
+        internal bool Final => source.unknownNotificationUpdateIndependentFixtureFacts.TryGetValue(this, out var f) && f.Final;
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.ValidateUnknownNotificationUpdateIndependentFixture(this, journal, state, UnknownNotificationUpdateIndependentFixtureStage.Absence);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.ValidateUnknownNotificationUpdateIndependentFixture(this, journal, state, UnknownNotificationUpdateIndependentFixtureStage.Absence, true);
+        internal bool ValidateParentDependency(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state,
+            VaultFixtureProvisioner.Plan parent) =>
+            source.unknownNotificationUpdateIndependentFixtureFacts.TryGetValue(this, out var f) &&
+            ReferenceEquals(f.Plan.ObjectPlan, parent) && f.Preimage.Closing && f.Postimage.Closing &&
+            source.ValidateUnknownNotificationUpdateIndependentFixture(this, journal, state, UnknownNotificationUpdateIndependentFixtureStage.Absence, true);
+        public override string ToString() => "[StatusUnknownNotificationUpdateIndependentAbsence]";
+    }
+    private bool ValidateUnknownNotificationUpdateIndependentFixture(object capability, RoleFixtureJournal candidateJournal,
+        RoleFixtureJournal.Snapshot state, UnknownNotificationUpdateIndependentFixtureStage stage, bool postimage = false) =>
+        ReferenceEquals(journal, candidateJournal) && unknownNotificationUpdateIndependentFixtureFacts.TryGetValue(capability, out var f) &&
+        !unknownNotificationUpdateIndependentRevoked.ContainsKey(f.Plan.Selector.Nonce) && !closed && f.Stage == stage &&
+        f.Tokens.All(t => !t.IsCancellationRequested) && f.Tasks.All(t => t.IsCompleted) &&
+        RoleFixtureJournal.SameStatusUnknownNotificationUpdateIndependentSnapshot(postimage ? f.Postimage : f.Preimage, state);
+
+    private static RoleFixtureJournal.Snapshot FreezeUnknownNotificationUpdateIndependentFixture(RoleFixtureJournal.Snapshot state) =>
+        state with { Selector = state.Selector with { }, Resources = state.Resources.Select(r => r with { }).ToArray() };
+
+    private void RevokeUnknownNotificationUpdateIndependentFixture(FixtureSelector selector)
+    {
+        unknownNotificationUpdateIndependentRevoked.TryAdd(selector.Nonce, 0);
+        foreach (var pair in unknownNotificationUpdateIndependentFixtureFacts)
+            if (pair.Value.Plan.Selector == selector) unknownNotificationUpdateIndependentFixtureFacts.TryRemove(pair.Key, out _);
+    }
+
+    private RoleFixtureJournal.Snapshot BeginUnknownNotificationUpdateIndependentFixture(Plan plan, string id, bool delete,
+        CancellationToken token, CancellationToken caller)
+    {
+        var preimage = FreezeUnknownNotificationUpdateIndependentFixture(ReadPlan(plan.Owner, plan.Selector));
+        Require(!unknownNotificationUpdateIndependentRevoked.ContainsKey(plan.Selector.Nonce) && !token.IsCancellationRequested &&
+            !caller.IsCancellationRequested && !closed && RoleFixtureJournal.StatusUnknownNotificationUpdateIndependentRoot(preimage));
+        Guid dispatch = Guid.NewGuid();
+        var postimage = preimage with
+        {
+            Revision = preimage.Revision + 1,
+            Resources = preimage.Resources.Select(r => r.Id == id ? r with
+            {
+                CreateAttempted = r.CreateAttempted || !delete,
+                DeleteAttempted = r.DeleteAttempted || delete,
+                InvocationTerminated = false,
+                ActiveDispatch = dispatch,
+                Absent = false
+            } : r with { Absent = false }).ToArray()
+        };
+        var capability = new StatusUnknownNotificationUpdateIndependentFixtureAdmission(this);
+        Require(unknownNotificationUpdateIndependentFixtureFacts.TryAdd(capability, new(plan, preimage, postimage, id, dispatch,
+            delete, false, false, UnknownNotificationUpdateIndependentFixtureStage.Admission, [token, caller], [])));
+        try
+        {
+            var committed = journal.BeginStatusUnknownNotificationUpdateIndependentFixtureDispatch(plan.Owner, plan.Selector, plan.LeaseId, capability);
+            Require(RoleFixtureJournal.SameStatusUnknownNotificationUpdateIndependentSnapshot(postimage, committed));
+            return FreezeUnknownNotificationUpdateIndependentFixture(committed);
+        }
+        finally { unknownNotificationUpdateIndependentFixtureFacts.TryRemove(capability, out _); }
+    }
+
+    private RoleFixtureJournal.Snapshot PersistUnknownNotificationUpdateIndependentFixture(StatusUnknownNotificationUpdateIndependentFixtureDrain drain)
+    {
+        Require(unknownNotificationUpdateIndependentFixtureFacts.TryGetValue(drain, out var f));
+        try
+        {
+            var committed = journal.EndStatusUnknownNotificationUpdateIndependentFixtureDispatch(f.Plan.Owner, f.Plan.Selector, f.Plan.LeaseId, drain);
+            lock (plans)
+                foreach (var receipt in unknownNotificationUpdateIndependentPending.Where(p => ReferenceEquals(p.Value, drain)).Select(p => p.Key).ToArray())
+                    unknownNotificationUpdateIndependentPending.Remove(receipt);
+            return committed;
+        }
+        catch (IOException) { throw; }
+        catch
+        {
+            RevokeUnknownNotificationUpdateIndependentFixture(f.Plan.Selector);
+            // The actual invocation is drained, but invalid or closed history
+            // can never become remote settlement authority.
+            try { journal.EndDispatch(f.Plan.Owner, f.Plan.Selector, f.ResourceId, f.Dispatch, nativeSettled: false); }
+            catch (InvalidOperationException) { }
+            catch (IOException) { }
+            throw;
+        }
+    }
+
+    private void RetainUnknownNotificationUpdateIndependentFixtureDrain(Plan plan, Receipt receipt, RoleFixtureJournal.Snapshot committed,
+        string id, Guid dispatch, bool settled, CancellationToken token, CancellationToken caller, params Task[] tasks)
+    {
+        Require(tasks.Length != 0 && tasks.All(t => t.IsCompleted) && !token.IsCancellationRequested && !caller.IsCancellationRequested);
+        var preimage = FreezeUnknownNotificationUpdateIndependentFixture(committed);
+        var postimage = preimage with
+        {
+            Revision = preimage.Revision + 1,
+            Resources = preimage.Resources.Select(r => r.Id == id ? r with
+            { InvocationTerminated = true, ActiveDispatch = settled ? Guid.Empty : dispatch } : r).ToArray()
+        };
+        var drain = new StatusUnknownNotificationUpdateIndependentFixtureDrain(this);
+        Require(unknownNotificationUpdateIndependentFixtureFacts.TryAdd(drain, new(plan, preimage, postimage, id, dispatch,
+            preimage.Closing, settled, false, UnknownNotificationUpdateIndependentFixtureStage.Drain, [token, caller], tasks.ToArray())));
+        lock (plans) unknownNotificationUpdateIndependentPending.Add(receipt, drain);
+        PersistUnknownNotificationUpdateIndependentFixture(drain);
+    }
+
+    private enum UnknownNotificationUpdateCancellationFixtureStage { Admission, Drain, Absence }
+    private sealed record UnknownNotificationUpdateCancellationFixtureFacts(Plan Plan, RoleFixtureJournal.Snapshot Preimage,
+        RoleFixtureJournal.Snapshot Postimage, string ResourceId, Guid Dispatch, bool Delete, bool Settled, bool Final,
+        UnknownNotificationUpdateCancellationFixtureStage Stage, CancellationToken[] Tokens, Task[] Tasks)
+    {
+        public override string ToString() => "[UnknownNotificationUpdateCancellationFixtureFacts]";
+    }
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<object, UnknownNotificationUpdateCancellationFixtureFacts>
+        unknownNotificationUpdateCancellationFixtureFacts = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<Receipt, StatusUnknownNotificationUpdateCancellationFixtureDrain> unknownNotificationUpdateCancellationPending =
+        new(ReferenceEqualityComparer.Instance);
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, byte> unknownNotificationUpdateCancellationRevoked = new();
+
+    internal sealed class StatusUnknownNotificationUpdateCancellationFixtureAdmission(NotificationFixtureProvisioner source)
+    {
+        internal string ResourceId => source.unknownNotificationUpdateCancellationFixtureFacts.TryGetValue(this, out var f) ? f.ResourceId : "";
+        internal Guid Dispatch => source.unknownNotificationUpdateCancellationFixtureFacts.TryGetValue(this, out var f) ? f.Dispatch : Guid.Empty;
+        internal bool Delete => source.unknownNotificationUpdateCancellationFixtureFacts.TryGetValue(this, out var f) && f.Delete;
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.ValidateUnknownNotificationUpdateCancellationFixture(this, journal, state, UnknownNotificationUpdateCancellationFixtureStage.Admission);
+        public override string ToString() => "[StatusUnknownNotificationUpdateCancellationFixtureAdmission]";
+    }
+    internal sealed class StatusUnknownNotificationUpdateCancellationFixtureDrain(NotificationFixtureProvisioner source)
+    {
+        internal string ResourceId => source.unknownNotificationUpdateCancellationFixtureFacts.TryGetValue(this, out var f) ? f.ResourceId : "";
+        internal Guid Dispatch => source.unknownNotificationUpdateCancellationFixtureFacts.TryGetValue(this, out var f) ? f.Dispatch : Guid.Empty;
+        internal bool Settled => source.unknownNotificationUpdateCancellationFixtureFacts.TryGetValue(this, out var f) && f.Settled;
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.ValidateUnknownNotificationUpdateCancellationFixture(this, journal, state, UnknownNotificationUpdateCancellationFixtureStage.Drain);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.ValidateUnknownNotificationUpdateCancellationFixture(this, journal, state, UnknownNotificationUpdateCancellationFixtureStage.Drain, true);
+        public override string ToString() => "[StatusUnknownNotificationUpdateCancellationFixtureDrain]";
+    }
+    internal sealed class StatusUnknownNotificationUpdateCancellationAbsence(NotificationFixtureProvisioner source)
+    {
+        internal string ResourceId => source.unknownNotificationUpdateCancellationFixtureFacts.TryGetValue(this, out var f) ? f.ResourceId : "";
+        internal bool Final => source.unknownNotificationUpdateCancellationFixtureFacts.TryGetValue(this, out var f) && f.Final;
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.ValidateUnknownNotificationUpdateCancellationFixture(this, journal, state, UnknownNotificationUpdateCancellationFixtureStage.Absence);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.ValidateUnknownNotificationUpdateCancellationFixture(this, journal, state, UnknownNotificationUpdateCancellationFixtureStage.Absence, true);
+        internal bool ValidateParentDependency(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state,
+            VaultFixtureProvisioner.Plan parent) =>
+            source.unknownNotificationUpdateCancellationFixtureFacts.TryGetValue(this, out var f) &&
+            ReferenceEquals(f.Plan.ObjectPlan, parent) && f.Preimage.Closing && f.Postimage.Closing &&
+            source.ValidateUnknownNotificationUpdateCancellationFixture(this, journal, state, UnknownNotificationUpdateCancellationFixtureStage.Absence, true);
+        public override string ToString() => "[StatusUnknownNotificationUpdateCancellationAbsence]";
+    }
+    private bool ValidateUnknownNotificationUpdateCancellationFixture(object capability, RoleFixtureJournal candidateJournal,
+        RoleFixtureJournal.Snapshot state, UnknownNotificationUpdateCancellationFixtureStage stage, bool postimage = false) =>
+        ReferenceEquals(journal, candidateJournal) && unknownNotificationUpdateCancellationFixtureFacts.TryGetValue(capability, out var f) &&
+        !unknownNotificationUpdateCancellationRevoked.ContainsKey(f.Plan.Selector.Nonce) && !closed && f.Stage == stage &&
+        f.Tokens.All(t => !t.IsCancellationRequested) && f.Tasks.All(t => t.IsCompleted) &&
+        RoleFixtureJournal.SameStatusUnknownNotificationUpdateCancellationSnapshot(postimage ? f.Postimage : f.Preimage, state);
+
+    private static RoleFixtureJournal.Snapshot FreezeUnknownNotificationUpdateCancellationFixture(RoleFixtureJournal.Snapshot state) =>
+        state with { Selector = state.Selector with { }, Resources = state.Resources.Select(r => r with { }).ToArray() };
+
+    private void RevokeUnknownNotificationUpdateCancellationFixture(FixtureSelector selector)
+    {
+        unknownNotificationUpdateCancellationRevoked.TryAdd(selector.Nonce, 0);
+        foreach (var pair in unknownNotificationUpdateCancellationFixtureFacts)
+            if (pair.Value.Plan.Selector == selector) unknownNotificationUpdateCancellationFixtureFacts.TryRemove(pair.Key, out _);
+    }
+
+    private RoleFixtureJournal.Snapshot BeginUnknownNotificationUpdateCancellationFixture(Plan plan, string id, bool delete,
+        CancellationToken token, CancellationToken caller)
+    {
+        var preimage = FreezeUnknownNotificationUpdateCancellationFixture(ReadPlan(plan.Owner, plan.Selector));
+        Require(!unknownNotificationUpdateCancellationRevoked.ContainsKey(plan.Selector.Nonce) && !token.IsCancellationRequested &&
+            !caller.IsCancellationRequested && !closed && RoleFixtureJournal.StatusUnknownNotificationUpdateCancellationRoot(preimage));
+        Guid dispatch = Guid.NewGuid();
+        var postimage = preimage with
+        {
+            Revision = preimage.Revision + 1,
+            Resources = preimage.Resources.Select(r => r.Id == id ? r with
+            {
+                CreateAttempted = r.CreateAttempted || !delete,
+                DeleteAttempted = r.DeleteAttempted || delete,
+                InvocationTerminated = false,
+                ActiveDispatch = dispatch,
+                Absent = false
+            } : r with { Absent = false }).ToArray()
+        };
+        var capability = new StatusUnknownNotificationUpdateCancellationFixtureAdmission(this);
+        Require(unknownNotificationUpdateCancellationFixtureFacts.TryAdd(capability, new(plan, preimage, postimage, id, dispatch,
+            delete, false, false, UnknownNotificationUpdateCancellationFixtureStage.Admission, [token, caller], [])));
+        try
+        {
+            var committed = journal.BeginStatusUnknownNotificationUpdateCancellationFixtureDispatch(plan.Owner, plan.Selector, plan.LeaseId, capability);
+            Require(RoleFixtureJournal.SameStatusUnknownNotificationUpdateCancellationSnapshot(postimage, committed));
+            return FreezeUnknownNotificationUpdateCancellationFixture(committed);
+        }
+        finally { unknownNotificationUpdateCancellationFixtureFacts.TryRemove(capability, out _); }
+    }
+
+    private RoleFixtureJournal.Snapshot PersistUnknownNotificationUpdateCancellationFixture(StatusUnknownNotificationUpdateCancellationFixtureDrain drain)
+    {
+        Require(unknownNotificationUpdateCancellationFixtureFacts.TryGetValue(drain, out var f));
+        try
+        {
+            var committed = journal.EndStatusUnknownNotificationUpdateCancellationFixtureDispatch(f.Plan.Owner, f.Plan.Selector, f.Plan.LeaseId, drain);
+            lock (plans)
+                foreach (var receipt in unknownNotificationUpdateCancellationPending.Where(p => ReferenceEquals(p.Value, drain)).Select(p => p.Key).ToArray())
+                    unknownNotificationUpdateCancellationPending.Remove(receipt);
+            return committed;
+        }
+        catch (IOException) { throw; }
+        catch
+        {
+            RevokeUnknownNotificationUpdateCancellationFixture(f.Plan.Selector);
+            // The actual invocation is drained, but invalid or closed history
+            // can never become remote settlement authority.
+            try { journal.EndDispatch(f.Plan.Owner, f.Plan.Selector, f.ResourceId, f.Dispatch, nativeSettled: false); }
+            catch (InvalidOperationException) { }
+            catch (IOException) { }
+            throw;
+        }
+    }
+
+    private void RetainUnknownNotificationUpdateCancellationFixtureDrain(Plan plan, Receipt receipt, RoleFixtureJournal.Snapshot committed,
+        string id, Guid dispatch, bool settled, CancellationToken token, CancellationToken caller, params Task[] tasks)
+    {
+        Require(tasks.Length != 0 && tasks.All(t => t.IsCompleted) && !token.IsCancellationRequested && !caller.IsCancellationRequested);
+        var preimage = FreezeUnknownNotificationUpdateCancellationFixture(committed);
+        var postimage = preimage with
+        {
+            Revision = preimage.Revision + 1,
+            Resources = preimage.Resources.Select(r => r.Id == id ? r with
+            { InvocationTerminated = true, ActiveDispatch = settled ? Guid.Empty : dispatch } : r).ToArray()
+        };
+        var drain = new StatusUnknownNotificationUpdateCancellationFixtureDrain(this);
+        Require(unknownNotificationUpdateCancellationFixtureFacts.TryAdd(drain, new(plan, preimage, postimage, id, dispatch,
+            preimage.Closing, settled, false, UnknownNotificationUpdateCancellationFixtureStage.Drain, [token, caller], tasks.ToArray())));
+        lock (plans) unknownNotificationUpdateCancellationPending.Add(receipt, drain);
+        PersistUnknownNotificationUpdateCancellationFixture(drain);
     }
 
     private enum NotificationCreateIndependentFixtureStage { Admission, Drain, Absence }
@@ -584,6 +1253,50 @@ internal sealed class NotificationFixtureProvisioner : IAsyncDisposable
     private readonly Dictionary<StatusNotificationUpdateIndependentReadProof, NotificationConfiguration> statusUpdateIndependentReads =
         new(ReferenceEqualityComparer.Instance);
 
+    private readonly Dictionary<StatusDeniedNotificationUpdateReadProof, (NotificationConfiguration Configuration, CancellationToken[] Tokens)>
+        statusDeniedUpdatePending = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<StatusDeniedNotificationUpdateReadProof, CancellationToken[]> statusDeniedUpdateTokens =
+        new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<StatusDeniedNotificationUpdateReadProof, NotificationConfiguration> statusDeniedUpdateReads =
+        new(ReferenceEqualityComparer.Instance);
+
+    private readonly Dictionary<StatusDeniedNotificationUpdateReadProof, Task> statusDeniedUpdateOuterTasks = new(ReferenceEqualityComparer.Instance);
+    private readonly HashSet<(Plan Plan, StatusDeniedNotificationUpdateReadPhase Phase)> statusDeniedUpdateSlots = [];
+    private readonly Dictionary<Plan, StatusDeniedNotificationUpdateAbsence> deniedNotificationUpdateAbsencePending = new(ReferenceEqualityComparer.Instance);
+
+    private readonly Dictionary<StatusUnknownNotificationUpdateReadProof, (NotificationConfiguration Configuration, CancellationToken[] Tokens)>
+        statusUnknownPending = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<StatusUnknownNotificationUpdateReadProof, CancellationToken[]> statusUnknownTokens =
+        new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<StatusUnknownNotificationUpdateReadProof, NotificationConfiguration> statusUnknownReads =
+        new(ReferenceEqualityComparer.Instance);
+
+    private readonly Dictionary<StatusUnknownNotificationUpdateReadProof, Task> statusUnknownOuterTasks = new(ReferenceEqualityComparer.Instance);
+    private readonly HashSet<(Plan Plan, StatusUnknownNotificationUpdateReadPhase Phase)> statusUnknownSlots = [];
+    private readonly Dictionary<Plan, StatusUnknownNotificationUpdateAbsence> unknownNotificationUpdateAbsencePending = new(ReferenceEqualityComparer.Instance);
+
+    private readonly Dictionary<StatusUnknownNotificationUpdateIndependentReadProof, (NotificationConfiguration Configuration, CancellationToken[] Tokens)>
+        statusUnknownIndependentPending = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<StatusUnknownNotificationUpdateIndependentReadProof, CancellationToken[]> statusUnknownIndependentTokens =
+        new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<StatusUnknownNotificationUpdateIndependentReadProof, NotificationConfiguration> statusUnknownIndependentReads =
+        new(ReferenceEqualityComparer.Instance);
+
+    private readonly Dictionary<StatusUnknownNotificationUpdateIndependentReadProof, Task> statusUnknownIndependentOuterTasks = new(ReferenceEqualityComparer.Instance);
+    private readonly HashSet<(Plan Plan, StatusUnknownNotificationUpdateIndependentReadPhase Phase)> statusUnknownIndependentSlots = [];
+    private readonly Dictionary<Plan, StatusUnknownNotificationUpdateIndependentAbsence> unknownNotificationUpdateIndependentAbsencePending = new(ReferenceEqualityComparer.Instance);
+
+    private readonly Dictionary<StatusUnknownNotificationUpdateCancellationReadProof, (NotificationConfiguration Configuration, CancellationToken[] Tokens)>
+        statusUnknownCancellationPending = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<StatusUnknownNotificationUpdateCancellationReadProof, CancellationToken[]> statusUnknownCancellationTokens =
+        new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<StatusUnknownNotificationUpdateCancellationReadProof, NotificationConfiguration> statusUnknownCancellationReads =
+        new(ReferenceEqualityComparer.Instance);
+
+    private readonly Dictionary<StatusUnknownNotificationUpdateCancellationReadProof, Task> statusUnknownCancellationOuterTasks = new(ReferenceEqualityComparer.Instance);
+    private readonly HashSet<(Plan Plan, StatusUnknownNotificationUpdateCancellationReadPhase Phase)> statusUnknownCancellationSlots = [];
+    private readonly Dictionary<Plan, StatusUnknownNotificationUpdateCancellationAbsence> unknownNotificationUpdateCancellationAbsencePending = new(ReferenceEqualityComparer.Instance);
+
     private readonly Dictionary<StatusNotificationCreateIndependentReadProof, (NotificationConfiguration Configuration, CancellationToken[] Tokens)>
         statusCreateIndependentPending = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<StatusNotificationCreateIndependentReadProof, CancellationToken[]> statusCreateIndependentTokens =
@@ -642,7 +1355,7 @@ internal sealed class NotificationFixtureProvisioner : IAsyncDisposable
     internal Plan PlanFixture(string owner, FixtureSelector selector, Preparation preparation)
     {
         Require(ownedVaultSource is null && baselineConfiguration is not null && Enum.IsDefined(preparation) &&
-            !(StatusNotificationUpdateIndependentSelector(selector) || StatusNotificationCreateIndependentSelector(selector)));
+            !((StatusNotificationUpdateIndependentSelector(selector) || StatusDeniedNotificationUpdateSelector(selector) || StatusUnknownNotificationUpdateSelector(selector) || StatusUnknownNotificationUpdateIndependentSelector(selector) || StatusUnknownNotificationUpdateCancellationSelector(selector)) || StatusNotificationCreateIndependentSelector(selector)));
         lock (plans)
         {
             Require(!closed);
@@ -663,7 +1376,7 @@ internal sealed class NotificationFixtureProvisioner : IAsyncDisposable
         lock (plans)
         {
             Require(!closed && baselineConfiguration is not null && ownedVaultSource is not null && Enum.IsDefined(preparation));
-            Require(!(StatusNotificationUpdateIndependentSelector(originalParent.Selector) || StatusNotificationCreateIndependentSelector(originalParent.Selector)) ||
+            Require(!((StatusNotificationUpdateIndependentSelector(originalParent.Selector) || StatusDeniedNotificationUpdateSelector(originalParent.Selector) || StatusUnknownNotificationUpdateSelector(originalParent.Selector) || StatusUnknownNotificationUpdateIndependentSelector(originalParent.Selector) || StatusUnknownNotificationUpdateCancellationSelector(originalParent.Selector)) || StatusNotificationCreateIndependentSelector(originalParent.Selector)) ||
                 preparation == Preparation.Present && originalParent.Preparation == VaultFixtureProvisioner.Preparation.Active &&
                 !originalParent.Restored && !originalParent.SeedCanary && originalParent.PolicyChildren.Count == 0 &&
                 originalParent.OwnedNotificationNames.Count == 1 && originalParent.PrivateEndpoint is null);
@@ -783,6 +1496,8 @@ internal sealed class NotificationFixtureProvisioner : IAsyncDisposable
         ExclusiveCreationDeclaration? exclusiveCreation = null)
     {
         Require(vaultSource is not null);
+        Require(!StatusDeniedNotificationUpdateSelector(selector) ||
+            vaultSource.MatchesStatusDeniedNotificationOperation(selector));
         // An empty close tombstone has no vault coordinates. Its caller handles
         // it directly; never invent a dummy vault or a replacement topology.
         var parent = vaultSource.OpenCleanupPlan(owner, selector);
@@ -866,6 +1581,86 @@ internal sealed class NotificationFixtureProvisioner : IAsyncDisposable
                 ReferenceEquals(retained, originalPlan) && prepared.Contains(originalPlan) &&
                 proof.SelectedDispatch == selectedDispatch && proof.NativeTask.IsCompletedSuccessfully &&
                 StatusNotificationUpdateIndependentSelector(originalPlan.Selector);
+    }
+
+
+    internal bool OwnsStatusDeniedNotificationUpdateRead(StatusDeniedNotificationUpdateReadProof proof,
+        Plan originalPlan, Guid selectedDispatch)
+    {
+        lock (plans)
+            return !closed && !deniedNotificationUpdateRevoked.ContainsKey(originalPlan.Selector.Nonce) &&
+                originalPlan.Gate.CurrentCount == 1 && originalPlan.ObjectPlan?.Busy == 0 && proof is not null && statusDeniedUpdateReads.ContainsKey(proof) &&
+                statusDeniedUpdateTokens.TryGetValue(proof, out var tokens) && tokens.All(t => !t.IsCancellationRequested) &&
+                ReferenceEquals(proof.Plan, originalPlan) && ReferenceEquals(originalPlan.Source, source) &&
+                ReferenceEquals(proof.Parent, originalPlan.ObjectPlan) && !originalPlan.Restored &&
+                originalPlan.ObjectPlan is { Restored: false, Preparation: VaultFixtureProvisioner.Preparation.Active } &&
+                plans.TryGetValue((originalPlan.Selector.Nonce, originalPlan.ResourceId), out var retained) &&
+                ReferenceEquals(retained, originalPlan) && prepared.Contains(originalPlan) &&
+                proof.SelectedDispatch == selectedDispatch && proof.NativeTask.IsCompletedSuccessfully &&
+                statusDeniedUpdateOuterTasks.TryGetValue(proof, out var outer) && outer.IsCompletedSuccessfully &&
+                proof.NativeState == "Succeeded" &&
+                (proof.Phase == StatusDeniedNotificationUpdateReadPhase.Baseline ? selectedDispatch == Guid.Empty : selectedDispatch != Guid.Empty) &&
+                StatusDeniedNotificationUpdateSelector(originalPlan.Selector);
+    }
+
+
+    internal bool OwnsStatusUnknownNotificationUpdateRead(StatusUnknownNotificationUpdateReadProof proof,
+        Plan originalPlan, Guid selectedDispatch)
+    {
+        lock (plans)
+            return !closed && !unknownNotificationUpdateRevoked.ContainsKey(originalPlan.Selector.Nonce) &&
+                originalPlan.Gate.CurrentCount == 1 && originalPlan.ObjectPlan?.Busy == 0 && proof is not null && statusUnknownReads.ContainsKey(proof) &&
+                statusUnknownTokens.TryGetValue(proof, out var tokens) && tokens.All(t => !t.IsCancellationRequested) &&
+                ReferenceEquals(proof.Plan, originalPlan) && ReferenceEquals(originalPlan.Source, source) &&
+                ReferenceEquals(proof.Parent, originalPlan.ObjectPlan) && !originalPlan.Restored &&
+                originalPlan.ObjectPlan is { Restored: false, Preparation: VaultFixtureProvisioner.Preparation.Active } &&
+                plans.TryGetValue((originalPlan.Selector.Nonce, originalPlan.ResourceId), out var retained) &&
+                ReferenceEquals(retained, originalPlan) && prepared.Contains(originalPlan) &&
+                proof.SelectedDispatch == selectedDispatch && proof.NativeTask.IsCompletedSuccessfully &&
+                statusUnknownOuterTasks.TryGetValue(proof, out var outer) && outer.IsCompletedSuccessfully &&
+                proof.NativeState == (proof.Phase == StatusUnknownNotificationUpdateReadPhase.SelectedUnknown ? "Unknown" : "Succeeded") &&
+                (proof.Phase == StatusUnknownNotificationUpdateReadPhase.Baseline ? selectedDispatch == Guid.Empty : selectedDispatch != Guid.Empty) &&
+                StatusUnknownNotificationUpdateSelector(originalPlan.Selector);
+    }
+
+
+    internal bool OwnsStatusUnknownNotificationUpdateIndependentRead(StatusUnknownNotificationUpdateIndependentReadProof proof,
+        Plan originalPlan, Guid selectedDispatch)
+    {
+        lock (plans)
+            return !closed && !unknownNotificationUpdateIndependentRevoked.ContainsKey(originalPlan.Selector.Nonce) &&
+                originalPlan.Gate.CurrentCount == 1 && originalPlan.ObjectPlan?.Busy == 0 && proof is not null && statusUnknownIndependentReads.ContainsKey(proof) &&
+                statusUnknownIndependentTokens.TryGetValue(proof, out var tokens) && tokens.All(t => !t.IsCancellationRequested) &&
+                ReferenceEquals(proof.Plan, originalPlan) && ReferenceEquals(originalPlan.Source, source) &&
+                ReferenceEquals(proof.Parent, originalPlan.ObjectPlan) && !originalPlan.Restored &&
+                originalPlan.ObjectPlan is { Restored: false, Preparation: VaultFixtureProvisioner.Preparation.Active } &&
+                plans.TryGetValue((originalPlan.Selector.Nonce, originalPlan.ResourceId), out var retained) &&
+                ReferenceEquals(retained, originalPlan) && prepared.Contains(originalPlan) &&
+                proof.SelectedDispatch == selectedDispatch && proof.NativeTask.IsCompletedSuccessfully &&
+                statusUnknownIndependentOuterTasks.TryGetValue(proof, out var outer) && outer.IsCompletedSuccessfully &&
+                proof.NativeState == (proof.Phase == StatusUnknownNotificationUpdateIndependentReadPhase.SelectedUnknown ? "Unknown" : "Succeeded") &&
+                (proof.Phase == StatusUnknownNotificationUpdateIndependentReadPhase.Baseline ? selectedDispatch == Guid.Empty : selectedDispatch != Guid.Empty) &&
+                StatusUnknownNotificationUpdateIndependentSelector(originalPlan.Selector);
+    }
+
+
+    internal bool OwnsStatusUnknownNotificationUpdateCancellationRead(StatusUnknownNotificationUpdateCancellationReadProof proof,
+        Plan originalPlan, Guid selectedDispatch)
+    {
+        lock (plans)
+            return !closed && !unknownNotificationUpdateCancellationRevoked.ContainsKey(originalPlan.Selector.Nonce) &&
+                originalPlan.Gate.CurrentCount == 1 && originalPlan.ObjectPlan?.Busy == 0 && proof is not null && statusUnknownCancellationReads.ContainsKey(proof) &&
+                statusUnknownCancellationTokens.TryGetValue(proof, out var tokens) && tokens.All(t => !t.IsCancellationRequested) &&
+                ReferenceEquals(proof.Plan, originalPlan) && ReferenceEquals(originalPlan.Source, source) &&
+                ReferenceEquals(proof.Parent, originalPlan.ObjectPlan) && !originalPlan.Restored &&
+                originalPlan.ObjectPlan is { Restored: false, Preparation: VaultFixtureProvisioner.Preparation.Active } &&
+                plans.TryGetValue((originalPlan.Selector.Nonce, originalPlan.ResourceId), out var retained) &&
+                ReferenceEquals(retained, originalPlan) && prepared.Contains(originalPlan) &&
+                proof.SelectedDispatch == selectedDispatch && proof.NativeTask.IsCompletedSuccessfully &&
+                statusUnknownCancellationOuterTasks.TryGetValue(proof, out var outer) && outer.IsCompletedSuccessfully &&
+                proof.NativeState == (proof.Phase == StatusUnknownNotificationUpdateCancellationReadPhase.SelectedUnknown ? "Unknown" : "Succeeded") &&
+                (proof.Phase == StatusUnknownNotificationUpdateCancellationReadPhase.Baseline ? selectedDispatch == Guid.Empty : selectedDispatch != Guid.Empty) &&
+                StatusUnknownNotificationUpdateCancellationSelector(originalPlan.Selector);
     }
 
 
@@ -980,11 +1775,16 @@ internal sealed class NotificationFixtureProvisioner : IAsyncDisposable
             using (var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token))
             {
                 _ = SelectedSnapshot();
-                read = await Read(plan, linked.Token, () =>
+                var readTask = Read(plan, linked.Token, () =>
                 {
                     _ = SelectedSnapshot();
                     linked.Token.ThrowIfCancellationRequested();
-                }, dispatch, originalCallerToken ?? cancellationToken).ConfigureAwait(false);
+                }, dispatch, originalCallerToken ?? cancellationToken);
+                read = await readTask.ConfigureAwait(false);
+                if (read.StatusUnknownIndependentRead is { } independentUnknownProof) lock (plans) statusUnknownIndependentOuterTasks.Add(independentUnknownProof, readTask);
+                if (read.StatusUnknownCancellationRead is { } cancellationUnknownProof) lock (plans) statusUnknownCancellationOuterTasks.Add(cancellationUnknownProof, readTask);
+        if (read.StatusDeniedUpdateRead is { } deniedProof) lock (plans) statusDeniedUpdateOuterTasks.Add(deniedProof, readTask);
+        if (read.StatusUnknownRead is { } unknownProof) lock (plans) statusUnknownOuterTasks.Add(unknownProof, readTask);
                 linked.Token.ThrowIfCancellationRequested();
             }
             // The host clock can reenter and close either source.
@@ -1005,6 +1805,10 @@ internal sealed class NotificationFixtureProvisioner : IAsyncDisposable
                 StatusDeleteRead = read.StatusDeleteRead,
                 StatusDeleteIndependentRead = read.StatusDeleteIndependentRead,
                 StatusUpdateIndependentRead = read.StatusUpdateIndependentRead,
+                StatusUnknownIndependentRead = read.StatusUnknownIndependentRead,
+                StatusUnknownCancellationRead = read.StatusUnknownCancellationRead,
+                StatusDeniedUpdateRead = read.StatusDeniedUpdateRead,
+                StatusUnknownRead = read.StatusUnknownRead,
                 StatusCreateIndependentRead = read.StatusCreateIndependentRead,
                 StatusUpdateRead = read.StatusUpdateRead,
                 StatusCreateRead = read.StatusCreateRead
@@ -1021,6 +1825,10 @@ internal sealed class NotificationFixtureProvisioner : IAsyncDisposable
             finally
             {
                 Exit(plan);
+                PublishUnknownNotificationUpdateIndependentRead(read?.StatusUnknownIndependentRead);
+                PublishUnknownNotificationUpdateCancellationRead(read?.StatusUnknownCancellationRead);
+                PublishDeniedNotificationUpdateRead(read?.StatusDeniedUpdateRead);
+                PublishUnknownNotificationUpdateRead(read?.StatusUnknownRead);
                 PublishNotificationUpdateIndependentRead(read?.StatusUpdateIndependentRead);
                 PublishNotificationCreateIndependentRead(read?.StatusCreateIndependentRead);
             }
@@ -1036,12 +1844,12 @@ internal sealed class NotificationFixtureProvisioner : IAsyncDisposable
                     plan.ObjectPlan is { Restored: false, Preparation: VaultFixtureProvisioner.Preparation.Active } &&
                     ownedVaultSource is not null && dispatch != Guid.Empty &&
                     plan.Selector.Operation == ManagementOperationEffects.Members[0].Operation &&
-                    plan.Selector.Variant is "operation.UpdateNotification" or "operation.CreateOrUpdateNotification" or
-                        "operation.DeleteNotification" &&
+                    (plan.Selector.Variant is "operation.UpdateNotification" or "operation.CreateOrUpdateNotification" or
+                        "operation.DeleteNotification" || StatusUnknownNotificationUpdateSelector(plan.Selector) || StatusUnknownNotificationUpdateIndependentSelector(plan.Selector) || StatusUnknownNotificationUpdateCancellationSelector(plan.Selector)) &&
                     (plan.Selector.Case == "selected-contract" ||
                         StatusNotificationDeleteIndependentSelector(plan.Selector) ||
                         StatusNotificationDeleteCancellationSelector(plan.Selector) ||
-                        (StatusNotificationUpdateCancellationSelector(plan.Selector) || (StatusNotificationUpdateIndependentSelector(plan.Selector) || StatusNotificationCreateIndependentSelector(plan.Selector))) ||
+                        (StatusNotificationUpdateCancellationSelector(plan.Selector) || ((StatusNotificationUpdateIndependentSelector(plan.Selector) || StatusDeniedNotificationUpdateSelector(plan.Selector) || StatusUnknownNotificationUpdateSelector(plan.Selector) || StatusUnknownNotificationUpdateIndependentSelector(plan.Selector) || StatusUnknownNotificationUpdateCancellationSelector(plan.Selector)) || StatusNotificationCreateIndependentSelector(plan.Selector))) ||
                         StatusNotificationCreateCancellationSelector(plan.Selector)));
                 var parent = plan.ObjectPlan;
                 var snapshot = ReadPlan(plan.Owner, plan.Selector);
@@ -1077,6 +1885,246 @@ internal sealed class NotificationFixtureProvisioner : IAsyncDisposable
         }
     }
 
+    internal async ValueTask<Result> ReadStatusDeniedNotificationUpdateCleanupAsync(Plan originalPlan, Guid originalDispatch,
+        CancellationToken token = default)
+    {
+        token.ThrowIfCancellationRequested();
+        Check(originalPlan);
+        Require(StatusDeniedNotificationUpdateSelector(originalPlan.Selector) && !originalPlan.Restored && originalDispatch != Guid.Empty);
+        if (!Enter(originalPlan)) return Finish(State.Pending, originalPlan);
+        Readback? read = null;
+        try
+        {
+            var snapshot = ReadPlan(originalPlan.Owner, originalPlan.Selector);
+            Require(RoleFixtureJournal.StatusDeniedNotificationUpdateRoot(snapshot) && snapshot.Closing && snapshot.Idle && prepared.Contains(originalPlan) &&
+                snapshot.Resources.Single(r => r.Id == originalPlan.ResourceId) is
+                    { InvocationTerminated: true, SelectedAttempted: true, DeleteAttempted: false } row &&
+                row.ActiveDispatch == Guid.Empty && snapshot.Resources.Where(r => r.Id != originalPlan.ResourceId)
+                    .All(r => r.ActiveDispatch == Guid.Empty));
+            lock (plans) Require(statusDeniedUpdateReads.Keys.Any(p => ReferenceEquals(p.Plan, originalPlan) &&
+                p.Phase == StatusDeniedNotificationUpdateReadPhase.Selected && p.SelectedDispatch == originalDispatch &&
+                statusDeniedUpdateTokens[p].All(t => !t.IsCancellationRequested) &&
+                statusDeniedUpdateOuterTasks.TryGetValue(p, out var outer) && outer.IsCompletedSuccessfully));
+            using (var deadline = new CancellationTokenSource(limits.Timeout, time))
+            using (var linked = CancellationTokenSource.CreateLinkedTokenSource(token, deadline.Token))
+            {
+                var readTask = Read(originalPlan, linked.Token, () =>
+                {
+                    Require(RoleFixtureJournal.SameStatusDeniedNotificationUpdateSnapshot(snapshot,
+                        ReadPlan(originalPlan.Owner, originalPlan.Selector)));
+                    token.ThrowIfCancellationRequested();
+                }, originalDispatch, token, deniedUpdatePhase: StatusDeniedNotificationUpdateReadPhase.Cleanup);
+                read = await readTask.ConfigureAwait(false);
+                linked.Token.ThrowIfCancellationRequested();
+                Require(read.StatusDeniedUpdateRead is not null);
+                lock (plans) statusDeniedUpdateOuterTasks.Add(read.StatusDeniedUpdateRead, readTask);
+            }
+            token.ThrowIfCancellationRequested();
+            return new()
+            {
+                State = State.Closing, Journal = ReadPlan(originalPlan.Owner, originalPlan.Selector),
+                Receipts = originalPlan.Receipts, Present = read.Present,
+                Configuration = read.Configuration is null ? null : Copy(read.Configuration),
+                ObservedAt = time.GetUtcNow(), SelectedPlan = originalPlan, SelectedDispatch = originalDispatch,
+                NativeState = read.NativeState, StatusDeniedUpdateRead = read.StatusDeniedUpdateRead
+            };
+        }
+        catch (Exception exception)
+        {
+            token.ThrowIfCancellationRequested();
+            return Finish(FailureState(exception), originalPlan);
+        }
+        finally
+        {
+            try { read?.Dispose(); }
+            finally
+            {
+                Exit(originalPlan);
+                PublishDeniedNotificationUpdateRead(read?.StatusDeniedUpdateRead);
+            }
+        }
+    }
+
+    internal async ValueTask<Result> ReadStatusUnknownNotificationUpdateTerminalAsync(Plan originalPlan, Guid originalDispatch,
+        CancellationToken token = default)
+    {
+        token.ThrowIfCancellationRequested();
+        Check(originalPlan);
+        Require(StatusUnknownNotificationUpdateSelector(originalPlan.Selector) && !originalPlan.Restored && originalDispatch != Guid.Empty);
+        if (!Enter(originalPlan)) return Finish(State.Pending, originalPlan);
+        Readback? read = null;
+        try
+        {
+            var snapshot = ReadPlan(originalPlan.Owner, originalPlan.Selector);
+            Require(snapshot.Closing && prepared.Contains(originalPlan) &&
+                snapshot.Resources.Single(r => r.Id == originalPlan.ResourceId) is
+                    { InvocationTerminated: true, SelectedAttempted: true, DeleteAttempted: false } row &&
+                row.ActiveDispatch == originalDispatch && snapshot.Resources.Where(r => r.Id != originalPlan.ResourceId)
+                    .All(r => r.ActiveDispatch == Guid.Empty));
+            lock (plans) Require(statusUnknownReads.Keys.Any(p => ReferenceEquals(p.Plan, originalPlan) &&
+                p.Phase == StatusUnknownNotificationUpdateReadPhase.SelectedUnknown && p.SelectedDispatch == originalDispatch &&
+                statusUnknownTokens[p].All(t => !t.IsCancellationRequested) &&
+                statusUnknownOuterTasks.TryGetValue(p, out var outer) && outer.IsCompletedSuccessfully));
+            using (var deadline = new CancellationTokenSource(limits.Timeout, time))
+            using (var linked = CancellationTokenSource.CreateLinkedTokenSource(token, deadline.Token))
+            {
+                var readTask = Read(originalPlan, linked.Token, () =>
+                {
+                    Require(RoleFixtureJournal.SameStatusUnknownNotificationUpdateSnapshot(snapshot,
+                        ReadPlan(originalPlan.Owner, originalPlan.Selector)));
+                    token.ThrowIfCancellationRequested();
+                }, originalDispatch, token, StatusUnknownNotificationUpdateReadPhase.ReleaseTerminal);
+                read = await readTask.ConfigureAwait(false);
+                linked.Token.ThrowIfCancellationRequested();
+                Require(read.StatusUnknownRead is not null);
+                lock (plans) statusUnknownOuterTasks.Add(read.StatusUnknownRead, readTask);
+            }
+            token.ThrowIfCancellationRequested();
+            return new()
+            {
+                State = State.Pending, Journal = ReadPlan(originalPlan.Owner, originalPlan.Selector),
+                Receipts = originalPlan.Receipts, Present = read.Present,
+                Configuration = read.Configuration is null ? null : Copy(read.Configuration),
+                ObservedAt = time.GetUtcNow(), SelectedPlan = originalPlan, SelectedDispatch = originalDispatch,
+                NativeState = read.NativeState, StatusUnknownRead = read.StatusUnknownRead
+            };
+        }
+        catch (Exception exception)
+        {
+            token.ThrowIfCancellationRequested();
+            return Finish(FailureState(exception), originalPlan);
+        }
+        finally
+        {
+            try { read?.Dispose(); }
+            finally
+            {
+                Exit(originalPlan);
+                PublishUnknownNotificationUpdateRead(read?.StatusUnknownRead);
+            }
+        }
+    }
+
+    internal async ValueTask<Result> ReadStatusUnknownNotificationUpdateIndependentTerminalAsync(Plan originalPlan, Guid originalDispatch,
+        CancellationToken token = default)
+    {
+        token.ThrowIfCancellationRequested();
+        Check(originalPlan);
+        Require(StatusUnknownNotificationUpdateIndependentSelector(originalPlan.Selector) && !originalPlan.Restored && originalDispatch != Guid.Empty);
+        if (!Enter(originalPlan)) return Finish(State.Pending, originalPlan);
+        Readback? read = null;
+        try
+        {
+            var snapshot = ReadPlan(originalPlan.Owner, originalPlan.Selector);
+            Require(snapshot.Closing && prepared.Contains(originalPlan) &&
+                snapshot.Resources.Single(r => r.Id == originalPlan.ResourceId) is
+                    { InvocationTerminated: true, SelectedAttempted: true, DeleteAttempted: false } row &&
+                row.ActiveDispatch == originalDispatch && snapshot.Resources.Where(r => r.Id != originalPlan.ResourceId)
+                    .All(r => r.ActiveDispatch == Guid.Empty));
+            lock (plans) Require(statusUnknownIndependentReads.Keys.Any(p => ReferenceEquals(p.Plan, originalPlan) &&
+                p.Phase == StatusUnknownNotificationUpdateIndependentReadPhase.SelectedUnknown && p.SelectedDispatch == originalDispatch &&
+                statusUnknownIndependentTokens[p].All(t => !t.IsCancellationRequested) &&
+                statusUnknownIndependentOuterTasks.TryGetValue(p, out var outer) && outer.IsCompletedSuccessfully));
+            using (var deadline = new CancellationTokenSource(limits.Timeout, time))
+            using (var linked = CancellationTokenSource.CreateLinkedTokenSource(token, deadline.Token))
+            {
+                var readTask = Read(originalPlan, linked.Token, () =>
+                {
+                    Require(RoleFixtureJournal.SameStatusUnknownNotificationUpdateIndependentSnapshot(snapshot,
+                        ReadPlan(originalPlan.Owner, originalPlan.Selector)));
+                    token.ThrowIfCancellationRequested();
+                }, originalDispatch, token, unknownIndependentPhase: StatusUnknownNotificationUpdateIndependentReadPhase.ReleaseTerminal);
+                read = await readTask.ConfigureAwait(false);
+                linked.Token.ThrowIfCancellationRequested();
+                Require(read.StatusUnknownIndependentRead is not null);
+                lock (plans) statusUnknownIndependentOuterTasks.Add(read.StatusUnknownIndependentRead, readTask);
+            }
+            token.ThrowIfCancellationRequested();
+            return new()
+            {
+                State = State.Pending, Journal = ReadPlan(originalPlan.Owner, originalPlan.Selector),
+                Receipts = originalPlan.Receipts, Present = read.Present,
+                Configuration = read.Configuration is null ? null : Copy(read.Configuration),
+                ObservedAt = time.GetUtcNow(), SelectedPlan = originalPlan, SelectedDispatch = originalDispatch,
+                NativeState = read.NativeState, StatusUnknownIndependentRead = read.StatusUnknownIndependentRead
+            };
+        }
+        catch (Exception exception)
+        {
+            token.ThrowIfCancellationRequested();
+            return Finish(FailureState(exception), originalPlan);
+        }
+        finally
+        {
+            try { read?.Dispose(); }
+            finally
+            {
+                Exit(originalPlan);
+                PublishUnknownNotificationUpdateIndependentRead(read?.StatusUnknownIndependentRead);
+            }
+        }
+    }
+
+    internal async ValueTask<Result> ReadStatusUnknownNotificationUpdateCancellationTerminalAsync(Plan originalPlan, Guid originalDispatch,
+        CancellationToken token = default)
+    {
+        token.ThrowIfCancellationRequested();
+        Check(originalPlan);
+        Require(StatusUnknownNotificationUpdateCancellationSelector(originalPlan.Selector) && !originalPlan.Restored && originalDispatch != Guid.Empty);
+        if (!Enter(originalPlan)) return Finish(State.Pending, originalPlan);
+        Readback? read = null;
+        try
+        {
+            var snapshot = ReadPlan(originalPlan.Owner, originalPlan.Selector);
+            Require(snapshot.Closing && prepared.Contains(originalPlan) &&
+                snapshot.Resources.Single(r => r.Id == originalPlan.ResourceId) is
+                    { InvocationTerminated: true, SelectedAttempted: true, DeleteAttempted: false } row &&
+                row.ActiveDispatch == originalDispatch && snapshot.Resources.Where(r => r.Id != originalPlan.ResourceId)
+                    .All(r => r.ActiveDispatch == Guid.Empty));
+            lock (plans) Require(statusUnknownCancellationReads.Keys.Any(p => ReferenceEquals(p.Plan, originalPlan) &&
+                p.Phase == StatusUnknownNotificationUpdateCancellationReadPhase.SelectedUnknown && p.SelectedDispatch == originalDispatch &&
+                statusUnknownCancellationTokens[p].All(t => !t.IsCancellationRequested) &&
+                statusUnknownCancellationOuterTasks.TryGetValue(p, out var outer) && outer.IsCompletedSuccessfully));
+            using (var deadline = new CancellationTokenSource(limits.Timeout, time))
+            using (var linked = CancellationTokenSource.CreateLinkedTokenSource(token, deadline.Token))
+            {
+                var readTask = Read(originalPlan, linked.Token, () =>
+                {
+                    Require(RoleFixtureJournal.SameStatusUnknownNotificationUpdateCancellationSnapshot(snapshot,
+                        ReadPlan(originalPlan.Owner, originalPlan.Selector)));
+                    token.ThrowIfCancellationRequested();
+                }, originalDispatch, token, unknownCancellationPhase: StatusUnknownNotificationUpdateCancellationReadPhase.ReleaseTerminal);
+                read = await readTask.ConfigureAwait(false);
+                linked.Token.ThrowIfCancellationRequested();
+                Require(read.StatusUnknownCancellationRead is not null);
+                lock (plans) statusUnknownCancellationOuterTasks.Add(read.StatusUnknownCancellationRead, readTask);
+            }
+            token.ThrowIfCancellationRequested();
+            return new()
+            {
+                State = State.Pending, Journal = ReadPlan(originalPlan.Owner, originalPlan.Selector),
+                Receipts = originalPlan.Receipts, Present = read.Present,
+                Configuration = read.Configuration is null ? null : Copy(read.Configuration),
+                ObservedAt = time.GetUtcNow(), SelectedPlan = originalPlan, SelectedDispatch = originalDispatch,
+                NativeState = read.NativeState, StatusUnknownCancellationRead = read.StatusUnknownCancellationRead
+            };
+        }
+        catch (Exception exception)
+        {
+            token.ThrowIfCancellationRequested();
+            return Finish(FailureState(exception), originalPlan);
+        }
+        finally
+        {
+            try { read?.Dispose(); }
+            finally
+            {
+                Exit(originalPlan);
+                PublishUnknownNotificationUpdateCancellationRead(read?.StatusUnknownCancellationRead);
+            }
+        }
+    }
+
     private void PublishNotificationUpdateIndependentRead(StatusNotificationUpdateIndependentReadProof? proof)
     {
         if (proof is null) return;
@@ -1088,6 +2136,66 @@ internal sealed class NotificationFixtureProvisioner : IAsyncDisposable
             statusUpdateIndependentReads.Add(proof, pending.Configuration);
             statusUpdateIndependentTokens.Add(proof, pending.Tokens);
             statusUpdateIndependentPending.Remove(proof);
+        }
+    }
+
+    private void PublishDeniedNotificationUpdateRead(StatusDeniedNotificationUpdateReadProof? proof)
+    {
+        if (proof is null) return;
+        lock (plans)
+        {
+            Require(statusDeniedUpdatePending.TryGetValue(proof, out var pending) &&
+                !closed && proof.Plan.Gate.CurrentCount == 1 && proof.Parent?.Busy == 0 &&
+                pending.Tokens.All(t => !t.IsCancellationRequested) && (proof.Phase == StatusDeniedNotificationUpdateReadPhase.Cleanup ? ReadPlan(proof.Owner, proof.Selector).Closing : !ReadPlan(proof.Owner, proof.Selector).Closing) &&
+                statusDeniedUpdateOuterTasks.TryGetValue(proof, out var outer) && outer.IsCompletedSuccessfully);
+            statusDeniedUpdateReads.Add(proof, pending.Configuration);
+            statusDeniedUpdateTokens.Add(proof, pending.Tokens);
+            statusDeniedUpdatePending.Remove(proof);
+        }
+    }
+
+    private void PublishUnknownNotificationUpdateRead(StatusUnknownNotificationUpdateReadProof? proof)
+    {
+        if (proof is null) return;
+        lock (plans)
+        {
+            Require(statusUnknownPending.TryGetValue(proof, out var pending) &&
+                !closed && proof.Plan.Gate.CurrentCount == 1 && proof.Parent?.Busy == 0 &&
+                pending.Tokens.All(t => !t.IsCancellationRequested) && (proof.Phase == StatusUnknownNotificationUpdateReadPhase.ReleaseTerminal ? ReadPlan(proof.Owner, proof.Selector).Closing : !ReadPlan(proof.Owner, proof.Selector).Closing) &&
+                statusUnknownOuterTasks.TryGetValue(proof, out var outer) && outer.IsCompletedSuccessfully);
+            statusUnknownReads.Add(proof, pending.Configuration);
+            statusUnknownTokens.Add(proof, pending.Tokens);
+            statusUnknownPending.Remove(proof);
+        }
+    }
+
+    private void PublishUnknownNotificationUpdateIndependentRead(StatusUnknownNotificationUpdateIndependentReadProof? proof)
+    {
+        if (proof is null) return;
+        lock (plans)
+        {
+            Require(statusUnknownIndependentPending.TryGetValue(proof, out var pending) &&
+                !closed && proof.Plan.Gate.CurrentCount == 1 && proof.Parent?.Busy == 0 &&
+                pending.Tokens.All(t => !t.IsCancellationRequested) && (proof.Phase == StatusUnknownNotificationUpdateIndependentReadPhase.ReleaseTerminal ? ReadPlan(proof.Owner, proof.Selector).Closing : !ReadPlan(proof.Owner, proof.Selector).Closing) &&
+                statusUnknownIndependentOuterTasks.TryGetValue(proof, out var outer) && outer.IsCompletedSuccessfully);
+            statusUnknownIndependentReads.Add(proof, pending.Configuration);
+            statusUnknownIndependentTokens.Add(proof, pending.Tokens);
+            statusUnknownIndependentPending.Remove(proof);
+        }
+    }
+
+    private void PublishUnknownNotificationUpdateCancellationRead(StatusUnknownNotificationUpdateCancellationReadProof? proof)
+    {
+        if (proof is null) return;
+        lock (plans)
+        {
+            Require(statusUnknownCancellationPending.TryGetValue(proof, out var pending) &&
+                !closed && proof.Plan.Gate.CurrentCount == 1 && proof.Parent?.Busy == 0 &&
+                pending.Tokens.All(t => !t.IsCancellationRequested) && (proof.Phase == StatusUnknownNotificationUpdateCancellationReadPhase.ReleaseTerminal ? ReadPlan(proof.Owner, proof.Selector).Closing : !ReadPlan(proof.Owner, proof.Selector).Closing) &&
+                statusUnknownCancellationOuterTasks.TryGetValue(proof, out var outer) && outer.IsCompletedSuccessfully);
+            statusUnknownCancellationReads.Add(proof, pending.Configuration);
+            statusUnknownCancellationTokens.Add(proof, pending.Tokens);
+            statusUnknownCancellationPending.Remove(proof);
         }
     }
 
@@ -1131,6 +2239,10 @@ internal sealed class NotificationFixtureProvisioner : IAsyncDisposable
             Exit(plan);
             try
             {
+                PublishUnknownNotificationUpdateIndependentRead(result?.StatusUnknownIndependentRead);
+                PublishUnknownNotificationUpdateCancellationRead(result?.StatusUnknownCancellationRead);
+                PublishDeniedNotificationUpdateRead(result?.StatusDeniedUpdateRead);
+                PublishUnknownNotificationUpdateRead(result?.StatusUnknownRead);
                 PublishNotificationUpdateIndependentRead(result?.StatusUpdateIndependentRead);
                 PublishNotificationCreateIndependentRead(result?.StatusCreateIndependentRead);
             }
@@ -1193,6 +2305,158 @@ internal sealed class NotificationFixtureProvisioner : IAsyncDisposable
         }
     }
 
+    private RoleFixtureJournal.Snapshot RecordDeniedNotificationUpdateAbsence(Plan plan, Readback read,
+        CancellationToken token, CancellationToken caller)
+    {
+        Require(read is { Present: false, ActualTask.IsFaulted: true, Drained: true, Preimage: not null } &&
+            !token.IsCancellationRequested && !caller.IsCancellationRequested);
+        var preimage = read.Preimage;
+        Require(preimage.Closing && preimage.Idle);
+        var absence = new StatusDeniedNotificationUpdateAbsence(this);
+        var postimage = preimage.Resources.Single(r => r.Id == plan.ResourceId).Absent ? preimage : preimage with
+        {
+            Revision = preimage.Revision + 1,
+            Resources = preimage.Resources.Select(r => r.Id == plan.ResourceId ? r with { Absent = true } : r).ToArray()
+        };
+        Require(deniedNotificationUpdateFixtureFacts.TryAdd(absence, new(plan, preimage, postimage, plan.ResourceId,
+            Guid.Empty, false, false, false, DeniedNotificationUpdateFixtureStage.Absence, [token, caller], [read.ActualTask])));
+        lock (plans) deniedNotificationUpdateAbsencePending.Add(plan, absence);
+        return PersistDeniedNotificationUpdateAbsence(plan, absence);
+    }
+
+    private RoleFixtureJournal.Snapshot PersistDeniedNotificationUpdateAbsence(Plan plan, StatusDeniedNotificationUpdateAbsence absence)
+    {
+        try
+        {
+            var committed = journal.RecordStatusDeniedNotificationUpdateAbsence(plan.Owner, plan.Selector, plan.LeaseId, absence);
+            ownedVaultSource!.RetainStatusDeniedNotificationUpdateAbsence(plan.ObjectPlan!, absence, committed);
+            lock (plans) deniedNotificationUpdateAbsencePending.Remove(plan);
+            return committed;
+        }
+        catch (RoleFixtureJournal.StatusDeniedNotificationUpdateHistoryException) { RevokeDeniedNotificationUpdateFixture(plan.Selector); throw; }
+        catch (IOException) { throw; }
+        catch
+        {
+            RevokeDeniedNotificationUpdateFixture(plan.Selector);
+            deniedNotificationUpdateFixtureFacts.TryRemove(absence, out _);
+            throw;
+        }
+    }
+
+    private RoleFixtureJournal.Snapshot RecordUnknownNotificationUpdateAbsence(Plan plan, Readback read,
+        CancellationToken token, CancellationToken caller)
+    {
+        Require(read is { Present: false, ActualTask.IsFaulted: true, Drained: true, Preimage: not null } &&
+            !token.IsCancellationRequested && !caller.IsCancellationRequested);
+        var preimage = read.Preimage;
+        Require(preimage.Closing && preimage.Idle);
+        var absence = new StatusUnknownNotificationUpdateAbsence(this);
+        var postimage = preimage.Resources.Single(r => r.Id == plan.ResourceId).Absent ? preimage : preimage with
+        {
+            Revision = preimage.Revision + 1,
+            Resources = preimage.Resources.Select(r => r.Id == plan.ResourceId ? r with { Absent = true } : r).ToArray()
+        };
+        Require(unknownNotificationUpdateFixtureFacts.TryAdd(absence, new(plan, preimage, postimage, plan.ResourceId,
+            Guid.Empty, false, false, false, UnknownNotificationUpdateFixtureStage.Absence, [token, caller], [read.ActualTask])));
+        lock (plans) unknownNotificationUpdateAbsencePending.Add(plan, absence);
+        return PersistUnknownNotificationUpdateAbsence(plan, absence);
+    }
+
+    private RoleFixtureJournal.Snapshot PersistUnknownNotificationUpdateAbsence(Plan plan, StatusUnknownNotificationUpdateAbsence absence)
+    {
+        try
+        {
+            var committed = journal.RecordStatusUnknownNotificationUpdateAbsence(plan.Owner, plan.Selector, plan.LeaseId, absence);
+            ownedVaultSource!.RetainStatusUnknownNotificationUpdateAbsence(plan.ObjectPlan!, absence, committed);
+            lock (plans) unknownNotificationUpdateAbsencePending.Remove(plan);
+            return committed;
+        }
+        catch (RoleFixtureJournal.StatusUnknownNotificationUpdateHistoryException) { RevokeUnknownNotificationUpdateFixture(plan.Selector); throw; }
+        catch (IOException) { throw; }
+        catch
+        {
+            RevokeUnknownNotificationUpdateFixture(plan.Selector);
+            unknownNotificationUpdateFixtureFacts.TryRemove(absence, out _);
+            throw;
+        }
+    }
+
+    private RoleFixtureJournal.Snapshot RecordUnknownNotificationUpdateIndependentAbsence(Plan plan, Readback read,
+        CancellationToken token, CancellationToken caller)
+    {
+        Require(read is { Present: false, ActualTask.IsFaulted: true, Drained: true, Preimage: not null } &&
+            !token.IsCancellationRequested && !caller.IsCancellationRequested);
+        var preimage = read.Preimage;
+        Require(preimage.Closing && preimage.Idle);
+        var absence = new StatusUnknownNotificationUpdateIndependentAbsence(this);
+        var postimage = preimage.Resources.Single(r => r.Id == plan.ResourceId).Absent ? preimage : preimage with
+        {
+            Revision = preimage.Revision + 1,
+            Resources = preimage.Resources.Select(r => r.Id == plan.ResourceId ? r with { Absent = true } : r).ToArray()
+        };
+        Require(unknownNotificationUpdateIndependentFixtureFacts.TryAdd(absence, new(plan, preimage, postimage, plan.ResourceId,
+            Guid.Empty, false, false, false, UnknownNotificationUpdateIndependentFixtureStage.Absence, [token, caller], [read.ActualTask])));
+        lock (plans) unknownNotificationUpdateIndependentAbsencePending.Add(plan, absence);
+        return PersistUnknownNotificationUpdateIndependentAbsence(plan, absence);
+    }
+
+    private RoleFixtureJournal.Snapshot PersistUnknownNotificationUpdateIndependentAbsence(Plan plan, StatusUnknownNotificationUpdateIndependentAbsence absence)
+    {
+        try
+        {
+            var committed = journal.RecordStatusUnknownNotificationUpdateIndependentAbsence(plan.Owner, plan.Selector, plan.LeaseId, absence);
+            ownedVaultSource!.RetainStatusUnknownNotificationUpdateIndependentAbsence(plan.ObjectPlan!, absence, committed);
+            lock (plans) unknownNotificationUpdateIndependentAbsencePending.Remove(plan);
+            return committed;
+        }
+        catch (RoleFixtureJournal.StatusUnknownNotificationUpdateIndependentHistoryException) { RevokeUnknownNotificationUpdateIndependentFixture(plan.Selector); throw; }
+        catch (IOException) { throw; }
+        catch
+        {
+            RevokeUnknownNotificationUpdateIndependentFixture(plan.Selector);
+            unknownNotificationUpdateIndependentFixtureFacts.TryRemove(absence, out _);
+            throw;
+        }
+    }
+
+    private RoleFixtureJournal.Snapshot RecordUnknownNotificationUpdateCancellationAbsence(Plan plan, Readback read,
+        CancellationToken token, CancellationToken caller)
+    {
+        Require(read is { Present: false, ActualTask.IsFaulted: true, Drained: true, Preimage: not null } &&
+            !token.IsCancellationRequested && !caller.IsCancellationRequested);
+        var preimage = read.Preimage;
+        Require(preimage.Closing && preimage.Idle);
+        var absence = new StatusUnknownNotificationUpdateCancellationAbsence(this);
+        var postimage = preimage.Resources.Single(r => r.Id == plan.ResourceId).Absent ? preimage : preimage with
+        {
+            Revision = preimage.Revision + 1,
+            Resources = preimage.Resources.Select(r => r.Id == plan.ResourceId ? r with { Absent = true } : r).ToArray()
+        };
+        Require(unknownNotificationUpdateCancellationFixtureFacts.TryAdd(absence, new(plan, preimage, postimage, plan.ResourceId,
+            Guid.Empty, false, false, false, UnknownNotificationUpdateCancellationFixtureStage.Absence, [token, caller], [read.ActualTask])));
+        lock (plans) unknownNotificationUpdateCancellationAbsencePending.Add(plan, absence);
+        return PersistUnknownNotificationUpdateCancellationAbsence(plan, absence);
+    }
+
+    private RoleFixtureJournal.Snapshot PersistUnknownNotificationUpdateCancellationAbsence(Plan plan, StatusUnknownNotificationUpdateCancellationAbsence absence)
+    {
+        try
+        {
+            var committed = journal.RecordStatusUnknownNotificationUpdateCancellationAbsence(plan.Owner, plan.Selector, plan.LeaseId, absence);
+            ownedVaultSource!.RetainStatusUnknownNotificationUpdateCancellationAbsence(plan.ObjectPlan!, absence, committed);
+            lock (plans) unknownNotificationUpdateCancellationAbsencePending.Remove(plan);
+            return committed;
+        }
+        catch (RoleFixtureJournal.StatusUnknownNotificationUpdateCancellationHistoryException) { RevokeUnknownNotificationUpdateCancellationFixture(plan.Selector); throw; }
+        catch (IOException) { throw; }
+        catch
+        {
+            RevokeUnknownNotificationUpdateCancellationFixture(plan.Selector);
+            unknownNotificationUpdateCancellationFixtureFacts.TryRemove(absence, out _);
+            throw;
+        }
+    }
+
     private RoleFixtureJournal.Snapshot RecordNotificationCreateIndependentAbsence(Plan plan, Readback read,
         CancellationToken token, CancellationToken caller)
     {
@@ -1231,6 +2495,86 @@ internal sealed class NotificationFixtureProvisioner : IAsyncDisposable
         if (!Enter(plan)) return Finish(State.Pending, plan);
         try
         {
+            if (StatusUnknownNotificationUpdateCancellationSelector(selector))
+            {
+                bool retried = false;
+                foreach (var receipt in plan.Receipts)
+                {
+                    StatusUnknownNotificationUpdateCancellationFixtureDrain? drain;
+                    lock (plans) unknownNotificationUpdateCancellationPending.TryGetValue(receipt, out drain);
+                    if (drain is null) continue;
+                    PersistUnknownNotificationUpdateCancellationFixture(drain);
+                    retried = true;
+                }
+                StatusUnknownNotificationUpdateCancellationAbsence? absence;
+                lock (plans) unknownNotificationUpdateCancellationAbsencePending.TryGetValue(plan, out absence);
+                if (absence is not null)
+                {
+                    PersistUnknownNotificationUpdateCancellationAbsence(plan, absence);
+                    retried = true;
+                }
+                if (retried) return Finish(State.Closing, plan);
+            }
+            if (StatusUnknownNotificationUpdateIndependentSelector(selector))
+            {
+                bool retried = false;
+                foreach (var receipt in plan.Receipts)
+                {
+                    StatusUnknownNotificationUpdateIndependentFixtureDrain? drain;
+                    lock (plans) unknownNotificationUpdateIndependentPending.TryGetValue(receipt, out drain);
+                    if (drain is null) continue;
+                    PersistUnknownNotificationUpdateIndependentFixture(drain);
+                    retried = true;
+                }
+                StatusUnknownNotificationUpdateIndependentAbsence? absence;
+                lock (plans) unknownNotificationUpdateIndependentAbsencePending.TryGetValue(plan, out absence);
+                if (absence is not null)
+                {
+                    PersistUnknownNotificationUpdateIndependentAbsence(plan, absence);
+                    retried = true;
+                }
+                if (retried) return Finish(State.Closing, plan);
+            }
+            if (StatusDeniedNotificationUpdateSelector(selector))
+            {
+                bool retried = false;
+                foreach (var receipt in plan.Receipts)
+                {
+                    StatusDeniedNotificationUpdateFixtureDrain? drain;
+                    lock (plans) deniedNotificationUpdatePending.TryGetValue(receipt, out drain);
+                    if (drain is null) continue;
+                    PersistDeniedNotificationUpdateFixture(drain);
+                    retried = true;
+                }
+                StatusDeniedNotificationUpdateAbsence? absence;
+                lock (plans) deniedNotificationUpdateAbsencePending.TryGetValue(plan, out absence);
+                if (absence is not null)
+                {
+                    PersistDeniedNotificationUpdateAbsence(plan, absence);
+                    retried = true;
+                }
+                if (retried) return Finish(State.Closing, plan);
+            }
+            if (StatusUnknownNotificationUpdateSelector(selector))
+            {
+                bool retried = false;
+                foreach (var receipt in plan.Receipts)
+                {
+                    StatusUnknownNotificationUpdateFixtureDrain? drain;
+                    lock (plans) unknownNotificationUpdatePending.TryGetValue(receipt, out drain);
+                    if (drain is null) continue;
+                    PersistUnknownNotificationUpdateFixture(drain);
+                    retried = true;
+                }
+                StatusUnknownNotificationUpdateAbsence? absence;
+                lock (plans) unknownNotificationUpdateAbsencePending.TryGetValue(plan, out absence);
+                if (absence is not null)
+                {
+                    PersistUnknownNotificationUpdateAbsence(plan, absence);
+                    retried = true;
+                }
+                if (retried) return Finish(State.Closing, plan);
+            }
             using var deadline = new CancellationTokenSource(limits.Timeout, time);
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
             var snapshot = ReadPlan(owner, selector);
@@ -1258,7 +2602,15 @@ internal sealed class NotificationFixtureProvisioner : IAsyncDisposable
             {
                 if (StatusNotificationCreateIndependentSelector(selector))
                     RecordNotificationCreateIndependentAbsence(plan, after, linked.Token, originalCallerToken ?? cancellationToken);
-                else if (StatusNotificationUpdateIndependentSelector(selector))
+                else if (StatusUnknownNotificationUpdateCancellationSelector(selector))
+                    RecordUnknownNotificationUpdateCancellationAbsence(plan, after, linked.Token, originalCallerToken ?? cancellationToken);
+                else if (StatusUnknownNotificationUpdateIndependentSelector(selector))
+                    RecordUnknownNotificationUpdateIndependentAbsence(plan, after, linked.Token, originalCallerToken ?? cancellationToken);
+                else if (StatusDeniedNotificationUpdateSelector(selector))
+                    RecordDeniedNotificationUpdateAbsence(plan, after, linked.Token, originalCallerToken ?? cancellationToken);
+                else if (StatusUnknownNotificationUpdateSelector(selector))
+                    RecordUnknownNotificationUpdateAbsence(plan, after, linked.Token, originalCallerToken ?? cancellationToken);
+                else if ((StatusNotificationUpdateIndependentSelector(selector) || StatusDeniedNotificationUpdateSelector(selector) || StatusUnknownNotificationUpdateSelector(selector) || StatusUnknownNotificationUpdateIndependentSelector(selector) || StatusUnknownNotificationUpdateCancellationSelector(selector)))
                     RecordNotificationUpdateAbsence(plan, after, linked.Token, originalCallerToken ?? cancellationToken);
                 else journal.RecordAbsence(owner, selector, plan.ResourceId);
             }
@@ -1290,6 +2642,86 @@ internal sealed class NotificationFixtureProvisioner : IAsyncDisposable
         if (!Enter(plan)) return Finish(State.Pending, plan);
         try
         {
+            if (StatusUnknownNotificationUpdateCancellationSelector(selector))
+            {
+                bool retried = false;
+                foreach (var receipt in plan.Receipts)
+                {
+                    StatusUnknownNotificationUpdateCancellationFixtureDrain? drain;
+                    lock (plans) unknownNotificationUpdateCancellationPending.TryGetValue(receipt, out drain);
+                    if (drain is null) continue;
+                    PersistUnknownNotificationUpdateCancellationFixture(drain);
+                    retried = true;
+                }
+                StatusUnknownNotificationUpdateCancellationAbsence? absence;
+                lock (plans) unknownNotificationUpdateCancellationAbsencePending.TryGetValue(plan, out absence);
+                if (absence is not null)
+                {
+                    PersistUnknownNotificationUpdateCancellationAbsence(plan, absence);
+                    retried = true;
+                }
+                if (retried) return Finish(State.Closing, plan);
+            }
+            if (StatusUnknownNotificationUpdateIndependentSelector(selector))
+            {
+                bool retried = false;
+                foreach (var receipt in plan.Receipts)
+                {
+                    StatusUnknownNotificationUpdateIndependentFixtureDrain? drain;
+                    lock (plans) unknownNotificationUpdateIndependentPending.TryGetValue(receipt, out drain);
+                    if (drain is null) continue;
+                    PersistUnknownNotificationUpdateIndependentFixture(drain);
+                    retried = true;
+                }
+                StatusUnknownNotificationUpdateIndependentAbsence? absence;
+                lock (plans) unknownNotificationUpdateIndependentAbsencePending.TryGetValue(plan, out absence);
+                if (absence is not null)
+                {
+                    PersistUnknownNotificationUpdateIndependentAbsence(plan, absence);
+                    retried = true;
+                }
+                if (retried) return Finish(State.Closing, plan);
+            }
+            if (StatusDeniedNotificationUpdateSelector(selector))
+            {
+                bool retried = false;
+                foreach (var receipt in plan.Receipts)
+                {
+                    StatusDeniedNotificationUpdateFixtureDrain? drain;
+                    lock (plans) deniedNotificationUpdatePending.TryGetValue(receipt, out drain);
+                    if (drain is null) continue;
+                    PersistDeniedNotificationUpdateFixture(drain);
+                    retried = true;
+                }
+                StatusDeniedNotificationUpdateAbsence? absence;
+                lock (plans) deniedNotificationUpdateAbsencePending.TryGetValue(plan, out absence);
+                if (absence is not null)
+                {
+                    PersistDeniedNotificationUpdateAbsence(plan, absence);
+                    retried = true;
+                }
+                if (retried) return Finish(State.Closing, plan);
+            }
+            if (StatusUnknownNotificationUpdateSelector(selector))
+            {
+                bool retried = false;
+                foreach (var receipt in plan.Receipts)
+                {
+                    StatusUnknownNotificationUpdateFixtureDrain? drain;
+                    lock (plans) unknownNotificationUpdatePending.TryGetValue(receipt, out drain);
+                    if (drain is null) continue;
+                    PersistUnknownNotificationUpdateFixture(drain);
+                    retried = true;
+                }
+                StatusUnknownNotificationUpdateAbsence? absence;
+                lock (plans) unknownNotificationUpdateAbsencePending.TryGetValue(plan, out absence);
+                if (absence is not null)
+                {
+                    PersistUnknownNotificationUpdateAbsence(plan, absence);
+                    retried = true;
+                }
+                if (retried) return Finish(State.Closing, plan);
+            }
             using var deadline = new CancellationTokenSource(limits.Timeout, time);
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
             if (StatusNotificationCreateIndependentSelector(selector))
@@ -1300,6 +2732,54 @@ internal sealed class NotificationFixtureProvisioner : IAsyncDisposable
                     lock (plans) notificationCreateIndependentPending.TryGetValue(receipt, out drain);
                     if (drain is null) continue;
                     PersistNotificationCreateIndependentFixture(drain);
+                    cancellationToken.ThrowIfCancellationRequested();
+                }
+                return Finish(ReadPlan(owner, selector).Idle ? State.Incomplete : State.Pending, plan);
+            }
+            if (StatusUnknownNotificationUpdateCancellationSelector(selector))
+            {
+                foreach (var receipt in plan.Receipts)
+                {
+                    StatusUnknownNotificationUpdateCancellationFixtureDrain? drain;
+                    lock (plans) unknownNotificationUpdateCancellationPending.TryGetValue(receipt, out drain);
+                    if (drain is null) continue;
+                    PersistUnknownNotificationUpdateCancellationFixture(drain);
+                    cancellationToken.ThrowIfCancellationRequested();
+                }
+                return Finish(ReadPlan(owner, selector).Idle ? State.Incomplete : State.Pending, plan);
+            }
+            if (StatusUnknownNotificationUpdateIndependentSelector(selector))
+            {
+                foreach (var receipt in plan.Receipts)
+                {
+                    StatusUnknownNotificationUpdateIndependentFixtureDrain? drain;
+                    lock (plans) unknownNotificationUpdateIndependentPending.TryGetValue(receipt, out drain);
+                    if (drain is null) continue;
+                    PersistUnknownNotificationUpdateIndependentFixture(drain);
+                    cancellationToken.ThrowIfCancellationRequested();
+                }
+                return Finish(ReadPlan(owner, selector).Idle ? State.Incomplete : State.Pending, plan);
+            }
+            if (StatusDeniedNotificationUpdateSelector(selector))
+            {
+                foreach (var receipt in plan.Receipts)
+                {
+                    StatusDeniedNotificationUpdateFixtureDrain? drain;
+                    lock (plans) deniedNotificationUpdatePending.TryGetValue(receipt, out drain);
+                    if (drain is null) continue;
+                    PersistDeniedNotificationUpdateFixture(drain);
+                    cancellationToken.ThrowIfCancellationRequested();
+                }
+                return Finish(ReadPlan(owner, selector).Idle ? State.Incomplete : State.Pending, plan);
+            }
+            if (StatusUnknownNotificationUpdateSelector(selector))
+            {
+                foreach (var receipt in plan.Receipts)
+                {
+                    StatusUnknownNotificationUpdateFixtureDrain? drain;
+                    lock (plans) unknownNotificationUpdatePending.TryGetValue(receipt, out drain);
+                    if (drain is null) continue;
+                    PersistUnknownNotificationUpdateFixture(drain);
                     cancellationToken.ThrowIfCancellationRequested();
                 }
                 return Finish(ReadPlan(owner, selector).Idle ? State.Incomplete : State.Pending, plan);
@@ -1339,9 +2819,13 @@ internal sealed class NotificationFixtureProvisioner : IAsyncDisposable
     private async Task<State> Mutate(Plan plan, bool delete, CancellationToken token, CancellationToken caller = default)
     {
         var receipt = new Receipt(delete ? Action.DeleteSubscription : Action.CreateSubscription);
+        bool unknownCancellation = StatusUnknownNotificationUpdateCancellationSelector(plan.Selector);
+        bool unknownIndependent = StatusUnknownNotificationUpdateIndependentSelector(plan.Selector);
+        bool deniedUpdate = StatusDeniedNotificationUpdateSelector(plan.Selector);
+        bool unknown = StatusUnknownNotificationUpdateSelector(plan.Selector);
         bool independentCreate = StatusNotificationCreateIndependentSelector(plan.Selector);
-        bool independent = StatusNotificationUpdateIndependentSelector(plan.Selector) || independentCreate;
-        var committed = independentCreate ? BeginNotificationCreateIndependentFixture(plan, plan.ResourceId, delete, token, caller) :
+        bool independent = (StatusNotificationUpdateIndependentSelector(plan.Selector) || StatusDeniedNotificationUpdateSelector(plan.Selector) || StatusUnknownNotificationUpdateSelector(plan.Selector) || StatusUnknownNotificationUpdateIndependentSelector(plan.Selector) || StatusUnknownNotificationUpdateCancellationSelector(plan.Selector)) || independentCreate;
+        var committed = deniedUpdate ? BeginDeniedNotificationUpdateFixture(plan, plan.ResourceId, delete, token, caller) : unknownCancellation ? BeginUnknownNotificationUpdateCancellationFixture(plan, plan.ResourceId, delete, token, caller) : unknownIndependent ? BeginUnknownNotificationUpdateIndependentFixture(plan, plan.ResourceId, delete, token, caller) : unknown ? BeginUnknownNotificationUpdateFixture(plan, plan.ResourceId, delete, token, caller) : independentCreate ? BeginNotificationCreateIndependentFixture(plan, plan.ResourceId, delete, token, caller) :
             independent ? BeginNotificationUpdateFixture(plan, plan.ResourceId, delete, token, caller) : null;
         if (committed is not null) receipt.Dispatch = committed.Resources.Single(r => r.Id == plan.ResourceId).ActiveDispatch;
         lock (plan.History) plan.History.Add(receipt);
@@ -1354,7 +2838,15 @@ internal sealed class NotificationFixtureProvisioner : IAsyncDisposable
                     token.ThrowIfCancellationRequested();
                     if (independent)
                     {
-                        Require(independentCreate
+                        Require(deniedUpdate
+                            ? RoleFixtureJournal.SameStatusDeniedNotificationUpdateSnapshot(committed!, ReadPlan(plan.Owner, plan.Selector))
+                            : unknownCancellation
+                            ? RoleFixtureJournal.SameStatusUnknownNotificationUpdateCancellationSnapshot(committed!, ReadPlan(plan.Owner, plan.Selector))
+                            : unknownIndependent
+                            ? RoleFixtureJournal.SameStatusUnknownNotificationUpdateIndependentSnapshot(committed!, ReadPlan(plan.Owner, plan.Selector))
+                            : unknown
+                            ? RoleFixtureJournal.SameStatusUnknownNotificationUpdateSnapshot(committed!, ReadPlan(plan.Owner, plan.Selector))
+                            : independentCreate
                             ? RoleFixtureJournal.SameStatusNotificationCreateIndependentSnapshot(committed!, ReadPlan(plan.Owner, plan.Selector))
                             : RoleFixtureJournal.SameStatusNotificationUpdateIndependentSnapshot(committed!, ReadPlan(plan.Owner, plan.Selector)));
                         return;
@@ -1405,7 +2897,11 @@ internal sealed class NotificationFixtureProvisioner : IAsyncDisposable
         {
             receipt.Outcome = boundary.Valid && boundary.Status is 401 or 403 ? State.Denied : State.Uncertain;
             receipt.RemoteSettled = !token.IsCancellationRequested && receipt.Outcome == State.Denied;
-            if (token.IsCancellationRequested) throw new OperationCanceledException(token);
+            if (token.IsCancellationRequested)
+            {
+                if (deniedUpdate) throw;
+                throw new OperationCanceledException(token);
+            }
         }
         finally
         {
@@ -1423,7 +2919,23 @@ internal sealed class NotificationFixtureProvisioner : IAsyncDisposable
                     if (native is { IsCompleted: true } && boundary.FixtureDrainComplete &&
                         !token.IsCancellationRequested && !caller.IsCancellationRequested)
                     {
-                        if (independentCreate)
+                        if (unknownCancellation)
+                            RetainUnknownNotificationUpdateCancellationFixtureDrain(plan, receipt, committed!, plan.ResourceId, receipt.Dispatch,
+                                receipt.RemoteSettled && receipt.Outcome == State.Ready, token, caller,
+                                receipt.StatusTask is null ? [native] : [native, receipt.StatusTask]);
+                        else if (unknownIndependent)
+                            RetainUnknownNotificationUpdateIndependentFixtureDrain(plan, receipt, committed!, plan.ResourceId, receipt.Dispatch,
+                                receipt.RemoteSettled && receipt.Outcome == State.Ready, token, caller,
+                                receipt.StatusTask is null ? [native] : [native, receipt.StatusTask]);
+                        else if (deniedUpdate)
+                            RetainDeniedNotificationUpdateFixtureDrain(plan, receipt, committed!, plan.ResourceId, receipt.Dispatch,
+                                receipt.RemoteSettled && receipt.Outcome == State.Ready, token, caller,
+                                receipt.StatusTask is null ? [native] : [native, receipt.StatusTask]);
+                        else if (unknown)
+                            RetainUnknownNotificationUpdateFixtureDrain(plan, receipt, committed!, plan.ResourceId, receipt.Dispatch,
+                                receipt.RemoteSettled && receipt.Outcome == State.Ready, token, caller,
+                                receipt.StatusTask is null ? [native] : [native, receipt.StatusTask]);
+                        else if (independentCreate)
                             RetainNotificationCreateIndependentFixtureDrain(plan, receipt, committed!, plan.ResourceId, receipt.Dispatch,
                                 receipt.RemoteSettled && receipt.Outcome == State.Ready, token, caller,
                                 receipt.StatusTask is null ? [native] : [native, receipt.StatusTask]);
@@ -1467,7 +2979,7 @@ internal sealed class NotificationFixtureProvisioner : IAsyncDisposable
             }
             cachedDelete = receipt.DeleteTask is { IsCompletedSuccessfully: true } &&
                 !boundary.StatusSent && !boundary.HasAsync && boundary.Status == 204;
-            validated = !(StatusNotificationUpdateIndependentSelector(plan.Selector) || StatusNotificationCreateIndependentSelector(plan.Selector)) ||
+            validated = !((StatusNotificationUpdateIndependentSelector(plan.Selector) || StatusDeniedNotificationUpdateSelector(plan.Selector) || StatusUnknownNotificationUpdateSelector(plan.Selector) || StatusUnknownNotificationUpdateIndependentSelector(plan.Selector) || StatusUnknownNotificationUpdateCancellationSelector(plan.Selector)) || StatusNotificationCreateIndependentSelector(plan.Selector)) ||
                 receipt.StatusTask is { IsCompletedSuccessfully: true } && receipt.NativeOperation.HasCompleted &&
                 boundary.Valid && (boundary.Succeeded || cachedDelete);
             receipt.StatusValidated = validated;
@@ -1476,29 +2988,42 @@ internal sealed class NotificationFixtureProvisioner : IAsyncDisposable
         {
             // A failed terminal native operation can throw. Only the validated
             // actual status response, not the thrown exception, can settle it.
-            validated = !(StatusNotificationUpdateIndependentSelector(plan.Selector) || StatusNotificationCreateIndependentSelector(plan.Selector)) && boundary.Valid && boundary.StatusSent && boundary.Terminal && !boundary.Succeeded &&
+            validated = !((StatusNotificationUpdateIndependentSelector(plan.Selector) || StatusDeniedNotificationUpdateSelector(plan.Selector) || StatusUnknownNotificationUpdateSelector(plan.Selector) || StatusUnknownNotificationUpdateIndependentSelector(plan.Selector) || StatusUnknownNotificationUpdateCancellationSelector(plan.Selector)) || StatusNotificationCreateIndependentSelector(plan.Selector)) && boundary.Valid && boundary.StatusSent && boundary.Terminal && !boundary.Succeeded &&
                 receipt.NativeOperation.HasCompleted;
         }
         finally
         {
             receipt.RemoteSettled = validated && !token.IsCancellationRequested && boundary.Valid &&
-                (boundary.StatusSent || (StatusNotificationUpdateIndependentSelector(plan.Selector) || StatusNotificationCreateIndependentSelector(plan.Selector))) &&
-                (boundary.Terminal || (StatusNotificationUpdateIndependentSelector(plan.Selector) || StatusNotificationCreateIndependentSelector(plan.Selector)) && cachedDelete) &&
+                (boundary.StatusSent || ((StatusNotificationUpdateIndependentSelector(plan.Selector) || StatusDeniedNotificationUpdateSelector(plan.Selector) || StatusUnknownNotificationUpdateSelector(plan.Selector) || StatusUnknownNotificationUpdateIndependentSelector(plan.Selector) || StatusUnknownNotificationUpdateCancellationSelector(plan.Selector)) || StatusNotificationCreateIndependentSelector(plan.Selector))) &&
+                (boundary.Terminal || ((StatusNotificationUpdateIndependentSelector(plan.Selector) || StatusDeniedNotificationUpdateSelector(plan.Selector) || StatusUnknownNotificationUpdateSelector(plan.Selector) || StatusUnknownNotificationUpdateIndependentSelector(plan.Selector) || StatusUnknownNotificationUpdateCancellationSelector(plan.Selector)) || StatusNotificationCreateIndependentSelector(plan.Selector)) && cachedDelete) &&
                 receipt.NativeOperation.HasCompleted;
             if (receipt.RemoteSettled) receipt.Outcome = boundary.Succeeded ? State.Ready : State.Uncertain;
-            if (!(StatusNotificationUpdateIndependentSelector(plan.Selector) || StatusNotificationCreateIndependentSelector(plan.Selector))) boundary.ClearBuffers();
+            if (!((StatusNotificationUpdateIndependentSelector(plan.Selector) || StatusDeniedNotificationUpdateSelector(plan.Selector) || StatusUnknownNotificationUpdateSelector(plan.Selector) || StatusUnknownNotificationUpdateIndependentSelector(plan.Selector) || StatusUnknownNotificationUpdateCancellationSelector(plan.Selector)) || StatusNotificationCreateIndependentSelector(plan.Selector))) boundary.ClearBuffers();
         }
     }
 
     private async Task<Result> ObserveCore(Plan plan, CancellationToken token, bool completingPreparation = false, CancellationToken caller = default)
     {
-        using var read = await Read(plan, token, caller: caller).ConfigureAwait(false);
+        var readTask = Read(plan, token, caller: caller);
+        using var read = await readTask.ConfigureAwait(false);
+        if (read.StatusUnknownIndependentRead is { } independentUnknownProof) lock (plans) statusUnknownIndependentOuterTasks.Add(independentUnknownProof, readTask);
+        if (read.StatusUnknownCancellationRead is { } cancellationUnknownProof) lock (plans) statusUnknownCancellationOuterTasks.Add(cancellationUnknownProof, readTask);
+        if (read.StatusDeniedUpdateRead is { } deniedProof) lock (plans) statusDeniedUpdateOuterTasks.Add(deniedProof, readTask);
+        if (read.StatusUnknownRead is { } unknownProof) lock (plans) statusUnknownOuterTasks.Add(unknownProof, readTask);
         var snapshot = ReadPlan(plan.Owner, plan.Selector);
         if (plan.ObjectPlan is not null && snapshot.Closing && !read.Present &&
             snapshot.Resources.All(r => r.ActiveDispatch == Guid.Empty))
-            snapshot = StatusNotificationCreateIndependentSelector(plan.Selector)
+            snapshot = StatusDeniedNotificationUpdateSelector(plan.Selector)
+                ? RecordDeniedNotificationUpdateAbsence(plan, read, token, caller)
+                : StatusUnknownNotificationUpdateCancellationSelector(plan.Selector)
+                ? RecordUnknownNotificationUpdateCancellationAbsence(plan, read, token, caller)
+                : StatusUnknownNotificationUpdateIndependentSelector(plan.Selector)
+                ? RecordUnknownNotificationUpdateIndependentAbsence(plan, read, token, caller)
+                : StatusUnknownNotificationUpdateSelector(plan.Selector)
+                ? RecordUnknownNotificationUpdateAbsence(plan, read, token, caller)
+                : StatusNotificationCreateIndependentSelector(plan.Selector)
                 ? RecordNotificationCreateIndependentAbsence(plan, read, token, caller)
-                : StatusNotificationUpdateIndependentSelector(plan.Selector)
+                : (StatusNotificationUpdateIndependentSelector(plan.Selector) || StatusDeniedNotificationUpdateSelector(plan.Selector) || StatusUnknownNotificationUpdateSelector(plan.Selector) || StatusUnknownNotificationUpdateIndependentSelector(plan.Selector) || StatusUnknownNotificationUpdateCancellationSelector(plan.Selector))
                 ? RecordNotificationUpdateAbsence(plan, read, token, caller)
                 : journal.RecordAbsence(plan.Owner, plan.Selector, plan.ResourceId);
         bool componentPrepared;
@@ -1520,11 +3045,15 @@ internal sealed class NotificationFixtureProvisioner : IAsyncDisposable
             StatusDeleteRead = read.StatusDeleteRead,
             StatusDeleteIndependentRead = read.StatusDeleteIndependentRead,
             StatusUpdateIndependentRead = read.StatusUpdateIndependentRead,
+            StatusUnknownIndependentRead = read.StatusUnknownIndependentRead,
+            StatusUnknownCancellationRead = read.StatusUnknownCancellationRead,
+                StatusDeniedUpdateRead = read.StatusDeniedUpdateRead,
+                StatusUnknownRead = read.StatusUnknownRead,
             StatusCreateIndependentRead = read.StatusCreateIndependentRead,
             StatusUpdateRead = read.StatusUpdateRead,
             StatusCreateRead = read.StatusCreateRead,
             NativeState = read.StatusDeleteRead is null && read.StatusDeleteIndependentRead is null && read.StatusUpdateRead is null &&
-                read.StatusCreateRead is null && read.StatusUpdateIndependentRead is null && read.StatusCreateIndependentRead is null ? null : read.NativeState
+                read.StatusCreateRead is null && read.StatusUpdateIndependentRead is null && read.StatusCreateIndependentRead is null && read.StatusUnknownRead is null && read.StatusUnknownIndependentRead is null && read.StatusUnknownCancellationRead is null && read.StatusDeniedUpdateRead is null ? null : read.NativeState
         };
     }
 
@@ -1539,19 +3068,44 @@ internal sealed class NotificationFixtureProvisioner : IAsyncDisposable
         internal StatusNotificationDeleteReadProof? StatusDeleteRead;
         internal StatusNotificationDeleteIndependentReadProof? StatusDeleteIndependentRead;
         internal StatusNotificationUpdateIndependentReadProof? StatusUpdateIndependentRead;
+        internal StatusUnknownNotificationUpdateIndependentReadProof? StatusUnknownIndependentRead;
+        internal StatusUnknownNotificationUpdateCancellationReadProof? StatusUnknownCancellationRead;
+        internal StatusDeniedNotificationUpdateReadProof? StatusDeniedUpdateRead;
+        internal StatusUnknownNotificationUpdateReadProof? StatusUnknownRead;
         internal StatusNotificationCreateIndependentReadProof? StatusCreateIndependentRead;
         internal StatusNotificationUpdateReadProof? StatusUpdateRead;
         internal StatusNotificationCreateReadProof? StatusCreateRead;
         public void Dispose() => Configuration?.Dispose();
     }
     private async Task<Readback> Read(Plan plan, CancellationToken token, System.Action? validateSelected = null,
-        Guid selectedDispatch = default, CancellationToken caller = default)
+        Guid selectedDispatch = default, CancellationToken caller = default,
+        StatusUnknownNotificationUpdateReadPhase? unknownPhase = null,
+        StatusUnknownNotificationUpdateIndependentReadPhase? unknownIndependentPhase = null,
+        StatusUnknownNotificationUpdateCancellationReadPhase? unknownCancellationPhase = null,
+        StatusDeniedNotificationUpdateReadPhase? deniedUpdatePhase = null)
     {
         var initial = ReadPlan(plan.Owner, plan.Selector);
+        bool unknownCancellation = StatusUnknownNotificationUpdateCancellationSelector(plan.Selector);
+        var cancellationPhase = unknownCancellationPhase ?? (selectedDispatch == Guid.Empty ? StatusUnknownNotificationUpdateCancellationReadPhase.Baseline : StatusUnknownNotificationUpdateCancellationReadPhase.SelectedUnknown);
+        if (unknownCancellation && !initial.Closing && prepared.Contains(plan))
+            lock (plans) Require(statusUnknownCancellationSlots.Add((plan, cancellationPhase)));
+        bool unknownIndependent = StatusUnknownNotificationUpdateIndependentSelector(plan.Selector);
+        var independentPhase = unknownIndependentPhase ?? (selectedDispatch == Guid.Empty ? StatusUnknownNotificationUpdateIndependentReadPhase.Baseline : StatusUnknownNotificationUpdateIndependentReadPhase.SelectedUnknown);
+        if (unknownIndependent && !initial.Closing && prepared.Contains(plan))
+            lock (plans) Require(statusUnknownIndependentSlots.Add((plan, independentPhase)));
+        bool deniedUpdate = StatusDeniedNotificationUpdateSelector(plan.Selector);
+        var deniedPhase = deniedUpdatePhase ?? (selectedDispatch == Guid.Empty
+            ? StatusDeniedNotificationUpdateReadPhase.Baseline : StatusDeniedNotificationUpdateReadPhase.Selected);
+        if (deniedUpdate && prepared.Contains(plan) && (!initial.Closing || deniedUpdatePhase == StatusDeniedNotificationUpdateReadPhase.Cleanup))
+            lock (plans) Require(statusDeniedUpdateSlots.Add((plan, deniedPhase)));
+        bool unknown = StatusUnknownNotificationUpdateSelector(plan.Selector);
+        var phase = unknownPhase ?? (selectedDispatch == Guid.Empty ? StatusUnknownNotificationUpdateReadPhase.Baseline : StatusUnknownNotificationUpdateReadPhase.SelectedUnknown);
+        if (unknown && !initial.Closing && prepared.Contains(plan))
+            lock (plans) Require(statusUnknownSlots.Add((plan, phase)));
         bool exclusive = initial.NotificationAbsentCreate is not null;
         if (exclusive) Require(OwnsExclusiveCreation(plan, initial));
         bool create = StatusNotificationCreateCancellationSelector(plan.Selector);
-        bool update = create || (StatusNotificationUpdateCancellationSelector(plan.Selector) || (StatusNotificationUpdateIndependentSelector(plan.Selector) || StatusNotificationCreateIndependentSelector(plan.Selector)));
+        bool update = create || (StatusNotificationUpdateCancellationSelector(plan.Selector) || ((StatusNotificationUpdateIndependentSelector(plan.Selector) || StatusDeniedNotificationUpdateSelector(plan.Selector) || StatusUnknownNotificationUpdateSelector(plan.Selector) || StatusUnknownNotificationUpdateIndependentSelector(plan.Selector) || StatusUnknownNotificationUpdateCancellationSelector(plan.Selector)) || StatusNotificationCreateIndependentSelector(plan.Selector)));
         bool independent = StatusNotificationDeleteIndependentSelector(plan.Selector);
         bool strict = update || independent || StatusNotificationDeleteCancellationSelector(plan.Selector);
         bool selectedUpdate = update && (selectedDispatch != Guid.Empty ||
@@ -1559,7 +3113,9 @@ internal sealed class NotificationFixtureProvisioner : IAsyncDisposable
         DateTimeOffset startedAt = strict ? time.GetUtcNow() : default;
         using var boundary = new BoundaryTransport(observer.Transport, plan, limits, RequestMethod.Get,
             beforeSend: validateSelected, present: strict || validateSelected is null ? () => Presence(plan) : null,
-            selectedUpdate: selectedUpdate, exclusiveCreation: exclusive);
+            selectedUpdate: selectedUpdate, exclusiveCreation: exclusive,
+            unknownPhase: unknown ? phase : null, unknownIndependentPhase: unknownIndependent ? independentPhase : null,
+            unknownCancellationPhase: unknownCancellation ? cancellationPhase : null);
         Task<Response<EventSubscriptionResource>>? nativeTask = null;
         Readback? result = null;
         try
@@ -1599,7 +3155,10 @@ internal sealed class NotificationFixtureProvisioner : IAsyncDisposable
                 }
                 else Require(owned);
                 if (strict)
-                    Require(response.Value.Data.Labels.Count == (exclusive ? 0 : 1) && boundary.Succeeded &&
+                    Require(response.Value.Data.Labels.Count == (exclusive ? 0 : 1) &&
+                        ((unknown && phase == StatusUnknownNotificationUpdateReadPhase.SelectedUnknown ||
+                            unknownIndependent && independentPhase == StatusUnknownNotificationUpdateIndependentReadPhase.SelectedUnknown ||
+                            unknownCancellation && cancellationPhase == StatusUnknownNotificationUpdateCancellationReadPhase.SelectedUnknown) ? boundary.NativeState == "Unknown" : boundary.Succeeded) &&
                         boundary.Configuration is not null &&
                         (baselineConfiguration is null || (selectedUpdate
                             ? boundary.Configuration.Endpoint.Reveal() == baseline.Endpoint.Reveal() &&
@@ -1622,12 +3181,12 @@ internal sealed class NotificationFixtureProvisioner : IAsyncDisposable
             if (strict) token.ThrowIfCancellationRequested();
             // Storage disposal is part of the proof, not a later diagnostic.
             boundary.Dispose();
-            if ((StatusNotificationUpdateIndependentSelector(plan.Selector) || StatusNotificationCreateIndependentSelector(plan.Selector)))
+            if (((StatusNotificationUpdateIndependentSelector(plan.Selector) || StatusDeniedNotificationUpdateSelector(plan.Selector) || StatusUnknownNotificationUpdateSelector(plan.Selector) || StatusUnknownNotificationUpdateIndependentSelector(plan.Selector) || StatusUnknownNotificationUpdateCancellationSelector(plan.Selector)) || StatusNotificationCreateIndependentSelector(plan.Selector)))
             {
                 Require(nativeTask is { IsCompleted: true } && boundary.ParserComplete);
                 result!.ActualTask = nativeTask;
                 result.Drained = true;
-                result.Preimage = StatusNotificationCreateIndependentSelector(plan.Selector)
+                result.Preimage = deniedUpdate ? FreezeDeniedNotificationUpdateFixture(initial) : unknownCancellation ? FreezeUnknownNotificationUpdateCancellationFixture(initial) : unknownIndependent ? FreezeUnknownNotificationUpdateIndependentFixture(initial) : unknown ? FreezeUnknownNotificationUpdateFixture(initial) : StatusNotificationCreateIndependentSelector(plan.Selector)
                     ? FreezeNotificationCreateIndependentFixture(initial) : FreezeNotificationUpdateFixture(initial);
             }
             DateTimeOffset finishedAt = strict ? time.GetUtcNow() : default;
@@ -1639,7 +3198,9 @@ internal sealed class NotificationFixtureProvisioner : IAsyncDisposable
                 {
                     Require(!closed && finishedAt >= startedAt);
                     var snapshot = ReadPlan(plan.Owner, plan.Selector);
-                    if (prepared.Contains(plan) && !snapshot.Closing)
+                    if (prepared.Contains(plan) && (!snapshot.Closing || deniedUpdate && deniedUpdatePhase == StatusDeniedNotificationUpdateReadPhase.Cleanup || unknown && unknownPhase == StatusUnknownNotificationUpdateReadPhase.ReleaseTerminal ||
+                        unknownIndependent && unknownIndependentPhase == StatusUnknownNotificationUpdateIndependentReadPhase.ReleaseTerminal ||
+                        unknownCancellation && unknownCancellationPhase == StatusUnknownNotificationUpdateCancellationReadPhase.ReleaseTerminal))
                     {
                         if (create)
                         {
@@ -1670,7 +3231,59 @@ internal sealed class NotificationFixtureProvisioner : IAsyncDisposable
                             statusCreateIndependentPending.Add(proof, (Copy(result.Configuration), [token, caller]));
                             result.StatusCreateIndependentRead = proof;
                         }
-                        else if (StatusNotificationUpdateIndependentSelector(plan.Selector))
+                        else if (unknownCancellation)
+                        {
+                            Require(RoleFixtureJournal.StatusUnknownNotificationUpdateCancellationRoot(snapshot) &&
+                                RoleFixtureJournal.SameStatusUnknownNotificationUpdateCancellationSnapshot(initial, snapshot) &&
+                                result is { Present: true, Configuration: not null } &&
+                                nativeTask.IsCompletedSuccessfully && boundary.Status == 200 &&
+                                result.NativeState == (cancellationPhase == StatusUnknownNotificationUpdateCancellationReadPhase.SelectedUnknown ? "Unknown" : "Succeeded"));
+                            var proof = new StatusUnknownNotificationUpdateCancellationReadProof(plan, selectedDispatch, nativeTask,
+                                boundary.RequestSha256!, boundary.ResponseSha256!, boundary.NativeRequestId!, 200,
+                                result.NativeState!, startedAt, finishedAt, cancellationPhase);
+                            statusUnknownCancellationPending.Add(proof, (Copy(result.Configuration), [token, caller]));
+                            result.StatusUnknownCancellationRead = proof;
+                        }
+                        else if (unknownIndependent)
+                        {
+                            Require(RoleFixtureJournal.StatusUnknownNotificationUpdateIndependentRoot(snapshot) &&
+                                RoleFixtureJournal.SameStatusUnknownNotificationUpdateIndependentSnapshot(initial, snapshot) &&
+                                result is { Present: true, Configuration: not null } &&
+                                nativeTask.IsCompletedSuccessfully && boundary.Status == 200 &&
+                                result.NativeState == (independentPhase == StatusUnknownNotificationUpdateIndependentReadPhase.SelectedUnknown ? "Unknown" : "Succeeded"));
+                            var proof = new StatusUnknownNotificationUpdateIndependentReadProof(plan, selectedDispatch, nativeTask,
+                                boundary.RequestSha256!, boundary.ResponseSha256!, boundary.NativeRequestId!, 200,
+                                result.NativeState!, startedAt, finishedAt, independentPhase);
+                            statusUnknownIndependentPending.Add(proof, (Copy(result.Configuration), [token, caller]));
+                            result.StatusUnknownIndependentRead = proof;
+                        }
+                        else if (deniedUpdate)
+                        {
+                            Require(RoleFixtureJournal.StatusDeniedNotificationUpdateRoot(snapshot) &&
+                                RoleFixtureJournal.SameStatusDeniedNotificationUpdateSnapshot(initial, snapshot) &&
+                                result is { Present: true, Configuration: not null } &&
+                                nativeTask.IsCompletedSuccessfully && boundary.Status == 200 &&
+                                result.NativeState == "Succeeded");
+                            var proof = new StatusDeniedNotificationUpdateReadProof(plan, selectedDispatch, nativeTask,
+                                boundary.RequestSha256!, boundary.ResponseSha256!, boundary.NativeRequestId!, 200,
+                                result.NativeState!, startedAt, finishedAt, deniedPhase);
+                            statusDeniedUpdatePending.Add(proof, (Copy(result.Configuration), [token, caller]));
+                            result.StatusDeniedUpdateRead = proof;
+                        }
+                        else if (unknown)
+                        {
+                            Require(RoleFixtureJournal.StatusUnknownNotificationUpdateRoot(snapshot) &&
+                                RoleFixtureJournal.SameStatusUnknownNotificationUpdateSnapshot(initial, snapshot) &&
+                                result is { Present: true, Configuration: not null } &&
+                                nativeTask.IsCompletedSuccessfully && boundary.Status == 200 &&
+                                result.NativeState == (phase == StatusUnknownNotificationUpdateReadPhase.SelectedUnknown ? "Unknown" : "Succeeded"));
+                            var proof = new StatusUnknownNotificationUpdateReadProof(plan, selectedDispatch, nativeTask,
+                                boundary.RequestSha256!, boundary.ResponseSha256!, boundary.NativeRequestId!, 200,
+                                result.NativeState!, startedAt, finishedAt, phase);
+                            statusUnknownPending.Add(proof, (Copy(result.Configuration), [token, caller]));
+                            result.StatusUnknownRead = proof;
+                        }
+                        else if ((StatusNotificationUpdateIndependentSelector(plan.Selector) || StatusDeniedNotificationUpdateSelector(plan.Selector) || StatusUnknownNotificationUpdateSelector(plan.Selector) || StatusUnknownNotificationUpdateIndependentSelector(plan.Selector) || StatusUnknownNotificationUpdateCancellationSelector(plan.Selector)))
                         {
                             Require(RoleFixtureJournal.StatusNotificationUpdateIndependentRoot(snapshot) &&
                                 result is { Present: true, Succeeded: true, Configuration: not null } &&
@@ -1721,7 +3334,7 @@ internal sealed class NotificationFixtureProvisioner : IAsyncDisposable
 
     private void ValidateNative(Plan plan, EventGridSubscriptionData data, BoundaryTransport boundary)
     {
-        if (StatusNotificationDeleteIndependentSelector(plan.Selector) || (StatusNotificationUpdateIndependentSelector(plan.Selector) || StatusNotificationCreateIndependentSelector(plan.Selector)))
+        if (StatusNotificationDeleteIndependentSelector(plan.Selector) || ((StatusNotificationUpdateIndependentSelector(plan.Selector) || StatusDeniedNotificationUpdateSelector(plan.Selector) || StatusUnknownNotificationUpdateSelector(plan.Selector) || StatusUnknownNotificationUpdateIndependentSelector(plan.Selector) || StatusUnknownNotificationUpdateCancellationSelector(plan.Selector)) || StatusNotificationCreateIndependentSelector(plan.Selector)))
             Require(data.Id?.ToString() == plan.ResourceId && data.Name == plan.Scope.SubscriptionName &&
                 data.ResourceType.ToString() == ResourceType && data.Topic == plan.Scope.Vault.ExportResourceId());
         Require(Same(data.Id?.ToString(), plan.ResourceId) && Same(data.Name, plan.Scope.SubscriptionName) &&
@@ -1805,12 +3418,24 @@ internal sealed class NotificationFixtureProvisioner : IAsyncDisposable
     {
         RoleFixtureJournal.Snapshot snapshot;
         try { snapshot = journal.Read(owner, selector); }
+        catch (RoleFixtureJournal.StatusUnknownNotificationUpdateCancellationHistoryException)
+        { RevokeUnknownNotificationUpdateCancellationFixture(selector); throw; }
+        catch (RoleFixtureJournal.StatusUnknownNotificationUpdateIndependentHistoryException)
+        { RevokeUnknownNotificationUpdateIndependentFixture(selector); throw; }
+        catch (RoleFixtureJournal.StatusDeniedNotificationUpdateHistoryException)
+        { RevokeDeniedNotificationUpdateFixture(selector); throw; }
+        catch (RoleFixtureJournal.StatusUnknownNotificationUpdateHistoryException)
+        { RevokeUnknownNotificationUpdateFixture(selector); throw; }
         catch (RoleFixtureJournal.StatusNotificationCreateIndependentHistoryException)
         { RevokeNotificationCreateIndependentFixture(selector); throw; }
         catch (RoleFixtureJournal.StatusNotificationUpdateIndependentHistoryException)
         { RevokeNotificationUpdateFixture(selector); throw; }
-        Require(MatchesHost(snapshot) && (!StatusNotificationUpdateIndependentSelector(selector) ||
-            !notificationUpdateRevoked.ContainsKey(selector.Nonce) && RoleFixtureJournal.StatusNotificationUpdateIndependentRoot(snapshot)) &&
+        Require((!StatusDeniedNotificationUpdateSelector(selector) || !deniedNotificationUpdateRevoked.ContainsKey(selector.Nonce) &&
+            RoleFixtureJournal.StatusDeniedNotificationUpdateRoot(snapshot)) && (!StatusUnknownNotificationUpdateCancellationSelector(selector) || !unknownNotificationUpdateCancellationRevoked.ContainsKey(selector.Nonce) &&
+            RoleFixtureJournal.StatusUnknownNotificationUpdateCancellationRoot(snapshot)) && (!StatusUnknownNotificationUpdateIndependentSelector(selector) || !unknownNotificationUpdateIndependentRevoked.ContainsKey(selector.Nonce) &&
+            RoleFixtureJournal.StatusUnknownNotificationUpdateIndependentRoot(snapshot)) && (!StatusUnknownNotificationUpdateSelector(selector) || !unknownNotificationUpdateRevoked.ContainsKey(selector.Nonce) &&
+            RoleFixtureJournal.StatusUnknownNotificationUpdateRoot(snapshot)) && MatchesHost(snapshot) && (!(StatusNotificationUpdateIndependentSelector(selector) || StatusUnknownNotificationUpdateSelector(selector)) ||
+            !notificationUpdateRevoked.ContainsKey(selector.Nonce) && (StatusUnknownNotificationUpdateSelector(selector) || RoleFixtureJournal.StatusNotificationUpdateIndependentRoot(snapshot))) &&
             (!StatusNotificationCreateIndependentSelector(selector) || !notificationCreateIndependentRevoked.ContainsKey(selector.Nonce) &&
                 RoleFixtureJournal.StatusNotificationCreateIndependentRoot(snapshot)));
         return snapshot;
@@ -1898,6 +3523,34 @@ internal sealed class NotificationFixtureProvisioner : IAsyncDisposable
     }
     private void Presence(Plan plan)
     {
+        if (StatusUnknownNotificationUpdateCancellationSelector(plan.Selector))
+        {
+            foreach (var pair in unknownNotificationUpdateCancellationFixtureFacts)
+                if (pair.Value.Plan.Selector == plan.Selector && pair.Value.Stage == UnknownNotificationUpdateCancellationFixtureStage.Absence)
+                    unknownNotificationUpdateCancellationFixtureFacts.TryRemove(pair.Key, out _);
+            lock (plans) unknownNotificationUpdateCancellationAbsencePending.Remove(plan);
+        }
+        if (StatusUnknownNotificationUpdateIndependentSelector(plan.Selector))
+        {
+            foreach (var pair in unknownNotificationUpdateIndependentFixtureFacts)
+                if (pair.Value.Plan.Selector == plan.Selector && pair.Value.Stage == UnknownNotificationUpdateIndependentFixtureStage.Absence)
+                    unknownNotificationUpdateIndependentFixtureFacts.TryRemove(pair.Key, out _);
+            lock (plans) unknownNotificationUpdateIndependentAbsencePending.Remove(plan);
+        }
+        if (StatusDeniedNotificationUpdateSelector(plan.Selector))
+        {
+            foreach (var pair in deniedNotificationUpdateFixtureFacts)
+                if (pair.Value.Plan.Selector == plan.Selector && pair.Value.Stage == DeniedNotificationUpdateFixtureStage.Absence)
+                    deniedNotificationUpdateFixtureFacts.TryRemove(pair.Key, out _);
+            lock (plans) deniedNotificationUpdateAbsencePending.Remove(plan);
+        }
+        if (StatusUnknownNotificationUpdateSelector(plan.Selector))
+        {
+            foreach (var pair in unknownNotificationUpdateFixtureFacts)
+                if (pair.Value.Plan.Selector == plan.Selector && pair.Value.Stage == UnknownNotificationUpdateFixtureStage.Absence)
+                    unknownNotificationUpdateFixtureFacts.TryRemove(pair.Key, out _);
+            lock (plans) unknownNotificationUpdateAbsencePending.Remove(plan);
+        }
         if (journal.Read(plan.Owner, plan.Selector).Closing)
             journal.RecordPresence(plan.Owner, plan.Selector, plan.ResourceId);
     }
@@ -1951,6 +3604,14 @@ internal sealed class NotificationFixtureProvisioner : IAsyncDisposable
         try
         {
             baselineConfiguration?.Dispose();
+            foreach (var pending in statusUnknownIndependentPending.Values) pending.Configuration.Dispose();
+            foreach (var pending in statusUnknownCancellationPending.Values) pending.Configuration.Dispose();
+            foreach (var pending in statusDeniedUpdatePending.Values) pending.Configuration.Dispose();
+            foreach (var pending in statusUnknownPending.Values) pending.Configuration.Dispose();
+            foreach (var configuration in statusUnknownIndependentReads.Values) configuration.Dispose();
+            foreach (var configuration in statusUnknownCancellationReads.Values) configuration.Dispose();
+            foreach (var configuration in statusDeniedUpdateReads.Values) configuration.Dispose();
+            foreach (var configuration in statusUnknownReads.Values) configuration.Dispose();
             foreach (var pending in statusUpdateIndependentPending.Values) pending.Configuration.Dispose();
             foreach (var pending in statusCreateIndependentPending.Values) pending.Configuration.Dispose();
             foreach (var configuration in statusUpdateIndependentReads.Values) configuration.Dispose();
@@ -1961,6 +3622,38 @@ internal sealed class NotificationFixtureProvisioner : IAsyncDisposable
         finally
         {
             prepared.Clear();
+            statusUnknownIndependentPending.Clear();
+            statusUnknownCancellationPending.Clear();
+            statusDeniedUpdatePending.Clear();
+            statusUnknownPending.Clear();
+            statusUnknownIndependentReads.Clear();
+            statusUnknownCancellationReads.Clear();
+            statusDeniedUpdateReads.Clear();
+            statusUnknownReads.Clear();
+            statusUnknownIndependentTokens.Clear();
+            statusUnknownCancellationTokens.Clear();
+            statusDeniedUpdateTokens.Clear();
+            statusUnknownTokens.Clear();
+            statusUnknownIndependentOuterTasks.Clear();
+            statusUnknownCancellationOuterTasks.Clear();
+            statusDeniedUpdateOuterTasks.Clear();
+            statusUnknownOuterTasks.Clear();
+            statusUnknownIndependentSlots.Clear();
+            statusUnknownCancellationSlots.Clear();
+            statusDeniedUpdateSlots.Clear();
+            statusUnknownSlots.Clear();
+            unknownNotificationUpdateIndependentFixtureFacts.Clear();
+            unknownNotificationUpdateCancellationFixtureFacts.Clear();
+            deniedNotificationUpdateFixtureFacts.Clear();
+            unknownNotificationUpdateFixtureFacts.Clear();
+            unknownNotificationUpdateIndependentPending.Clear();
+            unknownNotificationUpdateCancellationPending.Clear();
+            deniedNotificationUpdatePending.Clear();
+            unknownNotificationUpdatePending.Clear();
+            unknownNotificationUpdateIndependentAbsencePending.Clear();
+            unknownNotificationUpdateCancellationAbsencePending.Clear();
+            deniedNotificationUpdateAbsencePending.Clear();
+            unknownNotificationUpdateAbsencePending.Clear();
             statusDeleteReads.Clear();
             statusDeleteIndependentReads.Clear();
             statusUpdateIndependentPending.Clear();
@@ -1987,7 +3680,10 @@ internal sealed class NotificationFixtureProvisioner : IAsyncDisposable
     // action reads, paging, fallback credentials, retries or mutation replay.
     internal sealed class BoundaryTransport(HttpPipelineTransport inner, Plan plan, Limits limits,
         RequestMethod method, System.Action? beforeSend = null, System.Action? present = null,
-        bool selectedUpdate = false, bool exclusiveCreation = false)
+        bool selectedUpdate = false, bool exclusiveCreation = false,
+        StatusUnknownNotificationUpdateReadPhase? unknownPhase = null,
+        StatusUnknownNotificationUpdateIndependentReadPhase? unknownIndependentPhase = null,
+        StatusUnknownNotificationUpdateCancellationReadPhase? unknownCancellationPhase = null)
         : HttpPipelineTransport, IDisposable
     {
         internal bool ExclusiveCreation => exclusiveCreation;
@@ -1998,7 +3694,7 @@ internal sealed class NotificationFixtureProvisioner : IAsyncDisposable
         private OwnedArmResponse.ParserCustody? parser;
         private readonly List<OwnedArmResponse.ParserCustody> fixtureParsers = [];
         private bool fixtureDisposed, fixtureDisposalFailed, fixtureEmpty;
-        internal bool FixtureDrainComplete => (StatusNotificationUpdateIndependentSelector(plan.Selector) || StatusNotificationCreateIndependentSelector(plan.Selector)) &&
+        internal bool FixtureDrainComplete => ((StatusNotificationUpdateIndependentSelector(plan.Selector) || StatusDeniedNotificationUpdateSelector(plan.Selector) || StatusUnknownNotificationUpdateSelector(plan.Selector) || StatusUnknownNotificationUpdateIndependentSelector(plan.Selector) || StatusUnknownNotificationUpdateCancellationSelector(plan.Selector)) || StatusNotificationCreateIndependentSelector(plan.Selector)) &&
             fixtureDisposed && !fixtureDisposalFailed && Valid &&
             (fixtureEmpty && fixtureParsers.Count == 0 ||
                 fixtureParsers.Count != 0 && fixtureParsers.All(p => p.Complete && !p.Invalid) ||
@@ -2068,7 +3764,7 @@ internal sealed class NotificationFixtureProvisioner : IAsyncDisposable
             else Require(statusMode || method != RequestMethod.Put);
             Headers(message.Request.Headers.Select(h => (h.Name, h.Value)));
             if (!statusMode) beforeSend?.Invoke();
-            if ((StatusNotificationUpdateIndependentSelector(plan.Selector) || StatusNotificationCreateIndependentSelector(plan.Selector)) && method != RequestMethod.Get)
+            if (((StatusNotificationUpdateIndependentSelector(plan.Selector) || StatusDeniedNotificationUpdateSelector(plan.Selector) || StatusUnknownNotificationUpdateSelector(plan.Selector) || StatusUnknownNotificationUpdateIndependentSelector(plan.Selector) || StatusUnknownNotificationUpdateCancellationSelector(plan.Selector)) || StatusNotificationCreateIndependentSelector(plan.Selector)) && method != RequestMethod.Get)
             {
                 var fixtureRequest = message.Request;
                 var fixtureHeaders = fixtureRequest.Headers.ToArray();
@@ -2144,14 +3840,14 @@ internal sealed class NotificationFixtureProvisioner : IAsyncDisposable
             }
             bool strict = method == RequestMethod.Get && (StatusNotificationDeleteCancellationSelector(plan.Selector) ||
                 StatusNotificationDeleteIndependentSelector(plan.Selector) ||
-                (StatusNotificationUpdateCancellationSelector(plan.Selector) || (StatusNotificationUpdateIndependentSelector(plan.Selector) || StatusNotificationCreateIndependentSelector(plan.Selector))) ||
+                (StatusNotificationUpdateCancellationSelector(plan.Selector) || ((StatusNotificationUpdateIndependentSelector(plan.Selector) || StatusDeniedNotificationUpdateSelector(plan.Selector) || StatusUnknownNotificationUpdateSelector(plan.Selector) || StatusUnknownNotificationUpdateIndependentSelector(plan.Selector) || StatusUnknownNotificationUpdateCancellationSelector(plan.Selector)) || StatusNotificationCreateIndependentSelector(plan.Selector))) ||
                 StatusNotificationCreateCancellationSelector(plan.Selector));
             var originalRequest = message.Request;
             var requestHeaders = strict ? message.Request.Headers.ToArray() : [];
             void CheckRequest()
             {
                 if (!strict) return;
-                if ((StatusNotificationUpdateIndependentSelector(plan.Selector) || StatusNotificationCreateIndependentSelector(plan.Selector)))
+                if (((StatusNotificationUpdateIndependentSelector(plan.Selector) || StatusDeniedNotificationUpdateSelector(plan.Selector) || StatusUnknownNotificationUpdateSelector(plan.Selector) || StatusUnknownNotificationUpdateIndependentSelector(plan.Selector) || StatusUnknownNotificationUpdateCancellationSelector(plan.Selector)) || StatusNotificationCreateIndependentSelector(plan.Selector)))
                     Require(requestHeaders.Select(h => h.Name).Distinct(StringComparer.OrdinalIgnoreCase).Count() == requestHeaders.Length &&
                         originalRequest.Headers.TryGetValue("Authorization", out var auth) &&
                         auth.StartsWith("Bearer ", StringComparison.Ordinal) && auth.Length > 7 &&
@@ -2175,7 +3871,7 @@ internal sealed class NotificationFixtureProvisioner : IAsyncDisposable
                 if (strict && message.HasResponse)
                 {
                     parserStorage.Own(message.Response);
-                    if ((StatusNotificationUpdateIndependentSelector(plan.Selector) || StatusNotificationCreateIndependentSelector(plan.Selector)) && message.Response.Status == 200)
+                    if (((StatusNotificationUpdateIndependentSelector(plan.Selector) || StatusDeniedNotificationUpdateSelector(plan.Selector) || StatusUnknownNotificationUpdateSelector(plan.Selector) || StatusUnknownNotificationUpdateIndependentSelector(plan.Selector) || StatusUnknownNotificationUpdateCancellationSelector(plan.Selector)) || StatusNotificationCreateIndependentSelector(plan.Selector)) && message.Response.Status == 200)
                         present?.Invoke();
                 }
             }
@@ -2214,7 +3910,9 @@ internal sealed class NotificationFixtureProvisioner : IAsyncDisposable
                     if (Status == 200)
                     {
                         Parse(json.RootElement);
-                        Require(Succeeded && Configuration is not null &&
+                        Require(((unknownPhase == StatusUnknownNotificationUpdateReadPhase.SelectedUnknown ||
+                            unknownIndependentPhase == StatusUnknownNotificationUpdateIndependentReadPhase.SelectedUnknown ||
+                            unknownCancellationPhase == StatusUnknownNotificationUpdateCancellationReadPhase.SelectedUnknown) ? NativeState == "Unknown" : Succeeded) && Configuration is not null &&
                             Configuration.EventTypes.SequenceEqual([selectedUpdate
                                 ? VaultNotificationEvent.SecretNewVersionCreated : VaultNotificationEvent.SecretNearExpiry]) &&
                             Configuration.DeliveryAttributes.Count == 0);
@@ -2301,7 +3999,7 @@ internal sealed class NotificationFixtureProvisioner : IAsyncDisposable
         }
         private void Parse(JsonElement root)
         {
-            if ((StatusNotificationUpdateCancellationSelector(plan.Selector) || (StatusNotificationUpdateIndependentSelector(plan.Selector) || StatusNotificationCreateIndependentSelector(plan.Selector))) ||
+            if ((StatusNotificationUpdateCancellationSelector(plan.Selector) || ((StatusNotificationUpdateIndependentSelector(plan.Selector) || StatusDeniedNotificationUpdateSelector(plan.Selector) || StatusUnknownNotificationUpdateSelector(plan.Selector) || StatusUnknownNotificationUpdateIndependentSelector(plan.Selector) || StatusUnknownNotificationUpdateCancellationSelector(plan.Selector)) || StatusNotificationCreateIndependentSelector(plan.Selector))) ||
                 StatusNotificationCreateCancellationSelector(plan.Selector) ||
                 StatusNotificationDeleteIndependentSelector(plan.Selector))
                 Require(root.ValueKind == JsonValueKind.Object &&
@@ -2309,7 +4007,7 @@ internal sealed class NotificationFixtureProvisioner : IAsyncDisposable
             Require(Same(Text(root, "id"), plan.ResourceId) && Same(Text(root, "name"), plan.Scope.SubscriptionName) &&
                 Text(root, "type") == ResourceType);
             var p = root.GetProperty("properties");
-            if (StatusNotificationDeleteIndependentSelector(plan.Selector) || (StatusNotificationUpdateIndependentSelector(plan.Selector) || StatusNotificationCreateIndependentSelector(plan.Selector)))
+            if (StatusNotificationDeleteIndependentSelector(plan.Selector) || ((StatusNotificationUpdateIndependentSelector(plan.Selector) || StatusDeniedNotificationUpdateSelector(plan.Selector) || StatusUnknownNotificationUpdateSelector(plan.Selector) || StatusUnknownNotificationUpdateIndependentSelector(plan.Selector) || StatusUnknownNotificationUpdateCancellationSelector(plan.Selector)) || StatusNotificationCreateIndependentSelector(plan.Selector)))
                 Require(Text(root, "id") == plan.ResourceId && Text(root, "name") == plan.Scope.SubscriptionName &&
                     Text(p, "topic") == plan.Scope.Vault.ExportResourceId());
             Require(Same(Text(p, "topic"), plan.Scope.Vault.ExportResourceId()) &&
@@ -2317,7 +4015,10 @@ internal sealed class NotificationFixtureProvisioner : IAsyncDisposable
                 !p.TryGetProperty("errors", out _));
             NativeState = Text(p, "provisioningState");
             Require(NativeState is "Succeeded" or "Creating" or "Updating" or "Deleting" or
-                "AwaitingManualAction" or "Failed" or "Canceled" or "Cancelled");
+                "AwaitingManualAction" or "Failed" or "Canceled" or "Cancelled" ||
+                StatusUnknownNotificationUpdateSelector(plan.Selector) && unknownPhase == StatusUnknownNotificationUpdateReadPhase.SelectedUnknown && NativeState == "Unknown" ||
+                StatusUnknownNotificationUpdateIndependentSelector(plan.Selector) && unknownIndependentPhase == StatusUnknownNotificationUpdateIndependentReadPhase.SelectedUnknown && NativeState == "Unknown" ||
+                StatusUnknownNotificationUpdateCancellationSelector(plan.Selector) && unknownCancellationPhase == StatusUnknownNotificationUpdateCancellationReadPhase.SelectedUnknown && NativeState == "Unknown");
             if (exclusiveCreation)
             {
                 Require(!p.TryGetProperty("labels", out var emptyLabels) ||
@@ -2332,7 +4033,7 @@ internal sealed class NotificationFixtureProvisioner : IAsyncDisposable
             }
             var destination = p.GetProperty("destination");
             Require(Text(destination, "endpointType") == "WebHook");
-            if ((StatusNotificationUpdateCancellationSelector(plan.Selector) || (StatusNotificationUpdateIndependentSelector(plan.Selector) || StatusNotificationCreateIndependentSelector(plan.Selector))) ||
+            if ((StatusNotificationUpdateCancellationSelector(plan.Selector) || ((StatusNotificationUpdateIndependentSelector(plan.Selector) || StatusDeniedNotificationUpdateSelector(plan.Selector) || StatusUnknownNotificationUpdateSelector(plan.Selector) || StatusUnknownNotificationUpdateIndependentSelector(plan.Selector) || StatusUnknownNotificationUpdateCancellationSelector(plan.Selector)) || StatusNotificationCreateIndependentSelector(plan.Selector))) ||
                 StatusNotificationCreateCancellationSelector(plan.Selector) ||
                 StatusNotificationDeleteIndependentSelector(plan.Selector))
                 Require(destination.EnumerateObject().All(p => p.Name is "endpointType" or "properties"));
@@ -2389,7 +4090,7 @@ internal sealed class NotificationFixtureProvisioner : IAsyncDisposable
                         NotificationAttributeKind.Dynamic, value.GetString()!, secret));
                 }
                 Configuration = new(endpoint.GetString()!, supported, rows);
-                if ((StatusNotificationUpdateCancellationSelector(plan.Selector) || (StatusNotificationUpdateIndependentSelector(plan.Selector) || StatusNotificationCreateIndependentSelector(plan.Selector))) ||
+                if ((StatusNotificationUpdateCancellationSelector(plan.Selector) || ((StatusNotificationUpdateIndependentSelector(plan.Selector) || StatusDeniedNotificationUpdateSelector(plan.Selector) || StatusUnknownNotificationUpdateSelector(plan.Selector) || StatusUnknownNotificationUpdateIndependentSelector(plan.Selector) || StatusUnknownNotificationUpdateCancellationSelector(plan.Selector)) || StatusNotificationCreateIndependentSelector(plan.Selector))) ||
                     StatusNotificationCreateCancellationSelector(plan.Selector) ||
                     StatusNotificationDeleteIndependentSelector(plan.Selector))
                 {

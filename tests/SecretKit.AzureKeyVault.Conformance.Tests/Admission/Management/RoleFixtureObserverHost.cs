@@ -98,6 +98,12 @@ internal sealed class RoleFixtureObserverHost : IAsyncDisposable
         {
             TcpClient client;
             try { client = await listener.AcceptTcpClientAsync(lifetime.Token).ConfigureAwait(false); }
+            catch (InvalidOperationException) when (lifetime.IsCancellationRequested)
+            {
+                // Stop may close the listener after the loop guard but before
+                // Accept observes cancellation.
+                break;
+            }
             catch (Exception exception) when (exception is OperationCanceledException or SocketException or ObjectDisposedException)
             {
                 break;

@@ -1847,11 +1847,16 @@ public sealed partial class AzureManagementOperationNativeCaptureTests
         private readonly bool statusSucceededDeleteVaultIndependent;
         private readonly bool statusSucceededDeleteVaultCancellation;
         private readonly bool statusRoleDeleteIndependent;
-        private readonly bool statusNotificationUpdateIndependent;
+        private readonly bool statusNotificationUpdateIndependent, statusUnknownNotificationUpdate, statusUnknownNotificationUpdateIndependent, statusUnknownNotificationUpdateCancellation;
+        internal Task? UnknownCanceledTask;
+        private readonly bool statusDeniedPurge;
+        private readonly bool statusDeniedNotificationUpdate;
+        private readonly bool statusDeniedPrivateConnectionDelete;
+        private readonly bool statusDeniedVaultUpdate;
         private readonly bool statusNotificationCreateIndependent;
         private readonly bool statusPrivateUpdateIndependent;
-        private readonly bool statusPendingPurge, statusPendingPurgeIndependent, statusPendingPurgeCancellation;
-        private bool PendingWire => statusPendingPurge || statusPendingPurgeIndependent || statusPendingPurgeCancellation;
+        private readonly bool statusPendingPurge, statusPendingPurgeIndependent, statusPendingPurgeCancellation, statusFailedPurge, statusFailedPurgeIndependent, statusFailedPurgeCancellation, statusCanceledPurge, statusCanceledPurgeIndependent, statusCanceledPurgeCancellation;
+        private bool PurgeStatusWire => statusPendingPurge || statusPendingPurgeIndependent || statusPendingPurgeCancellation || statusFailedPurge || statusFailedPurgeIndependent || statusFailedPurgeCancellation || statusCanceledPurge || statusCanceledPurgeIndependent || statusCanceledPurgeCancellation;
         internal Capture.StatusPendingPurgeClockWindow? PendingClock;
         private readonly bool statusPrivateDeleteIndependent;
 
@@ -1862,21 +1867,36 @@ public sealed partial class AzureManagementOperationNativeCaptureTests
             bool statusSucceededDeleteVaultIndependent = false, bool statusSucceededDeleteVaultCancellation = false,
             bool statusRoleDeleteIndependent = false, bool statusNotificationUpdateIndependent = false,
             bool statusNotificationCreateIndependent = false, bool statusPrivateUpdateIndependent = false,
-            bool statusPendingPurge = false, bool statusPendingPurgeIndependent = false, bool statusPendingPurgeCancellation = false)
+            bool statusPendingPurge = false, bool statusPendingPurgeIndependent = false, bool statusPendingPurgeCancellation = false, bool statusFailedPurge = false, bool statusFailedPurgeIndependent = false, bool statusFailedPurgeCancellation = false, bool statusCanceledPurge = false, bool statusCanceledPurgeIndependent = false, bool statusCanceledPurgeCancellation = false, bool statusUnknownNotificationUpdate = false, bool statusUnknownNotificationUpdateIndependent = false, bool statusUnknownNotificationUpdateCancellation = false,
+            bool statusDeniedPurge = false, bool statusDeniedNotificationUpdate = false,
+            bool statusDeniedPrivateConnectionDelete = false, bool statusDeniedVaultUpdate = false)
         {
             this.statusPrivateDeleteSelected = statusPrivateDeleteSelected;
+            this.statusDeniedPurge = statusDeniedPurge;
+            this.statusDeniedNotificationUpdate = statusDeniedNotificationUpdate;
+            this.statusDeniedPrivateConnectionDelete = statusDeniedPrivateConnectionDelete;
+            this.statusDeniedVaultUpdate = statusDeniedVaultUpdate;
             this.statusNotificationDeleteIndependent = statusNotificationDeleteIndependent;
             this.statusSucceededDeleteVault = statusSucceededDeleteVault;
             this.statusSucceededDeleteVaultIndependent = statusSucceededDeleteVaultIndependent;
             this.statusSucceededDeleteVaultCancellation = statusSucceededDeleteVaultCancellation;
             this.statusRoleDeleteIndependent = statusRoleDeleteIndependent;
             this.statusNotificationUpdateIndependent = statusNotificationUpdateIndependent;
+            this.statusUnknownNotificationUpdate = statusUnknownNotificationUpdate;
+            this.statusUnknownNotificationUpdateIndependent = statusUnknownNotificationUpdateIndependent;
+            this.statusUnknownNotificationUpdateCancellation = statusUnknownNotificationUpdateCancellation;
             this.statusNotificationCreateIndependent = statusNotificationCreateIndependent;
             this.statusPrivateUpdateIndependent = statusPrivateUpdateIndependent;
             this.statusPendingPurge = statusPendingPurge;
             this.statusPendingPurgeIndependent = statusPendingPurgeIndependent;
             this.statusPendingPurgeCancellation = statusPendingPurgeCancellation;
-            if ((statusPendingPurge ? 1 : 0) + (statusPendingPurgeIndependent ? 1 : 0) + (statusPendingPurgeCancellation ? 1 : 0) > 1) throw new InvalidOperationException("test-profile-conflict");
+            this.statusFailedPurge = statusFailedPurge;
+            this.statusFailedPurgeIndependent = statusFailedPurgeIndependent;
+            this.statusFailedPurgeCancellation = statusFailedPurgeCancellation;
+            this.statusCanceledPurge = statusCanceledPurge;
+            this.statusCanceledPurgeIndependent = statusCanceledPurgeIndependent;
+            this.statusCanceledPurgeCancellation = statusCanceledPurgeCancellation;
+            if ((statusPendingPurge ? 1 : 0) + (statusPendingPurgeIndependent ? 1 : 0) + (statusPendingPurgeCancellation ? 1 : 0) + (statusFailedPurge ? 1 : 0) + (statusFailedPurgeIndependent ? 1 : 0) + (statusFailedPurgeCancellation ? 1 : 0) + (statusCanceledPurge ? 1 : 0) + (statusCanceledPurgeIndependent ? 1 : 0) + (statusCanceledPurgeCancellation ? 1 : 0) > 1) throw new InvalidOperationException("test-profile-conflict");
             this.statusPrivateDeleteIndependent = statusPrivateDeleteIndependent;
             var operation = Enum.Parse<ManagementMutation>(name);
             var vault = new VaultScope(new(new(Guid.Parse(Subscription)), "capture-group"), "capture-vault");
@@ -1894,13 +1914,13 @@ public sealed partial class AzureManagementOperationNativeCaptureTests
                 variant ?? "operation." + name, boundary), Guid.NewGuid(), scope, operation, "eastus", Revision);
             Input = new(null!, null!, Guid.Parse(Subscription), "capture-group", "eastus", Guid.Parse(Tenant),
                 VaultSku.Standard, 7, operation, Material, Guid.Parse(Assignment));
-            if (PendingWire)
+            if (statusDeniedVaultUpdate || PurgeStatusWire || statusDeniedPurge)
             {
                 AudienceToken Arm(string role) => new(role, DateTimeOffset.MaxValue, "https://management.azure.com/.default");
                 Input = Input with { Arm = new(Arm("setup"), Arm("selected"), Arm("denied"), Arm("observer")) };
             }
             Backend = new(name, Revision);
-            if (PendingWire)
+            if (PurgeStatusWire || statusDeniedPurge)
             {
                 Backend.StartStatus = 202;
                 Backend.StartBody = "{\"status\":\"InProgress\"}";
@@ -1941,6 +1961,8 @@ public sealed partial class AzureManagementOperationNativeCaptureTests
             if (operation is ManagementMutation.UpdateNotification or ManagementMutation.CreateOrUpdateNotification &&
                 (boundary == "cancellation-boundary" ||
                     statusNotificationUpdateIndependent && operation == ManagementMutation.UpdateNotification ||
+                    (statusUnknownNotificationUpdate || statusUnknownNotificationUpdateIndependent || statusUnknownNotificationUpdateCancellation) && operation == ManagementMutation.UpdateNotification ||
+                    statusDeniedNotificationUpdate ||
                     statusNotificationCreateIndependent && operation == ManagementMutation.CreateOrUpdateNotification))
             {
                 Backend.ExtraHeaders.Add(("x-ms-request-id", "controlled-notification-update-cancellation"));
@@ -1954,15 +1976,42 @@ public sealed partial class AzureManagementOperationNativeCaptureTests
                 };
                 body["properties"]!["destination"]!["properties"]!["deliveryAttributeMappings"] = new JsonArray();
                 Backend.StartBody = body.ToJsonString();
-                body["properties"]!["provisioningState"] = "Succeeded";
+                body["properties"]!["provisioningState"] = statusUnknownNotificationUpdate || statusUnknownNotificationUpdateIndependent || statusUnknownNotificationUpdateCancellation ? "Unknown" : "Succeeded";
                 Backend.StatusBody = body.ToJsonString();
                 Backend.StatusPath = Notification;
             }
             Source = new(Backend, maximumBytes);
-            Window = Source.Arm(Binding);
+            Window = statusDeniedVaultUpdate ? Source.ArmStatusDeniedVaultUpdate(Binding) :
+                statusDeniedPrivateConnectionDelete ? Source.ArmStatusDeniedPrivateConnectionDelete(Binding) :
+                statusDeniedPurge ? Source.ArmStatusDeniedPurge(Binding) : Source.Arm(Binding);
             Scope = scope;
             Client = new(Credential, decorate?.Invoke(Source.SelectedTransport) ?? Source.SelectedTransport, maximumBytes);
             Receipt = Client.PrepareReceipt(Scope, operation);
+            if (statusDeniedVaultUpdate)
+            {
+                Backend.StartBody = JsonSerializer.Serialize(new
+                {
+                    id = Vault, name = "capture-vault", type = "Microsoft.KeyVault/vaults", location = "eastus",
+                    tags = new Dictionary<string, string> { ["secretkit-fixture"] = Binding.Selector.Nonce.ToString("N") },
+                    properties = new
+                    {
+                        tenantId = Tenant, sku = new { family = "A", name = "standard" },
+                        provisioningState = "Updating", vaultUri = "https://capture-vault.vault.azure.net/",
+                        enableRbacAuthorization = true, enableSoftDelete = true, enablePurgeProtection = false,
+                        softDeleteRetentionInDays = 7, publicNetworkAccess = "Enabled", createMode = "default",
+                        accessPolicies = Array.Empty<object>(), privateEndpointConnections = Array.Empty<object>()
+                    }
+                });
+                Backend.StartStatus = 201;
+                Backend.Targets.Add(("Location", StatusUrl));
+                Backend.Targets.Add(("Azure-AsyncOperation", StatusUrl));
+                Backend.ExtraHeaders.Add(("x-ms-request-id", "controlled-vault-update-denied"));
+            }
+            if (statusDeniedPrivateConnectionDelete)
+            {
+                AsyncStart();
+                Backend.ExtraHeaders.Add(("x-ms-request-id", "controlled-private-delete-denied"));
+            }
         }
         internal void AsyncStart()
         {
@@ -1976,6 +2025,30 @@ public sealed partial class AzureManagementOperationNativeCaptureTests
         }
         internal async Task<SecretStatus> Start(CancellationToken token = default, Action<Task>? retained = null)
         {
+            if (statusFailedPurgeCancellation)
+                PendingClock ??= Source.EnrollStatusFailedPurgeCancellation(Window, Binding, Client, (DeletedVaultScope)Scope,
+                    Receipt, Input.Arm.Administrative.ExpiresAt, new(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(30)),
+                    TimeSpan.FromSeconds(20), token);
+            if (statusFailedPurgeIndependent)
+                PendingClock ??= Source.EnrollStatusFailedPurgeIndependent(Window, Binding, Client, (DeletedVaultScope)Scope,
+                    Receipt, Input.Arm.Administrative.ExpiresAt, new(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(30)),
+                    TimeSpan.FromSeconds(20), token);
+            if (statusCanceledPurgeCancellation)
+                PendingClock ??= Source.EnrollStatusCanceledPurgeCancellation(Window, Binding, Client, (DeletedVaultScope)Scope,
+                    Receipt, Input.Arm.Administrative.ExpiresAt, new(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(30)),
+                    TimeSpan.FromSeconds(20), token);
+            if (statusCanceledPurgeIndependent)
+                PendingClock ??= Source.EnrollStatusCanceledPurgeIndependent(Window, Binding, Client, (DeletedVaultScope)Scope,
+                    Receipt, Input.Arm.Administrative.ExpiresAt, new(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(30)),
+                    TimeSpan.FromSeconds(20), token);
+            if (statusCanceledPurge)
+                PendingClock ??= Source.EnrollStatusCanceledPurge(Window, Binding, Client, (DeletedVaultScope)Scope,
+                    Receipt, Input.Arm.Administrative.ExpiresAt, new(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(30)),
+                    TimeSpan.FromSeconds(20), token);
+            if (statusFailedPurge)
+                PendingClock ??= Source.EnrollStatusFailedPurge(Window, Binding, Client, (DeletedVaultScope)Scope,
+                    Receipt, Input.Arm.Administrative.ExpiresAt, new(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(30)),
+                    TimeSpan.FromSeconds(20), token);
             if (statusPendingPurgeCancellation)
                 PendingClock ??= Source.EnrollStatusPendingPurgeCancellation(Window, Binding, Client, (DeletedVaultScope)Scope,
                     Receipt, Input.Arm.Administrative.ExpiresAt, new(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(30)),
@@ -1988,7 +2061,33 @@ public sealed partial class AzureManagementOperationNativeCaptureTests
                 PendingClock ??= Source.EnrollStatusPendingPurge(Window, Binding, Client, (DeletedVaultScope)Scope,
                     Receipt, Input.Arm.Administrative.ExpiresAt, new(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(30)),
                     TimeSpan.FromSeconds(20), token);
-            var result = statusPendingPurgeCancellation
+            var result = statusDeniedVaultUpdate
+                ? await Source.StartStatusDeniedVaultUpdateAsync(Window, Binding.Selector, Client, Scope, Input, Receipt, token, retained)
+                : statusDeniedPurge
+                ? await Source.StartStatusDeniedPurgeAsync(Window, Binding.Selector, Client, Scope, Input, Receipt, token, retained)
+                : statusDeniedPrivateConnectionDelete
+                ? await Source.StartStatusDeniedPrivateConnectionDeleteAsync(Window, Binding.Selector, Client, Scope, Input, Receipt, token, retained)
+                : statusDeniedNotificationUpdate
+                ? await Source.StartStatusDeniedNotificationUpdateAsync(Window, Binding.Selector, Client, Scope, Input, Receipt, token, retained)
+                : statusUnknownNotificationUpdateCancellation
+                ? await Source.StartStatusUnknownNotificationUpdateCancellationAsync(Window, Binding.Selector, Client, Scope, Input, Receipt, token, retained)
+                : statusUnknownNotificationUpdateIndependent
+                ? await Source.StartStatusUnknownNotificationUpdateIndependentAsync(Window, Binding.Selector, Client, Scope, Input, Receipt, token, retained)
+                : statusUnknownNotificationUpdate
+                ? await Source.StartStatusUnknownNotificationUpdateAsync(Window, Binding.Selector, Client, Scope, Input, Receipt, token, retained)
+                : statusCanceledPurgeCancellation
+                ? await Source.StartStatusCanceledPurgeCancellationAsync(Window, Binding.Selector, Client, Scope, Input, Receipt, token, retained)
+                : statusCanceledPurgeIndependent
+                ? await Source.StartStatusCanceledPurgeIndependentAsync(Window, Binding.Selector, Client, Scope, Input, Receipt, token, retained)
+                : statusCanceledPurge
+                ? await Source.StartStatusCanceledPurgeAsync(Window, Binding.Selector, Client, Scope, Input, Receipt, token, retained)
+                : statusFailedPurgeCancellation
+                ? await Source.StartStatusFailedPurgeCancellationAsync(Window, Binding.Selector, Client, Scope, Input, Receipt, token, retained)
+                : statusFailedPurgeIndependent
+                ? await Source.StartStatusFailedPurgeIndependentAsync(Window, Binding.Selector, Client, Scope, Input, Receipt, token, retained)
+                : statusFailedPurge
+                ? await Source.StartStatusFailedPurgeAsync(Window, Binding.Selector, Client, Scope, Input, Receipt, token, retained)
+                : statusPendingPurgeCancellation
                 ? await Source.StartStatusPendingPurgeCancellationAsync(Window, Binding.Selector, Client, Scope, Input, Receipt, token, retained)
                 : statusPendingPurgeIndependent
                 ? await Source.StartStatusPendingPurgeIndependentAsync(Window, Binding.Selector, Client, Scope, Input, Receipt, token, retained)
@@ -2025,7 +2124,43 @@ public sealed partial class AzureManagementOperationNativeCaptureTests
             return result.Status;
         }
         internal Task<SecretStatus> Check(CancellationToken token = default, Action<Task>? retained = null) =>
-            Source.CheckStatusAsync(Window, Binding.Selector, Handle!, token, retained);
+            statusDeniedVaultUpdate
+                ? Source.CheckStatusDeniedVaultUpdateAsync(Window, Binding.Selector, Handle!, token, retained)
+                : statusDeniedPurge
+                ? Source.CheckStatusDeniedPurgeAsync(Window, Binding.Selector, Handle!, token, retained).AsTask()
+                : statusDeniedPrivateConnectionDelete
+                ? Source.CheckStatusDeniedPrivateConnectionDeleteAsync(Window, Binding.Selector, Handle!, token, retained).AsTask()
+                : statusDeniedNotificationUpdate
+                ? Source.CheckStatusDeniedNotificationUpdateAsync(Window, Binding.Selector, Handle!, token, retained).AsTask()
+                : statusUnknownNotificationUpdateCancellation
+                ? CheckUnknownCancellation(token, retained)
+                : statusCanceledPurgeCancellation
+                ? Source.CheckStatusCanceledPurgeCancellationAsync(Window, Binding.Selector, Handle!, token, retained).AsTask()
+                : statusCanceledPurgeIndependent
+                ? Source.CheckStatusCanceledPurgeIndependentAsync(Window, Binding.Selector, Handle!, token, retained).AsTask()
+                : statusCanceledPurge
+                ? Source.CheckStatusCanceledPurgeAsync(Window, Binding.Selector, Handle!, token, retained).AsTask()
+                : statusFailedPurgeCancellation
+                ? Source.CheckStatusFailedPurgeCancellationAsync(Window, Binding.Selector, Handle!, token, retained).AsTask()
+                : statusFailedPurgeIndependent
+                ? Source.CheckStatusFailedPurgeIndependentAsync(Window, Binding.Selector, Handle!, token, retained).AsTask()
+                : statusFailedPurge
+                ? Source.CheckStatusFailedPurgeAsync(Window, Binding.Selector, Handle!, token, retained).AsTask()
+                : Source.CheckStatusAsync(Window, Binding.Selector, Handle!, token, retained);
+        private async Task<SecretStatus> CheckUnknownCancellation(CancellationToken token, Action<Task>? retained)
+        {
+            if (UnknownCanceledTask is null && !token.IsCancellationRequested) await CancelUnknownCheck();
+            return await Source.CheckStatusAsync(Window, Binding.Selector, Handle!, token, retained).ConfigureAwait(false);
+        }
+        internal async Task CancelUnknownCheck()
+        {
+            using var canceled = new CancellationTokenSource();
+            canceled.Cancel();
+            await Assert.That(async () => await Source.CheckStatusUnknownNotificationUpdateCancellationCanceledAsync(
+                Window, Binding.Selector, Handle!, canceled.Token, task => UnknownCanceledTask = task))
+                .Throws<OperationCanceledException>();
+            await Assert.That(UnknownCanceledTask is { IsCanceled: true }).IsTrue();
+        }
         public void Dispose() => Backend.Dispose();
     }
 

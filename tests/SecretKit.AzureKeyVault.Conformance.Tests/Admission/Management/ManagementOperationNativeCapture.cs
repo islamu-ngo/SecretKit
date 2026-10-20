@@ -20,14 +20,1628 @@ internal sealed class ManagementOperationNativeCapture
 {
     internal enum WireState { Unavailable, Pending, Succeeded, Failed, Canceled, Denied, Unknown, Lost }
 
+    internal sealed class StatusDeniedVaultUpdateStartProof(Binding binding, StatusTarget target,
+        int responseBytes, string requestSha256, string nativeRequestId, Task startTask, VaultConfiguration configuration)
+    {
+        internal Binding Binding { get; } = binding;
+        internal StatusTarget Target { get; } = target;
+        internal Guid StartDispatch => Target.StartDispatch;
+        internal int HttpStatus => 201;
+        internal int ResponseBytes { get; } = responseBytes;
+        internal VaultConfiguration Configuration { get; } = configuration;
+        internal string ResponseSha256 => Target.StartResponseSha256;
+        internal string RequestSha256 { get; } = requestSha256;
+        internal string NativeRequestId { get; } = nativeRequestId;
+        internal Task StartTask { get; } = startTask;
+        internal Task ActualTask => StartTask;
+        internal SecretStatus Outcome => SecretStatus.Success;
+        internal NativeProvisioningState State => NativeProvisioningState.Pending;
+        internal DispatchEvidence ReceiptEvidence => DispatchEvidence.Pending;
+        public override string ToString() => "[StatusDeniedVaultUpdateStartProof]";
+    }
+
+    internal sealed class StatusDeniedVaultUpdateDeniedProof(StatusDeniedVaultUpdateStartProof start, Task checkTask,
+        int httpStatus, int responseBytes, string requestSha256, string responseSha256, string nativeRequestId)
+    {
+        internal StatusDeniedVaultUpdateStartProof Start { get; } = start;
+        internal Task CheckTask { get; } = checkTask;
+        internal Task ActualTask => CheckTask;
+        internal Binding Binding => Start.Binding;
+        internal StatusTarget Target => Start.Target;
+        internal Guid StartDispatch => Start.StartDispatch;
+        internal int ResponseBytes { get; } = responseBytes;
+        internal string RequestSha256 { get; } = requestSha256;
+        internal int HttpStatus { get; } = httpStatus;
+        internal string ResponseSha256 { get; } = responseSha256;
+        internal string NativeRequestId { get; } = nativeRequestId;
+        internal SecretStatus Outcome => SecretStatus.Denied;
+        internal NativeProvisioningState State => NativeProvisioningState.Failed;
+        internal DispatchEvidence ReceiptEvidence => DispatchEvidence.Pending;
+        public override string ToString() => "[StatusDeniedVaultUpdateDeniedProof]";
+    }
+
+    private sealed class StatusDeniedVaultUpdateSlot(CancellationToken token, CancellationToken caller)
+    {
+        internal readonly CancellationToken Token = token;
+        internal readonly CancellationToken Caller = caller;
+        internal readonly Invocation Invocation = new();
+        internal readonly TaskCompletionSource Drained = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal readonly HashSet<Request> Requests = new(ReferenceEqualityComparer.Instance);
+        internal readonly List<Task> Sends = [];
+        internal readonly List<StatusPendingPurgeResponse> Responses = [];
+        internal Task? NativeTask;
+        internal string? RequestSha256;
+        internal int Factories, SendCount;
+        internal bool FactoryActive, Sending, HookReturned, Success, Finished;
+    }
+
+    private sealed class StatusDeniedVaultUpdateRegistration(Window window)
+    {
+        internal readonly Window Window = window;
+        internal readonly List<OwnedArmResponse.Storage> Storage = [];
+        internal readonly List<StatusPendingPurgeResponse> Responses = [];
+        internal readonly ManagementScope InitialScope = window.Binding.Resource;
+        internal readonly FixtureSelector BindingSelector = window.Binding.Selector;
+        internal VaultConfiguration? Configuration;
+        internal bool DisposalComplete, DisposalFailed;
+        internal Action? BeforeSend;
+        internal VaultAdministration? Client;
+        internal VaultScope? Scope;
+        internal ManagementReceipt? Receipt;
+        internal ManagementOperation? Handle;
+        internal StatusDeniedVaultUpdateSlot? Start, Selected;
+        internal StatusPendingPurgeStartFacts? Candidate;
+        internal StatusDeniedVaultUpdateStartProof? StartProof;
+        internal StatusDeniedVaultUpdateDeniedProof? DeniedProof;
+        internal string? AuthorizationSha256;
+        internal Task<Capture>? SealTask;
+        internal bool Invalid, Revoked, Sealed;
+    }
+
+    private sealed record StatusDeniedVaultUpdateContext(StatusDeniedVaultUpdateRegistration Registration,
+        StatusDeniedVaultUpdateSlot Slot, bool Start);
+    private readonly AsyncLocal<StatusDeniedVaultUpdateContext?> currentStatusDeniedVaultUpdate = new();
+    private readonly Dictionary<Window, StatusDeniedVaultUpdateRegistration> statusDeniedVaultUpdates =
+        new(ReferenceEqualityComparer.Instance);
+
+    private static bool StatusDeniedVaultUpdateSelector(FixtureSelector selector) =>
+        selector is { Operation: "a.management.ManagementOperation.CheckStatusAsync",
+            Variant: "operation.CreateOrUpdateVault", Case: "denied-authority" };
+
+    internal Window ArmStatusDeniedVaultUpdate(Binding binding)
+    {
+        Require(binding is not null && StatusDeniedVaultUpdateSelector(binding.Selector) &&
+            binding.Operation == ManagementMutation.CreateOrUpdateVault &&
+            binding.Resource is VaultScope && binding.ApiRevision == "2026-02-01");
+        var window = Arm(binding);
+        lock (gate) statusDeniedVaultUpdates.Add(window, new(window));
+        return window;
+    }
+
+    private StatusDeniedVaultUpdateRegistration RequireStatusDeniedVaultUpdate(Window window, FixtureSelector selector)
+    {
+        Own(window, selector);
+        Require(ReferenceEquals(window.Binding.Selector, selector) && StatusDeniedVaultUpdateSelector(selector));
+        Require(statusDeniedVaultUpdates.TryGetValue(window, out var r) && ReferenceEquals(r.Window, window));
+        return r;
+    }
+
+    private bool StatusDeniedVaultUpdateTargetValid(StatusDeniedVaultUpdateRegistration r, Binding binding) =>
+        ReferenceEquals(r.Window.Binding, binding) && ReferenceEquals(binding.Resource, r.Scope) &&
+        StatusDeniedVaultUpdateLive(r) &&
+        r.Start is { Finished: true, HookReturned: true, Success: true } &&
+        r.Start.Drained.Task.IsCompletedSuccessfully && r.StartProof is { } proof &&
+        ReferenceEquals(proof.Binding, binding) && ReferenceEquals(proof.StartTask, r.Start.NativeTask) &&
+        ReferenceEquals(targets.GetValueOrDefault(r.Window), proof.Target) &&
+        r.Receipt!.Evidence == DispatchEvidence.Pending;
+
+    private static bool StatusDeniedVaultUpdateHistoryValid(StatusDeniedVaultUpdateRegistration r) =>
+        !r.Invalid && !r.DisposalFailed &&
+        r.Responses.All(response => response.Valid);
+
+    private static bool StatusDeniedVaultUpdateLive(StatusDeniedVaultUpdateRegistration r) =>
+        StatusDeniedVaultUpdateHistoryValid(r) && !r.Revoked && !r.Sealed && !r.Window.Closed &&
+        !(r.Start?.Token.IsCancellationRequested ?? false) &&
+        !(r.Start?.Caller.IsCancellationRequested ?? false) &&
+        !(r.Selected?.Token.IsCancellationRequested ?? false) &&
+        !(r.Selected?.Caller.IsCancellationRequested ?? false);
+
+    internal async Task<SecretOutcome<ManagementOperation>> StartStatusDeniedVaultUpdateAsync(Window window,
+        FixtureSelector selector, VaultAdministration client, ManagementScope scope, ManagementOperationEffects.Input input,
+        ManagementReceipt receipt, CancellationToken token = default, Action<Task>? retained = null,
+        Action? beforeSend = null)
+    {
+        ArgumentNullException.ThrowIfNull(client);
+        ArgumentNullException.ThrowIfNull(receipt);
+        StatusDeniedVaultUpdateRegistration r;
+        StatusDeniedVaultUpdateSlot slot;
+        lock (gate)
+        {
+            r = RequireStatusDeniedVaultUpdate(window, selector);
+            bool valid = StatusDeniedVaultUpdateLive(r) && r.Start is null && window.Start is null &&
+                scope is VaultScope && ReferenceEquals(window.Binding.Resource, r.InitialScope) &&
+                Route(window.Binding with { Resource = scope }) == Route(window.Binding) &&
+                input is not null && InputMatches(window.Binding, input) &&
+                input.StatusOperation == ManagementMutation.CreateOrUpdateVault &&
+                receipt.Evidence == DispatchEvidence.NotDispatched &&
+                !token.IsCancellationRequested && !startedWindows.Contains(window);
+            r.Invalid |= !valid;
+            Require(valid);
+            window.Binding.Resource = scope;
+            r.BeforeSend = beforeSend;
+            r.Client = client;
+            r.Scope = (VaultScope)scope;
+            r.Configuration = new(input!.Location, input.TenantId, input.Sku, true, false, input.RetentionDays, true);
+            r.Receipt = receipt;
+            r.Start = slot = new(token, token);
+            window.Start = slot.Invocation;
+            startedWindows.Add(window);
+        }
+        try
+        {
+            var previous = currentStatusDeniedVaultUpdate.Value;
+            currentStatusDeniedVaultUpdate.Value = new(r, slot, true);
+            Task<SecretOutcome<ManagementOperation>> task;
+            try
+            {
+                task = client.CreateOrUpdateVaultAsync((VaultScope)scope, r.Configuration!, receipt, token).AsTask();
+                slot.NativeTask = slot.Invocation.SdkTask = task;
+            }
+            finally { currentStatusDeniedVaultUpdate.Value = previous; }
+            try { retained?.Invoke(task); slot.HookReturned = true; }
+            finally
+            {
+                var result = await task.ConfigureAwait(false);
+                r.Handle = result.IsSuccess ? result.Value : null;
+                slot.Invocation.Outcome = result.Status;
+                slot.Invocation.WrapperState = r.Handle?.State;
+                slot.Invocation.HasNativeHandle = r.Handle is not null;
+                slot.Success = result.IsSuccess && r.Handle?.State == NativeProvisioningState.Pending &&
+                    receipt.Evidence == DispatchEvidence.Pending;
+            }
+            return await task.ConfigureAwait(false);
+        }
+        catch { r.Invalid = true; throw; }
+        finally { await FinishStatusDeniedVaultUpdateAsync(r, slot, start: true).ConfigureAwait(false); }
+    }
+
+    internal async Task<SecretStatus> CheckStatusDeniedVaultUpdateAsync(Window window, FixtureSelector selector,
+        ManagementOperation handle, CancellationToken token, Action<Task>? retained = null,
+        CancellationToken originalCallerToken = default)
+    {
+        StatusDeniedVaultUpdateRegistration r;
+        StatusDeniedVaultUpdateSlot slot;
+        lock (gate)
+        {
+            r = RequireStatusDeniedVaultUpdate(window, selector);
+            // A foreign handle cannot consume or invalidate the owned one-use check.
+            Require(ReferenceEquals(r.Handle, handle));
+            bool valid = StatusDeniedVaultUpdateTargetValid(r, window.Binding) && r.StartProof is not null &&
+                r.Start is { Finished: true } && r.Start.Drained.Task.IsCompletedSuccessfully &&
+                r.Selected is null && ReferenceEquals(r.Handle, handle) &&
+                handle.State == NativeProvisioningState.Pending && r.Receipt!.Evidence == DispatchEvidence.Pending &&
+                !token.IsCancellationRequested && !originalCallerToken.IsCancellationRequested;
+            r.Invalid |= !valid;
+            Require(valid);
+            r.Selected = slot = new(token, originalCallerToken);
+            window.Status = slot.Invocation;
+        }
+        try
+        {
+            var previous = currentStatusDeniedVaultUpdate.Value;
+            currentStatusDeniedVaultUpdate.Value = new(r, slot, false);
+            Task<SecretStatus> task;
+            try
+            {
+                task = handle.CheckStatusAsync(token).AsTask();
+                slot.NativeTask = slot.Invocation.SdkTask = task;
+            }
+            finally { currentStatusDeniedVaultUpdate.Value = previous; }
+            try { retained?.Invoke(task); slot.HookReturned = true; }
+            finally
+            {
+                var result = await task.ConfigureAwait(false);
+                slot.Invocation.Outcome = result;
+                slot.Invocation.WrapperState = handle.State;
+                slot.Success = result == SecretStatus.Denied && handle.State == NativeProvisioningState.Failed &&
+                    r.Receipt!.Evidence == DispatchEvidence.Pending;
+            }
+            return await task.ConfigureAwait(false);
+        }
+        catch { r.Invalid = true; throw; }
+        finally { await FinishStatusDeniedVaultUpdateAsync(r, slot, start: false).ConfigureAwait(false); }
+    }
+
+    private async Task FinishStatusDeniedVaultUpdateAsync(StatusDeniedVaultUpdateRegistration r, StatusDeniedVaultUpdateSlot slot, bool start)
+    {
+        try
+        {
+            if (slot.NativeTask is not null)
+                try { await slot.NativeTask.ConfigureAwait(false); } catch { r.Invalid = true; }
+            Task[] sends;
+            lock (gate) sends = slot.Sends.ToArray();
+            try { await Task.WhenAll(sends).ConfigureAwait(false); } catch { r.Invalid = true; }
+            if (!start)
+            {
+                // Both actual native tasks, retention hooks and sends have ended.
+                // Validate the installed parsers before and after physical disposal.
+                r.Invalid |= !StatusDeniedVaultUpdateHistoryValid(r) || slot.FactoryActive || slot.Sending ||
+                    r.Start is not { Finished: true, FactoryActive: false, Sending: false };
+                foreach (var storage in r.Storage)
+                    try { storage.Dispose(); } catch { r.DisposalFailed = r.Invalid = true; }
+                r.Storage.Clear();
+                r.DisposalComplete = !r.DisposalFailed;
+                r.Invalid |= !StatusDeniedVaultUpdateHistoryValid(r);
+            }
+            lock (gate)
+            {
+                bool valid = StatusDeniedVaultUpdateLive(r) && !slot.Token.IsCancellationRequested &&
+                    slot.NativeTask is { IsCompletedSuccessfully: true } && slot.HookReturned && slot.Success &&
+                    slot.RequestSha256 is not null && !slot.FactoryActive && !slot.Sending && slot.Factories == 1 && slot.SendCount == 1 &&
+                    slot.Sends.Count == 1 && (start ? slot.Responses.Count == 1 && r.Candidate is not null :
+                        slot.Responses.Count == 1 && r.DisposalComplete) &&
+                    r.Receipt!.Evidence == DispatchEvidence.Pending;
+                r.Invalid |= !valid;
+                if (valid && start && r.Candidate is { } candidate)
+                {
+                    r.StartProof = new(candidate.Binding, candidate.Target, candidate.ResponseBytes,
+                        candidate.RequestSha256, candidate.NativeRequestId, slot.NativeTask!, r.Configuration!);
+                    targets[r.Window] = candidate.Target;
+                    eligible.Add(r.Window);
+                }
+                else if (valid && !start && r.StartProof is not null)
+                {
+                    var body = slot.Responses[0].Body;
+                    r.DeniedProof = new(r.StartProof, slot.NativeTask!, body.Response.Status, body.Bytes.Length,
+                        slot.RequestSha256!, body.Sha256, body.NativeRequestId);
+                }
+                else r.Invalid = true;
+            }
+        }
+        finally
+        {
+            lock (gate)
+            {
+                slot.Finished = slot.Invocation.Terminated = true;
+                slot.Invocation.Drained.TrySetResult();
+                slot.Drained.TrySetResult();
+            }
+        }
+    }
+
+    internal bool TryGetStatusDeniedVaultUpdateStart(Window window, Binding binding, VaultAdministration client,
+        VaultScope scope, ManagementReceipt receipt, Task startTask, ManagementOperation handle,
+        [NotNullWhen(true)] out StatusDeniedVaultUpdateStartProof? proof)
+    {
+        lock (gate)
+        {
+            proof = null;
+            if (window is null || binding is null || client is null || scope is null || receipt is null ||
+                startTask is null || handle is null || !ReferenceEquals(window.Owner, owner) ||
+                !statusDeniedVaultUpdates.TryGetValue(window, out var r) || !StatusDeniedVaultUpdateSelector(binding.Selector) ||
+                !ReferenceEquals(window.Binding, binding) || !ReferenceEquals(r.Window, window) ||
+                !ReferenceEquals(binding.Selector, r.BindingSelector) ||
+                !ReferenceEquals(r.Client, client) || !ReferenceEquals(r.Scope, scope) ||
+                !ReferenceEquals(binding.Resource, scope) || !ReferenceEquals(r.Receipt, receipt) ||
+                !ReferenceEquals(r.Handle, handle) || !ReferenceEquals(r.Start?.NativeTask, startTask) ||
+                r.Start is not { Finished: true, HookReturned: true, Success: true } ||
+                !r.Start.Drained.Task.IsCompletedSuccessfully || !startTask.IsCompletedSuccessfully ||
+                !StatusDeniedVaultUpdateHistoryValid(r) || r.Sealed || r.Revoked || window.Closed ||
+                r.Start.Token.IsCancellationRequested || r.Start.Caller.IsCancellationRequested ||
+                (r.Selected?.Token.IsCancellationRequested ?? false) ||
+                (r.Selected?.Caller.IsCancellationRequested ?? false) ||
+                receipt.Evidence != DispatchEvidence.Pending || r.StartProof is not { } issued ||
+                !ReferenceEquals(issued.StartTask, startTask) ||
+                !ReferenceEquals(targets.GetValueOrDefault(window), issued.Target))
+                return false;
+            proof = issued;
+            return true;
+        }
+    }
+
+    internal bool TryGetStatusDeniedVaultUpdateDenied(Window window, Binding binding, VaultAdministration client,
+        VaultScope scope, ManagementReceipt receipt, Task startTask, ManagementOperation handle, Task checkTask,
+        [NotNullWhen(true)] out StatusDeniedVaultUpdateDeniedProof? proof)
+    {
+        lock (gate)
+        {
+            proof = null;
+            if (!TryGetStatusDeniedVaultUpdateStart(window, binding, client, scope, receipt, startTask, handle, out var start) ||
+                !statusDeniedVaultUpdates.TryGetValue(window, out var r) ||
+                r.Selected is not { Finished: true, HookReturned: true, Success: true } selected ||
+                !selected.Drained.Task.IsCompletedSuccessfully || !ReferenceEquals(selected.NativeTask, checkTask) ||
+                !checkTask.IsCompletedSuccessfully || handle.State != NativeProvisioningState.Failed ||
+                r.DeniedProof is not { } issued || !ReferenceEquals(issued.Start, start) ||
+                !ReferenceEquals(issued.CheckTask, checkTask))
+                return false;
+            proof = issued;
+            return true;
+        }
+    }
+
+    internal void RevokeStatusDeniedVaultUpdateSelected(Window window)
+    {
+        lock (gate)
+        {
+            var r = RequireStatusDeniedVaultUpdate(window, window.Binding.Selector);
+            r.Invalid |= r.Start is not { Finished: true } || r.Selected is not { Finished: true } ||
+                r.DeniedProof is null || !StatusDeniedVaultUpdateHistoryValid(r) ||
+                r.Start.Token.IsCancellationRequested || r.Selected.Token.IsCancellationRequested ||
+                r.Selected.Caller.IsCancellationRequested;
+            r.Revoked = window.Closed = true;
+        }
+    }
+
+    private Task<Capture> SealStatusDeniedVaultUpdateAsync(Window window)
+    {
+        StatusDeniedVaultUpdateRegistration r;
+        TaskCompletionSource ready;
+        Task<Capture> task;
+        lock (gate)
+        {
+            r = RequireStatusDeniedVaultUpdate(window, window.Binding.Selector);
+            r.Sealed = r.Revoked = window.Closed = true;
+            if (r.SealTask is not null) return r.SealTask;
+            ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            task = r.SealTask = Drain(ready.Task);
+        }
+        ready.SetResult();
+        return task;
+
+        async Task<Capture> Drain(Task admission)
+        {
+            await admission.ConfigureAwait(false);
+            var tasks = new[] { r.Start, r.Selected }.OfType<StatusDeniedVaultUpdateSlot>()
+                .Select(slot => slot.Drained.Task).ToArray();
+            await Task.WhenAll(tasks).ConfigureAwait(false);
+            r.Invalid |= !StatusDeniedVaultUpdateHistoryValid(r);
+            foreach (var storage in r.Storage)
+                try { storage.Dispose(); } catch { r.DisposalFailed = r.Invalid = true; }
+            r.Storage.Clear();
+            r.DisposalComplete = !r.DisposalFailed;
+            r.Invalid |= !StatusDeniedVaultUpdateHistoryValid(r);
+            r.AuthorizationSha256 = null;
+            Require(!r.DisposalFailed);
+            return new() { Binding = window.Binding, Start = r.Start?.Invocation, Status = r.Selected?.Invocation };
+        }
+    }
+
+    private async Task SendStatusDeniedVaultUpdateAsync(StatusDeniedVaultUpdateContext context, HttpMessage message)
+    {
+        var r = context.Registration;
+        var slot = context.Slot;
+        bool start = context.Start;
+        var request = message.Request;
+        var headers = request.Headers.ToArray();
+        var storage = new OwnedArmResponse.Storage();
+        RequestContent? frozen = null;
+        byte[]? dispatchBytes = null;
+        var attempt = new Attempt { Dispatch = Guid.NewGuid() };
+        try
+        {
+            lock (gate)
+            {
+                bool valid = StatusDeniedVaultUpdateLive(r) && !slot.Finished && !slot.Sending &&
+                    slot.Requests.Contains(request) && ++slot.SendCount == 1 && slot.Responses.Count == 0;
+                r.Invalid |= !valid;
+                Require(valid);
+                slot.Sending = slot.Invocation.Sending = true;
+                r.Storage.Add(storage);
+            }
+            if (start)
+            {
+                var originalContent = request.Content;
+                Require(originalContent is not null);
+                storage.Own(originalContent);
+                Require(originalContent.TryComputeLength(out long length) && length > 0 && length <= maximumBytes);
+                byte[] staging = new byte[maximumBytes];
+                storage.Own(staging);
+                using var buffer = new MemoryStream(staging, 0, staging.Length, true, true);
+                await originalContent.WriteToAsync(buffer, message.CancellationToken).ConfigureAwait(false);
+                Require(buffer.Position == length && ReferenceEquals(message.Request, request) &&
+                    ReferenceEquals(request.Content, originalContent) && headers.SequenceEqual(request.Headers));
+                dispatchBytes = staging.AsSpan(0, (int)length).ToArray();
+                storage.Own(dispatchBytes);
+                ValidateCreateVaultRequest(dispatchBytes, r.Configuration!);
+                frozen = RequestContent.Create(dispatchBytes);
+                storage.Own(frozen);
+                request.Content = frozen;
+                if (request.Headers.TryGetValue("Content-Length", out var declared))
+                    Require(declared == length.ToString(CultureInfo.InvariantCulture));
+            }
+            void Check()
+            {
+                Require(StatusDeniedVaultUpdateLive(r) && !slot.Token.IsCancellationRequested &&
+                    !slot.Caller.IsCancellationRequested && !message.CancellationToken.IsCancellationRequested &&
+                    ReferenceEquals(message.Request, request) && headers.SequenceEqual(request.Headers));
+                if (start)
+                {
+                    var uri = request.Uri.ToUri();
+                    Require(Trusted(uri) && uri.AbsolutePath == r.Window.Path && uri.Query == "?api-version=2026-02-01" &&
+                        request.Method == RequestMethod.Put && ReferenceEquals(request.Content, frozen) &&
+                        request.Headers.TryGetValue("Authorization", out var auth) &&
+                        auth.StartsWith("Bearer ", StringComparison.Ordinal) && auth.Length > 7 &&
+                        request.Headers.TryGetValue("Content-Type", out var type) &&
+                        type.Split(';')[0].Trim().Equals("application/json", StringComparison.OrdinalIgnoreCase) &&
+                        !request.Headers.Contains("Content-Encoding") && !request.Headers.Contains("Transfer-Encoding") &&
+                        !request.Headers.Contains("Content-Range"));
+                    if (request.Headers.TryGetValue("Host", out var host)) Require(host == "management.azure.com");
+                }
+                else OriginalVaultRequest(message, r.Window.Path, RequestMethod.Get, r.StartProof!.Target.TargetUri.AbsoluteUri);
+                Headers(headers);
+                Require(!request.Headers.Contains("Range"));
+            }
+            Check();
+            Require(r.Receipt!.Evidence == (start ? DispatchEvidence.PossiblyDispatched : DispatchEvidence.Pending));
+            byte[] requestIdentity = System.Text.Encoding.UTF8.GetBytes(request.Method + " " + request.Uri.ToUri().AbsoluteUri);
+            storage.Own(requestIdentity);
+            attempt = new() { Dispatch = attempt.Dispatch,
+                RequestSha256 = Convert.ToHexString(SHA256.HashData(start ? dispatchBytes! : requestIdentity)) };
+            lock (gate)
+            {
+                slot.RequestSha256 = attempt.RequestSha256;
+                slot.Invocation.Attempts.Add(attempt);
+            }
+            request.Headers.TryGetValue("Authorization", out var authorization);
+            byte[] authorizationBytes = System.Text.Encoding.UTF8.GetBytes(authorization!);
+            string authorizationSha256;
+            try { authorizationSha256 = Convert.ToHexString(SHA256.HashData(authorizationBytes)); }
+            finally { CryptographicOperations.ZeroMemory(authorizationBytes); }
+            if (start) r.AuthorizationSha256 = authorizationSha256;
+            else Require(r.AuthorizationSha256 == authorizationSha256);
+            message.BufferResponse = false;
+            if (start) r.BeforeSend?.Invoke();
+            Check();
+            try { await backend.ProcessAsync(message).ConfigureAwait(false); }
+            finally { if (message.HasResponse) storage.Own(message.Response); }
+            Check();
+            Require(message.HasResponse);
+            var original = message.Response;
+            var stream = original.ContentStream;
+            var body = await OwnedArmResponse.CaptureAsync(message, maximumBytes, storage,
+                allowContinuation: start).ConfigureAwait(false);
+            Check();
+            Require(ReferenceEquals(original.ContentStream, stream) && body.Bytes.Length > 0 &&
+                (start ? body.Response.Status == 201 : body.Response.Status is 401 or 403));
+            Require(body.Response.Headers.TryGetValue("Content-Type", out var contentType));
+            string[] media = contentType.Split(';').Select(value => value.Trim()).ToArray();
+            Require(media.Length is 1 or 2 && media[0].Equals("application/json", StringComparison.OrdinalIgnoreCase) &&
+                (media.Length == 1 || media[1].Equals("charset=utf-8", StringComparison.OrdinalIgnoreCase)));
+            string? next = Continuation(r.Window, message);
+            using var json = JsonDocument.Parse(body.Bytes, new JsonDocumentOptions { MaxDepth = 16 });
+            int nodes = 512;
+            JsonRows(json.RootElement, ref nodes);
+            var root = json.RootElement;
+            if (start)
+            {
+                Require(next is not null && root.ValueKind == JsonValueKind.Object &&
+                    !new[] { "error", "errors", "partial", "nextLink", "value", "status" }
+                        .Any(name => root.TryGetProperty(name, out _)));
+                var state = root.GetProperty("properties").GetProperty("provisioningState").GetString();
+                Require(state is "Creating" or "Updating");
+                _ = VaultFixtureProvisioner.ParseOwnedVaultResource(r.Window.Path, r.BindingSelector.Nonce,
+                    root, CreateVaultConfiguration(r.Configuration!), state!);
+                byte[] targetBytes = System.Text.Encoding.UTF8.GetBytes(next!);
+                try
+                {
+                    var target = new StatusTarget(r.Window.Binding, attempt.Dispatch, StatusTargetKind.Operation, new Uri(next!),
+                        Convert.ToHexString(SHA256.HashData(targetBytes)), body.Sha256);
+                    r.Candidate = new(r.Window.Binding, target, body.Bytes.Length, attempt.RequestSha256!, body.NativeRequestId);
+                }
+                finally { CryptographicOperations.ZeroMemory(targetBytes); }
+            }
+            else
+            {
+                Require(next is null && root.ValueKind == JsonValueKind.Object && root.EnumerateObject().All(p => p.Name == "error") &&
+                    root.TryGetProperty("error", out var error) && error.ValueKind == JsonValueKind.Object &&
+                    error.EnumerateObject().All(p => p.Name is "code" or "message") &&
+                    error.TryGetProperty("code", out var code) && code.ValueKind == JsonValueKind.String &&
+                    code.GetString() is { Length: > 0 and <= 128 } errorCode && !errorCode.Any(char.IsControl) &&
+                    error.TryGetProperty("message", out var text) && text.ValueKind == JsonValueKind.String &&
+                    text.GetString() is { Length: > 0 and <= 2048 } errorMessage && !errorMessage.Any(char.IsControl));
+            }
+            var parser = OwnedArmResponse.ParserCustody.Install(message, body.Response, body.Bytes, storage,
+                requireRebuffer: true, requireDownstreamRead: !start);
+            var frame = new StatusPendingPurgeResponse(body, parser, storage);
+            lock (gate)
+            {
+                slot.Responses.Add(frame);
+                r.Responses.Add(frame);
+                attempt.HttpStatus = body.Response.Status;
+                attempt.ResponseSha256 = body.Sha256;
+                attempt.ResponseObserved = true;
+                attempt.HasProviderContinuation = next is not null;
+                attempt.State = start ? WireState.Pending : WireState.Denied;
+                attempt.Valid = true;
+            }
+            // Parsing occurs after this transport returns, under actual native task custody.
+            Require(!slot.Token.IsCancellationRequested && !slot.Caller.IsCancellationRequested &&
+                !message.CancellationToken.IsCancellationRequested && !r.Revoked && !r.Sealed && !r.Window.Closed &&
+                ReferenceEquals(message.Request, request) && ReferenceEquals(request.Content, frozen) &&
+                headers.SequenceEqual(request.Headers));
+        }
+        catch { r.Invalid = true; attempt.Valid = false; throw; }
+        finally
+        {
+            lock (gate)
+            {
+                attempt.TransportTerminated = true;
+                slot.Sending = slot.Invocation.Sending = false;
+            }
+        }
+    }
+
+    internal sealed class StatusDeniedPrivateConnectionDeleteStartProof(Binding binding, StatusTarget target,
+        string requestSha256, string nativeRequestId, Task startTask)
+    {
+        internal Binding Binding { get; } = binding;
+        internal StatusTarget Target { get; } = target;
+        internal Guid StartDispatch => Target.StartDispatch;
+        internal int HttpStatus => 202;
+        internal int ResponseBytes => 0;
+        internal string ResponseSha256 => Target.StartResponseSha256;
+        internal string RequestSha256 { get; } = requestSha256;
+        internal string NativeRequestId { get; } = nativeRequestId;
+        internal Task StartTask { get; } = startTask;
+        internal SecretStatus Outcome => SecretStatus.Success;
+        internal NativeProvisioningState State => NativeProvisioningState.Pending;
+        internal DispatchEvidence ReceiptEvidence => DispatchEvidence.Pending;
+        public override string ToString() => "[StatusDeniedPrivateConnectionDeleteStartProof]";
+    }
+
+    internal sealed class StatusDeniedPrivateConnectionDeleteDeniedProof(StatusDeniedPrivateConnectionDeleteStartProof start, Task checkTask,
+        int httpStatus, string responseSha256, string nativeRequestId)
+    {
+        internal StatusDeniedPrivateConnectionDeleteStartProof Start { get; } = start;
+        internal Task CheckTask { get; } = checkTask;
+        internal int HttpStatus { get; } = httpStatus;
+        internal string ResponseSha256 { get; } = responseSha256;
+        internal string NativeRequestId { get; } = nativeRequestId;
+        internal SecretStatus Outcome => SecretStatus.Denied;
+        internal NativeProvisioningState State => NativeProvisioningState.Failed;
+        internal DispatchEvidence ReceiptEvidence => DispatchEvidence.Pending;
+        public override string ToString() => "[StatusDeniedPrivateConnectionDeleteDeniedProof]";
+    }
+
+    private sealed class StatusDeniedPrivateConnectionDeleteSlot(CancellationToken token, CancellationToken caller)
+    {
+        internal readonly CancellationToken Token = token;
+        internal readonly CancellationToken Caller = caller;
+        internal readonly Invocation Invocation = new();
+        internal readonly TaskCompletionSource Drained = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal readonly HashSet<Request> Requests = new(ReferenceEqualityComparer.Instance);
+        internal readonly List<Task> Sends = [];
+        internal readonly List<StatusPendingPurgeResponse> Responses = [];
+        internal Task? NativeTask;
+        internal int Factories, SendCount;
+        internal bool FactoryActive, Sending, HookReturned, Success, Finished;
+    }
+
+    private sealed class StatusDeniedPrivateConnectionDeleteRegistration(Window window)
+    {
+        internal readonly Window Window = window;
+        internal readonly List<OwnedArmResponse.Storage> Storage = [];
+        internal readonly List<StatusPendingPurgeResponse> Responses = [];
+        internal readonly ManagementScope InitialScope = window.Binding.Resource;
+        internal EmptyNotificationResponseCustody? EmptyCustody;
+        internal bool? EmptyComplete;
+        internal bool DisposalComplete, DisposalFailed;
+        internal Action? BeforeSend;
+        internal VaultAdministration? Client;
+        internal PrivateConnectionScope? Scope;
+        internal ManagementReceipt? Receipt;
+        internal ManagementOperation? Handle;
+        internal StatusDeniedPrivateConnectionDeleteSlot? Start, Selected;
+        internal StatusPendingPurgeStartFacts? Candidate;
+        internal StatusDeniedPrivateConnectionDeleteStartProof? StartProof;
+        internal StatusDeniedPrivateConnectionDeleteDeniedProof? DeniedProof;
+        internal string? AuthorizationSha256;
+        internal Task<Capture>? SealTask;
+        internal bool Invalid, Revoked, Sealed;
+    }
+
+    private sealed record StatusDeniedPrivateConnectionDeleteContext(StatusDeniedPrivateConnectionDeleteRegistration Registration,
+        StatusDeniedPrivateConnectionDeleteSlot Slot, bool Start);
+    private readonly AsyncLocal<StatusDeniedPrivateConnectionDeleteContext?> currentStatusDeniedPrivateConnectionDelete = new();
+    private readonly Dictionary<Window, StatusDeniedPrivateConnectionDeleteRegistration> statusDeniedPrivateConnectionDeletes =
+        new(ReferenceEqualityComparer.Instance);
+
+    private static bool StatusDeniedPrivateConnectionDeleteSelector(FixtureSelector selector) =>
+        selector is { Operation: "a.management.ManagementOperation.CheckStatusAsync",
+            Variant: "operation.DeletePrivateConnection", Case: "denied-authority" };
+
+    internal Window ArmStatusDeniedPrivateConnectionDelete(Binding binding)
+    {
+        Require(binding is not null && StatusDeniedPrivateConnectionDeleteSelector(binding.Selector) &&
+            binding.Operation == ManagementMutation.DeletePrivateConnection &&
+            binding.Resource is PrivateConnectionScope && binding.ApiRevision == "2026-02-01");
+        var window = Arm(binding);
+        lock (gate) statusDeniedPrivateConnectionDeletes.Add(window, new(window));
+        return window;
+    }
+
+    private StatusDeniedPrivateConnectionDeleteRegistration RequireStatusDeniedPrivateConnectionDelete(Window window, FixtureSelector selector)
+    {
+        Own(window, selector);
+        Require(ReferenceEquals(window.Binding.Selector, selector) && StatusDeniedPrivateConnectionDeleteSelector(selector));
+        Require(statusDeniedPrivateConnectionDeletes.TryGetValue(window, out var r) && ReferenceEquals(r.Window, window));
+        return r;
+    }
+
+    private bool StatusDeniedPrivateConnectionDeleteTargetValid(StatusDeniedPrivateConnectionDeleteRegistration r, Binding binding) =>
+        ReferenceEquals(r.Window.Binding, binding) && ReferenceEquals(binding.Resource, r.Scope) &&
+        StatusDeniedPrivateConnectionDeleteLive(r) &&
+        r.Start is { Finished: true, HookReturned: true, Success: true } &&
+        r.Start.Drained.Task.IsCompletedSuccessfully && r.StartProof is { } proof &&
+        ReferenceEquals(proof.Binding, binding) && ReferenceEquals(proof.StartTask, r.Start.NativeTask) &&
+        ReferenceEquals(targets.GetValueOrDefault(r.Window), proof.Target) &&
+        r.Receipt!.Evidence == DispatchEvidence.Pending;
+
+    private static bool StatusDeniedPrivateConnectionDeleteHistoryValid(StatusDeniedPrivateConnectionDeleteRegistration r) =>
+        !r.Invalid && !r.DisposalFailed &&
+        (r.EmptyComplete ?? (r.EmptyCustody is null || r.EmptyCustody.Complete)) &&
+        r.Responses.All(response => response.Valid);
+
+    private static bool StatusDeniedPrivateConnectionDeleteLive(StatusDeniedPrivateConnectionDeleteRegistration r) =>
+        StatusDeniedPrivateConnectionDeleteHistoryValid(r) && !r.Revoked && !r.Sealed && !r.Window.Closed &&
+        !(r.Start?.Token.IsCancellationRequested ?? false) &&
+        !(r.Selected?.Token.IsCancellationRequested ?? false) &&
+        !(r.Selected?.Caller.IsCancellationRequested ?? false);
+
+    internal async Task<SecretOutcome<ManagementOperation>> StartStatusDeniedPrivateConnectionDeleteAsync(Window window,
+        FixtureSelector selector, VaultAdministration client, ManagementScope scope, ManagementOperationEffects.Input input,
+        ManagementReceipt receipt, CancellationToken token = default, Action<Task>? retained = null,
+        Action? beforeSend = null)
+    {
+        ArgumentNullException.ThrowIfNull(client);
+        ArgumentNullException.ThrowIfNull(receipt);
+        StatusDeniedPrivateConnectionDeleteRegistration r;
+        StatusDeniedPrivateConnectionDeleteSlot slot;
+        lock (gate)
+        {
+            r = RequireStatusDeniedPrivateConnectionDelete(window, selector);
+            bool valid = StatusDeniedPrivateConnectionDeleteLive(r) && r.Start is null && window.Start is null &&
+                scope is PrivateConnectionScope && ReferenceEquals(window.Binding.Resource, r.InitialScope) &&
+                Route(window.Binding with { Resource = scope }) == Route(window.Binding) &&
+                input is not null && InputMatches(window.Binding, input) &&
+                input.StatusOperation == ManagementMutation.DeletePrivateConnection &&
+                receipt.Evidence == DispatchEvidence.NotDispatched &&
+                !token.IsCancellationRequested && !startedWindows.Contains(window);
+            r.Invalid |= !valid;
+            Require(valid);
+            window.Binding.Resource = scope;
+            r.BeforeSend = beforeSend;
+            r.Client = client;
+            r.Scope = (PrivateConnectionScope)scope;
+            r.Receipt = receipt;
+            r.Start = slot = new(token, token);
+            window.Start = slot.Invocation;
+            startedWindows.Add(window);
+        }
+        try
+        {
+            var previous = currentStatusDeniedPrivateConnectionDelete.Value;
+            currentStatusDeniedPrivateConnectionDelete.Value = new(r, slot, true);
+            Task<SecretOutcome<ManagementOperation>> task;
+            try
+            {
+                task = client.DeletePrivateConnectionAsync((PrivateConnectionScope)scope, receipt, token).AsTask();
+                slot.NativeTask = slot.Invocation.SdkTask = task;
+            }
+            finally { currentStatusDeniedPrivateConnectionDelete.Value = previous; }
+            try { retained?.Invoke(task); slot.HookReturned = true; }
+            finally
+            {
+                var result = await task.ConfigureAwait(false);
+                r.Handle = result.IsSuccess ? result.Value : null;
+                slot.Invocation.Outcome = result.Status;
+                slot.Invocation.WrapperState = r.Handle?.State;
+                slot.Invocation.HasNativeHandle = r.Handle is not null;
+                slot.Success = result.IsSuccess && r.Handle?.State == NativeProvisioningState.Pending &&
+                    receipt.Evidence == DispatchEvidence.Pending;
+            }
+            return await task.ConfigureAwait(false);
+        }
+        catch { r.Invalid = true; throw; }
+        finally { await FinishStatusDeniedPrivateConnectionDeleteAsync(r, slot, start: true).ConfigureAwait(false); }
+    }
+
+    internal ValueTask<SecretStatus> CheckStatusDeniedPrivateConnectionDeleteAsync(Window window, FixtureSelector selector,
+        ManagementOperation handle, CancellationToken token, Action<Task>? retained = null) =>
+        CheckStatusDeniedPrivateConnectionDeleteCoreAsync(window, selector, handle, token, retained, token);
+
+    private async ValueTask<SecretStatus> CheckStatusDeniedPrivateConnectionDeleteCoreAsync(Window window, FixtureSelector selector,
+        ManagementOperation handle, CancellationToken token, Action<Task>? retained, CancellationToken originalCallerToken)
+    {
+        StatusDeniedPrivateConnectionDeleteRegistration r;
+        StatusDeniedPrivateConnectionDeleteSlot slot;
+        lock (gate)
+        {
+            r = RequireStatusDeniedPrivateConnectionDelete(window, selector);
+            bool valid = StatusDeniedPrivateConnectionDeleteLive(r) && r.StartProof is not null &&
+                r.Start is { Finished: true } && r.Start.Drained.Task.IsCompletedSuccessfully &&
+                r.Selected is null && ReferenceEquals(r.Handle, handle) &&
+                handle.State == NativeProvisioningState.Pending && r.Receipt!.Evidence == DispatchEvidence.Pending &&
+                !token.IsCancellationRequested && !originalCallerToken.IsCancellationRequested;
+            r.Invalid |= !valid;
+            Require(valid);
+            r.Selected = slot = new(token, originalCallerToken);
+            window.Status = slot.Invocation;
+        }
+        try
+        {
+            var previous = currentStatusDeniedPrivateConnectionDelete.Value;
+            currentStatusDeniedPrivateConnectionDelete.Value = new(r, slot, false);
+            Task<SecretStatus> task;
+            try
+            {
+                task = handle.CheckStatusAsync(token).AsTask();
+                slot.NativeTask = slot.Invocation.SdkTask = task;
+            }
+            finally { currentStatusDeniedPrivateConnectionDelete.Value = previous; }
+            try { retained?.Invoke(task); slot.HookReturned = true; }
+            finally
+            {
+                var result = await task.ConfigureAwait(false);
+                slot.Invocation.Outcome = result;
+                slot.Invocation.WrapperState = handle.State;
+                slot.Success = result == SecretStatus.Denied && handle.State == NativeProvisioningState.Failed &&
+                    r.Receipt!.Evidence == DispatchEvidence.Pending;
+            }
+            return await task.ConfigureAwait(false);
+        }
+        catch { r.Invalid = true; throw; }
+        finally { await FinishStatusDeniedPrivateConnectionDeleteAsync(r, slot, start: false).ConfigureAwait(false); }
+    }
+
+    private async Task FinishStatusDeniedPrivateConnectionDeleteAsync(StatusDeniedPrivateConnectionDeleteRegistration r, StatusDeniedPrivateConnectionDeleteSlot slot, bool start)
+    {
+        try
+        {
+            if (slot.NativeTask is not null)
+                try { await slot.NativeTask.ConfigureAwait(false); } catch { r.Invalid = true; }
+            Task[] sends;
+            lock (gate) sends = slot.Sends.ToArray();
+            try { await Task.WhenAll(sends).ConfigureAwait(false); } catch { r.Invalid = true; }
+            if (!start)
+            {
+                // Native task, hook and every actual send have ended. Freeze the
+                // empty rebuffer before disposal; Complete cannot run afterwards.
+                try
+                {
+                    lock (gate)
+                    {
+                        r.Invalid |= !StatusDeniedPrivateConnectionDeleteHistoryValid(r) ||
+                            slot.FactoryActive || slot.Sending ||
+                            r.Start is not { Finished: true, FactoryActive: false, Sending: false };
+                        r.EmptyComplete = r.EmptyCustody?.Complete == true;
+                        r.Invalid |= r.EmptyComplete != true;
+                    }
+                }
+                catch { r.Invalid = true; r.EmptyComplete = false; }
+                foreach (var storage in r.Storage)
+                    try { storage.Dispose(); } catch { r.DisposalFailed = r.Invalid = true; }
+                r.Storage.Clear();
+                r.DisposalComplete = !r.DisposalFailed;
+                r.Invalid |= !StatusDeniedPrivateConnectionDeleteHistoryValid(r);
+            }
+            lock (gate)
+            {
+                bool valid = StatusDeniedPrivateConnectionDeleteLive(r) && !slot.Token.IsCancellationRequested &&
+                    slot.NativeTask is { IsCompletedSuccessfully: true } && slot.HookReturned && slot.Success &&
+                    !slot.FactoryActive && !slot.Sending && slot.Factories == 1 && slot.SendCount == 1 &&
+                    slot.Sends.Count == 1 && (start ? r.EmptyCustody is not null && r.Candidate is not null :
+                        slot.Responses.Count == 1 && r.DisposalComplete) &&
+                    r.Receipt!.Evidence == DispatchEvidence.Pending;
+                r.Invalid |= !valid;
+                if (valid && start && r.Candidate is { } candidate)
+                {
+                    r.StartProof = new(candidate.Binding, candidate.Target,
+                        candidate.RequestSha256, candidate.NativeRequestId, slot.NativeTask!);
+                    targets[r.Window] = candidate.Target;
+                    eligible.Add(r.Window);
+                }
+                else if (valid && !start && r.StartProof is not null)
+                {
+                    var body = slot.Responses[0].Body;
+                    r.DeniedProof = new(r.StartProof, slot.NativeTask!, body.Response.Status,
+                        body.Sha256, body.NativeRequestId);
+                }
+                else r.Invalid = true;
+            }
+        }
+        finally
+        {
+            lock (gate)
+            {
+                slot.Finished = slot.Invocation.Terminated = true;
+                slot.Invocation.Drained.TrySetResult();
+                slot.Drained.TrySetResult();
+            }
+        }
+    }
+
+    internal bool TryGetStatusDeniedPrivateConnectionDeleteStart(Window window, Binding binding, VaultAdministration client,
+        PrivateConnectionScope scope, ManagementReceipt receipt, Task startTask, ManagementOperation handle,
+        [NotNullWhen(true)] out StatusDeniedPrivateConnectionDeleteStartProof? proof)
+    {
+        lock (gate)
+        {
+            proof = null;
+            if (window is null || !ReferenceEquals(window.Owner, owner) ||
+                !statusDeniedPrivateConnectionDeletes.TryGetValue(window, out var r) || !StatusDeniedPrivateConnectionDeleteSelector(binding.Selector) ||
+                !ReferenceEquals(window.Binding, binding) || !ReferenceEquals(r.Window, window) ||
+                !ReferenceEquals(r.Client, client) || !ReferenceEquals(r.Scope, scope) ||
+                !ReferenceEquals(binding.Resource, scope) || !ReferenceEquals(r.Receipt, receipt) ||
+                !ReferenceEquals(r.Handle, handle) || !ReferenceEquals(r.Start?.NativeTask, startTask) ||
+                r.Start is not { Finished: true, HookReturned: true, Success: true } ||
+                !r.Start.Drained.Task.IsCompletedSuccessfully || !startTask.IsCompletedSuccessfully ||
+                !StatusDeniedPrivateConnectionDeleteHistoryValid(r) || r.Sealed ||
+                r.Start.Token.IsCancellationRequested || (r.Selected?.Token.IsCancellationRequested ?? false) ||
+                (r.Selected?.Caller.IsCancellationRequested ?? false) ||
+                receipt.Evidence != DispatchEvidence.Pending || r.StartProof is not { } issued ||
+                !ReferenceEquals(issued.StartTask, startTask) ||
+                !ReferenceEquals(targets.GetValueOrDefault(window), issued.Target))
+                return false;
+            proof = issued;
+            return true;
+        }
+    }
+
+    internal bool TryGetStatusDeniedPrivateConnectionDeleteDenied(Window window, Binding binding, VaultAdministration client,
+        PrivateConnectionScope scope, ManagementReceipt receipt, Task startTask, ManagementOperation handle, Task checkTask,
+        [NotNullWhen(true)] out StatusDeniedPrivateConnectionDeleteDeniedProof? proof)
+    {
+        lock (gate)
+        {
+            proof = null;
+            if (!TryGetStatusDeniedPrivateConnectionDeleteStart(window, binding, client, scope, receipt, startTask, handle, out var start) ||
+                !statusDeniedPrivateConnectionDeletes.TryGetValue(window, out var r) ||
+                r.Selected is not { Finished: true, HookReturned: true, Success: true } selected ||
+                !selected.Drained.Task.IsCompletedSuccessfully || !ReferenceEquals(selected.NativeTask, checkTask) ||
+                !checkTask.IsCompletedSuccessfully || handle.State != NativeProvisioningState.Failed ||
+                r.DeniedProof is not { } issued || !ReferenceEquals(issued.Start, start) ||
+                !ReferenceEquals(issued.CheckTask, checkTask))
+                return false;
+            proof = issued;
+            return true;
+        }
+    }
+
+    internal bool OwnsStatusDeniedPrivateConnectionDeleteStart(StatusDeniedPrivateConnectionDeleteStartProof proof, Window window, Binding binding,
+        VaultAdministration client, PrivateConnectionScope scope, ManagementReceipt receipt, Task startTask,
+        ManagementOperation handle) =>
+        TryGetStatusDeniedPrivateConnectionDeleteStart(window, binding, client, scope, receipt, startTask, handle, out var issued) &&
+        ReferenceEquals(proof, issued);
+
+    internal bool OwnsStatusDeniedPrivateConnectionDeleteDenied(StatusDeniedPrivateConnectionDeleteDeniedProof proof, Window window, Binding binding,
+        VaultAdministration client, PrivateConnectionScope scope, ManagementReceipt receipt, Task startTask,
+        ManagementOperation handle, Task checkTask) =>
+        TryGetStatusDeniedPrivateConnectionDeleteDenied(window, binding, client, scope, receipt, startTask, handle, checkTask, out var issued) &&
+        ReferenceEquals(proof, issued);
+
+    internal void RevokeStatusDeniedPrivateConnectionDeleteSelected(Window window)
+    {
+        lock (gate)
+        {
+            var r = RequireStatusDeniedPrivateConnectionDelete(window, window.Binding.Selector);
+            r.Invalid |= r.Start is not { Finished: true } || r.Selected is not { Finished: true } ||
+                r.DeniedProof is null || !StatusDeniedPrivateConnectionDeleteHistoryValid(r) ||
+                r.Start.Token.IsCancellationRequested || r.Selected.Token.IsCancellationRequested ||
+                r.Selected.Caller.IsCancellationRequested;
+            r.Revoked = window.Closed = true;
+        }
+    }
+
+    private Task<Capture> SealStatusDeniedPrivateConnectionDeleteAsync(Window window)
+    {
+        StatusDeniedPrivateConnectionDeleteRegistration r;
+        TaskCompletionSource ready;
+        Task<Capture> task;
+        lock (gate)
+        {
+            r = RequireStatusDeniedPrivateConnectionDelete(window, window.Binding.Selector);
+            r.Sealed = r.Revoked = window.Closed = true;
+            if (r.SealTask is not null) return r.SealTask;
+            ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            task = r.SealTask = Drain(ready.Task);
+        }
+        ready.SetResult();
+        return task;
+
+        async Task<Capture> Drain(Task admission)
+        {
+            await admission.ConfigureAwait(false);
+            var tasks = new[] { r.Start, r.Selected }.OfType<StatusDeniedPrivateConnectionDeleteSlot>()
+                .Select(slot => slot.Drained.Task).ToArray();
+            await Task.WhenAll(tasks).ConfigureAwait(false);
+            // All admitted native work and hooks have drained. Complete inspects
+            // the empty rebuffer and must never be evaluated after disposal.
+            if (r.EmptyComplete is null)
+            {
+                try { r.EmptyComplete = r.EmptyCustody?.Complete == true; }
+                catch { r.Invalid = true; r.EmptyComplete = false; }
+                r.Invalid |= r.EmptyComplete != true;
+            }
+            foreach (var storage in r.Storage)
+                try { storage.Dispose(); } catch { r.DisposalFailed = r.Invalid = true; }
+            r.Storage.Clear();
+            r.DisposalComplete = !r.DisposalFailed;
+            r.Invalid |= !StatusDeniedPrivateConnectionDeleteHistoryValid(r);
+            r.AuthorizationSha256 = null;
+            Require(!r.DisposalFailed);
+            return new() { Binding = window.Binding, Start = r.Start?.Invocation, Status = r.Selected?.Invocation };
+        }
+    }
+
+    private async Task SendStatusDeniedPrivateConnectionDeleteAsync(StatusDeniedPrivateConnectionDeleteContext context, HttpMessage message)
+    {
+        var r = context.Registration;
+        var slot = context.Slot;
+        bool start = context.Start;
+        var request = message.Request;
+        var headers = request.Headers.ToArray();
+        byte[] requestHashBytes = System.Text.Encoding.UTF8.GetBytes(request.Method + " " + request.Uri.ToUri().AbsoluteUri);
+        string requestHash;
+        try { requestHash = Convert.ToHexString(SHA256.HashData(requestHashBytes)); }
+        finally { CryptographicOperations.ZeroMemory(requestHashBytes); }
+        var attempt = new Attempt { Dispatch = Guid.NewGuid(), RequestSha256 = requestHash };
+        try
+        {
+            lock (gate)
+            {
+                bool valid = StatusDeniedPrivateConnectionDeleteLive(r) && !slot.Finished && !slot.Sending &&
+                    slot.Requests.Contains(request) && ++slot.SendCount == 1 && slot.Responses.Count == 0;
+                r.Invalid |= !valid;
+                Require(valid);
+                slot.Sending = slot.Invocation.Sending = true;
+                slot.Invocation.Attempts.Add(attempt);
+            }
+            void Check()
+            {
+                Require(StatusDeniedPrivateConnectionDeleteLive(r) && !slot.Token.IsCancellationRequested &&
+                    !message.CancellationToken.IsCancellationRequested && ReferenceEquals(message.Request, request) &&
+                    headers.SequenceEqual(request.Headers));
+                OriginalVaultRequest(message, r.Window.Path, start ? RequestMethod.Delete : RequestMethod.Get,
+                    start ? null : r.StartProof!.Target.TargetUri.AbsoluteUri);
+                Headers(headers);
+                Require(!request.Headers.Contains("Range"));
+            }
+            Check();
+            Require(r.Receipt!.Evidence == (start ? DispatchEvidence.PossiblyDispatched : DispatchEvidence.Pending));
+            request.Headers.TryGetValue("Authorization", out var authorization);
+            byte[] authorizationBytes = System.Text.Encoding.UTF8.GetBytes(authorization!);
+            string authorizationSha256;
+            try { authorizationSha256 = Convert.ToHexString(SHA256.HashData(authorizationBytes)); }
+            finally { CryptographicOperations.ZeroMemory(authorizationBytes); }
+            if (start) r.AuthorizationSha256 = authorizationSha256;
+            else Require(r.AuthorizationSha256 == authorizationSha256);
+            lock (gate)
+            {
+                Require(StatusDeniedPrivateConnectionDeleteHistoryValid(r));
+                // Retain original parser custody through the selected native drain.
+            }
+            var storage = new OwnedArmResponse.Storage();
+            lock (gate) r.Storage.Add(storage);
+            message.BufferResponse = false;
+            if (start) r.BeforeSend?.Invoke();
+            Check();
+            try { await backend.ProcessAsync(message).ConfigureAwait(false); }
+            finally { if (message.HasResponse) storage.Own(message.Response); }
+            Check();
+            Require(message.HasResponse);
+            var original = message.Response;
+            var stream = original.ContentStream;
+            string? next;
+            if (start)
+            {
+                int status = original.Status;
+                string reason = original.ReasonPhrase, clientId = original.ClientRequestId;
+                var responseHeaders = original.Headers.Take(33).ToArray();
+                Headers(responseHeaders);
+                Require(responseHeaders.Select(h => h.Name).Distinct(StringComparer.OrdinalIgnoreCase).Count() == responseHeaders.Length &&
+                    responseHeaders.All(h => h.Name.Length > 0 && h.Name.All(c => char.IsAsciiLetterOrDigit(c) || c == '-') &&
+                        !h.Value.Any(char.IsControl)) &&
+                    status == 202 && reason.Length <= 256 && !reason.Any(char.IsControl) &&
+                    clientId.Length <= 1024 && !clientId.Any(char.IsControl) &&
+                    !responseHeaders.Any(h => new[] { "Operation-Location", "Retry-After", "WWW-Authenticate",
+                        "Content-Encoding", "Content-Range", "Transfer-Encoding" }
+                        .Contains(h.Name, StringComparer.OrdinalIgnoreCase)));
+                var lengths = responseHeaders.Where(h => h.Name.Equals("Content-Length", StringComparison.OrdinalIgnoreCase)).ToArray();
+                Require(lengths.Length == 0 || lengths is [{ Value: "0" }]);
+                Require(original.Headers.TryGetValue("Location", out var location) &&
+                    original.Headers.TryGetValue("Azure-AsyncOperation", out var operation) && location == operation &&
+                    responseHeaders.FirstOrDefault(h => h.Name.Equals("Location", StringComparison.OrdinalIgnoreCase)).Value == location &&
+                    responseHeaders.FirstOrDefault(h => h.Name.Equals("Azure-AsyncOperation", StringComparison.OrdinalIgnoreCase)).Value == operation);
+                next = Continuation(r.Window, message);
+                Require(next is not null && next == location);
+                string? nativeId = responseHeaders.FirstOrDefault(h =>
+                    h.Name.Equals("x-ms-request-id", StringComparison.OrdinalIgnoreCase)).Value;
+                Require(nativeId is { Length: > 0 and <= 256 } &&
+                    nativeId.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_' or '.'));
+                if (stream is not null)
+                {
+                    storage.Own(stream);
+                    byte[] one = new byte[1];
+                    try { Require(await stream.ReadAsync(one, message.CancellationToken).ConfigureAwait(false) == 0); }
+                    finally { CryptographicOperations.ZeroMemory(one); }
+                }
+                Check();
+                Require(ReferenceEquals(message.Response, original) && ReferenceEquals(original.ContentStream, stream) &&
+                    original.Status == status && original.ReasonPhrase == reason && original.ClientRequestId == clientId &&
+                    responseHeaders.SequenceEqual(original.Headers));
+                string hash = Convert.ToHexString(SHA256.HashData(ReadOnlySpan<byte>.Empty));
+                var buffer = new MemoryStream([], writable: false);
+                storage.Own(buffer);
+                var owned = new OwnedArmResponse(status, reason, clientId, responseHeaders, buffer);
+                r.EmptyCustody = new(message, original, stream, owned, storage);
+                byte[] targetBytes = System.Text.Encoding.UTF8.GetBytes(next!);
+                byte[] requestBytes = System.Text.Encoding.UTF8.GetBytes("DELETE " + request.Uri.ToUri().AbsoluteUri);
+                try
+                {
+                    var target = new StatusTarget(r.Window.Binding, attempt.Dispatch, StatusTargetKind.Operation, new Uri(next!),
+                        Convert.ToHexString(SHA256.HashData(targetBytes)), hash);
+                    r.Candidate = new(r.Window.Binding, target, 0,
+                        Convert.ToHexString(SHA256.HashData(requestBytes)), nativeId!);
+                    Require(attempt.RequestSha256 == r.Candidate.RequestSha256);
+                }
+                finally
+                {
+                    CryptographicOperations.ZeroMemory(targetBytes);
+                    CryptographicOperations.ZeroMemory(requestBytes);
+                }
+                attempt.HttpStatus = status;
+                attempt.ResponseSha256 = hash;
+            }
+            else
+            {
+                var body = await OwnedArmResponse.CaptureAsync(message, maximumBytes, storage).ConfigureAwait(false);
+                Check();
+                Require(ReferenceEquals(original.ContentStream, stream) && body.Bytes.Length > 0 &&
+                    body.Response.Status is 401 or 403);
+                Require(body.Response.Headers.TryGetValue("Content-Type", out var contentType));
+                string[] media = contentType.Split(';').Select(value => value.Trim()).ToArray();
+                Require(media.Length is 1 or 2 && media[0].Equals("application/json", StringComparison.OrdinalIgnoreCase) &&
+                    (media.Length == 1 || media[1].Equals("charset=utf-8", StringComparison.OrdinalIgnoreCase)));
+                next = Continuation(r.Window, message);
+                Require(next is null);
+                using var json = JsonDocument.Parse(body.Bytes, new JsonDocumentOptions { MaxDepth = 16 });
+                int nodes = 512;
+                JsonRows(json.RootElement, ref nodes);
+                var root = json.RootElement;
+                Require(root.ValueKind == JsonValueKind.Object && root.EnumerateObject().All(p => p.Name == "error") &&
+                    root.TryGetProperty("error", out var error) && error.ValueKind == JsonValueKind.Object &&
+                    error.EnumerateObject().All(p => p.Name is "code" or "message") &&
+                    error.TryGetProperty("code", out var code) && code.ValueKind == JsonValueKind.String &&
+                    code.GetString() is { Length: > 0 and <= 128 } errorCode && !errorCode.Any(char.IsControl) &&
+                    error.TryGetProperty("message", out var text) && text.ValueKind == JsonValueKind.String &&
+                    text.GetString() is { Length: > 0 and <= 2048 } errorMessage && !errorMessage.Any(char.IsControl));
+                var parser = OwnedArmResponse.ParserCustody.Install(message, body.Response, body.Bytes, storage,
+                    requireRebuffer: true, requireDownstreamRead: true);
+                var frame = new StatusPendingPurgeResponse(body, parser, storage);
+                lock (gate)
+                {
+                    slot.Responses.Add(frame);
+                    r.Responses.Add(frame);
+                    attempt.HttpStatus = body.Response.Status;
+                    attempt.ResponseSha256 = body.Sha256;
+                }
+            }
+            lock (gate)
+            {
+                attempt.ResponseObserved = true;
+                attempt.HasProviderContinuation = next is not null;
+                attempt.State = start ? WireState.Pending : WireState.Denied;
+                attempt.Valid = true;
+            }
+            // Parser consumption has not happened yet; only recheck request and lifetime here.
+            Require(!slot.Token.IsCancellationRequested && !message.CancellationToken.IsCancellationRequested &&
+                !r.Revoked && !r.Sealed && !r.Window.Closed && ReferenceEquals(message.Request, request) &&
+                headers.SequenceEqual(request.Headers));
+        }
+        catch { r.Invalid = true; attempt.Valid = false; throw; }
+        finally
+        {
+            lock (gate)
+            {
+                attempt.TransportTerminated = true;
+                slot.Sending = slot.Invocation.Sending = false;
+            }
+        }
+    }
+
+    internal sealed class StatusDeniedPurgeStartProof(Binding binding, StatusTarget target,
+        int responseBytes, string requestSha256, string nativeRequestId, Task startTask)
+    {
+        internal Binding Binding { get; } = binding;
+        internal StatusTarget Target { get; } = target;
+        internal Guid StartDispatch => Target.StartDispatch;
+        internal int HttpStatus => 202;
+        internal int ResponseBytes { get; } = responseBytes;
+        internal string ResponseSha256 => Target.StartResponseSha256;
+        internal string RequestSha256 { get; } = requestSha256;
+        internal string NativeRequestId { get; } = nativeRequestId;
+        internal Task StartTask { get; } = startTask;
+        internal SecretStatus Outcome => SecretStatus.Success;
+        internal NativeProvisioningState State => NativeProvisioningState.Pending;
+        internal DispatchEvidence ReceiptEvidence => DispatchEvidence.Pending;
+        public override string ToString() => "[StatusDeniedPurgeStartProof]";
+    }
+
+    internal sealed class StatusDeniedPurgeDeniedProof(StatusDeniedPurgeStartProof start, Task checkTask,
+        int httpStatus, string responseSha256, string nativeRequestId)
+    {
+        internal StatusDeniedPurgeStartProof Start { get; } = start;
+        internal Task CheckTask { get; } = checkTask;
+        internal int HttpStatus { get; } = httpStatus;
+        internal string ResponseSha256 { get; } = responseSha256;
+        internal string NativeRequestId { get; } = nativeRequestId;
+        internal SecretStatus Outcome => SecretStatus.Denied;
+        internal NativeProvisioningState State => NativeProvisioningState.Failed;
+        internal DispatchEvidence ReceiptEvidence => DispatchEvidence.Pending;
+        public override string ToString() => "[StatusDeniedPurgeDeniedProof]";
+    }
+
+    private sealed class StatusDeniedPurgeSlot(CancellationToken token)
+    {
+        internal readonly CancellationToken Token = token;
+        internal readonly Invocation Invocation = new();
+        internal readonly TaskCompletionSource Drained = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal readonly HashSet<Request> Requests = new(ReferenceEqualityComparer.Instance);
+        internal readonly List<Task> Sends = [];
+        internal readonly List<StatusPendingPurgeResponse> Responses = [];
+        internal Task? NativeTask;
+        internal int Factories, SendCount;
+        internal bool FactoryActive, Sending, HookReturned, Success, Finished;
+    }
+
+    private sealed class StatusDeniedPurgeRegistration(Window window)
+    {
+        internal readonly Window Window = window;
+        internal readonly List<OwnedArmResponse.Storage> Storage = [];
+        internal readonly List<StatusPendingPurgeResponse> Responses = [];
+        internal VaultAdministration? Client;
+        internal DeletedVaultScope? Scope;
+        internal ManagementReceipt? Receipt;
+        internal ManagementOperation? Handle;
+        internal StatusDeniedPurgeSlot? Start, Selected;
+        internal StatusPendingPurgeStartFacts? Candidate;
+        internal StatusDeniedPurgeStartProof? StartProof;
+        internal StatusDeniedPurgeDeniedProof? DeniedProof;
+        internal string? AuthorizationSha256;
+        internal Task<Capture>? SealTask;
+        internal bool Invalid, Revoked, Sealed;
+    }
+
+    private sealed record StatusDeniedPurgeContext(StatusDeniedPurgeRegistration Registration,
+        StatusDeniedPurgeSlot Slot, bool Start);
+    private readonly AsyncLocal<StatusDeniedPurgeContext?> currentStatusDeniedPurge = new();
+    private readonly Dictionary<Window, StatusDeniedPurgeRegistration> statusDeniedPurges =
+        new(ReferenceEqualityComparer.Instance);
+
+    private static bool StatusDeniedPurgeSelector(FixtureSelector selector) =>
+        selector is { Operation: "a.management.ManagementOperation.CheckStatusAsync",
+            Variant: "operation.PurgeDeletedVault" or "status.Succeeded" or "status.Pending" or
+                "status.Failed" or "status.Canceled" or "status.Unknown", Case: "denied-authority" };
+
+    internal Window ArmStatusDeniedPurge(Binding binding)
+    {
+        Require(binding is not null && StatusDeniedPurgeSelector(binding.Selector) &&
+            binding.Operation == ManagementMutation.PurgeDeletedVault &&
+            binding.Resource is DeletedVaultScope && binding.ApiRevision == "2026-02-01");
+        var window = Arm(binding);
+        lock (gate) statusDeniedPurges.Add(window, new(window));
+        return window;
+    }
+
+    private StatusDeniedPurgeRegistration RequireStatusDeniedPurge(Window window, FixtureSelector selector)
+    {
+        Own(window, selector);
+        Require(ReferenceEquals(window.Binding.Selector, selector) && StatusDeniedPurgeSelector(selector));
+        Require(statusDeniedPurges.TryGetValue(window, out var r) && ReferenceEquals(r.Window, window));
+        return r;
+    }
+
+    private bool StatusDeniedPurgeTargetValid(StatusDeniedPurgeRegistration r, Binding binding) =>
+        ReferenceEquals(r.Window.Binding, binding) && StatusDeniedPurgeLive(r) &&
+        r.Start is { Finished: true, HookReturned: true, Success: true } &&
+        r.Start.Drained.Task.IsCompletedSuccessfully && r.StartProof is { } proof &&
+        ReferenceEquals(proof.Binding, binding) && ReferenceEquals(proof.StartTask, r.Start.NativeTask) &&
+        ReferenceEquals(targets.GetValueOrDefault(r.Window), proof.Target) &&
+        r.Receipt!.Evidence == DispatchEvidence.Pending;
+
+    private static bool StatusDeniedPurgeHistoryValid(StatusDeniedPurgeRegistration r) =>
+        !r.Invalid && r.Responses.All(response => response.Valid);
+
+    private static bool StatusDeniedPurgeLive(StatusDeniedPurgeRegistration r) =>
+        StatusDeniedPurgeHistoryValid(r) && !r.Revoked && !r.Sealed && !r.Window.Closed &&
+        !(r.Start?.Token.IsCancellationRequested ?? false) &&
+        !(r.Selected?.Token.IsCancellationRequested ?? false);
+
+    internal async ValueTask<SecretOutcome<ManagementOperation>> StartStatusDeniedPurgeAsync(Window window,
+        FixtureSelector selector, VaultAdministration client, ManagementScope scope, ManagementOperationEffects.Input input,
+        ManagementReceipt receipt, CancellationToken token, Action<Task>? retained = null)
+    {
+        ArgumentNullException.ThrowIfNull(client);
+        ArgumentNullException.ThrowIfNull(receipt);
+        StatusDeniedPurgeRegistration r;
+        StatusDeniedPurgeSlot slot;
+        lock (gate)
+        {
+            r = RequireStatusDeniedPurge(window, selector);
+            bool valid = StatusDeniedPurgeLive(r) && r.Start is null && window.Start is null &&
+                scope is DeletedVaultScope && ReferenceEquals(window.Binding.Resource, scope) &&
+                input is not null && InputMatches(window.Binding, input) &&
+                input.StatusOperation == ManagementMutation.PurgeDeletedVault &&
+                receipt.Evidence == DispatchEvidence.NotDispatched &&
+                !token.IsCancellationRequested && !startedWindows.Contains(window);
+            r.Invalid |= !valid;
+            Require(valid);
+            r.Client = client;
+            r.Scope = (DeletedVaultScope)scope;
+            r.Receipt = receipt;
+            r.Start = slot = new(token);
+            window.Start = slot.Invocation;
+            startedWindows.Add(window);
+        }
+        try
+        {
+            var previous = currentStatusDeniedPurge.Value;
+            currentStatusDeniedPurge.Value = new(r, slot, true);
+            Task<SecretOutcome<ManagementOperation>> task;
+            try
+            {
+                task = client.PurgeDeletedVaultAsync((DeletedVaultScope)scope, receipt, token).AsTask();
+                slot.NativeTask = slot.Invocation.SdkTask = task;
+            }
+            finally { currentStatusDeniedPurge.Value = previous; }
+            try { retained?.Invoke(task); slot.HookReturned = true; }
+            finally
+            {
+                var result = await task.ConfigureAwait(false);
+                r.Handle = result.IsSuccess ? result.Value : null;
+                slot.Invocation.Outcome = result.Status;
+                slot.Invocation.WrapperState = r.Handle?.State;
+                slot.Invocation.HasNativeHandle = r.Handle is not null;
+                slot.Success = result.IsSuccess && r.Handle?.State == NativeProvisioningState.Pending &&
+                    receipt.Evidence == DispatchEvidence.Pending;
+            }
+            return await task.ConfigureAwait(false);
+        }
+        catch { r.Invalid = true; throw; }
+        finally { await FinishStatusDeniedPurgeAsync(r, slot, start: true).ConfigureAwait(false); }
+    }
+
+    internal async ValueTask<SecretStatus> CheckStatusDeniedPurgeAsync(Window window, FixtureSelector selector,
+        ManagementOperation handle, CancellationToken token, Action<Task>? retained = null)
+    {
+        StatusDeniedPurgeRegistration r;
+        StatusDeniedPurgeSlot slot;
+        lock (gate)
+        {
+            r = RequireStatusDeniedPurge(window, selector);
+            bool valid = StatusDeniedPurgeLive(r) && r.StartProof is not null &&
+                r.Start is { Finished: true } && r.Start.Drained.Task.IsCompletedSuccessfully &&
+                r.Selected is null && ReferenceEquals(r.Handle, handle) &&
+                handle.State == NativeProvisioningState.Pending && r.Receipt!.Evidence == DispatchEvidence.Pending &&
+                !token.IsCancellationRequested;
+            r.Invalid |= !valid;
+            Require(valid);
+            r.Selected = slot = new(token);
+            window.Status = slot.Invocation;
+        }
+        try
+        {
+            var previous = currentStatusDeniedPurge.Value;
+            currentStatusDeniedPurge.Value = new(r, slot, false);
+            Task<SecretStatus> task;
+            try
+            {
+                task = handle.CheckStatusAsync(token).AsTask();
+                slot.NativeTask = slot.Invocation.SdkTask = task;
+            }
+            finally { currentStatusDeniedPurge.Value = previous; }
+            try { retained?.Invoke(task); slot.HookReturned = true; }
+            finally
+            {
+                var result = await task.ConfigureAwait(false);
+                slot.Invocation.Outcome = result;
+                slot.Invocation.WrapperState = handle.State;
+                slot.Success = result == SecretStatus.Denied && handle.State == NativeProvisioningState.Failed &&
+                    r.Receipt!.Evidence == DispatchEvidence.Pending;
+            }
+            return await task.ConfigureAwait(false);
+        }
+        catch { r.Invalid = true; throw; }
+        finally { await FinishStatusDeniedPurgeAsync(r, slot, start: false).ConfigureAwait(false); }
+    }
+
+    private async Task FinishStatusDeniedPurgeAsync(StatusDeniedPurgeRegistration r, StatusDeniedPurgeSlot slot, bool start)
+    {
+        try
+        {
+            if (slot.NativeTask is not null)
+                try { await slot.NativeTask.ConfigureAwait(false); } catch { r.Invalid = true; }
+            Task[] sends;
+            lock (gate) sends = slot.Sends.ToArray();
+            try { await Task.WhenAll(sends).ConfigureAwait(false); } catch { r.Invalid = true; }
+            if (!start)
+            {
+                r.Invalid |= !StatusDeniedPurgeHistoryValid(r);
+                foreach (var storage in r.Storage)
+                    try { storage.Dispose(); } catch { r.Invalid = true; }
+                r.Storage.Clear();
+                r.Invalid |= !StatusDeniedPurgeHistoryValid(r);
+            }
+            lock (gate)
+            {
+                bool valid = StatusDeniedPurgeLive(r) && !slot.Token.IsCancellationRequested &&
+                    slot.NativeTask is { IsCompletedSuccessfully: true } && slot.HookReturned && slot.Success &&
+                    !slot.FactoryActive && !slot.Sending && slot.Factories == 1 && slot.SendCount == 1 &&
+                    slot.Sends.Count == 1 && slot.Responses.Count == 1 &&
+                    r.Receipt!.Evidence == DispatchEvidence.Pending;
+                r.Invalid |= !valid;
+                if (valid && start && r.Candidate is { } candidate)
+                {
+                    r.StartProof = new(candidate.Binding, candidate.Target, candidate.ResponseBytes,
+                        candidate.RequestSha256, candidate.NativeRequestId, slot.NativeTask!);
+                    targets[r.Window] = candidate.Target;
+                    eligible.Add(r.Window);
+                }
+                else if (valid && !start && r.StartProof is not null)
+                {
+                    var body = slot.Responses[0].Body;
+                    r.DeniedProof = new(r.StartProof, slot.NativeTask!, body.Response.Status,
+                        body.Sha256, body.NativeRequestId);
+                }
+                else r.Invalid = true;
+            }
+        }
+        finally
+        {
+            lock (gate)
+            {
+                slot.Finished = slot.Invocation.Terminated = true;
+                slot.Invocation.Drained.TrySetResult();
+                slot.Drained.TrySetResult();
+            }
+        }
+    }
+
+    internal bool TryGetStatusDeniedPurgeStart(Window window, Binding binding, VaultAdministration client,
+        DeletedVaultScope scope, ManagementReceipt receipt, Task startTask, ManagementOperation handle,
+        [NotNullWhen(true)] out StatusDeniedPurgeStartProof? proof)
+    {
+        lock (gate)
+        {
+            proof = null;
+            if (window is null || !ReferenceEquals(window.Owner, owner) ||
+                !statusDeniedPurges.TryGetValue(window, out var r) || !StatusDeniedPurgeSelector(binding.Selector) ||
+                !ReferenceEquals(window.Binding, binding) || !ReferenceEquals(r.Window, window) ||
+                !ReferenceEquals(r.Client, client) || !ReferenceEquals(r.Scope, scope) ||
+                !ReferenceEquals(binding.Resource, scope) || !ReferenceEquals(r.Receipt, receipt) ||
+                !ReferenceEquals(r.Handle, handle) || !ReferenceEquals(r.Start?.NativeTask, startTask) ||
+                r.Start is not { Finished: true, HookReturned: true, Success: true } ||
+                !r.Start.Drained.Task.IsCompletedSuccessfully || !startTask.IsCompletedSuccessfully ||
+                !StatusDeniedPurgeHistoryValid(r) || r.Sealed ||
+                r.Start.Token.IsCancellationRequested || (r.Selected?.Token.IsCancellationRequested ?? false) ||
+                receipt.Evidence != DispatchEvidence.Pending || r.StartProof is not { } issued ||
+                !ReferenceEquals(issued.StartTask, startTask) ||
+                !ReferenceEquals(targets.GetValueOrDefault(window), issued.Target))
+                return false;
+            proof = issued;
+            return true;
+        }
+    }
+
+    internal bool TryGetStatusDeniedPurgeDenied(Window window, Binding binding, VaultAdministration client,
+        DeletedVaultScope scope, ManagementReceipt receipt, Task startTask, ManagementOperation handle, Task checkTask,
+        [NotNullWhen(true)] out StatusDeniedPurgeDeniedProof? proof)
+    {
+        lock (gate)
+        {
+            proof = null;
+            if (!TryGetStatusDeniedPurgeStart(window, binding, client, scope, receipt, startTask, handle, out var start) ||
+                !statusDeniedPurges.TryGetValue(window, out var r) ||
+                r.Selected is not { Finished: true, HookReturned: true, Success: true } selected ||
+                !selected.Drained.Task.IsCompletedSuccessfully || !ReferenceEquals(selected.NativeTask, checkTask) ||
+                !checkTask.IsCompletedSuccessfully || handle.State != NativeProvisioningState.Failed ||
+                r.DeniedProof is not { } issued || !ReferenceEquals(issued.Start, start) ||
+                !ReferenceEquals(issued.CheckTask, checkTask))
+                return false;
+            proof = issued;
+            return true;
+        }
+    }
+
+    internal bool OwnsStatusDeniedPurgeStart(StatusDeniedPurgeStartProof proof, Window window, Binding binding,
+        VaultAdministration client, DeletedVaultScope scope, ManagementReceipt receipt, Task startTask,
+        ManagementOperation handle) =>
+        TryGetStatusDeniedPurgeStart(window, binding, client, scope, receipt, startTask, handle, out var issued) &&
+        ReferenceEquals(proof, issued);
+
+    internal bool OwnsStatusDeniedPurgeDenied(StatusDeniedPurgeDeniedProof proof, Window window, Binding binding,
+        VaultAdministration client, DeletedVaultScope scope, ManagementReceipt receipt, Task startTask,
+        ManagementOperation handle, Task checkTask) =>
+        TryGetStatusDeniedPurgeDenied(window, binding, client, scope, receipt, startTask, handle, checkTask, out var issued) &&
+        ReferenceEquals(proof, issued);
+
+    internal void RevokeStatusDeniedPurgeSelected(Window window)
+    {
+        lock (gate)
+        {
+            var r = RequireStatusDeniedPurge(window, window.Binding.Selector);
+            r.Invalid |= r.Start is not { Finished: true } || r.Selected is not { Finished: true } ||
+                r.DeniedProof is null || !StatusDeniedPurgeHistoryValid(r) ||
+                r.Start.Token.IsCancellationRequested || r.Selected.Token.IsCancellationRequested;
+            r.Revoked = window.Closed = true;
+        }
+    }
+
+    private Task<Capture> SealStatusDeniedPurgeAsync(Window window)
+    {
+        lock (gate)
+        {
+            var r = RequireStatusDeniedPurge(window, window.Binding.Selector);
+            r.Sealed = r.Revoked = window.Closed = true;
+            return r.SealTask ??= Drain();
+
+            async Task<Capture> Drain()
+            {
+                var tasks = new[] { r.Start, r.Selected }.OfType<StatusDeniedPurgeSlot>()
+                    .Select(slot => slot.Drained.Task).ToArray();
+                await Task.WhenAll(tasks).ConfigureAwait(false);
+                bool failed = false;
+                foreach (var storage in r.Storage)
+                    try { storage.Dispose(); } catch { failed = true; }
+                r.Storage.Clear();
+                r.AuthorizationSha256 = null;
+                r.Invalid |= failed;
+                Require(!failed);
+                return new() { Binding = window.Binding, Start = r.Start?.Invocation, Status = r.Selected?.Invocation };
+            }
+        }
+    }
+
+    private async Task SendStatusDeniedPurgeAsync(StatusDeniedPurgeContext context, HttpMessage message)
+    {
+        var r = context.Registration;
+        var slot = context.Slot;
+        bool start = context.Start;
+        var request = message.Request;
+        var headers = request.Headers.ToArray();
+        var attempt = new Attempt { Dispatch = Guid.NewGuid() };
+        try
+        {
+            lock (gate)
+            {
+                bool valid = StatusDeniedPurgeLive(r) && !slot.Finished && !slot.Sending &&
+                    slot.Requests.Contains(request) && ++slot.SendCount == 1 && slot.Responses.Count == 0;
+                r.Invalid |= !valid;
+                Require(valid);
+                slot.Sending = slot.Invocation.Sending = true;
+                slot.Invocation.Attempts.Add(attempt);
+            }
+            void Check()
+            {
+                Require(StatusDeniedPurgeLive(r) && !slot.Token.IsCancellationRequested &&
+                    !message.CancellationToken.IsCancellationRequested && ReferenceEquals(message.Request, request) &&
+                    headers.SequenceEqual(request.Headers));
+                OriginalVaultRequest(message, r.Window.Path, start ? RequestMethod.Post : RequestMethod.Get,
+                    start ? null : r.StartProof!.Target.TargetUri.AbsoluteUri);
+                Headers(headers);
+                Require(!request.Headers.Contains("Range"));
+            }
+            Check();
+            Require(r.Receipt!.Evidence == (start ? DispatchEvidence.PossiblyDispatched : DispatchEvidence.Pending));
+            request.Headers.TryGetValue("Authorization", out var authorization);
+            byte[] authorizationBytes = System.Text.Encoding.UTF8.GetBytes(authorization!);
+            string authorizationSha256;
+            try { authorizationSha256 = Convert.ToHexString(SHA256.HashData(authorizationBytes)); }
+            finally { CryptographicOperations.ZeroMemory(authorizationBytes); }
+            if (start) r.AuthorizationSha256 = authorizationSha256;
+            else Require(r.AuthorizationSha256 == authorizationSha256);
+            lock (gate)
+            {
+                Require(StatusDeniedPurgeHistoryValid(r));
+                foreach (var response in r.Responses) response.Superseded = true;
+            }
+            var storage = new OwnedArmResponse.Storage();
+            lock (gate) r.Storage.Add(storage);
+            message.BufferResponse = false;
+            try { await backend.ProcessAsync(message).ConfigureAwait(false); }
+            finally { if (message.HasResponse) storage.Own(message.Response); }
+            Check();
+            Require(message.HasResponse);
+            var original = message.Response;
+            var stream = original.ContentStream;
+            var body = await OwnedArmResponse.CaptureAsync(message, maximumBytes, storage, allowContinuation: start)
+                .ConfigureAwait(false);
+            Check();
+            Require(ReferenceEquals(original.ContentStream, stream) && body.Bytes.Length > 0 &&
+                (start ? body.Response.Status == 202 : body.Response.Status is 401 or 403) &&
+                !body.Response.Headers.Contains("WWW-Authenticate"));
+            string? next = Continuation(r.Window, message);
+            Require(start ? next is not null : next is null);
+            using var json = JsonDocument.Parse(body.Bytes, new JsonDocumentOptions { MaxDepth = 16 });
+            int nodes = 512;
+            JsonRows(json.RootElement, ref nodes);
+            var root = json.RootElement;
+            Require(root.ValueKind == JsonValueKind.Object);
+            if (start)
+            {
+                Require(root.EnumerateObject().All(p => p.Name is "id" or "status" or "properties"));
+                if (root.TryGetProperty("id", out var id)) Require(id.GetString() == r.Window.Path);
+                bool direct = root.TryGetProperty("status", out var state);
+                bool nested = root.TryGetProperty("properties", out var properties);
+                Require(direct != nested);
+                if (nested) Require(properties.ValueKind == JsonValueKind.Object &&
+                    properties.EnumerateObject().All(p => p.Name == "provisioningState"));
+                Require((direct ? state.GetString() : properties.GetProperty("provisioningState").GetString()) == "InProgress");
+                byte[] targetBytes = System.Text.Encoding.UTF8.GetBytes(next!);
+                byte[] requestBytes = System.Text.Encoding.UTF8.GetBytes("POST " + request.Uri.ToUri().AbsoluteUri);
+                try
+                {
+                    var target = new StatusTarget(r.Window.Binding, attempt.Dispatch, StatusTargetKind.Operation, new Uri(next!),
+                        Convert.ToHexString(SHA256.HashData(targetBytes)), body.Sha256);
+                    r.Candidate = new(r.Window.Binding, target, body.Bytes.Length,
+                        Convert.ToHexString(SHA256.HashData(requestBytes)), body.NativeRequestId);
+                }
+                finally
+                {
+                    CryptographicOperations.ZeroMemory(targetBytes);
+                    CryptographicOperations.ZeroMemory(requestBytes);
+                }
+            }
+            else
+            {
+                Require(root.EnumerateObject().All(p => p.Name == "error") &&
+                    root.TryGetProperty("error", out var error) && error.ValueKind == JsonValueKind.Object &&
+                    error.EnumerateObject().All(p => p.Name is "code" or "message") &&
+                    error.TryGetProperty("code", out var code) && code.ValueKind == JsonValueKind.String &&
+                    code.GetString() is { Length: > 0 and <= 128 } errorCode && !errorCode.Any(char.IsControl) &&
+                    error.TryGetProperty("message", out var text) && text.ValueKind == JsonValueKind.String &&
+                    text.GetString() is { Length: > 0 and <= 2048 } errorMessage && !errorMessage.Any(char.IsControl));
+            }
+            var parser = OwnedArmResponse.ParserCustody.Install(message, body.Response, body.Bytes, storage,
+                requireRebuffer: true, requireDownstreamRead: !start);
+            var frame = new StatusPendingPurgeResponse(body, parser, storage);
+            lock (gate)
+            {
+                slot.Responses.Add(frame);
+                r.Responses.Add(frame);
+                attempt.HttpStatus = body.Response.Status;
+                attempt.ResponseSha256 = body.Sha256;
+                attempt.ResponseObserved = true;
+                attempt.HasProviderContinuation = next is not null;
+                attempt.State = start ? WireState.Pending : WireState.Denied;
+                attempt.Valid = true;
+            }
+            // Parser consumption has not happened yet; only recheck request and lifetime here.
+            Require(!slot.Token.IsCancellationRequested && !message.CancellationToken.IsCancellationRequested &&
+                !r.Revoked && !r.Sealed && !r.Window.Closed && ReferenceEquals(message.Request, request) &&
+                headers.SequenceEqual(request.Headers));
+        }
+        catch { r.Invalid = true; attempt.Valid = false; throw; }
+        finally
+        {
+            lock (gate)
+            {
+                attempt.TransportTerminated = true;
+                slot.Sending = slot.Invocation.Sending = false;
+            }
+        }
+    }
+
     internal sealed record Binding(
         [property: JsonIgnore] FixtureSelector Selector,
         [property: JsonIgnore] Guid LeaseId,
-        [property: JsonIgnore] ManagementScope Resource,
+        ManagementScope Resource,
         [property: JsonIgnore] ManagementMutation Operation,
         [property: JsonIgnore] string Location,
         [property: JsonIgnore] string ApiRevision)
     {
+        [JsonIgnore] public ManagementScope Resource { get; internal set; } = Resource;
         public override string ToString() => "[ManagementOperationNativeBinding]";
     }
 
@@ -406,7 +2020,205 @@ internal sealed class ManagementOperationNativeCapture
         public override string ToString() => "[StatusPendingPurgeCancellationCleanupProof]";
     }
 
-    private enum StatusPendingPurgePhase { Start, Canceled, Selected, Cleanup }
+    internal sealed class StatusFailedPurgeStartProof(Binding binding, StatusTarget target,
+        int responseBytes, string requestSha256, string nativeRequestId)
+    {
+        internal Binding Binding { get; } = binding;
+        internal StatusTarget Target { get; } = target;
+        internal Guid StartDispatch => Target.StartDispatch;
+        internal int HttpStatus => 202;
+        internal int ResponseBytes { get; } = responseBytes;
+        internal string ResponseSha256 => Target.StartResponseSha256;
+        internal string RequestSha256 { get; } = requestSha256;
+        internal string NativeRequestId { get; } = nativeRequestId;
+        internal SecretStatus Outcome => SecretStatus.Success;
+        internal NativeProvisioningState State => NativeProvisioningState.Pending;
+        internal DispatchEvidence ReceiptEvidence => DispatchEvidence.Pending;
+        public override string ToString() => "[StatusFailedPurgeStartProof]";
+    }
+
+    internal sealed class StatusFailedPurgeTerminalFailureProof(StatusFailedPurgeStartProof start,
+        string responseSha256, string nativeRequestId)
+    {
+        internal StatusFailedPurgeStartProof Start { get; } = start;
+        internal string ResponseSha256 { get; } = responseSha256;
+        internal string NativeRequestId { get; } = nativeRequestId;
+        internal SecretStatus Outcome => SecretStatus.Unknown;
+        internal NativeProvisioningState State => NativeProvisioningState.Failed;
+        internal DispatchEvidence ReceiptEvidence => DispatchEvidence.Pending;
+        public override string ToString() => "[StatusFailedPurgeTerminalFailureProof]";
+    }
+
+    internal sealed class StatusFailedPurgeIndependentStartProof(Binding binding, StatusTarget target,
+        int responseBytes, string requestSha256, string nativeRequestId)
+    {
+        internal Binding Binding { get; } = binding;
+        internal StatusTarget Target { get; } = target;
+        internal Guid StartDispatch => Target.StartDispatch;
+        internal int HttpStatus => 202;
+        internal int ResponseBytes { get; } = responseBytes;
+        internal string ResponseSha256 => Target.StartResponseSha256;
+        internal string RequestSha256 { get; } = requestSha256;
+        internal string NativeRequestId { get; } = nativeRequestId;
+        internal SecretStatus Outcome => SecretStatus.Success;
+        internal NativeProvisioningState State => NativeProvisioningState.Pending;
+        internal DispatchEvidence ReceiptEvidence => DispatchEvidence.Pending;
+        public override string ToString() => "[StatusFailedPurgeIndependentStartProof]";
+    }
+
+    internal sealed class StatusFailedPurgeIndependentTerminalFailureProof(StatusFailedPurgeIndependentStartProof start,
+        string responseSha256, string nativeRequestId)
+    {
+        internal StatusFailedPurgeIndependentStartProof Start { get; } = start;
+        internal string ResponseSha256 { get; } = responseSha256;
+        internal string NativeRequestId { get; } = nativeRequestId;
+        internal SecretStatus Outcome => SecretStatus.Unknown;
+        internal NativeProvisioningState State => NativeProvisioningState.Failed;
+        internal DispatchEvidence ReceiptEvidence => DispatchEvidence.Pending;
+        public override string ToString() => "[StatusFailedPurgeIndependentTerminalFailureProof]";
+    }
+
+    internal sealed class StatusFailedPurgeCancellationStartProof(Binding binding, StatusTarget target,
+        int responseBytes, string requestSha256, string nativeRequestId)
+    {
+        internal Binding Binding { get; } = binding;
+        internal StatusTarget Target { get; } = target;
+        internal Guid StartDispatch => Target.StartDispatch;
+        internal int HttpStatus => 202;
+        internal int ResponseBytes { get; } = responseBytes;
+        internal string ResponseSha256 => Target.StartResponseSha256;
+        internal string RequestSha256 { get; } = requestSha256;
+        internal string NativeRequestId { get; } = nativeRequestId;
+        internal SecretStatus Outcome => SecretStatus.Success;
+        internal NativeProvisioningState State => NativeProvisioningState.Pending;
+        internal DispatchEvidence ReceiptEvidence => DispatchEvidence.Pending;
+        public override string ToString() => "[StatusFailedPurgeCancellationStartProof]";
+    }
+
+    internal sealed class StatusFailedPurgeCancellationCanceledProof
+    {
+        internal StatusFailedPurgeCancellationCanceledProof(ManagementOperationNativeCapture source,
+            StatusFailedPurgeCancellationStartProof start)
+        {
+            Start = start;
+        }
+        internal StatusFailedPurgeCancellationStartProof Start { get; }
+        public override string ToString() => "[StatusFailedPurgeCancellationCanceledProof]";
+    }
+
+    internal sealed class StatusFailedPurgeCancellationTerminalFailureProof(StatusFailedPurgeCancellationStartProof start,
+        StatusFailedPurgeCancellationCanceledProof canceled, string responseSha256, string nativeRequestId)
+    {
+        internal StatusFailedPurgeCancellationStartProof Start { get; } = start;
+        internal StatusFailedPurgeCancellationCanceledProof Canceled { get; } = canceled;
+        internal string ResponseSha256 { get; } = responseSha256;
+        internal string NativeRequestId { get; } = nativeRequestId;
+        internal SecretStatus Outcome => SecretStatus.Unknown;
+        internal NativeProvisioningState State => NativeProvisioningState.Failed;
+        internal DispatchEvidence ReceiptEvidence => DispatchEvidence.Pending;
+        public override string ToString() => "[StatusFailedPurgeCancellationTerminalFailureProof]";
+    }
+
+    internal sealed class StatusCanceledPurgeStartProof(Binding binding, StatusTarget target,
+        int responseBytes, string requestSha256, string nativeRequestId)
+    {
+        internal Binding Binding { get; } = binding;
+        internal StatusTarget Target { get; } = target;
+        internal Guid StartDispatch => Target.StartDispatch;
+        internal int HttpStatus => 202;
+        internal int ResponseBytes { get; } = responseBytes;
+        internal string ResponseSha256 => Target.StartResponseSha256;
+        internal string RequestSha256 { get; } = requestSha256;
+        internal string NativeRequestId { get; } = nativeRequestId;
+        internal SecretStatus Outcome => SecretStatus.Success;
+        internal NativeProvisioningState State => NativeProvisioningState.Pending;
+        internal DispatchEvidence ReceiptEvidence => DispatchEvidence.Pending;
+        public override string ToString() => "[StatusCanceledPurgeStartProof]";
+    }
+
+    internal sealed class StatusCanceledPurgeTerminalCancellationProof(StatusCanceledPurgeStartProof start,
+        string responseSha256, string nativeRequestId)
+    {
+        internal StatusCanceledPurgeStartProof Start { get; } = start;
+        internal string ResponseSha256 { get; } = responseSha256;
+        internal string NativeRequestId { get; } = nativeRequestId;
+        internal SecretStatus Outcome => SecretStatus.Unknown;
+        internal NativeProvisioningState State => NativeProvisioningState.Canceled;
+        internal DispatchEvidence ReceiptEvidence => DispatchEvidence.Pending;
+        public override string ToString() => "[StatusCanceledPurgeTerminalCancellationProof]";
+    }
+
+    internal sealed class StatusCanceledPurgeIndependentStartProof(Binding binding, StatusTarget target,
+        int responseBytes, string requestSha256, string nativeRequestId)
+    {
+        internal Binding Binding { get; } = binding;
+        internal StatusTarget Target { get; } = target;
+        internal Guid StartDispatch => Target.StartDispatch;
+        internal int HttpStatus => 202;
+        internal int ResponseBytes { get; } = responseBytes;
+        internal string ResponseSha256 => Target.StartResponseSha256;
+        internal string RequestSha256 { get; } = requestSha256;
+        internal string NativeRequestId { get; } = nativeRequestId;
+        internal SecretStatus Outcome => SecretStatus.Success;
+        internal NativeProvisioningState State => NativeProvisioningState.Pending;
+        internal DispatchEvidence ReceiptEvidence => DispatchEvidence.Pending;
+        public override string ToString() => "[StatusCanceledPurgeIndependentStartProof]";
+    }
+
+    internal sealed class StatusCanceledPurgeIndependentTerminalCancellationProof(StatusCanceledPurgeIndependentStartProof start,
+        string responseSha256, string nativeRequestId)
+    {
+        internal StatusCanceledPurgeIndependentStartProof Start { get; } = start;
+        internal string ResponseSha256 { get; } = responseSha256;
+        internal string NativeRequestId { get; } = nativeRequestId;
+        internal SecretStatus Outcome => SecretStatus.Unknown;
+        internal NativeProvisioningState State => NativeProvisioningState.Canceled;
+        internal DispatchEvidence ReceiptEvidence => DispatchEvidence.Pending;
+        public override string ToString() => "[StatusCanceledPurgeIndependentTerminalCancellationProof]";
+    }
+
+    internal sealed class StatusCanceledPurgeCancellationStartProof(Binding binding, StatusTarget target,
+        int responseBytes, string requestSha256, string nativeRequestId)
+    {
+        internal Binding Binding { get; } = binding;
+        internal StatusTarget Target { get; } = target;
+        internal Guid StartDispatch => Target.StartDispatch;
+        internal int HttpStatus => 202;
+        internal int ResponseBytes { get; } = responseBytes;
+        internal string ResponseSha256 => Target.StartResponseSha256;
+        internal string RequestSha256 { get; } = requestSha256;
+        internal string NativeRequestId { get; } = nativeRequestId;
+        internal SecretStatus Outcome => SecretStatus.Success;
+        internal NativeProvisioningState State => NativeProvisioningState.Pending;
+        internal DispatchEvidence ReceiptEvidence => DispatchEvidence.Pending;
+        public override string ToString() => "[StatusCanceledPurgeCancellationStartProof]";
+    }
+
+    internal sealed class StatusCanceledPurgeCancellationCanceledProof
+    {
+        internal StatusCanceledPurgeCancellationCanceledProof(ManagementOperationNativeCapture source,
+            StatusCanceledPurgeCancellationStartProof start)
+        {
+            Start = start;
+        }
+        internal StatusCanceledPurgeCancellationStartProof Start { get; }
+        public override string ToString() => "[StatusCanceledPurgeCancellationCanceledProof]";
+    }
+
+    internal sealed class StatusCanceledPurgeCancellationTerminalCancellationProof(StatusCanceledPurgeCancellationStartProof start,
+        StatusCanceledPurgeCancellationCanceledProof canceled, string responseSha256, string nativeRequestId)
+    {
+        internal StatusCanceledPurgeCancellationStartProof Start { get; } = start;
+        internal StatusCanceledPurgeCancellationCanceledProof Canceled { get; } = canceled;
+        internal string ResponseSha256 { get; } = responseSha256;
+        internal string NativeRequestId { get; } = nativeRequestId;
+        internal SecretStatus Outcome => SecretStatus.Unknown;
+        internal NativeProvisioningState State => NativeProvisioningState.Canceled;
+        internal DispatchEvidence ReceiptEvidence => DispatchEvidence.Pending;
+        public override string ToString() => "[StatusCanceledPurgeCancellationTerminalCancellationProof]";
+    }
+
+    private enum StatusPendingPurgePhase { Start, Canceled, Selected, Cleanup, TerminalFailure, TerminalCancellation }
 
     private sealed class StatusPendingPurgeSlot(StatusPendingPurgePhase phase, CancellationToken token)
     {
@@ -486,6 +2298,50 @@ internal sealed class ManagementOperationNativeCapture
         internal StatusPendingPurgeCancellationCleanupProof? CleanupProof;
     }
 
+    private sealed class StatusFailedPurgeRegistration(StatusPendingPurgeRun run)
+    {
+        internal readonly StatusPendingPurgeRun Run = run;
+        internal StatusFailedPurgeStartProof? StartProof;
+        internal StatusFailedPurgeTerminalFailureProof? TerminalFailureProof;
+    }
+
+    private sealed class StatusCanceledPurgeRegistration(StatusPendingPurgeRun run)
+    {
+        internal readonly StatusPendingPurgeRun Run = run;
+        internal StatusCanceledPurgeStartProof? StartProof;
+        internal StatusCanceledPurgeTerminalCancellationProof? TerminalCancellationProof;
+    }
+
+    private sealed class StatusCanceledPurgeIndependentRegistration(StatusPendingPurgeRun run)
+    {
+        internal readonly StatusPendingPurgeRun Run = run;
+        internal StatusCanceledPurgeIndependentStartProof? StartProof;
+        internal StatusCanceledPurgeIndependentTerminalCancellationProof? TerminalCancellationProof;
+    }
+
+    private sealed class StatusFailedPurgeIndependentRegistration(StatusPendingPurgeRun run)
+    {
+        internal readonly StatusPendingPurgeRun Run = run;
+        internal StatusFailedPurgeIndependentStartProof? StartProof;
+        internal StatusFailedPurgeIndependentTerminalFailureProof? TerminalFailureProof;
+    }
+
+    private sealed class StatusFailedPurgeCancellationRegistration(StatusPendingPurgeRun run)
+    {
+        internal readonly StatusPendingPurgeRun Run = run;
+        internal StatusFailedPurgeCancellationStartProof? StartProof;
+        internal StatusFailedPurgeCancellationCanceledProof? CanceledProof;
+        internal StatusFailedPurgeCancellationTerminalFailureProof? TerminalFailureProof;
+    }
+
+    private sealed class StatusCanceledPurgeCancellationRegistration(StatusPendingPurgeRun run)
+    {
+        internal readonly StatusPendingPurgeRun Run = run;
+        internal StatusCanceledPurgeCancellationStartProof? StartProof;
+        internal StatusCanceledPurgeCancellationCanceledProof? CanceledProof;
+        internal StatusCanceledPurgeCancellationTerminalCancellationProof? TerminalCancellationProof;
+    }
+
     private sealed record StatusPendingPurgeContext(StatusPendingPurgeRun Registration, StatusPendingPurgeSlot Slot);
     private readonly AsyncLocal<StatusPendingPurgeContext?> currentStatusPendingPurge = new();
     private readonly Dictionary<Window, StatusPendingPurgeRegistration> statusPendingPurges =
@@ -493,6 +2349,18 @@ internal sealed class ManagementOperationNativeCapture
     private readonly Dictionary<Window, StatusPendingPurgeIndependentRegistration> statusPendingPurgeIndependents =
         new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<Window, StatusPendingPurgeCancellationRegistration> statusPendingPurgeCancellations =
+        new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<Window, StatusFailedPurgeRegistration> statusFailedPurges =
+        new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<Window, StatusCanceledPurgeRegistration> statusCanceledPurges =
+        new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<Window, StatusCanceledPurgeIndependentRegistration> statusCanceledPurgeIndependents =
+        new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<Window, StatusFailedPurgeIndependentRegistration> statusFailedPurgeIndependents =
+        new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<Window, StatusFailedPurgeCancellationRegistration> statusFailedPurgeCancellations =
+        new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<Window, StatusCanceledPurgeCancellationRegistration> statusCanceledPurgeCancellations =
         new(ReferenceEqualityComparer.Instance);
 
     private static bool StatusPendingPurgeSelector(FixtureSelector selector) =>
@@ -506,6 +2374,30 @@ internal sealed class ManagementOperationNativeCapture
     private static bool StatusPendingPurgeCancellationSelector(FixtureSelector selector) =>
         selector is { Operation: "a.management.ManagementOperation.CheckStatusAsync",
             Variant: "status.Pending", Case: "cancellation-boundary" };
+
+    private static bool StatusFailedPurgeSelector(FixtureSelector selector) =>
+        selector is { Operation: "a.management.ManagementOperation.CheckStatusAsync",
+            Variant: "status.Failed", Case: "selected-contract" };
+
+    private static bool StatusCanceledPurgeSelector(FixtureSelector selector) =>
+        selector is { Operation: "a.management.ManagementOperation.CheckStatusAsync",
+            Variant: "status.Canceled", Case: "selected-contract" };
+
+    private static bool StatusCanceledPurgeIndependentSelector(FixtureSelector selector) =>
+        selector is { Operation: "a.management.ManagementOperation.CheckStatusAsync",
+            Variant: "status.Canceled", Case: "independent-effect" };
+
+    private static bool StatusFailedPurgeIndependentSelector(FixtureSelector selector) =>
+        selector is { Operation: "a.management.ManagementOperation.CheckStatusAsync",
+            Variant: "status.Failed", Case: "independent-effect" };
+
+    private static bool StatusFailedPurgeCancellationSelector(FixtureSelector selector) =>
+        selector is { Operation: "a.management.ManagementOperation.CheckStatusAsync",
+            Variant: "status.Failed", Case: "cancellation-boundary" };
+
+    private static bool StatusCanceledPurgeCancellationSelector(FixtureSelector selector) =>
+        selector is { Operation: "a.management.ManagementOperation.CheckStatusAsync",
+            Variant: "status.Canceled", Case: "cancellation-boundary" };
 
     // Only clock, issued-target inspection and physical sealing may join registries.
     // Typed entry points and proof ownership always choose their own registry.
@@ -521,7 +2413,115 @@ internal sealed class ManagementOperationNativeCapture
         else if (statusPendingPurgeCancellations.TryGetValue(window, out var cancellation) &&
             StatusPendingPurgeCancellationSelector(window.Binding.Selector))
             run = cancellation.Run;
+        else if (statusFailedPurges.TryGetValue(window, out var failed) &&
+            StatusFailedPurgeSelector(window.Binding.Selector))
+            run = failed.Run;
+        else if (statusFailedPurgeIndependents.TryGetValue(window, out var failedIndependent) &&
+            StatusFailedPurgeIndependentSelector(window.Binding.Selector))
+            run = failedIndependent.Run;
+        else if (statusFailedPurgeCancellations.TryGetValue(window, out var failedCancellation) &&
+            StatusFailedPurgeCancellationSelector(window.Binding.Selector))
+            run = failedCancellation.Run;
+        else if (statusCanceledPurges.TryGetValue(window, out var providerCanceled) &&
+            StatusCanceledPurgeSelector(window.Binding.Selector))
+            run = providerCanceled.Run;
+        else if (statusCanceledPurgeIndependents.TryGetValue(window, out var providerCanceledIndependent) &&
+            StatusCanceledPurgeIndependentSelector(window.Binding.Selector))
+            run = providerCanceledIndependent.Run;
+        else if (statusCanceledPurgeCancellations.TryGetValue(window, out var providerCanceledCancellation) &&
+            StatusCanceledPurgeCancellationSelector(window.Binding.Selector))
+            run = providerCanceledCancellation.Run;
         return run is not null && ReferenceEquals(run.Window, window) && ReferenceEquals(window.Owner, owner);
+    }
+
+    internal StatusPendingPurgeClockWindow EnrollStatusCanceledPurgeCancellation(Window window, Binding binding,
+        VaultAdministration client, DeletedVaultScope scope, ManagementReceipt receipt, DateTimeOffset expiresAt,
+        StatusPendingPurgeClockBounds bounds, TimeSpan budget, CancellationToken originalCallerToken)
+    {
+        lock (gate)
+        {
+            Own(window, binding.Selector);
+            Require(StatusCanceledPurgeCancellationSelector(binding.Selector));
+            var run = EnrollStatusPendingPurgeRun(window, binding, client, scope, receipt, expiresAt,
+                bounds, budget, originalCallerToken);
+            statusCanceledPurgeCancellations.Add(window, new(run));
+            return run.Clock;
+        }
+    }
+
+    internal StatusPendingPurgeClockWindow EnrollStatusCanceledPurgeIndependent(Window window, Binding binding,
+        VaultAdministration client, DeletedVaultScope scope, ManagementReceipt receipt, DateTimeOffset expiresAt,
+        StatusPendingPurgeClockBounds bounds, TimeSpan budget, CancellationToken originalCallerToken)
+    {
+        lock (gate)
+        {
+            Own(window, binding.Selector);
+            Require(StatusCanceledPurgeIndependentSelector(binding.Selector));
+            var run = EnrollStatusPendingPurgeRun(window, binding, client, scope, receipt, expiresAt,
+                bounds, budget, originalCallerToken);
+            statusCanceledPurgeIndependents.Add(window, new(run));
+            return run.Clock;
+        }
+    }
+
+    internal StatusPendingPurgeClockWindow EnrollStatusCanceledPurge(Window window, Binding binding,
+        VaultAdministration client, DeletedVaultScope scope, ManagementReceipt receipt, DateTimeOffset expiresAt,
+        StatusPendingPurgeClockBounds bounds, TimeSpan budget, CancellationToken originalCallerToken)
+    {
+        lock (gate)
+        {
+            Own(window, binding.Selector);
+            Require(StatusCanceledPurgeSelector(binding.Selector));
+            var run = EnrollStatusPendingPurgeRun(window, binding, client, scope, receipt, expiresAt,
+                bounds, budget, originalCallerToken);
+            statusCanceledPurges.Add(window, new(run));
+            return run.Clock;
+        }
+    }
+
+    internal StatusPendingPurgeClockWindow EnrollStatusFailedPurgeCancellation(Window window, Binding binding,
+        VaultAdministration client, DeletedVaultScope scope, ManagementReceipt receipt, DateTimeOffset expiresAt,
+        StatusPendingPurgeClockBounds bounds, TimeSpan budget, CancellationToken originalCallerToken)
+    {
+        lock (gate)
+        {
+            Own(window, binding.Selector);
+            Require(StatusFailedPurgeCancellationSelector(binding.Selector));
+            var run = EnrollStatusPendingPurgeRun(window, binding, client, scope, receipt, expiresAt,
+                bounds, budget, originalCallerToken);
+            statusFailedPurgeCancellations.Add(window, new(run));
+            return run.Clock;
+        }
+    }
+
+    internal StatusPendingPurgeClockWindow EnrollStatusFailedPurge(Window window, Binding binding,
+        VaultAdministration client, DeletedVaultScope scope, ManagementReceipt receipt, DateTimeOffset expiresAt,
+        StatusPendingPurgeClockBounds bounds, TimeSpan budget, CancellationToken originalCallerToken)
+    {
+        lock (gate)
+        {
+            Own(window, binding.Selector);
+            Require(StatusFailedPurgeSelector(binding.Selector));
+            var run = EnrollStatusPendingPurgeRun(window, binding, client, scope, receipt, expiresAt,
+                bounds, budget, originalCallerToken);
+            statusFailedPurges.Add(window, new(run));
+            return run.Clock;
+        }
+    }
+
+    internal StatusPendingPurgeClockWindow EnrollStatusFailedPurgeIndependent(Window window, Binding binding,
+        VaultAdministration client, DeletedVaultScope scope, ManagementReceipt receipt, DateTimeOffset expiresAt,
+        StatusPendingPurgeClockBounds bounds, TimeSpan budget, CancellationToken originalCallerToken)
+    {
+        lock (gate)
+        {
+            Own(window, binding.Selector);
+            Require(StatusFailedPurgeIndependentSelector(binding.Selector));
+            var run = EnrollStatusPendingPurgeRun(window, binding, client, scope, receipt, expiresAt,
+                bounds, budget, originalCallerToken);
+            statusFailedPurgeIndependents.Add(window, new(run));
+            return run.Clock;
+        }
     }
 
     internal StatusPendingPurgeClockWindow EnrollStatusPendingPurge(Window window, Binding binding,
@@ -580,6 +2580,11 @@ internal sealed class ManagementOperationNativeCapture
             !window.Closed && window.Start is null && window.Status is null &&
             !startedWindows.Contains(window) && !statusPendingPurges.ContainsKey(window) &&
             !statusPendingPurgeIndependents.ContainsKey(window) && !statusPendingPurgeCancellations.ContainsKey(window) &&
+            !statusFailedPurges.ContainsKey(window) && !statusFailedPurgeIndependents.ContainsKey(window) &&
+            !statusFailedPurgeCancellations.ContainsKey(window) &&
+            !statusCanceledPurges.ContainsKey(window) &&
+            !statusCanceledPurgeIndependents.ContainsKey(window) &&
+            !statusCanceledPurgeCancellations.ContainsKey(window) &&
             typeof(TokenCredential).Assembly.GetName().Version == new Version(1, 63, 0, 0) &&
             typeof(Azure.ResourceManager.ArmClient).Assembly.GetName().Version == new Version(1, 14, 0, 0) &&
             typeof(KeyVaultResource).Assembly.GetName().Version == new Version(1, 4, 0, 0));
@@ -616,6 +2621,102 @@ internal sealed class ManagementOperationNativeCapture
             return statusPendingPurgeCancellations[window].Run;
         }
     }
+
+    private StatusPendingPurgeRun RequireStatusFailedPurgeRun(Window window, FixtureSelector selector)
+    {
+        lock (gate)
+        {
+            Own(window, selector);
+            Require(StatusFailedPurgeSelector(selector) && statusFailedPurges.ContainsKey(window));
+            return statusFailedPurges[window].Run;
+        }
+    }
+
+    private StatusPendingPurgeRun RequireStatusCanceledPurgeIndependentRun(Window window, FixtureSelector selector)
+    {
+        lock (gate)
+        {
+            Own(window, selector);
+            Require(StatusCanceledPurgeIndependentSelector(selector) && statusCanceledPurgeIndependents.ContainsKey(window));
+            return statusCanceledPurgeIndependents[window].Run;
+        }
+    }
+
+    internal async ValueTask<SecretOutcome<ManagementOperation>> StartStatusCanceledPurgeIndependentAsync(Window window,
+        FixtureSelector selector, VaultAdministration client, ManagementScope scope, ManagementOperationEffects.Input input,
+        ManagementReceipt receipt, CancellationToken token, Action<Task>? retained = null) =>
+        await StartStatusPendingPurgeCoreAsync(RequireStatusCanceledPurgeIndependentRun(window, selector), window, selector,
+            client, scope, input, receipt, token, retained).ConfigureAwait(false);
+
+    private StatusPendingPurgeRun RequireStatusCanceledPurgeRun(Window window, FixtureSelector selector)
+    {
+        lock (gate)
+        {
+            Own(window, selector);
+            Require(StatusCanceledPurgeSelector(selector) && statusCanceledPurges.ContainsKey(window));
+            return statusCanceledPurges[window].Run;
+        }
+    }
+
+    internal async ValueTask<SecretOutcome<ManagementOperation>> StartStatusCanceledPurgeAsync(Window window,
+        FixtureSelector selector, VaultAdministration client, ManagementScope scope, ManagementOperationEffects.Input input,
+        ManagementReceipt receipt, CancellationToken token, Action<Task>? retained = null) =>
+        await StartStatusPendingPurgeCoreAsync(RequireStatusCanceledPurgeRun(window, selector), window, selector,
+            client, scope, input, receipt, token, retained).ConfigureAwait(false);
+
+    private StatusPendingPurgeRun RequireStatusFailedPurgeIndependentRun(Window window, FixtureSelector selector)
+    {
+        lock (gate)
+        {
+            Own(window, selector);
+            Require(StatusFailedPurgeIndependentSelector(selector) && statusFailedPurgeIndependents.ContainsKey(window));
+            return statusFailedPurgeIndependents[window].Run;
+        }
+    }
+
+    private StatusPendingPurgeRun RequireStatusCanceledPurgeCancellationRun(Window window, FixtureSelector selector)
+    {
+        lock (gate)
+        {
+            Own(window, selector);
+            Require(StatusCanceledPurgeCancellationSelector(selector) && statusCanceledPurgeCancellations.ContainsKey(window));
+            return statusCanceledPurgeCancellations[window].Run;
+        }
+    }
+
+    internal async ValueTask<SecretOutcome<ManagementOperation>> StartStatusCanceledPurgeCancellationAsync(Window window,
+        FixtureSelector selector, VaultAdministration client, ManagementScope scope, ManagementOperationEffects.Input input,
+        ManagementReceipt receipt, CancellationToken token, Action<Task>? retained = null) =>
+        await StartStatusPendingPurgeCoreAsync(RequireStatusCanceledPurgeCancellationRun(window, selector), window, selector,
+            client, scope, input, receipt, token, retained).ConfigureAwait(false);
+
+    private StatusPendingPurgeRun RequireStatusFailedPurgeCancellationRun(Window window, FixtureSelector selector)
+    {
+        lock (gate)
+        {
+            Own(window, selector);
+            Require(StatusFailedPurgeCancellationSelector(selector) && statusFailedPurgeCancellations.ContainsKey(window));
+            return statusFailedPurgeCancellations[window].Run;
+        }
+    }
+
+    internal async ValueTask<SecretOutcome<ManagementOperation>> StartStatusFailedPurgeCancellationAsync(Window window,
+        FixtureSelector selector, VaultAdministration client, ManagementScope scope, ManagementOperationEffects.Input input,
+        ManagementReceipt receipt, CancellationToken token, Action<Task>? retained = null) =>
+        await StartStatusPendingPurgeCoreAsync(RequireStatusFailedPurgeCancellationRun(window, selector), window, selector,
+            client, scope, input, receipt, token, retained).ConfigureAwait(false);
+
+    internal async ValueTask<SecretOutcome<ManagementOperation>> StartStatusFailedPurgeIndependentAsync(Window window,
+        FixtureSelector selector, VaultAdministration client, ManagementScope scope, ManagementOperationEffects.Input input,
+        ManagementReceipt receipt, CancellationToken token, Action<Task>? retained = null) =>
+        await StartStatusPendingPurgeCoreAsync(RequireStatusFailedPurgeIndependentRun(window, selector), window, selector,
+            client, scope, input, receipt, token, retained).ConfigureAwait(false);
+
+    internal async ValueTask<SecretOutcome<ManagementOperation>> StartStatusFailedPurgeAsync(Window window,
+        FixtureSelector selector, VaultAdministration client, ManagementScope scope, ManagementOperationEffects.Input input,
+        ManagementReceipt receipt, CancellationToken token, Action<Task>? retained = null) =>
+        await StartStatusPendingPurgeCoreAsync(RequireStatusFailedPurgeRun(window, selector), window, selector,
+            client, scope, input, receipt, token, retained).ConfigureAwait(false);
 
     internal async ValueTask<SecretOutcome<ManagementOperation>> StartStatusPendingPurgeAsync(Window window,
         FixtureSelector selector, VaultAdministration client, ManagementScope scope, ManagementOperationEffects.Input input,
@@ -729,6 +2830,46 @@ internal sealed class ManagementOperationNativeCapture
         await CheckStatusPendingPurgeCoreAsync(RequireStatusPendingPurgeCancellationRun(window, selector),
             window, selector, handle, token, retained, cleanup: true).ConfigureAwait(false);
 
+    internal async ValueTask<SecretStatus> CheckStatusFailedPurgeAsync(Window window, FixtureSelector selector,
+        ManagementOperation handle, CancellationToken token, Action<Task>? retained = null) =>
+        await CheckStatusPendingPurgeCoreAsync(RequireStatusFailedPurgeRun(window, selector),
+            window, selector, handle, token, retained, cleanup: false).ConfigureAwait(false);
+
+    internal async ValueTask<SecretStatus> CheckStatusFailedPurgeIndependentAsync(Window window, FixtureSelector selector,
+        ManagementOperation handle, CancellationToken token, Action<Task>? retained = null) =>
+        await CheckStatusPendingPurgeCoreAsync(RequireStatusFailedPurgeIndependentRun(window, selector),
+            window, selector, handle, token, retained, cleanup: false).ConfigureAwait(false);
+
+    internal async ValueTask<SecretStatus> CheckStatusFailedPurgeCancellationCanceledAsync(Window window, FixtureSelector selector,
+        ManagementOperation handle, CancellationToken canceledToken, Action<Task>? retained = null) =>
+        await CheckStatusPendingPurgeCoreAsync(RequireStatusFailedPurgeCancellationRun(window, selector),
+            window, selector, handle, canceledToken, retained, cleanup: false, canceled: true).ConfigureAwait(false);
+
+    internal async ValueTask<SecretStatus> CheckStatusFailedPurgeCancellationAsync(Window window, FixtureSelector selector,
+        ManagementOperation handle, CancellationToken token, Action<Task>? retained = null) =>
+        await CheckStatusPendingPurgeCoreAsync(RequireStatusFailedPurgeCancellationRun(window, selector),
+            window, selector, handle, token, retained, cleanup: false).ConfigureAwait(false);
+
+    internal async ValueTask<SecretStatus> CheckStatusCanceledPurgeCancellationCanceledAsync(Window window, FixtureSelector selector,
+        ManagementOperation handle, CancellationToken canceledToken, Action<Task>? retained = null) =>
+        await CheckStatusPendingPurgeCoreAsync(RequireStatusCanceledPurgeCancellationRun(window, selector),
+            window, selector, handle, canceledToken, retained, cleanup: false, canceled: true).ConfigureAwait(false);
+
+    internal async ValueTask<SecretStatus> CheckStatusCanceledPurgeCancellationAsync(Window window, FixtureSelector selector,
+        ManagementOperation handle, CancellationToken token, Action<Task>? retained = null) =>
+        await CheckStatusPendingPurgeCoreAsync(RequireStatusCanceledPurgeCancellationRun(window, selector),
+            window, selector, handle, token, retained, cleanup: false).ConfigureAwait(false);
+
+    internal async ValueTask<SecretStatus> CheckStatusCanceledPurgeAsync(Window window, FixtureSelector selector,
+        ManagementOperation handle, CancellationToken token, Action<Task>? retained = null) =>
+        await CheckStatusPendingPurgeCoreAsync(RequireStatusCanceledPurgeRun(window, selector),
+            window, selector, handle, token, retained, cleanup: false).ConfigureAwait(false);
+
+    internal async ValueTask<SecretStatus> CheckStatusCanceledPurgeIndependentAsync(Window window, FixtureSelector selector,
+        ManagementOperation handle, CancellationToken token, Action<Task>? retained = null) =>
+        await CheckStatusPendingPurgeCoreAsync(RequireStatusCanceledPurgeIndependentRun(window, selector),
+            window, selector, handle, token, retained, cleanup: false).ConfigureAwait(false);
+
     private async ValueTask<SecretStatus> CheckStatusPendingPurgeCoreAsync(StatusPendingPurgeRun r, Window window, FixtureSelector selector,
         ManagementOperation handle, CancellationToken token, Action<Task>? retained, bool cleanup, bool canceled = false)
     {
@@ -738,13 +2879,33 @@ internal sealed class ManagementOperationNativeCapture
             Own(window, selector);
             Require(ReferenceEquals(r.Handle, handle));
             bool cancellationProfile = statusPendingPurgeCancellations.TryGetValue(window, out var cancellation);
+            bool failedProfile = statusFailedPurges.TryGetValue(window, out var failed);
+            bool failedIndependentProfile = statusFailedPurgeIndependents.TryGetValue(window, out var failedIndependent);
+            bool failedCancellationProfile = statusFailedPurgeCancellations.TryGetValue(window, out var failedCancellation);
+            bool providerCanceledProfile = statusCanceledPurges.TryGetValue(window, out var providerCanceled);
+            bool providerCanceledIndependentProfile = statusCanceledPurgeIndependents.TryGetValue(window, out var providerCanceledIndependent);
+            bool providerCanceledCancellationProfile = statusCanceledPurgeCancellations.TryGetValue(window, out var providerCanceledCancellation);
             bool valid = StatusPendingPurgeLive(r) && StatusPendingPurgeHistoryValid(r) &&
+                (!providerCanceledCancellationProfile || ReferenceEquals(providerCanceledCancellation!.Run, r) &&
+                    providerCanceledCancellation.StartProof is not null && !cleanup &&
+                    (canceled || StatusCanceledPurgeCancellationCanceledValid(providerCanceledCancellation))) &&
+                (!providerCanceledIndependentProfile || ReferenceEquals(providerCanceledIndependent!.Run, r) &&
+                    providerCanceledIndependent.StartProof is not null && !cleanup && !canceled) &&
+                (!providerCanceledProfile || ReferenceEquals(providerCanceled!.Run, r) &&
+                    providerCanceled.StartProof is not null && !cleanup && !canceled) &&
+                (!failedProfile || ReferenceEquals(failed!.Run, r) && failed.StartProof is not null && !cleanup && !canceled) &&
+                (!failedIndependentProfile || ReferenceEquals(failedIndependent!.Run, r) &&
+                    failedIndependent.StartProof is not null && !cleanup && !canceled) &&
+                (!failedCancellationProfile || ReferenceEquals(failedCancellation!.Run, r) &&
+                    failedCancellation.StartProof is not null && !cleanup &&
+                    (canceled || StatusFailedPurgeCancellationCanceledValid(failedCancellation))) &&
                 (canceled ? token.IsCancellationRequested : !token.IsCancellationRequested) &&
                 handle.State == NativeProvisioningState.Pending &&
                 r.StartFacts is not null && r.Start is { Finished: true } &&
                 (!cancellationProfile || canceled || StatusPendingPurgeCancellationCanceledValid(cancellation!)) &&
-                (canceled ? cancellationProfile && ReferenceEquals(cancellation!.Run, r) &&
-                    cancellation.StartProof is not null && !r.CanceledClaimed && !r.SelectedClaimed &&
+                (canceled ? (cancellationProfile && ReferenceEquals(cancellation!.Run, r) &&
+                    cancellation.StartProof is not null || failedCancellationProfile || providerCanceledCancellationProfile) &&
+                    !r.CanceledClaimed && !r.SelectedClaimed &&
                     !r.SelectedRevoked && !window.Closed && !r.Start.Token.IsCancellationRequested
                     : cleanup ? r.SelectedRevoked && window.Closed && !r.CleanupClaimed &&
                     r.SelectedFacts is not null && r.Selected is { Finished: true }
@@ -756,7 +2917,11 @@ internal sealed class ManagementOperationNativeCapture
             r.Invalid |= !valid;
             Require(valid);
             slot = new(canceled ? StatusPendingPurgePhase.Canceled :
-                cleanup ? StatusPendingPurgePhase.Cleanup : StatusPendingPurgePhase.Selected, token);
+                cleanup ? StatusPendingPurgePhase.Cleanup :
+                providerCanceledProfile || providerCanceledIndependentProfile || providerCanceledCancellationProfile
+                    ? StatusPendingPurgePhase.TerminalCancellation :
+                failedProfile || failedIndependentProfile || failedCancellationProfile
+                    ? StatusPendingPurgePhase.TerminalFailure : StatusPendingPurgePhase.Selected, token);
             if (canceled) r.Canceled = slot;
             else if (cleanup) r.Cleanup = slot;
             else
@@ -794,8 +2959,14 @@ internal sealed class ManagementOperationNativeCapture
                     var result = await task.ConfigureAwait(false);
                     slot.Invocation.Outcome = result;
                     slot.Invocation.WrapperState = handle.State;
-                    slot.Success = !canceled && result == (cleanup ? SecretStatus.Success : SecretStatus.Pending) &&
-                        handle.State == (cleanup ? NativeProvisioningState.Succeeded : NativeProvisioningState.Pending) &&
+                    bool terminalFailure = slot.Phase == StatusPendingPurgePhase.TerminalFailure;
+                    bool terminalCancellation = slot.Phase == StatusPendingPurgePhase.TerminalCancellation;
+                    slot.Success = !canceled &&
+                        result == (terminalFailure || terminalCancellation ? SecretStatus.Unknown :
+                            cleanup ? SecretStatus.Success : SecretStatus.Pending) &&
+                        handle.State == (terminalCancellation ? NativeProvisioningState.Canceled :
+                            terminalFailure ? NativeProvisioningState.Failed :
+                            cleanup ? NativeProvisioningState.Succeeded : NativeProvisioningState.Pending) &&
                         r.Receipt.Evidence == DispatchEvidence.Pending;
                 }
                 catch (OperationCanceledException) when (canceled && token.IsCancellationRequested && task.IsCanceled)
@@ -824,7 +2995,13 @@ internal sealed class ManagementOperationNativeCapture
     private static bool StatusPendingPurgeLive(StatusPendingPurgeRun r)
     {
         if (r.Invalid || r.Sealed || r.OriginalCallerToken.IsCancellationRequested ||
-            r.Canceled is not null && (r.Start is { } start && start.Token.IsCancellationRequested ||
+            (r.Canceled is not null || StatusFailedPurgeSelector(r.Window.Binding.Selector) ||
+                StatusCanceledPurgeSelector(r.Window.Binding.Selector) ||
+                StatusCanceledPurgeIndependentSelector(r.Window.Binding.Selector) ||
+                StatusCanceledPurgeCancellationSelector(r.Window.Binding.Selector) ||
+                StatusFailedPurgeIndependentSelector(r.Window.Binding.Selector) ||
+                StatusFailedPurgeCancellationSelector(r.Window.Binding.Selector)) &&
+                (r.Start is { } start && start.Token.IsCancellationRequested ||
                 r.Selected is { } selected && selected.Token.IsCancellationRequested))
         {
             r.Clock.Revoke();
@@ -850,11 +3027,13 @@ internal sealed class ManagementOperationNativeCapture
             Task[] sends;
             lock (gate) sends = slot.Sends.ToArray();
             try { await Task.WhenAll(sends).ConfigureAwait(false); } catch { r.Invalid = true; }
-            if (slot.Phase == StatusPendingPurgePhase.Cleanup)
+            if (slot.Phase is StatusPendingPurgePhase.Cleanup or StatusPendingPurgePhase.TerminalFailure or
+                StatusPendingPurgePhase.TerminalCancellation)
             {
                 // This one-use phase has no future native reader. Unlike the
-                // lazy start/selected responses, all its finalizers can now
-                // drain before terminal authority is published.
+                // lazy start/Pending responses, all its finalizers must drain
+                // before terminal authority is published. Failed retains its
+                // registration and original clock until explicit Seal.
                 r.Invalid |= !StatusPendingPurgeHistoryValid(r);
                 foreach (var storage in r.Storage)
                     try { storage.Dispose(); } catch { r.Invalid = true; }
@@ -883,7 +3062,9 @@ internal sealed class ManagementOperationNativeCapture
                         targets[r.Window] = r.Candidate.Target;
                         eligible.Add(r.Window);
                     }
-                    else if (slot.Phase == StatusPendingPurgePhase.Selected && r.StartFacts is not null)
+                    else if (slot.Phase is StatusPendingPurgePhase.Selected or StatusPendingPurgePhase.TerminalFailure or
+                        StatusPendingPurgePhase.TerminalCancellation &&
+                        r.StartFacts is not null)
                         r.SelectedFacts = new(slot.Responses[0].Body.Sha256,
                             slot.Responses[0].Body.NativeRequestId);
                     else if (canceled && r.StartFacts is not null)
@@ -912,7 +3093,7 @@ internal sealed class ManagementOperationNativeCapture
     }
 
     // The shared runner produces facts. Each reference registry alone issues
-    // its own typed proof; no selected-contract authority is minted for I or C.
+    // its own typed proof; no Pending authority is minted for Failed.
     private void RegisterStatusPendingPurgeProof(StatusPendingPurgeRun run, StatusPendingPurgePhase phase)
     {
         var start = run.StartFacts!;
@@ -971,6 +3152,99 @@ internal sealed class ManagementOperationNativeCapture
                 cancellation.CleanupProof = new(cancellation.SelectedProof);
             }
         }
+        else if (statusCanceledPurges.TryGetValue(run.Window, out var providerCanceled) &&
+            ReferenceEquals(providerCanceled.Run, run) && StatusCanceledPurgeSelector(run.Window.Binding.Selector))
+        {
+            if (phase == StatusPendingPurgePhase.Start)
+                providerCanceled.StartProof = new(start.Binding, start.Target, start.ResponseBytes,
+                    start.RequestSha256, start.NativeRequestId);
+            else
+            {
+                Require(phase == StatusPendingPurgePhase.TerminalCancellation &&
+                    providerCanceled.StartProof is not null && run.SelectedFacts is not null);
+                providerCanceled.TerminalCancellationProof = new(providerCanceled.StartProof,
+                    run.SelectedFacts.ResponseSha256, run.SelectedFacts.NativeRequestId);
+            }
+        }
+        else if (statusCanceledPurgeIndependents.TryGetValue(run.Window, out var providerCanceledIndependent) &&
+            ReferenceEquals(providerCanceledIndependent.Run, run) && StatusCanceledPurgeIndependentSelector(run.Window.Binding.Selector))
+        {
+            if (phase == StatusPendingPurgePhase.Start)
+                providerCanceledIndependent.StartProof = new(start.Binding, start.Target, start.ResponseBytes,
+                    start.RequestSha256, start.NativeRequestId);
+            else
+            {
+                Require(phase == StatusPendingPurgePhase.TerminalCancellation &&
+                    providerCanceledIndependent.StartProof is not null && run.SelectedFacts is not null);
+                providerCanceledIndependent.TerminalCancellationProof = new(providerCanceledIndependent.StartProof,
+                    run.SelectedFacts.ResponseSha256, run.SelectedFacts.NativeRequestId);
+            }
+        }
+        else if (statusCanceledPurgeCancellations.TryGetValue(run.Window, out var providerCanceledCancellation) &&
+            ReferenceEquals(providerCanceledCancellation.Run, run) && StatusCanceledPurgeCancellationSelector(run.Window.Binding.Selector))
+        {
+            if (phase == StatusPendingPurgePhase.Start)
+                providerCanceledCancellation.StartProof = new(start.Binding, start.Target, start.ResponseBytes,
+                    start.RequestSha256, start.NativeRequestId);
+            else if (phase == StatusPendingPurgePhase.Canceled)
+            {
+                Require(providerCanceledCancellation.StartProof is not null);
+                providerCanceledCancellation.CanceledProof = new(this, providerCanceledCancellation.StartProof);
+            }
+            else
+            {
+                Require(phase == StatusPendingPurgePhase.TerminalCancellation &&
+                    providerCanceledCancellation.StartProof is not null &&
+                    StatusCanceledPurgeCancellationCanceledValid(providerCanceledCancellation) && run.SelectedFacts is not null);
+                providerCanceledCancellation.TerminalCancellationProof = new(providerCanceledCancellation.StartProof,
+                    providerCanceledCancellation.CanceledProof!, run.SelectedFacts.ResponseSha256, run.SelectedFacts.NativeRequestId);
+            }
+        }
+        else if (statusFailedPurges.TryGetValue(run.Window, out var failed) &&
+            ReferenceEquals(failed.Run, run) && StatusFailedPurgeSelector(run.Window.Binding.Selector))
+        {
+            if (phase == StatusPendingPurgePhase.Start)
+                failed.StartProof = new(start.Binding, start.Target, start.ResponseBytes, start.RequestSha256, start.NativeRequestId);
+            else
+            {
+                Require(phase == StatusPendingPurgePhase.TerminalFailure &&
+                    failed.StartProof is not null && run.SelectedFacts is not null);
+                failed.TerminalFailureProof = new(failed.StartProof,
+                    run.SelectedFacts.ResponseSha256, run.SelectedFacts.NativeRequestId);
+            }
+        }
+        else if (statusFailedPurgeIndependents.TryGetValue(run.Window, out var failedIndependent) &&
+            ReferenceEquals(failedIndependent.Run, run) && StatusFailedPurgeIndependentSelector(run.Window.Binding.Selector))
+        {
+            if (phase == StatusPendingPurgePhase.Start)
+                failedIndependent.StartProof = new(start.Binding, start.Target, start.ResponseBytes, start.RequestSha256, start.NativeRequestId);
+            else
+            {
+                Require(phase == StatusPendingPurgePhase.TerminalFailure &&
+                    failedIndependent.StartProof is not null && run.SelectedFacts is not null);
+                failedIndependent.TerminalFailureProof = new(failedIndependent.StartProof,
+                    run.SelectedFacts.ResponseSha256, run.SelectedFacts.NativeRequestId);
+            }
+        }
+        else if (statusFailedPurgeCancellations.TryGetValue(run.Window, out var failedCancellation) &&
+            ReferenceEquals(failedCancellation.Run, run) && StatusFailedPurgeCancellationSelector(run.Window.Binding.Selector))
+        {
+            if (phase == StatusPendingPurgePhase.Start)
+                failedCancellation.StartProof = new(start.Binding, start.Target, start.ResponseBytes, start.RequestSha256, start.NativeRequestId);
+            else if (phase == StatusPendingPurgePhase.Canceled)
+            {
+                Require(failedCancellation.StartProof is not null);
+                failedCancellation.CanceledProof = new(this, failedCancellation.StartProof);
+            }
+            else
+            {
+                Require(phase == StatusPendingPurgePhase.TerminalFailure &&
+                    failedCancellation.StartProof is not null && StatusFailedPurgeCancellationCanceledValid(failedCancellation) &&
+                    run.SelectedFacts is not null);
+                failedCancellation.TerminalFailureProof = new(failedCancellation.StartProof, failedCancellation.CanceledProof!,
+                    run.SelectedFacts.ResponseSha256, run.SelectedFacts.NativeRequestId);
+            }
+        }
         else
         {
             run.Invalid = true;
@@ -987,6 +3261,24 @@ internal sealed class ManagementOperationNativeCapture
     internal void RevokeStatusPendingPurgeCancellationSelected(Window window) =>
         RevokeStatusPendingPurgeSelectedCore(RequireStatusPendingPurgeCancellationRun(window, window.Binding.Selector));
 
+    internal void RevokeStatusFailedPurgeSelected(Window window) =>
+        RevokeStatusPendingPurgeSelectedCore(RequireStatusFailedPurgeRun(window, window.Binding.Selector));
+
+    internal void RevokeStatusCanceledPurgeSelected(Window window) =>
+        RevokeStatusPendingPurgeSelectedCore(RequireStatusCanceledPurgeRun(window, window.Binding.Selector));
+
+    internal void RevokeStatusCanceledPurgeIndependentSelected(Window window) =>
+        RevokeStatusPendingPurgeSelectedCore(RequireStatusCanceledPurgeIndependentRun(window, window.Binding.Selector));
+
+    internal void RevokeStatusFailedPurgeIndependentSelected(Window window) =>
+        RevokeStatusPendingPurgeSelectedCore(RequireStatusFailedPurgeIndependentRun(window, window.Binding.Selector));
+
+    internal void RevokeStatusFailedPurgeCancellationSelected(Window window) =>
+        RevokeStatusPendingPurgeSelectedCore(RequireStatusFailedPurgeCancellationRun(window, window.Binding.Selector));
+
+    internal void RevokeStatusCanceledPurgeCancellationSelected(Window window) =>
+        RevokeStatusPendingPurgeSelectedCore(RequireStatusCanceledPurgeCancellationRun(window, window.Binding.Selector));
+
     private void RevokeStatusPendingPurgeSelectedCore(StatusPendingPurgeRun r)
     {
         lock (gate)
@@ -997,6 +3289,10 @@ internal sealed class ManagementOperationNativeCapture
                 r.Start.Token.IsCancellationRequested || r.Selected.Token.IsCancellationRequested ||
                 statusPendingPurgeCancellations.TryGetValue(r.Window, out var cancellation) &&
                     !StatusPendingPurgeCancellationCanceledValid(cancellation) ||
+                statusFailedPurgeCancellations.TryGetValue(r.Window, out var failedCancellation) &&
+                    !StatusFailedPurgeCancellationCanceledValid(failedCancellation) ||
+                statusCanceledPurgeCancellations.TryGetValue(r.Window, out var providerCanceledCancellation) &&
+                    !StatusCanceledPurgeCancellationCanceledValid(providerCanceledCancellation) ||
                 !StatusPendingPurgeHistoryValid(r);
             r.SelectedRevoked = true;
             r.Window.Closed = true;
@@ -1250,6 +3546,376 @@ internal sealed class ManagementOperationNativeCapture
         TryGetStatusPendingPurgeCancellationCleanup(window, binding, client, scope, receipt, startTask, handle,
             canceledTask, checkTask, cleanupTask, out var issued) && ReferenceEquals(proof, issued);
 
+    internal bool TryGetStatusCanceledPurgeStart(Window window, Binding binding, VaultAdministration client,
+        DeletedVaultScope scope, ManagementReceipt receipt, Task startTask, ManagementOperation handle,
+        [NotNullWhen(true)] out StatusCanceledPurgeStartProof? proof)
+    {
+        lock (gate)
+        {
+            proof = window is not null && statusCanceledPurges.TryGetValue(window, out var r) &&
+                StatusCanceledPurgeSelector(window.Binding.Selector) &&
+                StatusPendingPurgeIdentity(r.Run, window, binding, client, scope, receipt, startTask, handle) &&
+                r.Run.Start!.Drained.Task.IsCompletedSuccessfully &&
+                r.StartProof is { } issued && ReferenceEquals(issued.Binding, binding) &&
+                ReferenceEquals(issued.Target, r.Run.StartFacts!.Target) &&
+                ReferenceEquals(targets.GetValueOrDefault(window), issued.Target) ? issued : null;
+            return proof is not null;
+        }
+    }
+
+    internal bool TryGetStatusCanceledPurgeTerminalCancellation(Window window, Binding binding, VaultAdministration client,
+        DeletedVaultScope scope, ManagementReceipt receipt, Task startTask, ManagementOperation handle, Task checkTask,
+        [NotNullWhen(true)] out StatusCanceledPurgeTerminalCancellationProof? proof)
+    {
+        lock (gate)
+        {
+            proof = null;
+            if (!TryGetStatusCanceledPurgeStart(window, binding, client, scope, receipt, startTask, handle, out var start) ||
+                !statusCanceledPurges.TryGetValue(window, out var r) ||
+                r.Run.Selected is not { Phase: StatusPendingPurgePhase.TerminalCancellation, Finished: true,
+                    HookReturned: true, Success: true } selected ||
+                !selected.Drained.Task.IsCompletedSuccessfully || !ReferenceEquals(selected.NativeTask, checkTask) ||
+                !checkTask.IsCompletedSuccessfully || handle.State != NativeProvisioningState.Canceled ||
+                r.Run.Canceled is not null || r.Run.Cleanup is not null ||
+                r.TerminalCancellationProof is not { } issued || !ReferenceEquals(issued.Start, start))
+                return false;
+            proof = issued;
+            return true;
+        }
+    }
+
+    internal bool OwnsStatusCanceledPurgeStart(StatusCanceledPurgeStartProof proof, Window window, Binding binding,
+        VaultAdministration client, DeletedVaultScope scope, ManagementReceipt receipt, Task startTask, ManagementOperation handle) =>
+        TryGetStatusCanceledPurgeStart(window, binding, client, scope, receipt, startTask, handle, out var issued) &&
+        ReferenceEquals(proof, issued);
+
+    internal bool OwnsStatusCanceledPurgeTerminalCancellation(StatusCanceledPurgeTerminalCancellationProof proof,
+        Window window, Binding binding, VaultAdministration client, DeletedVaultScope scope, ManagementReceipt receipt,
+        Task startTask, ManagementOperation handle, Task checkTask) =>
+        TryGetStatusCanceledPurgeTerminalCancellation(window, binding, client, scope, receipt, startTask, handle, checkTask,
+            out var issued) && ReferenceEquals(proof, issued);
+
+    internal bool TryGetStatusCanceledPurgeIndependentStart(Window window, Binding binding, VaultAdministration client,
+        DeletedVaultScope scope, ManagementReceipt receipt, Task startTask, ManagementOperation handle,
+        [NotNullWhen(true)] out StatusCanceledPurgeIndependentStartProof? proof)
+    {
+        lock (gate)
+        {
+            proof = window is not null && statusCanceledPurgeIndependents.TryGetValue(window, out var r) &&
+                StatusCanceledPurgeIndependentSelector(window.Binding.Selector) &&
+                StatusPendingPurgeIdentity(r.Run, window, binding, client, scope, receipt, startTask, handle) &&
+                r.Run.Start!.Drained.Task.IsCompletedSuccessfully &&
+                r.StartProof is { } issued && ReferenceEquals(issued.Binding, binding) &&
+                ReferenceEquals(issued.Target, r.Run.StartFacts!.Target) &&
+                ReferenceEquals(targets.GetValueOrDefault(window), issued.Target) ? issued : null;
+            return proof is not null;
+        }
+    }
+
+    internal bool TryGetStatusCanceledPurgeIndependentTerminalCancellation(Window window, Binding binding, VaultAdministration client,
+        DeletedVaultScope scope, ManagementReceipt receipt, Task startTask, ManagementOperation handle, Task checkTask,
+        [NotNullWhen(true)] out StatusCanceledPurgeIndependentTerminalCancellationProof? proof)
+    {
+        lock (gate)
+        {
+            proof = null;
+            if (!TryGetStatusCanceledPurgeIndependentStart(window, binding, client, scope, receipt, startTask, handle, out var start) ||
+                !statusCanceledPurgeIndependents.TryGetValue(window, out var r) ||
+                r.Run.Selected is not { Phase: StatusPendingPurgePhase.TerminalCancellation, Finished: true,
+                    HookReturned: true, Success: true } selected ||
+                !selected.Drained.Task.IsCompletedSuccessfully || !ReferenceEquals(selected.NativeTask, checkTask) ||
+                !checkTask.IsCompletedSuccessfully || handle.State != NativeProvisioningState.Canceled ||
+                r.Run.Canceled is not null || r.Run.Cleanup is not null ||
+                r.TerminalCancellationProof is not { } issued || !ReferenceEquals(issued.Start, start))
+                return false;
+            proof = issued;
+            return true;
+        }
+    }
+
+    internal bool OwnsStatusCanceledPurgeIndependentStart(StatusCanceledPurgeIndependentStartProof proof, Window window, Binding binding,
+        VaultAdministration client, DeletedVaultScope scope, ManagementReceipt receipt, Task startTask, ManagementOperation handle) =>
+        TryGetStatusCanceledPurgeIndependentStart(window, binding, client, scope, receipt, startTask, handle, out var issued) &&
+        ReferenceEquals(proof, issued);
+
+    internal bool OwnsStatusCanceledPurgeIndependentTerminalCancellation(StatusCanceledPurgeIndependentTerminalCancellationProof proof,
+        Window window, Binding binding, VaultAdministration client, DeletedVaultScope scope, ManagementReceipt receipt,
+        Task startTask, ManagementOperation handle, Task checkTask) =>
+        TryGetStatusCanceledPurgeIndependentTerminalCancellation(window, binding, client, scope, receipt, startTask, handle, checkTask,
+            out var issued) && ReferenceEquals(proof, issued);
+
+    internal bool TryGetStatusFailedPurgeStart(Window window, Binding binding, VaultAdministration client,
+        DeletedVaultScope scope, ManagementReceipt receipt, Task startTask, ManagementOperation handle,
+        [NotNullWhen(true)] out StatusFailedPurgeStartProof? proof)
+    {
+        lock (gate)
+        {
+            proof = window is not null && statusFailedPurges.TryGetValue(window, out var r) &&
+                StatusFailedPurgeSelector(window.Binding.Selector) &&
+                StatusPendingPurgeIdentity(r.Run, window, binding, client, scope, receipt, startTask, handle) &&
+                r.Run.Start!.Drained.Task.IsCompletedSuccessfully &&
+                r.StartProof is { } issued && ReferenceEquals(issued.Binding, binding) &&
+                ReferenceEquals(issued.Target, r.Run.StartFacts!.Target) &&
+                ReferenceEquals(targets.GetValueOrDefault(window), issued.Target) ? issued : null;
+            return proof is not null;
+        }
+    }
+
+    internal bool TryGetStatusFailedPurgeTerminalFailure(Window window, Binding binding, VaultAdministration client,
+        DeletedVaultScope scope, ManagementReceipt receipt, Task startTask, ManagementOperation handle, Task checkTask,
+        [NotNullWhen(true)] out StatusFailedPurgeTerminalFailureProof? proof)
+    {
+        lock (gate)
+        {
+            proof = null;
+            if (!TryGetStatusFailedPurgeStart(window, binding, client, scope, receipt, startTask, handle, out var start) ||
+                !statusFailedPurges.TryGetValue(window, out var r) ||
+                r.Run.Selected is not { Phase: StatusPendingPurgePhase.TerminalFailure, Finished: true,
+                    HookReturned: true, Success: true } selected ||
+                !selected.Drained.Task.IsCompletedSuccessfully || !ReferenceEquals(selected.NativeTask, checkTask) ||
+                !checkTask.IsCompletedSuccessfully || handle.State != NativeProvisioningState.Failed ||
+                r.Run.Canceled is not null || r.Run.Cleanup is not null ||
+                r.TerminalFailureProof is not { } issued || !ReferenceEquals(issued.Start, start))
+                return false;
+            proof = issued;
+            return true;
+        }
+    }
+
+    internal bool OwnsStatusFailedPurgeStart(StatusFailedPurgeStartProof proof, Window window, Binding binding,
+        VaultAdministration client, DeletedVaultScope scope, ManagementReceipt receipt, Task startTask, ManagementOperation handle) =>
+        TryGetStatusFailedPurgeStart(window, binding, client, scope, receipt, startTask, handle, out var issued) &&
+        ReferenceEquals(proof, issued);
+
+    internal bool OwnsStatusFailedPurgeTerminalFailure(StatusFailedPurgeTerminalFailureProof proof, Window window, Binding binding,
+        VaultAdministration client, DeletedVaultScope scope, ManagementReceipt receipt, Task startTask,
+        ManagementOperation handle, Task checkTask) =>
+        TryGetStatusFailedPurgeTerminalFailure(window, binding, client, scope, receipt, startTask, handle, checkTask, out var issued) &&
+        ReferenceEquals(proof, issued);
+
+    internal bool TryGetStatusFailedPurgeIndependentStart(Window window, Binding binding, VaultAdministration client,
+        DeletedVaultScope scope, ManagementReceipt receipt, Task startTask, ManagementOperation handle,
+        [NotNullWhen(true)] out StatusFailedPurgeIndependentStartProof? proof)
+    {
+        lock (gate)
+        {
+            proof = window is not null && statusFailedPurgeIndependents.TryGetValue(window, out var r) &&
+                StatusFailedPurgeIndependentSelector(window.Binding.Selector) &&
+                StatusPendingPurgeIdentity(r.Run, window, binding, client, scope, receipt, startTask, handle) &&
+                r.Run.Start!.Drained.Task.IsCompletedSuccessfully &&
+                r.StartProof is { } issued && ReferenceEquals(issued.Binding, binding) &&
+                ReferenceEquals(issued.Target, r.Run.StartFacts!.Target) &&
+                ReferenceEquals(targets.GetValueOrDefault(window), issued.Target) ? issued : null;
+            return proof is not null;
+        }
+    }
+
+    internal bool TryGetStatusFailedPurgeIndependentTerminalFailure(Window window, Binding binding, VaultAdministration client,
+        DeletedVaultScope scope, ManagementReceipt receipt, Task startTask, ManagementOperation handle, Task checkTask,
+        [NotNullWhen(true)] out StatusFailedPurgeIndependentTerminalFailureProof? proof)
+    {
+        lock (gate)
+        {
+            proof = null;
+            if (!TryGetStatusFailedPurgeIndependentStart(window, binding, client, scope, receipt, startTask, handle, out var start) ||
+                !statusFailedPurgeIndependents.TryGetValue(window, out var r) ||
+                r.Run.Selected is not { Phase: StatusPendingPurgePhase.TerminalFailure, Finished: true,
+                    HookReturned: true, Success: true } selected ||
+                !selected.Drained.Task.IsCompletedSuccessfully || !ReferenceEquals(selected.NativeTask, checkTask) ||
+                !checkTask.IsCompletedSuccessfully || handle.State != NativeProvisioningState.Failed ||
+                r.Run.Canceled is not null || r.Run.Cleanup is not null ||
+                r.TerminalFailureProof is not { } issued || !ReferenceEquals(issued.Start, start))
+                return false;
+            proof = issued;
+            return true;
+        }
+    }
+
+    internal bool OwnsStatusFailedPurgeIndependentStart(StatusFailedPurgeIndependentStartProof proof, Window window, Binding binding,
+        VaultAdministration client, DeletedVaultScope scope, ManagementReceipt receipt, Task startTask, ManagementOperation handle) =>
+        TryGetStatusFailedPurgeIndependentStart(window, binding, client, scope, receipt, startTask, handle, out var issued) &&
+        ReferenceEquals(proof, issued);
+
+    internal bool OwnsStatusFailedPurgeIndependentTerminalFailure(StatusFailedPurgeIndependentTerminalFailureProof proof,
+        Window window, Binding binding, VaultAdministration client, DeletedVaultScope scope, ManagementReceipt receipt,
+        Task startTask, ManagementOperation handle, Task checkTask) =>
+        TryGetStatusFailedPurgeIndependentTerminalFailure(window, binding, client, scope, receipt, startTask, handle, checkTask, out var issued) &&
+        ReferenceEquals(proof, issued);
+
+    private static bool StatusFailedPurgeCancellationCanceledValid(StatusFailedPurgeCancellationRegistration registration)
+    {
+        var r = registration.Run;
+        return registration.StartProof is not null && registration.CanceledProof is { } proof &&
+            ReferenceEquals(proof.Start, registration.StartProof) &&
+            r.Canceled is { Finished: true, HookReturned: true, Success: true, CancellationObserved: true,
+                FactoryActive: false, Sending: false, Factories: 0, SendCount: 0 } slot &&
+            slot.Drained.Task.IsCompletedSuccessfully && slot.Token.IsCancellationRequested &&
+            slot.NativeTask is { IsCanceled: true } && slot.Requests.Count == 0 &&
+            slot.Sends.Count == 0 && slot.Responses.Count == 0;
+    }
+
+    internal bool TryGetStatusFailedPurgeCancellationStart(Window window, Binding binding, VaultAdministration client,
+        DeletedVaultScope scope, ManagementReceipt receipt, Task startTask, ManagementOperation handle,
+        [NotNullWhen(true)] out StatusFailedPurgeCancellationStartProof? proof)
+    {
+        lock (gate)
+        {
+            proof = window is not null && statusFailedPurgeCancellations.TryGetValue(window, out var r) &&
+                StatusFailedPurgeCancellationSelector(window.Binding.Selector) &&
+                StatusPendingPurgeIdentity(r.Run, window, binding, client, scope, receipt, startTask, handle) &&
+                r.Run.Start!.Drained.Task.IsCompletedSuccessfully &&
+                r.StartProof is { } issued && ReferenceEquals(issued.Binding, binding) &&
+                ReferenceEquals(issued.Target, r.Run.StartFacts!.Target) &&
+                ReferenceEquals(targets.GetValueOrDefault(window), issued.Target) ? issued : null;
+            return proof is not null;
+        }
+    }
+
+    internal bool TryGetStatusFailedPurgeCancellationCanceled(Window window, Binding binding, VaultAdministration client,
+        DeletedVaultScope scope, ManagementReceipt receipt, Task startTask, ManagementOperation handle, Task canceledTask,
+        [NotNullWhen(true)] out StatusFailedPurgeCancellationCanceledProof? proof)
+    {
+        lock (gate)
+        {
+            proof = null;
+            if (!TryGetStatusFailedPurgeCancellationStart(window, binding, client, scope, receipt, startTask, handle, out var start) ||
+                !statusFailedPurgeCancellations.TryGetValue(window, out var r) ||
+                !StatusFailedPurgeCancellationCanceledValid(r) || !ReferenceEquals(r.Run.Canceled!.NativeTask, canceledTask) ||
+                r.CanceledProof is not { } issued || !ReferenceEquals(issued.Start, start))
+                return false;
+            proof = issued;
+            return true;
+        }
+    }
+
+    internal bool TryGetStatusFailedPurgeCancellationTerminalFailure(Window window, Binding binding, VaultAdministration client,
+        DeletedVaultScope scope, ManagementReceipt receipt, Task startTask, ManagementOperation handle, Task canceledTask,
+        Task checkTask, [NotNullWhen(true)] out StatusFailedPurgeCancellationTerminalFailureProof? proof)
+    {
+        lock (gate)
+        {
+            proof = null;
+            if (!TryGetStatusFailedPurgeCancellationCanceled(window, binding, client, scope, receipt, startTask,
+                    handle, canceledTask, out var canceled) ||
+                !statusFailedPurgeCancellations.TryGetValue(window, out var r) ||
+                r.Run.Selected is not { Phase: StatusPendingPurgePhase.TerminalFailure, Finished: true,
+                    HookReturned: true, Success: true } selected ||
+                !selected.Drained.Task.IsCompletedSuccessfully || !ReferenceEquals(selected.NativeTask, checkTask) ||
+                !checkTask.IsCompletedSuccessfully || ReferenceEquals(canceledTask, checkTask) ||
+                handle.State != NativeProvisioningState.Failed || r.Run.Cleanup is not null ||
+                r.TerminalFailureProof is not { } issued || !ReferenceEquals(issued.Start, r.StartProof) ||
+                !ReferenceEquals(issued.Canceled, canceled))
+                return false;
+            proof = issued;
+            return true;
+        }
+    }
+
+    internal bool OwnsStatusFailedPurgeCancellationStart(StatusFailedPurgeCancellationStartProof proof,
+        Window window, Binding binding, VaultAdministration client, DeletedVaultScope scope, ManagementReceipt receipt,
+        Task startTask, ManagementOperation handle) =>
+        TryGetStatusFailedPurgeCancellationStart(window, binding, client, scope, receipt, startTask, handle, out var issued) &&
+        ReferenceEquals(proof, issued);
+
+    internal bool OwnsStatusFailedPurgeCancellationCanceled(StatusFailedPurgeCancellationCanceledProof proof,
+        Window window, Binding binding, VaultAdministration client, DeletedVaultScope scope, ManagementReceipt receipt,
+        Task startTask, ManagementOperation handle, Task canceledTask) =>
+        TryGetStatusFailedPurgeCancellationCanceled(window, binding, client, scope, receipt, startTask, handle,
+            canceledTask, out var issued) && ReferenceEquals(proof, issued);
+
+    internal bool OwnsStatusFailedPurgeCancellationTerminalFailure(StatusFailedPurgeCancellationTerminalFailureProof proof,
+        Window window, Binding binding, VaultAdministration client, DeletedVaultScope scope, ManagementReceipt receipt,
+        Task startTask, ManagementOperation handle, Task canceledTask, Task checkTask) =>
+        TryGetStatusFailedPurgeCancellationTerminalFailure(window, binding, client, scope, receipt, startTask, handle,
+            canceledTask, checkTask, out var issued) && ReferenceEquals(proof, issued);
+
+    private static bool StatusCanceledPurgeCancellationCanceledValid(StatusCanceledPurgeCancellationRegistration registration)
+    {
+        var r = registration.Run;
+        return registration.StartProof is not null && registration.CanceledProof is { } proof &&
+            ReferenceEquals(proof.Start, registration.StartProof) &&
+            r.Canceled is { Finished: true, HookReturned: true, Success: true, CancellationObserved: true,
+                FactoryActive: false, Sending: false, Factories: 0, SendCount: 0 } slot &&
+            slot.Drained.Task.IsCompletedSuccessfully && slot.Token.IsCancellationRequested &&
+            slot.NativeTask is { IsCanceled: true } && slot.Requests.Count == 0 &&
+            slot.Sends.Count == 0 && slot.Responses.Count == 0;
+    }
+
+    internal bool TryGetStatusCanceledPurgeCancellationStart(Window window, Binding binding, VaultAdministration client,
+        DeletedVaultScope scope, ManagementReceipt receipt, Task startTask, ManagementOperation handle,
+        [NotNullWhen(true)] out StatusCanceledPurgeCancellationStartProof? proof)
+    {
+        lock (gate)
+        {
+            proof = window is not null && statusCanceledPurgeCancellations.TryGetValue(window, out var r) &&
+                StatusCanceledPurgeCancellationSelector(window.Binding.Selector) &&
+                StatusPendingPurgeIdentity(r.Run, window, binding, client, scope, receipt, startTask, handle) &&
+                r.Run.Start!.Drained.Task.IsCompletedSuccessfully &&
+                r.StartProof is { } issued && ReferenceEquals(issued.Binding, binding) &&
+                ReferenceEquals(issued.Target, r.Run.StartFacts!.Target) &&
+                ReferenceEquals(targets.GetValueOrDefault(window), issued.Target) ? issued : null;
+            return proof is not null;
+        }
+    }
+
+    internal bool TryGetStatusCanceledPurgeCancellationCanceled(Window window, Binding binding, VaultAdministration client,
+        DeletedVaultScope scope, ManagementReceipt receipt, Task startTask, ManagementOperation handle, Task canceledTask,
+        [NotNullWhen(true)] out StatusCanceledPurgeCancellationCanceledProof? proof)
+    {
+        lock (gate)
+        {
+            proof = null;
+            if (!TryGetStatusCanceledPurgeCancellationStart(window, binding, client, scope, receipt, startTask, handle, out var start) ||
+                !statusCanceledPurgeCancellations.TryGetValue(window, out var r) ||
+                !StatusCanceledPurgeCancellationCanceledValid(r) || !ReferenceEquals(r.Run.Canceled!.NativeTask, canceledTask) ||
+                r.CanceledProof is not { } issued || !ReferenceEquals(issued.Start, start))
+                return false;
+            proof = issued;
+            return true;
+        }
+    }
+
+    internal bool TryGetStatusCanceledPurgeCancellationTerminalCancellation(Window window, Binding binding, VaultAdministration client,
+        DeletedVaultScope scope, ManagementReceipt receipt, Task startTask, ManagementOperation handle, Task canceledTask,
+        Task checkTask, [NotNullWhen(true)] out StatusCanceledPurgeCancellationTerminalCancellationProof? proof)
+    {
+        lock (gate)
+        {
+            proof = null;
+            if (!TryGetStatusCanceledPurgeCancellationCanceled(window, binding, client, scope, receipt, startTask,
+                    handle, canceledTask, out var canceled) ||
+                !statusCanceledPurgeCancellations.TryGetValue(window, out var r) ||
+                r.Run.Selected is not { Phase: StatusPendingPurgePhase.TerminalCancellation, Finished: true,
+                    HookReturned: true, Success: true } selected ||
+                !selected.Drained.Task.IsCompletedSuccessfully || !ReferenceEquals(selected.NativeTask, checkTask) ||
+                !checkTask.IsCompletedSuccessfully || ReferenceEquals(canceledTask, checkTask) ||
+                handle.State != NativeProvisioningState.Canceled || r.Run.Cleanup is not null ||
+                r.TerminalCancellationProof is not { } issued || !ReferenceEquals(issued.Start, r.StartProof) ||
+                !ReferenceEquals(issued.Canceled, canceled))
+                return false;
+            proof = issued;
+            return true;
+        }
+    }
+
+    internal bool OwnsStatusCanceledPurgeCancellationStart(StatusCanceledPurgeCancellationStartProof proof,
+        Window window, Binding binding, VaultAdministration client, DeletedVaultScope scope, ManagementReceipt receipt,
+        Task startTask, ManagementOperation handle) =>
+        TryGetStatusCanceledPurgeCancellationStart(window, binding, client, scope, receipt, startTask, handle, out var issued) &&
+        ReferenceEquals(proof, issued);
+
+    internal bool OwnsStatusCanceledPurgeCancellationCanceled(StatusCanceledPurgeCancellationCanceledProof proof,
+        Window window, Binding binding, VaultAdministration client, DeletedVaultScope scope, ManagementReceipt receipt,
+        Task startTask, ManagementOperation handle, Task canceledTask) =>
+        TryGetStatusCanceledPurgeCancellationCanceled(window, binding, client, scope, receipt, startTask, handle,
+            canceledTask, out var issued) && ReferenceEquals(proof, issued);
+
+    internal bool OwnsStatusCanceledPurgeCancellationTerminalCancellation(StatusCanceledPurgeCancellationTerminalCancellationProof proof,
+        Window window, Binding binding, VaultAdministration client, DeletedVaultScope scope, ManagementReceipt receipt,
+        Task startTask, ManagementOperation handle, Task canceledTask, Task checkTask) =>
+        TryGetStatusCanceledPurgeCancellationTerminalCancellation(window, binding, client, scope, receipt, startTask, handle,
+            canceledTask, checkTask, out var issued) && ReferenceEquals(proof, issued);
+
     private async Task SendStatusPendingPurgeAsync(StatusPendingPurgeContext context, HttpMessage message)
     {
         var r = context.Registration;
@@ -1318,17 +3984,37 @@ internal sealed class ManagementOperationNativeCapture
             int nodes = 512;
             JsonRows(json.RootElement, ref nodes);
             var root = json.RootElement;
-            Require(root.ValueKind == JsonValueKind.Object &&
-                root.EnumerateObject().All(p => p.Name is "id" or "status" or "properties"));
+            bool terminalFailure = slot.Phase == StatusPendingPurgePhase.TerminalFailure;
+            bool terminalCancellation = slot.Phase == StatusPendingPurgePhase.TerminalCancellation;
+            Require(root.ValueKind == JsonValueKind.Object);
             if (root.TryGetProperty("id", out var id))
                 Require(id.GetString() == (start ? r.Window.Path : r.StartFacts!.Target.TargetUri.AbsolutePath));
-            bool direct = root.TryGetProperty("status", out var state);
-            bool nested = root.TryGetProperty("properties", out var properties);
-            Require(direct != nested);
-            if (nested) Require(properties.ValueKind == JsonValueKind.Object &&
-                properties.EnumerateObject().All(p => p.Name == "provisioningState"));
-            Require((direct ? state.GetString() : properties.GetProperty("provisioningState").GetString()) ==
-                (slot.Phase == StatusPendingPurgePhase.Cleanup ? "Succeeded" : "InProgress"));
+            if (terminalFailure || terminalCancellation)
+            {
+                Require(root.EnumerateObject().All(p => p.Name is "id" or "status" or "error") &&
+                    root.TryGetProperty("status", out var state) && state.ValueKind == JsonValueKind.String &&
+                    state.GetString() == (terminalCancellation ? "Canceled" : "Failed"));
+                if (root.TryGetProperty("error", out var error))
+                {
+                    Require(error.ValueKind == JsonValueKind.Object &&
+                        error.EnumerateObject().All(p => p.Name is "code" or "message") &&
+                        error.TryGetProperty("code", out var code) && code.ValueKind == JsonValueKind.String &&
+                        code.GetString() is { Length: > 0 and <= 128 } errorCode && !errorCode.Any(char.IsControl) &&
+                        error.TryGetProperty("message", out var text) && text.ValueKind == JsonValueKind.String &&
+                        text.GetString() is { Length: > 0 and <= 2048 } errorMessage && !errorMessage.Any(char.IsControl));
+                }
+            }
+            else
+            {
+                Require(root.EnumerateObject().All(p => p.Name is "id" or "status" or "properties"));
+                bool direct = root.TryGetProperty("status", out var state);
+                bool nested = root.TryGetProperty("properties", out var properties);
+                Require(direct != nested);
+                if (nested) Require(properties.ValueKind == JsonValueKind.Object &&
+                    properties.EnumerateObject().All(p => p.Name == "provisioningState"));
+                Require((direct ? state.GetString() : properties.GetProperty("provisioningState").GetString()) ==
+                    (slot.Phase == StatusPendingPurgePhase.Cleanup ? "Succeeded" : "InProgress"));
+            }
             if (start)
             {
                 byte[] targetBytes = System.Text.Encoding.UTF8.GetBytes(next!);
@@ -1358,7 +4044,8 @@ internal sealed class ManagementOperationNativeCapture
                 attempt.ResponseSha256 = body.Sha256;
                 attempt.ResponseObserved = true;
                 attempt.HasProviderContinuation = next is not null;
-                attempt.State = slot.Phase == StatusPendingPurgePhase.Cleanup ? WireState.Succeeded : WireState.Pending;
+                attempt.State = terminalCancellation ? WireState.Canceled : terminalFailure ? WireState.Failed :
+                    slot.Phase == StatusPendingPurgePhase.Cleanup ? WireState.Succeeded : WireState.Pending;
                 attempt.Valid = true;
             }
             Check();
@@ -1967,6 +4654,2355 @@ internal sealed class ManagementOperationNativeCapture
                 requireRebuffer: true, requireDownstreamRead: false);
         }
         catch { r.Invalid = true; throw; }
+    }
+
+    internal sealed class StatusUnknownNotificationUpdateCancellationStartProof(Binding binding, Guid startDispatch,
+        int httpStatus, int responseBytes, string requestSha256, string responseSha256, string nativeRequestId)
+    {
+        internal Binding Binding { get; } = binding;
+        internal Guid StartDispatch { get; } = startDispatch;
+        internal int HttpStatus { get; } = httpStatus;
+        internal int ResponseBytes { get; } = responseBytes;
+        internal string RequestSha256 { get; } = requestSha256;
+        internal string ResponseSha256 { get; } = responseSha256;
+        internal string NativeRequestId { get; } = nativeRequestId;
+        public override string ToString() => "[StatusUnknownNotificationUpdateCancellationStartProof]";
+    }
+
+    internal sealed class StatusUnknownNotificationUpdateCancellationCanceledProof
+    {
+        internal StatusUnknownNotificationUpdateCancellationCanceledProof(ManagementOperationNativeCapture source,
+            StatusUnknownNotificationUpdateCancellationStartProof start, Task canceledTask)
+        {
+            Start = start;
+            CanceledTask = canceledTask;
+        }
+        internal StatusUnknownNotificationUpdateCancellationStartProof Start { get; }
+        internal Task CanceledTask { get; }
+        public override string ToString() => "[StatusUnknownNotificationUpdateCancellationCanceledProof]";
+    }
+
+    // The paired calls prove local Unknown completion, never remote termination.
+    internal sealed class StatusUnknownNotificationUpdateCancellationCompletionProof(StatusUnknownNotificationUpdateCancellationStartProof start,
+        StatusUnknownNotificationUpdateCancellationCanceledProof canceled)
+    {
+        internal StatusUnknownNotificationUpdateCancellationStartProof Start { get; } = start;
+        internal StatusUnknownNotificationUpdateCancellationCanceledProof Canceled { get; } = canceled;
+        public override string ToString() => "[StatusUnknownNotificationUpdateCancellationCompletionProof]";
+    }
+
+    private sealed class StatusUnknownNotificationUpdateCancellationRegistration(Window window, Invocation start,
+        VaultAdministration client, NotificationScope scope, ManagementReceipt receipt, CancellationToken token,
+        Action? beforeSend)
+    {
+        internal readonly Window Window = window;
+        internal readonly Binding Binding = window.Binding;
+        internal readonly Invocation Start = start;
+        internal readonly VaultAdministration Client = client;
+        internal readonly NotificationScope Scope = scope;
+        internal readonly ManagementReceipt Receipt = receipt;
+        internal readonly CancellationToken StartToken = token;
+        internal readonly Action? BeforeSend = beforeSend;
+        internal readonly OwnedArmResponse.Storage Storage = new();
+        internal readonly TaskCompletionSource Started = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal readonly TaskCompletionSource Checked = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal readonly TaskCompletionSource CanceledDrained = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal readonly List<OwnedArmResponse.ParserCustody> Parsers = [];
+        internal NotificationConfiguration Configuration = null!;
+        internal StatusTarget? Target;
+        internal StatusVaultCancellationWire? StatusWire;
+        internal int StatusSends;
+        internal StatusVaultCancellationWire? Wire;
+        internal StatusUnknownNotificationUpdateCancellationStartProof? Candidate, StartProof;
+        internal StatusUnknownNotificationUpdateCancellationCompletionProof? Completion;
+        internal StatusUnknownNotificationUpdateCancellationCanceledProof? CanceledProof;
+        internal Invocation? Canceled;
+        internal Task<SecretStatus>? CanceledTask;
+        internal CancellationToken CanceledToken;
+        internal int CanceledFactories, CanceledSends;
+        internal bool CanceledClaimed, CanceledHookReturned, CancellationObserved, CanceledComplete;
+        internal Task<SecretOutcome<ManagementOperation>>? StartTask;
+        internal Task<SecretStatus>? StatusTask;
+        internal Task<Capture>? SealTask;
+        internal Invocation? Status;
+        internal ManagementOperation? Handle;
+        internal CancellationToken StatusToken, StatusCallerToken;
+        internal int Sends;
+        internal bool Invalid, Sealed, StartHookReturned, StartSucceeded, TransportSucceeded, StartComplete;
+        internal bool CheckClaimed, StatusHookReturned, StatusCompleted, Complete;
+    }
+
+    private readonly Dictionary<Window, StatusUnknownNotificationUpdateCancellationRegistration> statusUnknownNotificationUpdateCancellation =
+        new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<Invocation, StatusUnknownNotificationUpdateCancellationRegistration> statusUnknownNotificationUpdateCancellationInvocations =
+        new(ReferenceEqualityComparer.Instance);
+
+    internal bool TryGetStatusUnknownNotificationUpdateCancellationStart(Window window, Binding binding,
+        VaultAdministration client, NotificationScope scope, ManagementReceipt receipt, Task startTask,
+        ManagementOperation handle, [NotNullWhen(true)] out StatusUnknownNotificationUpdateCancellationStartProof? proof)
+    {
+        lock (gate)
+        {
+            proof = null;
+            if (window is null || !statusUnknownNotificationUpdateCancellation.TryGetValue(window, out var r) ||
+                !NotificationFixtureProvisioner.StatusUnknownNotificationUpdateCancellationSelector(binding.Selector) ||
+                !ReferenceEquals(r.Binding, binding) || !ReferenceEquals(r.Client, client) ||
+                !ReferenceEquals(r.Scope, scope) || !ReferenceEquals(r.Receipt, receipt) ||
+                !ReferenceEquals(r.StartTask, startTask) || !ReferenceEquals(r.Handle, handle) ||
+                !StatusUnknownNotificationUpdateCancellationStartValid(r) ||
+                receipt.Evidence != DispatchEvidence.Pending ||
+                !(handle.State == NativeProvisioningState.Pending || r.Complete && handle.State == NativeProvisioningState.Unknown) ||
+                !ReferenceEquals(targets.GetValueOrDefault(window), r.Target)) return false;
+            proof = r.StartProof;
+            return proof is not null;
+        }
+    }
+
+    internal bool TryGetStatusUnknownNotificationUpdateCancellationCompletion(Window window, Binding binding,
+        VaultAdministration client, NotificationScope scope, ManagementReceipt receipt, Task startTask,
+        ManagementOperation handle, Task canceledTask, Task checkTask,
+        [NotNullWhen(true)] out StatusUnknownNotificationUpdateCancellationCompletionProof? proof)
+    {
+        lock (gate)
+        {
+            proof = null;
+            if (!TryGetStatusUnknownNotificationUpdateCancellationCanceled(window, binding, client, scope, receipt,
+                    startTask, handle, canceledTask, out var canceled) || !statusUnknownNotificationUpdateCancellation.TryGetValue(window, out var r) ||
+                !ReferenceEquals(r.StatusTask, checkTask) || !r.Complete ||
+                !ReferenceEquals(r.Completion?.Canceled, canceled) ||
+                !r.Checked.Task.IsCompletedSuccessfully || r.StatusTask is not { IsCompletedSuccessfully: true } ||
+                r.StatusToken.IsCancellationRequested || r.StatusCallerToken.IsCancellationRequested ||
+                handle.State != NativeProvisioningState.Unknown || receipt.Evidence != DispatchEvidence.Pending) return false;
+            proof = r.Completion;
+            return proof is not null;
+        }
+    }
+
+    private static bool StatusUnknownNotificationUpdateCancellationCanceledValid(StatusUnknownNotificationUpdateCancellationRegistration r) =>
+        StatusUnknownNotificationUpdateCancellationStartValid(r) && r.CanceledComplete && r.CanceledProof is not null &&
+        r.CanceledDrained.Task.IsCompletedSuccessfully && r.Canceled is { Terminated: true, Canceled: true } &&
+        r.Canceled.Drained.Task.IsCompletedSuccessfully && r.CanceledTask is { IsCanceled: true } &&
+        ReferenceEquals(r.Canceled.SdkTask, r.CanceledTask) &&
+        ReferenceEquals(r.CanceledProof.Start, r.StartProof) &&
+        ReferenceEquals(r.CanceledProof.CanceledTask, r.CanceledTask) &&
+        r.CanceledToken.IsCancellationRequested && r.CanceledHookReturned && r.CancellationObserved &&
+        r.CanceledFactories == 0 && r.CanceledSends == 0 && r.Canceled.Attempts.Count == 0;
+
+    internal bool TryGetStatusUnknownNotificationUpdateCancellationCanceled(Window window, Binding binding,
+        VaultAdministration client, NotificationScope scope, ManagementReceipt receipt, Task startTask,
+        ManagementOperation handle, Task canceledTask,
+        [NotNullWhen(true)] out StatusUnknownNotificationUpdateCancellationCanceledProof? proof)
+    {
+        lock (gate)
+        {
+            proof = null;
+            if (!TryGetStatusUnknownNotificationUpdateCancellationStart(window, binding, client, scope, receipt,
+                    startTask, handle, out var start) || !statusUnknownNotificationUpdateCancellation.TryGetValue(window, out var r) ||
+                !StatusUnknownNotificationUpdateCancellationCanceledValid(r) || !ReferenceEquals(r.CanceledTask, canceledTask) ||
+                !ReferenceEquals(r.CanceledProof?.Start, start)) return false;
+            proof = r.CanceledProof;
+            return proof is not null;
+        }
+    }
+
+    internal bool OwnsStatusUnknownNotificationUpdateCancellationStart(StatusUnknownNotificationUpdateCancellationStartProof proof,
+        Window window, Binding binding, VaultAdministration client, NotificationScope scope,
+        ManagementReceipt receipt, Task startTask, ManagementOperation handle) =>
+        TryGetStatusUnknownNotificationUpdateCancellationStart(window, binding, client, scope, receipt, startTask, handle, out var issued) &&
+        ReferenceEquals(proof, issued);
+
+    internal bool OwnsStatusUnknownNotificationUpdateCancellationCanceled(StatusUnknownNotificationUpdateCancellationCanceledProof proof,
+        Window window, Binding binding, VaultAdministration client, NotificationScope scope,
+        ManagementReceipt receipt, Task startTask, ManagementOperation handle, Task canceledTask) =>
+        TryGetStatusUnknownNotificationUpdateCancellationCanceled(window, binding, client, scope, receipt, startTask, handle,
+            canceledTask, out var issued) && ReferenceEquals(proof, issued);
+
+    internal bool OwnsStatusUnknownNotificationUpdateCancellationCompletion(StatusUnknownNotificationUpdateCancellationCompletionProof proof,
+        Window window, Binding binding, VaultAdministration client, NotificationScope scope,
+        ManagementReceipt receipt, Task startTask, ManagementOperation handle, Task canceledTask, Task checkTask) =>
+        TryGetStatusUnknownNotificationUpdateCancellationCompletion(window, binding, client, scope, receipt, startTask, handle,
+            canceledTask, checkTask, out var issued) && ReferenceEquals(proof, issued);
+
+    internal async ValueTask<SecretStatus> CheckStatusUnknownNotificationUpdateCancellationCanceledAsync(Window window, FixtureSelector selector,
+        ManagementOperation handle, CancellationToken canceledToken, Action<Task>? retained = null)
+    {
+        StatusUnknownNotificationUpdateCancellationRegistration r;
+        Invocation invocation;
+        lock (gate)
+        {
+            Own(window, selector);
+            Require(statusUnknownNotificationUpdateCancellation.TryGetValue(window, out r!) &&
+                handle is not null && ReferenceEquals(r.Handle, handle));
+            bool valid = !r.CanceledClaimed && !r.CheckClaimed && !window.Closed && window.Status is null &&
+                StatusUnknownNotificationUpdateCancellationStartValid(r) && canceledToken.IsCancellationRequested &&
+                handle.State == NativeProvisioningState.Pending && r.Receipt.Evidence == DispatchEvidence.Pending;
+            r.CanceledClaimed = true;
+            r.Invalid |= !valid;
+            Require(valid);
+            invocation = r.Canceled = new();
+            r.CanceledToken = canceledToken;
+            statusUnknownNotificationUpdateCancellationInvocations.Add(invocation, r);
+        }
+        try
+        {
+            Task<SecretStatus> task;
+            var previous = current.Value;
+            current.Value = new(window, invocation, true);
+            try { task = handle.CheckStatusAsync(canceledToken).AsTask(); }
+            finally { current.Value = previous; }
+            lock (gate) invocation.SdkTask = r.CanceledTask = task;
+            try
+            {
+                retained?.Invoke(task);
+                lock (gate) r.CanceledHookReturned = true;
+            }
+            finally
+            {
+                try { await task.ConfigureAwait(false); }
+                catch (OperationCanceledException) when (canceledToken.IsCancellationRequested && task.IsCanceled)
+                {
+                    lock (gate)
+                    {
+                        // Only awaiting the actual SDK task records this expected OCE.
+                        r.CancellationObserved = invocation.Canceled = true;
+                        invocation.WrapperState = handle.State;
+                    }
+                    throw;
+                }
+            }
+            lock (gate) r.Invalid = true;
+            throw new InvalidOperationException("management-capture-boundary");
+        }
+        catch (OperationCanceledException)
+        {
+            lock (gate) r.Invalid |= !r.CancellationObserved || !r.CanceledHookReturned;
+            throw;
+        }
+        catch
+        {
+            lock (gate) r.Invalid = true;
+            throw;
+        }
+        finally { await FinishStatusUnknownNotificationUpdateCancellationAsync(r, invocation).ConfigureAwait(false); }
+    }
+
+    private static bool StatusUnknownNotificationUpdateCancellationStartValid(StatusUnknownNotificationUpdateCancellationRegistration r) =>
+        !r.Invalid && !r.Sealed && r.StartComplete && r.StartProof is not null &&
+        r.Started.Task.IsCompletedSuccessfully && r.StartTask is { IsCompletedSuccessfully: true } &&
+        !r.StartToken.IsCancellationRequested &&
+        (!r.CheckClaimed || !r.StatusToken.IsCancellationRequested && !r.StatusCallerToken.IsCancellationRequested);
+
+    internal async Task<SecretOutcome<ManagementOperation>> StartStatusUnknownNotificationUpdateCancellationAsync(
+        Window window, FixtureSelector selector, VaultAdministration client, ManagementScope scope,
+        ManagementOperationEffects.Input input, ManagementReceipt receipt, CancellationToken token = default,
+        Action<Task>? retained = null, Action? beforeSend = null)
+    {
+        StatusUnknownNotificationUpdateCancellationRegistration r;
+        lock (gate)
+        {
+            Own(window, selector);
+            Require(client is not null && receipt is not null && scope is NotificationScope &&
+                NotificationFixtureProvisioner.StatusUnknownNotificationUpdateCancellationSelector(selector) &&
+                window.Binding.Operation == ManagementMutation.UpdateNotification &&
+                window.Binding.ApiRevision == "2025-02-15" && InputMatches(window.Binding, input) &&
+                Route(window.Binding with { Resource = scope }) == Route(window.Binding));
+            if (statusUnknownNotificationUpdateCancellation.TryGetValue(window, out var existing))
+            {
+                Require(ReferenceEquals(existing.Client, client) && ReferenceEquals(existing.Scope, scope) &&
+                    ReferenceEquals(existing.Receipt, receipt));
+                existing.Invalid = true;
+                throw new InvalidOperationException("management-capture-boundary");
+            }
+            Require(!window.Closed && window.Start is null && startedWindows.Add(window) && !token.IsCancellationRequested);
+            var invocation = window.Start = new();
+            r = new(window, invocation, client, (NotificationScope)scope, receipt, token, beforeSend)
+            { Configuration = new(input.WebhookUrl, [VaultNotificationEvent.SecretNewVersionCreated], []) };
+            statusUnknownNotificationUpdateCancellation.Add(window, r);
+            statusUnknownNotificationUpdateCancellationInvocations.Add(invocation, r);
+        }
+        try
+        {
+            Task<SecretOutcome<ManagementOperation>> task;
+            var previous = current.Value;
+            current.Value = new(window, r.Start, false);
+            try { task = ManagementOperationEffects.StartAsync(client, scope, window.Binding.Operation, input, receipt, token).AsTask(); }
+            finally { current.Value = previous; }
+            lock (gate) r.Start.SdkTask = r.StartTask = task;
+            try
+            {
+                retained?.Invoke(task);
+                lock (gate) r.StartHookReturned = true;
+            }
+            finally
+            {
+                var result = await task.ConfigureAwait(false);
+                lock (gate)
+                {
+                    r.Start.Outcome = result.Status;
+                    r.Handle = result.IsSuccess ? result.Value : null;
+                    r.Start.WrapperState = r.Handle?.State;
+                    r.StartSucceeded = task.IsCompletedSuccessfully && result.IsSuccess &&
+                        r.Handle!.State == NativeProvisioningState.Pending && receipt.Evidence == DispatchEvidence.Pending;
+
+                    r.Start.HasNativeHandle = r.StartSucceeded;
+                }
+            }
+            return await task.ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            lock (gate) { r.Invalid = true; r.Start.Canceled = true; }
+            throw;
+        }
+        catch
+        {
+            lock (gate) r.Invalid = true;
+            throw;
+        }
+        finally { await FinishStatusUnknownNotificationUpdateCancellationAsync(r, r.Start).ConfigureAwait(false); }
+    }
+
+    private async Task<SecretStatus> CheckStatusUnknownNotificationUpdateCancellationAsync(Window window, FixtureSelector selector,
+        ManagementOperation handle, CancellationToken token, Action<Task>? retained, CancellationToken originalCallerToken)
+    {
+        StatusUnknownNotificationUpdateCancellationRegistration r;
+        Invocation invocation;
+        lock (gate)
+        {
+            Own(window, selector);
+            Require(statusUnknownNotificationUpdateCancellation.TryGetValue(window, out r!) &&
+                handle is not null && ReferenceEquals(r.Handle, handle));
+            bool valid = StatusUnknownNotificationUpdateCancellationCanceledValid(r) &&
+                !r.CheckClaimed && !window.Closed && window.Status is null &&
+                StatusUnknownNotificationUpdateCancellationStartValid(r) && !token.IsCancellationRequested && !originalCallerToken.IsCancellationRequested &&
+                handle.State == NativeProvisioningState.Pending && r.Receipt.Evidence == DispatchEvidence.Pending;
+            r.CheckClaimed = true;
+            r.Invalid |= !valid;
+            Require(valid);
+            invocation = r.Status = window.Status = new();
+            r.StatusToken = token;
+            r.StatusCallerToken = originalCallerToken;
+            statusUnknownNotificationUpdateCancellationInvocations.Add(invocation, r);
+        }
+        try
+        {
+            Task<SecretStatus> task;
+            var previous = current.Value;
+            current.Value = new(window, invocation, true);
+            try { task = handle.CheckStatusAsync(token).AsTask(); }
+            finally { current.Value = previous; }
+            lock (gate) invocation.SdkTask = r.StatusTask = task;
+            try
+            {
+                retained?.Invoke(task);
+                lock (gate) r.StatusHookReturned = true;
+            }
+            finally
+            {
+                var outcome = await task.ConfigureAwait(false);
+                lock (gate)
+                {
+                    invocation.Outcome = outcome;
+                    invocation.WrapperState = handle.State;
+                    r.StatusCompleted = task.IsCompletedSuccessfully && outcome == SecretStatus.Unknown &&
+                        handle.State == NativeProvisioningState.Unknown;
+                }
+            }
+            return await task.ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            lock (gate) { r.Invalid = true; invocation.Canceled = true; }
+            throw;
+        }
+        catch
+        {
+            lock (gate) r.Invalid = true;
+            throw;
+        }
+        finally { await FinishStatusUnknownNotificationUpdateCancellationAsync(r, invocation).ConfigureAwait(false); }
+    }
+
+    private async Task FinishStatusUnknownNotificationUpdateCancellationAsync(StatusUnknownNotificationUpdateCancellationRegistration r,
+        Invocation invocation)
+    {
+        bool start = ReferenceEquals(r.Start, invocation);
+        bool canceled = ReferenceEquals(r.Canceled, invocation);
+        Task<Task>? borrower;
+        lock (gate)
+        {
+            Task? actual = start ? r.StartTask : canceled ? r.CanceledTask : r.StatusTask;
+            Require(actual is null || actual.IsCompleted);
+            finishing.Add(invocation);
+            borrower = borrowers.TryGetValue(invocation, out var pending) ? pending.Task : null;
+        }
+        if (borrower is not null)
+        {
+            var actual = await borrower.ConfigureAwait(false);
+            try { await actual.ConfigureAwait(false); }
+            catch { lock (gate) r.Invalid = true; }
+        }
+        bool custodyValid, disposalFailed = false;
+        try { custodyValid = r.Parsers.Count == (start || canceled ? 1 : 2) && r.Parsers.All(p => p.Complete && !p.Invalid); }
+        catch { custodyValid = false; }
+        if (!start && !canceled)
+        {
+            try { r.Storage.Dispose(); }
+            catch { disposalFailed = true; }
+            try { custodyValid &= r.Parsers.All(p => p.Complete && !p.Invalid); }
+            catch { custodyValid = false; }
+        }
+        lock (gate)
+        {
+            r.Invalid |= !custodyValid || disposalFailed;
+            requestOwners.Remove(invocation);
+            requestCandidates.Remove(invocation);
+            borrowers.Remove(invocation);
+            if (start)
+            {
+                r.StartComplete = !r.Invalid && r.StartHookReturned && r.StartSucceeded &&
+                    r.TransportSucceeded && r.Sends == 1 && r.Candidate is not null &&
+                    r.Wire is { Ordinal: 0, HttpStatus: 201, State: WireState.Pending, Complete: true } &&
+                    r.Target is { Kind: StatusTargetKind.SelectedResource } &&
+                    r.Target.StartDispatch == r.Candidate.StartDispatch &&
+                    r.StartTask is { IsCompletedSuccessfully: true } && !r.StartToken.IsCancellationRequested &&
+                    r.Handle?.State == NativeProvisioningState.Pending && r.Receipt.Evidence == DispatchEvidence.Pending;
+                if (r.StartComplete)
+                {
+                    r.StartProof = r.Candidate;
+                    targets[r.Window] = r.Target;
+                    eligible.Add(r.Window);
+                }
+                r.Started.TrySetResult();
+            }
+            else if (canceled)
+            {
+                r.CanceledComplete = StatusUnknownNotificationUpdateCancellationStartValid(r) && r.CanceledHookReturned &&
+                    r.CancellationObserved && r.CanceledTask is { IsCanceled: true } &&
+                    r.CanceledToken.IsCancellationRequested && r.CanceledFactories == 0 && r.CanceledSends == 0 &&
+                    invocation.Attempts.Count == 0 && !invocation.Sending &&
+                    r.Handle?.State == NativeProvisioningState.Pending && r.Receipt.Evidence == DispatchEvidence.Pending;
+                r.Invalid |= !r.CanceledComplete;
+                if (r.CanceledComplete) r.CanceledProof = new(this, r.StartProof!, r.CanceledTask!);
+                r.CanceledDrained.TrySetResult();
+            }
+            else
+            {
+                r.Complete = StatusUnknownNotificationUpdateCancellationCanceledValid(r) && StatusUnknownNotificationUpdateCancellationStartValid(r) && r.StatusHookReturned && r.StatusCompleted &&
+                    r.StatusTask is { IsCompletedSuccessfully: true } && !r.StatusToken.IsCancellationRequested &&
+                    !r.StatusCallerToken.IsCancellationRequested &&
+                    r.Receipt.Evidence == DispatchEvidence.Pending && r.Handle?.State == NativeProvisioningState.Unknown &&
+                    r.StatusSends == 1 && r.StatusWire is { Ordinal: 1, HttpStatus: 200, State: WireState.Unknown, Complete: true } wire &&
+                    r.Target is { } target && r.Wire is { } originalWire &&
+                    wire.Uri == target.TargetUri.AbsoluteUri && wire.Dispatch != originalWire.Dispatch &&
+                    !ReferenceEquals(wire.Request, originalWire.Request);
+                if (r.Complete)
+                {
+                    r.Completion = new(r.StartProof!, r.CanceledProof!);
+                    // Historical Unknown cannot grant generic remote-completion authority.
+                }
+                r.Checked.TrySetResult();
+            }
+            invocation.Terminated = true;
+            invocation.Drained.TrySetResult();
+        }
+        if (disposalFailed) throw new InvalidOperationException("management-capture-finalization");
+    }
+
+    private Task<Capture> SealStatusUnknownNotificationUpdateCancellationAsync(Window window)
+    {
+        StatusUnknownNotificationUpdateCancellationRegistration r;
+        TaskCompletionSource ready;
+        Task<Capture> task;
+        lock (gate)
+        {
+            Own(window, window.Binding.Selector);
+            r = statusUnknownNotificationUpdateCancellation[window];
+            window.Closed = true;
+            if (r.SealTask is not null) return r.SealTask;
+            r.Sealed = true;
+            ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            task = r.SealTask = Drain(ready.Task);
+        }
+        ready.SetResult();
+        return task;
+
+        async Task<Capture> Drain(Task admission)
+        {
+            await admission.ConfigureAwait(false);
+            await r.Started.Task.ConfigureAwait(false);
+            if (r.Canceled is not null) await r.CanceledDrained.Task.ConfigureAwait(false);
+            if (r.Status is not null) await r.Checked.Task.ConfigureAwait(false);
+            try { r.Storage.Dispose(); r.Configuration.Dispose(); }
+            catch { lock (gate) r.Invalid = true; throw; }
+            return new() { Binding = r.Binding, Start = r.Start, Status = r.Status };
+        }
+    }
+
+    private async Task SendStatusUnknownNotificationUpdateCancellationAsync(StatusUnknownNotificationUpdateCancellationRegistration r,
+        InvocationContext context, HttpMessage message, TaskCompletionSource<Task> borrower)
+    {
+        var invocation = context.Invocation;
+        bool status = context.Status;
+        lock (gate)
+        {
+            bool valid = !r.Invalid && !r.Sealed && !finishing.Contains(invocation) &&
+                ReferenceEquals(invocation, status ? r.Status : r.Start) &&
+                (status ? ++r.StatusSends == 1 && r.Target is not null && r.Receipt.Evidence == DispatchEvidence.Pending :
+                    ++r.Sends == 1 && r.Receipt.Evidence == DispatchEvidence.PossiblyDispatched) &&
+                requestCandidates.TryGetValue(invocation, out var candidates) && candidates.Contains(message.Request);
+            r.Invalid |= !valid;
+            Require(valid);
+            borrowers.Add(invocation, borrower);
+            invocation.Sending = true;
+            requestOwners.Add(invocation, message.Request);
+            requestCandidates.Remove(invocation);
+        }
+        Attempt? attempt = null;
+        RequestContent? original = message.Request.Content;
+        RequestContent? snapshot = null;
+        try
+        {
+            var request = message.Request;
+            var headers = request.Headers.ToArray();
+            string expectedUri = Origin + r.Window.Path + "?api-version=2025-02-15";
+            void Check()
+            {
+                Require(ReferenceEquals(message.Request, request) && headers.SequenceEqual(request.Headers) &&
+                    headers.Select(h => h.Name).Distinct(StringComparer.OrdinalIgnoreCase).Count() == headers.Length &&
+                    request.Method == (status ? RequestMethod.Get : RequestMethod.Patch) &&
+                    ReferenceEquals(request.Content, snapshot) && Trusted(request.Uri.ToUri()) &&
+                    request.Uri.ToUri().AbsoluteUri == expectedUri &&
+                    (!status || expectedUri == r.Target!.TargetUri.AbsoluteUri) &&
+                    request.Headers.TryGetValue("Authorization", out var auth) &&
+                    auth.StartsWith("Bearer ", StringComparison.Ordinal) && auth.Length > 7 &&
+                    !headers.Any(h => new[] { "Content-Encoding", "Transfer-Encoding", "Content-Range", "Range" }
+                        .Contains(h.Name, StringComparer.OrdinalIgnoreCase)));
+                Headers(headers);
+                if (request.Headers.TryGetValue("Host", out var host)) Require(host == "management.azure.com");
+                r.StartToken.ThrowIfCancellationRequested();
+                if (status)
+                {
+                    r.StatusToken.ThrowIfCancellationRequested();
+                    r.StatusCallerToken.ThrowIfCancellationRequested();
+                }
+                message.CancellationToken.ThrowIfCancellationRequested();
+            }
+            string requestHash;
+            if (status)
+            {
+                Require(original is null);
+                if (request.Headers.TryGetValue("Content-Length", out var length)) Require(length == "0");
+                requestHash = Convert.ToHexString(SHA256.HashData(ReadOnlySpan<byte>.Empty));
+            }
+            else
+            {
+                long length = 0;
+                Require(original is not null && original.TryComputeLength(out length) && length > 0 && length <= maximumBytes);
+                Require(request.Headers.TryGetValue("Content-Type", out var contentType) &&
+                    contentType.Split(';')[0].Trim().Equals("application/json", StringComparison.OrdinalIgnoreCase));
+                byte[] bytes = new byte[maximumBytes];
+                r.Storage.Own(bytes);
+                using var output = new MemoryStream(bytes, 0, bytes.Length, true, true);
+                await original.WriteToAsync(output, message.CancellationToken).ConfigureAwait(false);
+                Require(output.Position == length && ReferenceEquals(request.Content, original));
+                if (request.Headers.TryGetValue("Content-Length", out var declared))
+                    Require(declared == length.ToString(CultureInfo.InvariantCulture));
+                var payload = bytes.AsMemory(0, checked((int)length));
+                using var json = JsonDocument.Parse(payload, new JsonDocumentOptions { MaxDepth = 16 });
+                int nodes = 512;
+                JsonRows(json.RootElement, ref nodes);
+                ValidateStatusUnknownNotificationUpdateCancellation(r, json.RootElement, request: true, status: false);
+                requestHash = Convert.ToHexString(SHA256.HashData(payload.Span));
+                snapshot = RequestContent.Create(payload);
+                r.Storage.Own(snapshot);
+                r.Storage.Own(original);
+                request.Content = snapshot;
+            }
+            Check();
+            if (!status) r.BeforeSend?.Invoke();
+            Check();
+            Guid dispatch = Guid.NewGuid();
+            attempt = new() { Dispatch = dispatch, RequestSha256 = requestHash };
+            lock (gate) invocation.Attempts.Add(attempt);
+            message.BufferResponse = false;
+            try { await backend.ProcessAsync(message).ConfigureAwait(false); }
+            finally { if (message.HasResponse) r.Storage.Own(message.Response); }
+            Check();
+            var response = message.Response;
+            var stream = response.ContentStream;
+            var body = await OwnedArmResponse.CaptureAsync(message, maximumBytes, r.Storage, allowContinuation: !status)
+                .ConfigureAwait(false);
+            Check();
+            Require(ReferenceEquals(response.ContentStream, stream) && body.Response.Status == (status ? 200 : 201));
+            var responseHeaders = body.Response.Headers.ToArray();
+            Require(!responseHeaders.Any(h => h.Name.Equals("Retry-After", StringComparison.OrdinalIgnoreCase)) &&
+                responseHeaders.Count(h => new[] { "Location", "Azure-AsyncOperation", "Operation-Location" }
+                    .Contains(h.Name, StringComparer.OrdinalIgnoreCase)) == (status ? 0 : 1));
+            if (!status) Require(responseHeaders.Single(h => h.Name.Equals("Location", StringComparison.OrdinalIgnoreCase)).Value == expectedUri);
+            using var document = JsonDocument.Parse(body.Bytes, new JsonDocumentOptions { MaxDepth = 16 });
+            int rows = 512;
+            JsonRows(document.RootElement, ref rows);
+            ValidateStatusUnknownNotificationUpdateCancellation(r, document.RootElement, request: false, status);
+            var native = ModelReaderWriter.Read<EventGridSubscriptionData>(new BinaryData(body.Bytes));
+            Require(native is not null && native.Id?.ToString() == r.Window.Path &&
+                native.Name == r.Scope.SubscriptionName && native.ResourceType.ToString() == "Microsoft.EventGrid/eventSubscriptions" &&
+                native.Topic == r.Scope.Vault.ExportResourceId() && native.ProvisioningState?.ToString() == (status ? "Unknown" : "Updating") &&
+                native.Labels.SequenceEqual(["secretkit-fixture-" + r.Binding.Selector.Nonce.ToString("N")]) &&
+                native.Filter is not null && native.Filter.IncludedEventTypes.SequenceEqual(["Microsoft.KeyVault.SecretNewVersionCreated"]) &&
+                native.Destination is WebHookEventSubscriptionDestination webhook &&
+                webhook.Endpoint?.OriginalString == r.Configuration.Endpoint.Reveal() && webhook.DeliveryAttributeMappings.Count == 0);
+            r.Parsers.Add(OwnedArmResponse.ParserCustody.Install(message, body.Response, body.Bytes, r.Storage,
+                requireRebuffer: true, requireDownstreamRead: status));
+            attempt.HttpStatus = body.Response.Status;
+            attempt.ResponseObserved = true;
+            attempt.ResponseSha256 = body.Sha256;
+            attempt.State = status ? WireState.Unknown : WireState.Pending;
+            attempt.Valid = true;
+            attempt.HasProviderContinuation = !status;
+            var wire = new StatusVaultCancellationWire(status ? 1 : 0, request, expectedUri, dispatch,
+                body.Response.Status, attempt.State, body.Sha256, body.NativeRequestId, true, requestHash,
+                Array.AsReadOnly(headers.Select(h => (h.Name, h.Value)).ToArray()));
+            lock (gate)
+            {
+                if (status) r.StatusWire = wire;
+                else
+                {
+                    r.Wire = wire;
+                    r.Target = new(r.Binding, dispatch, StatusTargetKind.SelectedResource, new Uri(expectedUri),
+                        Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(expectedUri))), body.Sha256);
+                    r.Candidate = new(r.Binding, dispatch, body.Response.Status, body.Bytes.Length, requestHash, body.Sha256, body.NativeRequestId);
+                    r.TransportSucceeded = true;
+                }
+            }
+        }
+        catch (OperationCanceledException) { lock (gate) r.Invalid = true; throw; }
+        catch { lock (gate) r.Invalid = true; throw new IOException("management-capture-transport"); }
+        finally
+        {
+            message.Request.Content = original;
+            lock (gate)
+            {
+                if (attempt is not null) attempt.TransportTerminated = true;
+                invocation.Sending = false;
+            }
+        }
+    }
+
+    private static void ValidateStatusUnknownNotificationUpdateCancellation(StatusUnknownNotificationUpdateCancellationRegistration r, JsonElement root,
+        bool request, bool status)
+    {
+        var scope = r.Scope;
+        var configuration = r.Configuration;
+        Require(OnlyApprovalFields(root, request ? ["destination", "filter"] :
+            ["id", "name", "type", "properties"]));
+        if (!request)
+            Require(ApprovalText(root, "id") == r.Window.Path &&
+                ApprovalText(root, "name") == scope.SubscriptionName &&
+                ApprovalText(root, "type") == "Microsoft.EventGrid/eventSubscriptions");
+        var properties = request ? root : root.GetProperty("properties");
+        Require(OnlyApprovalFields(properties, request ? ["destination", "filter"] :
+            ["topic", "labels", "provisioningState", "destination", "filter"]));
+        if (!request)
+        {
+            Require(ApprovalText(properties, "topic") == scope.Vault.ExportResourceId() &&
+                ApprovalText(properties, "provisioningState") == (status ? "Unknown" : "Updating"));
+            var labels = properties.GetProperty("labels");
+            Require(labels.ValueKind == JsonValueKind.Array && labels.GetArrayLength() == 1 &&
+                labels[0].ValueKind == JsonValueKind.String &&
+                labels[0].GetString() == "secretkit-fixture-" + r.Binding.Selector.Nonce.ToString("N"));
+        }
+        var filter = properties.GetProperty("filter");
+        Require(OnlyApprovalFields(filter, "includedEventTypes", "advancedFilters"));
+        var events = filter.GetProperty("includedEventTypes");
+        Require(events.ValueKind == JsonValueKind.Array && events.GetArrayLength() == 1 &&
+            events[0].GetString() == "Microsoft.KeyVault.SecretNewVersionCreated");
+        if (filter.TryGetProperty("advancedFilters", out var advanced))
+            Require(advanced.ValueKind == JsonValueKind.Array && advanced.GetArrayLength() == 0);
+        var destination = properties.GetProperty("destination");
+        Require(OnlyApprovalFields(destination, "endpointType", "properties") &&
+            ApprovalText(destination, "endpointType") == "WebHook");
+        var settings = destination.GetProperty("properties");
+        Require(OnlyApprovalFields(settings, request ? ["endpointUrl"] :
+            ["endpointUrl", "endpointBaseUrl", "deliveryAttributeMappings"]) &&
+            ApprovalText(settings, "endpointUrl") == configuration.Endpoint.Reveal());
+        var endpoint = new Uri(configuration.Endpoint.Reveal(), UriKind.Absolute);
+        Require(endpoint.Scheme == "https" && endpoint.UserInfo.Length == 0 && endpoint.Fragment.Length == 0);
+        if (!request)
+        {
+            var mappings = settings.GetProperty("deliveryAttributeMappings");
+            Require(mappings.ValueKind == JsonValueKind.Array && mappings.GetArrayLength() == 0);
+            if (settings.TryGetProperty("endpointBaseUrl", out var endpointBase))
+                Require(endpointBase.ValueKind == JsonValueKind.String &&
+                    endpointBase.GetString() == endpoint.GetLeftPart(UriPartial.Path));
+        }
+    }
+
+    internal sealed class StatusUnknownNotificationUpdateIndependentStartProof(Binding binding, Guid startDispatch,
+        int httpStatus, int responseBytes, string requestSha256, string responseSha256, string nativeRequestId)
+    {
+        internal Binding Binding { get; } = binding;
+        internal Guid StartDispatch { get; } = startDispatch;
+        internal int HttpStatus { get; } = httpStatus;
+        internal int ResponseBytes { get; } = responseBytes;
+        internal string RequestSha256 { get; } = requestSha256;
+        internal string ResponseSha256 { get; } = responseSha256;
+        internal string NativeRequestId { get; } = nativeRequestId;
+        public override string ToString() => "[StatusUnknownNotificationUpdateIndependentStartProof]";
+    }
+
+    // This capability proves the native Unknown call drained, never remote termination.
+    internal sealed class StatusUnknownNotificationUpdateIndependentCompletionProof(StatusUnknownNotificationUpdateIndependentStartProof start)
+    {
+        internal StatusUnknownNotificationUpdateIndependentStartProof Start { get; } = start;
+        public override string ToString() => "[StatusUnknownNotificationUpdateIndependentCompletionProof]";
+    }
+
+    private sealed class StatusUnknownNotificationUpdateIndependentRegistration(Window window, Invocation start,
+        VaultAdministration client, NotificationScope scope, ManagementReceipt receipt, CancellationToken token,
+        Action? beforeSend)
+    {
+        internal readonly Window Window = window;
+        internal readonly Binding Binding = window.Binding;
+        internal readonly Invocation Start = start;
+        internal readonly VaultAdministration Client = client;
+        internal readonly NotificationScope Scope = scope;
+        internal readonly ManagementReceipt Receipt = receipt;
+        internal readonly CancellationToken StartToken = token;
+        internal readonly Action? BeforeSend = beforeSend;
+        internal readonly OwnedArmResponse.Storage Storage = new();
+        internal readonly TaskCompletionSource Started = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal readonly TaskCompletionSource Checked = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal readonly List<OwnedArmResponse.ParserCustody> Parsers = [];
+        internal NotificationConfiguration Configuration = null!;
+        internal StatusTarget? Target;
+        internal StatusVaultCancellationWire? StatusWire;
+        internal int StatusSends;
+        internal StatusVaultCancellationWire? Wire;
+        internal StatusUnknownNotificationUpdateIndependentStartProof? Candidate, StartProof;
+        internal StatusUnknownNotificationUpdateIndependentCompletionProof? Completion;
+        internal Task<SecretOutcome<ManagementOperation>>? StartTask;
+        internal Task<SecretStatus>? StatusTask;
+        internal Task<Capture>? SealTask;
+        internal Invocation? Status;
+        internal ManagementOperation? Handle;
+        internal CancellationToken StatusToken, StatusCallerToken;
+        internal int Sends;
+        internal bool Invalid, Sealed, StartHookReturned, StartSucceeded, TransportSucceeded, StartComplete;
+        internal bool CheckClaimed, StatusHookReturned, StatusCompleted, Complete;
+    }
+
+    private readonly Dictionary<Window, StatusUnknownNotificationUpdateIndependentRegistration> statusUnknownNotificationUpdateIndependent =
+        new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<Invocation, StatusUnknownNotificationUpdateIndependentRegistration> statusUnknownNotificationUpdateIndependentInvocations =
+        new(ReferenceEqualityComparer.Instance);
+
+    internal bool TryGetStatusUnknownNotificationUpdateIndependentStart(Window window, Binding binding,
+        VaultAdministration client, NotificationScope scope, ManagementReceipt receipt, Task startTask,
+        ManagementOperation handle, [NotNullWhen(true)] out StatusUnknownNotificationUpdateIndependentStartProof? proof)
+    {
+        lock (gate)
+        {
+            proof = null;
+            if (window is null || !statusUnknownNotificationUpdateIndependent.TryGetValue(window, out var r) ||
+                !NotificationFixtureProvisioner.StatusUnknownNotificationUpdateIndependentSelector(binding.Selector) ||
+                !ReferenceEquals(r.Binding, binding) || !ReferenceEquals(r.Client, client) ||
+                !ReferenceEquals(r.Scope, scope) || !ReferenceEquals(r.Receipt, receipt) ||
+                !ReferenceEquals(r.StartTask, startTask) || !ReferenceEquals(r.Handle, handle) ||
+                !StatusUnknownNotificationUpdateIndependentStartValid(r) ||
+                receipt.Evidence != DispatchEvidence.Pending ||
+                !(handle.State == NativeProvisioningState.Pending || r.Complete && handle.State == NativeProvisioningState.Unknown) ||
+                !ReferenceEquals(targets.GetValueOrDefault(window), r.Target)) return false;
+            proof = r.StartProof;
+            return proof is not null;
+        }
+    }
+
+    internal bool TryGetStatusUnknownNotificationUpdateIndependentCompletion(Window window, Binding binding,
+        VaultAdministration client, NotificationScope scope, ManagementReceipt receipt, Task startTask,
+        ManagementOperation handle, Task statusTask,
+        [NotNullWhen(true)] out StatusUnknownNotificationUpdateIndependentCompletionProof? proof)
+    {
+        lock (gate)
+        {
+            proof = null;
+            if (!TryGetStatusUnknownNotificationUpdateIndependentStart(window, binding, client, scope, receipt,
+                    startTask, handle, out _) || !statusUnknownNotificationUpdateIndependent.TryGetValue(window, out var r) ||
+                !ReferenceEquals(r.StatusTask, statusTask) || !r.Complete ||
+                !r.Checked.Task.IsCompletedSuccessfully || r.StatusTask is not { IsCompletedSuccessfully: true } ||
+                r.StatusToken.IsCancellationRequested || r.StatusCallerToken.IsCancellationRequested ||
+                handle.State != NativeProvisioningState.Unknown || receipt.Evidence != DispatchEvidence.Pending) return false;
+            proof = r.Completion;
+            return proof is not null;
+        }
+    }
+
+    private static bool StatusUnknownNotificationUpdateIndependentStartValid(StatusUnknownNotificationUpdateIndependentRegistration r) =>
+        !r.Invalid && !r.Sealed && r.StartComplete && r.StartProof is not null &&
+        r.Started.Task.IsCompletedSuccessfully && r.StartTask is { IsCompletedSuccessfully: true } &&
+        !r.StartToken.IsCancellationRequested &&
+        (!r.CheckClaimed || !r.StatusToken.IsCancellationRequested && !r.StatusCallerToken.IsCancellationRequested);
+
+    internal async Task<SecretOutcome<ManagementOperation>> StartStatusUnknownNotificationUpdateIndependentAsync(
+        Window window, FixtureSelector selector, VaultAdministration client, ManagementScope scope,
+        ManagementOperationEffects.Input input, ManagementReceipt receipt, CancellationToken token = default,
+        Action<Task>? retained = null, Action? beforeSend = null)
+    {
+        StatusUnknownNotificationUpdateIndependentRegistration r;
+        lock (gate)
+        {
+            Own(window, selector);
+            Require(client is not null && receipt is not null && scope is NotificationScope &&
+                NotificationFixtureProvisioner.StatusUnknownNotificationUpdateIndependentSelector(selector) &&
+                window.Binding.Operation == ManagementMutation.UpdateNotification &&
+                window.Binding.ApiRevision == "2025-02-15" && InputMatches(window.Binding, input) &&
+                Route(window.Binding with { Resource = scope }) == Route(window.Binding));
+            if (statusUnknownNotificationUpdateIndependent.TryGetValue(window, out var existing))
+            {
+                Require(ReferenceEquals(existing.Client, client) && ReferenceEquals(existing.Scope, scope) &&
+                    ReferenceEquals(existing.Receipt, receipt));
+                existing.Invalid = true;
+                throw new InvalidOperationException("management-capture-boundary");
+            }
+            Require(!window.Closed && window.Start is null && startedWindows.Add(window) && !token.IsCancellationRequested);
+            var invocation = window.Start = new();
+            r = new(window, invocation, client, (NotificationScope)scope, receipt, token, beforeSend)
+            { Configuration = new(input.WebhookUrl, [VaultNotificationEvent.SecretNewVersionCreated], []) };
+            statusUnknownNotificationUpdateIndependent.Add(window, r);
+            statusUnknownNotificationUpdateIndependentInvocations.Add(invocation, r);
+        }
+        try
+        {
+            Task<SecretOutcome<ManagementOperation>> task;
+            var previous = current.Value;
+            current.Value = new(window, r.Start, false);
+            try { task = ManagementOperationEffects.StartAsync(client, scope, window.Binding.Operation, input, receipt, token).AsTask(); }
+            finally { current.Value = previous; }
+            lock (gate) r.Start.SdkTask = r.StartTask = task;
+            try
+            {
+                retained?.Invoke(task);
+                lock (gate) r.StartHookReturned = true;
+            }
+            finally
+            {
+                var result = await task.ConfigureAwait(false);
+                lock (gate)
+                {
+                    r.Start.Outcome = result.Status;
+                    r.Handle = result.IsSuccess ? result.Value : null;
+                    r.Start.WrapperState = r.Handle?.State;
+                    r.StartSucceeded = task.IsCompletedSuccessfully && result.IsSuccess &&
+                        r.Handle!.State == NativeProvisioningState.Pending && receipt.Evidence == DispatchEvidence.Pending;
+                    r.Start.HasNativeHandle = r.StartSucceeded;
+                }
+            }
+            return await task.ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            lock (gate) { r.Invalid = true; r.Start.Canceled = true; }
+            throw;
+        }
+        catch
+        {
+            lock (gate) r.Invalid = true;
+            throw;
+        }
+        finally { await FinishStatusUnknownNotificationUpdateIndependentAsync(r, r.Start).ConfigureAwait(false); }
+    }
+
+    private async Task<SecretStatus> CheckStatusUnknownNotificationUpdateIndependentAsync(Window window, FixtureSelector selector,
+        ManagementOperation handle, CancellationToken token, Action<Task>? retained, CancellationToken originalCallerToken)
+    {
+        StatusUnknownNotificationUpdateIndependentRegistration r;
+        Invocation invocation;
+        lock (gate)
+        {
+            Own(window, selector);
+            Require(statusUnknownNotificationUpdateIndependent.TryGetValue(window, out r!) &&
+                handle is not null && ReferenceEquals(r.Handle, handle));
+            bool valid = !r.CheckClaimed && !window.Closed && window.Status is null &&
+                StatusUnknownNotificationUpdateIndependentStartValid(r) && !token.IsCancellationRequested && !originalCallerToken.IsCancellationRequested &&
+                handle.State == NativeProvisioningState.Pending && r.Receipt.Evidence == DispatchEvidence.Pending;
+            r.CheckClaimed = true;
+            r.Invalid |= !valid;
+            Require(valid);
+            invocation = r.Status = window.Status = new();
+            r.StatusToken = token;
+            r.StatusCallerToken = originalCallerToken;
+            statusUnknownNotificationUpdateIndependentInvocations.Add(invocation, r);
+        }
+        try
+        {
+            Task<SecretStatus> task;
+            var previous = current.Value;
+            current.Value = new(window, invocation, true);
+            try { task = handle.CheckStatusAsync(token).AsTask(); }
+            finally { current.Value = previous; }
+            lock (gate) invocation.SdkTask = r.StatusTask = task;
+            try
+            {
+                retained?.Invoke(task);
+                lock (gate) r.StatusHookReturned = true;
+            }
+            finally
+            {
+                var outcome = await task.ConfigureAwait(false);
+                lock (gate)
+                {
+                    invocation.Outcome = outcome;
+                    invocation.WrapperState = handle.State;
+                    r.StatusCompleted = task.IsCompletedSuccessfully && outcome == SecretStatus.Unknown &&
+                        handle.State == NativeProvisioningState.Unknown;
+                }
+            }
+            return await task.ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            lock (gate) { r.Invalid = true; invocation.Canceled = true; }
+            throw;
+        }
+        catch
+        {
+            lock (gate) r.Invalid = true;
+            throw;
+        }
+        finally { await FinishStatusUnknownNotificationUpdateIndependentAsync(r, invocation).ConfigureAwait(false); }
+    }
+
+    private async Task FinishStatusUnknownNotificationUpdateIndependentAsync(StatusUnknownNotificationUpdateIndependentRegistration r,
+        Invocation invocation)
+    {
+        bool start = ReferenceEquals(r.Start, invocation);
+        Task<Task>? borrower;
+        lock (gate)
+        {
+            Task? actual = start ? r.StartTask : r.StatusTask;
+            Require(actual is null || actual.IsCompleted);
+            finishing.Add(invocation);
+            borrower = borrowers.TryGetValue(invocation, out var pending) ? pending.Task : null;
+        }
+        if (borrower is not null)
+        {
+            var actual = await borrower.ConfigureAwait(false);
+            try { await actual.ConfigureAwait(false); }
+            catch { lock (gate) r.Invalid = true; }
+        }
+        bool custodyValid, disposalFailed = false;
+        try { custodyValid = r.Parsers.Count == (start ? 1 : 2) && r.Parsers.All(p => p.Complete && !p.Invalid); }
+        catch { custodyValid = false; }
+        if (!start)
+        {
+            try { r.Storage.Dispose(); }
+            catch { disposalFailed = true; }
+            try { custodyValid &= r.Parsers.All(p => p.Complete && !p.Invalid); }
+            catch { custodyValid = false; }
+        }
+        lock (gate)
+        {
+            r.Invalid |= !custodyValid || disposalFailed;
+            requestOwners.Remove(invocation);
+            requestCandidates.Remove(invocation);
+            borrowers.Remove(invocation);
+            if (start)
+            {
+                r.StartComplete = !r.Invalid && r.StartHookReturned && r.StartSucceeded &&
+                    r.TransportSucceeded && r.Sends == 1 && r.Candidate is not null &&
+                    r.Wire is { Ordinal: 0, HttpStatus: 201, State: WireState.Pending, Complete: true } &&
+                    r.Target is { Kind: StatusTargetKind.SelectedResource } &&
+                    r.Target.StartDispatch == r.Candidate.StartDispatch &&
+                    r.StartTask is { IsCompletedSuccessfully: true } && !r.StartToken.IsCancellationRequested &&
+                    r.Handle?.State == NativeProvisioningState.Pending && r.Receipt.Evidence == DispatchEvidence.Pending;
+                if (r.StartComplete)
+                {
+                    r.StartProof = r.Candidate;
+                    targets[r.Window] = r.Target;
+                    eligible.Add(r.Window);
+                }
+                r.Started.TrySetResult();
+            }
+            else
+            {
+                r.Complete = StatusUnknownNotificationUpdateIndependentStartValid(r) && r.StatusHookReturned && r.StatusCompleted &&
+                    r.StatusTask is { IsCompletedSuccessfully: true } && !r.StatusToken.IsCancellationRequested &&
+                    !r.StatusCallerToken.IsCancellationRequested &&
+                    r.Receipt.Evidence == DispatchEvidence.Pending && r.Handle?.State == NativeProvisioningState.Unknown &&
+                    r.StatusSends == 1 && r.StatusWire is { Ordinal: 1, HttpStatus: 200, State: WireState.Unknown, Complete: true } wire &&
+                    r.Target is { } target && r.Wire is { } originalWire &&
+                    wire.Uri == target.TargetUri.AbsoluteUri && wire.Dispatch != originalWire.Dispatch &&
+                    !ReferenceEquals(wire.Request, originalWire.Request);
+                if (r.Complete)
+                {
+                    r.Completion = new(r.StartProof!);
+                    // Historical Unknown cannot grant generic remote-completion authority.
+                }
+                r.Checked.TrySetResult();
+            }
+            invocation.Terminated = true;
+            invocation.Drained.TrySetResult();
+        }
+        if (disposalFailed) throw new InvalidOperationException("management-capture-finalization");
+    }
+
+    private Task<Capture> SealStatusUnknownNotificationUpdateIndependentAsync(Window window)
+    {
+        StatusUnknownNotificationUpdateIndependentRegistration r;
+        TaskCompletionSource ready;
+        Task<Capture> task;
+        lock (gate)
+        {
+            Own(window, window.Binding.Selector);
+            r = statusUnknownNotificationUpdateIndependent[window];
+            window.Closed = true;
+            if (r.SealTask is not null) return r.SealTask;
+            r.Sealed = true;
+            ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            task = r.SealTask = Drain(ready.Task);
+        }
+        ready.SetResult();
+        return task;
+
+        async Task<Capture> Drain(Task admission)
+        {
+            await admission.ConfigureAwait(false);
+            await r.Started.Task.ConfigureAwait(false);
+            if (r.Status is not null) await r.Checked.Task.ConfigureAwait(false);
+            try { r.Storage.Dispose(); r.Configuration.Dispose(); }
+            catch { lock (gate) r.Invalid = true; throw; }
+            return new() { Binding = r.Binding, Start = r.Start, Status = r.Status };
+        }
+    }
+
+    private async Task SendStatusUnknownNotificationUpdateIndependentAsync(StatusUnknownNotificationUpdateIndependentRegistration r,
+        InvocationContext context, HttpMessage message, TaskCompletionSource<Task> borrower)
+    {
+        var invocation = context.Invocation;
+        bool status = context.Status;
+        lock (gate)
+        {
+            bool valid = !r.Invalid && !r.Sealed && !finishing.Contains(invocation) &&
+                ReferenceEquals(invocation, status ? r.Status : r.Start) &&
+                (status ? ++r.StatusSends == 1 && r.Target is not null && r.Receipt.Evidence == DispatchEvidence.Pending :
+                    ++r.Sends == 1 && r.Receipt.Evidence == DispatchEvidence.PossiblyDispatched) &&
+                requestCandidates.TryGetValue(invocation, out var candidates) && candidates.Contains(message.Request);
+            r.Invalid |= !valid;
+            Require(valid);
+            borrowers.Add(invocation, borrower);
+            invocation.Sending = true;
+            requestOwners.Add(invocation, message.Request);
+            requestCandidates.Remove(invocation);
+        }
+        Attempt? attempt = null;
+        RequestContent? original = message.Request.Content;
+        RequestContent? snapshot = null;
+        try
+        {
+            var request = message.Request;
+            var headers = request.Headers.ToArray();
+            string expectedUri = Origin + r.Window.Path + "?api-version=2025-02-15";
+            void Check()
+            {
+                Require(ReferenceEquals(message.Request, request) && headers.SequenceEqual(request.Headers) &&
+                    headers.Select(h => h.Name).Distinct(StringComparer.OrdinalIgnoreCase).Count() == headers.Length &&
+                    request.Method == (status ? RequestMethod.Get : RequestMethod.Patch) &&
+                    ReferenceEquals(request.Content, snapshot) && Trusted(request.Uri.ToUri()) &&
+                    request.Uri.ToUri().AbsoluteUri == expectedUri &&
+                    (!status || expectedUri == r.Target!.TargetUri.AbsoluteUri) &&
+                    request.Headers.TryGetValue("Authorization", out var auth) &&
+                    auth.StartsWith("Bearer ", StringComparison.Ordinal) && auth.Length > 7 &&
+                    !headers.Any(h => new[] { "Content-Encoding", "Transfer-Encoding", "Content-Range", "Range" }
+                        .Contains(h.Name, StringComparer.OrdinalIgnoreCase)));
+                Headers(headers);
+                if (request.Headers.TryGetValue("Host", out var host)) Require(host == "management.azure.com");
+                r.StartToken.ThrowIfCancellationRequested();
+                if (status)
+                {
+                    r.StatusToken.ThrowIfCancellationRequested();
+                    r.StatusCallerToken.ThrowIfCancellationRequested();
+                }
+                message.CancellationToken.ThrowIfCancellationRequested();
+            }
+            string requestHash;
+            if (status)
+            {
+                Require(original is null);
+                if (request.Headers.TryGetValue("Content-Length", out var length)) Require(length == "0");
+                requestHash = Convert.ToHexString(SHA256.HashData(ReadOnlySpan<byte>.Empty));
+            }
+            else
+            {
+                long length = 0;
+                Require(original is not null && original.TryComputeLength(out length) && length > 0 && length <= maximumBytes);
+                Require(request.Headers.TryGetValue("Content-Type", out var contentType) &&
+                    contentType.Split(';')[0].Trim().Equals("application/json", StringComparison.OrdinalIgnoreCase));
+                byte[] bytes = new byte[maximumBytes];
+                r.Storage.Own(bytes);
+                using var output = new MemoryStream(bytes, 0, bytes.Length, true, true);
+                await original.WriteToAsync(output, message.CancellationToken).ConfigureAwait(false);
+                Require(output.Position == length && ReferenceEquals(request.Content, original));
+                if (request.Headers.TryGetValue("Content-Length", out var declared))
+                    Require(declared == length.ToString(CultureInfo.InvariantCulture));
+                var payload = bytes.AsMemory(0, checked((int)length));
+                using var json = JsonDocument.Parse(payload, new JsonDocumentOptions { MaxDepth = 16 });
+                int nodes = 512;
+                JsonRows(json.RootElement, ref nodes);
+                ValidateStatusUnknownNotificationUpdateIndependent(r, json.RootElement, request: true, status: false);
+                requestHash = Convert.ToHexString(SHA256.HashData(payload.Span));
+                snapshot = RequestContent.Create(payload);
+                r.Storage.Own(snapshot);
+                r.Storage.Own(original);
+                request.Content = snapshot;
+            }
+            Check();
+            if (!status) r.BeforeSend?.Invoke();
+            Check();
+            Guid dispatch = Guid.NewGuid();
+            attempt = new() { Dispatch = dispatch, RequestSha256 = requestHash };
+            lock (gate) invocation.Attempts.Add(attempt);
+            message.BufferResponse = false;
+            try { await backend.ProcessAsync(message).ConfigureAwait(false); }
+            finally { if (message.HasResponse) r.Storage.Own(message.Response); }
+            Check();
+            var response = message.Response;
+            var stream = response.ContentStream;
+            var body = await OwnedArmResponse.CaptureAsync(message, maximumBytes, r.Storage, allowContinuation: !status)
+                .ConfigureAwait(false);
+            Check();
+            Require(ReferenceEquals(response.ContentStream, stream) && body.Response.Status == (status ? 200 : 201));
+            var responseHeaders = body.Response.Headers.ToArray();
+            Require(!responseHeaders.Any(h => h.Name.Equals("Retry-After", StringComparison.OrdinalIgnoreCase)) &&
+                responseHeaders.Count(h => new[] { "Location", "Azure-AsyncOperation", "Operation-Location" }
+                    .Contains(h.Name, StringComparer.OrdinalIgnoreCase)) == (status ? 0 : 1));
+            if (!status) Require(responseHeaders.Single(h => h.Name.Equals("Location", StringComparison.OrdinalIgnoreCase)).Value == expectedUri);
+            using var document = JsonDocument.Parse(body.Bytes, new JsonDocumentOptions { MaxDepth = 16 });
+            int rows = 512;
+            JsonRows(document.RootElement, ref rows);
+            ValidateStatusUnknownNotificationUpdateIndependent(r, document.RootElement, request: false, status);
+            var native = ModelReaderWriter.Read<EventGridSubscriptionData>(new BinaryData(body.Bytes));
+            Require(native is not null && native.Id?.ToString() == r.Window.Path &&
+                native.Name == r.Scope.SubscriptionName && native.ResourceType.ToString() == "Microsoft.EventGrid/eventSubscriptions" &&
+                native.Topic == r.Scope.Vault.ExportResourceId() && native.ProvisioningState?.ToString() == (status ? "Unknown" : "Updating") &&
+                native.Labels.SequenceEqual(["secretkit-fixture-" + r.Binding.Selector.Nonce.ToString("N")]) &&
+                native.Filter is not null && native.Filter.IncludedEventTypes.SequenceEqual(["Microsoft.KeyVault.SecretNewVersionCreated"]) &&
+                native.Destination is WebHookEventSubscriptionDestination webhook &&
+                webhook.Endpoint?.OriginalString == r.Configuration.Endpoint.Reveal() && webhook.DeliveryAttributeMappings.Count == 0);
+            r.Parsers.Add(OwnedArmResponse.ParserCustody.Install(message, body.Response, body.Bytes, r.Storage,
+                requireRebuffer: true, requireDownstreamRead: status));
+            attempt.HttpStatus = body.Response.Status;
+            attempt.ResponseObserved = true;
+            attempt.ResponseSha256 = body.Sha256;
+            attempt.State = status ? WireState.Unknown : WireState.Pending;
+            attempt.Valid = true;
+            attempt.HasProviderContinuation = !status;
+            var wire = new StatusVaultCancellationWire(status ? 1 : 0, request, expectedUri, dispatch,
+                body.Response.Status, attempt.State, body.Sha256, body.NativeRequestId, true, requestHash,
+                Array.AsReadOnly(headers.Select(h => (h.Name, h.Value)).ToArray()));
+            lock (gate)
+            {
+                if (status) r.StatusWire = wire;
+                else
+                {
+                    r.Wire = wire;
+                    r.Target = new(r.Binding, dispatch, StatusTargetKind.SelectedResource, new Uri(expectedUri),
+                        Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(expectedUri))), body.Sha256);
+                    r.Candidate = new(r.Binding, dispatch, body.Response.Status, body.Bytes.Length, requestHash, body.Sha256, body.NativeRequestId);
+                    r.TransportSucceeded = true;
+                }
+            }
+        }
+        catch (OperationCanceledException) { lock (gate) r.Invalid = true; throw; }
+        catch { lock (gate) r.Invalid = true; throw new IOException("management-capture-transport"); }
+        finally
+        {
+            message.Request.Content = original;
+            lock (gate)
+            {
+                if (attempt is not null) attempt.TransportTerminated = true;
+                invocation.Sending = false;
+            }
+        }
+    }
+
+    private static void ValidateStatusUnknownNotificationUpdateIndependent(StatusUnknownNotificationUpdateIndependentRegistration r, JsonElement root,
+        bool request, bool status)
+    {
+        var scope = r.Scope;
+        var configuration = r.Configuration;
+        Require(OnlyApprovalFields(root, request ? ["destination", "filter"] :
+            ["id", "name", "type", "properties"]));
+        if (!request)
+            Require(ApprovalText(root, "id") == r.Window.Path &&
+                ApprovalText(root, "name") == scope.SubscriptionName &&
+                ApprovalText(root, "type") == "Microsoft.EventGrid/eventSubscriptions");
+        var properties = request ? root : root.GetProperty("properties");
+        Require(OnlyApprovalFields(properties, request ? ["destination", "filter"] :
+            ["topic", "labels", "provisioningState", "destination", "filter"]));
+        if (!request)
+        {
+            Require(ApprovalText(properties, "topic") == scope.Vault.ExportResourceId() &&
+                ApprovalText(properties, "provisioningState") == (status ? "Unknown" : "Updating"));
+            var labels = properties.GetProperty("labels");
+            Require(labels.ValueKind == JsonValueKind.Array && labels.GetArrayLength() == 1 &&
+                labels[0].ValueKind == JsonValueKind.String &&
+                labels[0].GetString() == "secretkit-fixture-" + r.Binding.Selector.Nonce.ToString("N"));
+        }
+        var filter = properties.GetProperty("filter");
+        Require(OnlyApprovalFields(filter, "includedEventTypes", "advancedFilters"));
+        var events = filter.GetProperty("includedEventTypes");
+        Require(events.ValueKind == JsonValueKind.Array && events.GetArrayLength() == 1 &&
+            events[0].GetString() == "Microsoft.KeyVault.SecretNewVersionCreated");
+        if (filter.TryGetProperty("advancedFilters", out var advanced))
+            Require(advanced.ValueKind == JsonValueKind.Array && advanced.GetArrayLength() == 0);
+        var destination = properties.GetProperty("destination");
+        Require(OnlyApprovalFields(destination, "endpointType", "properties") &&
+            ApprovalText(destination, "endpointType") == "WebHook");
+        var settings = destination.GetProperty("properties");
+        Require(OnlyApprovalFields(settings, request ? ["endpointUrl"] :
+            ["endpointUrl", "endpointBaseUrl", "deliveryAttributeMappings"]) &&
+            ApprovalText(settings, "endpointUrl") == configuration.Endpoint.Reveal());
+        var endpoint = new Uri(configuration.Endpoint.Reveal(), UriKind.Absolute);
+        Require(endpoint.Scheme == "https" && endpoint.UserInfo.Length == 0 && endpoint.Fragment.Length == 0);
+        if (!request)
+        {
+            var mappings = settings.GetProperty("deliveryAttributeMappings");
+            Require(mappings.ValueKind == JsonValueKind.Array && mappings.GetArrayLength() == 0);
+            if (settings.TryGetProperty("endpointBaseUrl", out var endpointBase))
+                Require(endpointBase.ValueKind == JsonValueKind.String &&
+                    endpointBase.GetString() == endpoint.GetLeftPart(UriPartial.Path));
+        }
+    }
+
+    internal sealed class StatusDeniedNotificationUpdateStartProof(Binding binding, Guid startDispatch,
+        int httpStatus, int responseBytes, string requestSha256, string responseSha256, string nativeRequestId)
+    {
+        internal Binding Binding { get; } = binding;
+        internal Guid StartDispatch { get; } = startDispatch;
+        internal int HttpStatus { get; } = httpStatus;
+        internal int ResponseBytes { get; } = responseBytes;
+        internal string RequestSha256 { get; } = requestSha256;
+        internal string ResponseSha256 { get; } = responseSha256;
+        internal string NativeRequestId { get; } = nativeRequestId;
+        public override string ToString() => "[StatusDeniedNotificationUpdateStartProof]";
+    }
+
+    // Local Failed is not remote settlement; the observer must join independent S/N evidence.
+    internal sealed class StatusDeniedNotificationUpdateDeniedProof(StatusDeniedNotificationUpdateStartProof start,
+        Task checkTask, int httpStatus, string responseSha256, string nativeRequestId)
+    {
+        internal StatusDeniedNotificationUpdateStartProof Start { get; } = start;
+        internal Task CheckTask { get; } = checkTask;
+        internal int HttpStatus { get; } = httpStatus;
+        internal string ResponseSha256 { get; } = responseSha256;
+        internal string NativeRequestId { get; } = nativeRequestId;
+        internal SecretStatus Outcome => SecretStatus.Denied;
+        internal NativeProvisioningState State => NativeProvisioningState.Failed;
+        internal DispatchEvidence ReceiptEvidence => DispatchEvidence.Pending;
+        public override string ToString() => "[StatusDeniedNotificationUpdateDeniedProof]";
+    }
+
+    private static bool StatusDeniedNotificationUpdateSelector(FixtureSelector selector) =>
+        selector is { Operation: "a.management.ManagementOperation.CheckStatusAsync",
+            Variant: "operation.UpdateNotification" or "operation.CreateOrUpdateNotification", Case: "denied-authority" };
+
+    private sealed class StatusDeniedNotificationUpdateRegistration(Window window, Invocation start,
+        VaultAdministration client, NotificationScope scope, ManagementReceipt receipt, CancellationToken token,
+        Action? beforeSend)
+    {
+        internal readonly Window Window = window;
+        internal readonly Binding Binding = window.Binding;
+        internal readonly Invocation Start = start;
+        internal readonly VaultAdministration Client = client;
+        internal readonly NotificationScope Scope = scope;
+        internal readonly ManagementReceipt Receipt = receipt;
+        internal readonly CancellationToken StartToken = token;
+        internal readonly Action? BeforeSend = beforeSend;
+        internal readonly OwnedArmResponse.Storage Storage = new();
+        internal readonly TaskCompletionSource Started = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal readonly TaskCompletionSource Checked = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal readonly List<OwnedArmResponse.ParserCustody> Parsers = [];
+        internal NotificationConfiguration Configuration = null!;
+        internal StatusTarget? Target;
+        internal StatusVaultCancellationWire? StatusWire;
+        internal int StatusSends;
+        internal StatusVaultCancellationWire? Wire;
+        internal StatusDeniedNotificationUpdateStartProof? Candidate, StartProof;
+        internal StatusDeniedNotificationUpdateDeniedProof? Denied;
+        internal string? AuthorizationSha256;
+        internal Task<SecretOutcome<ManagementOperation>>? StartTask;
+        internal Task<SecretStatus>? StatusTask;
+        internal Task<Capture>? SealTask;
+        internal Invocation? Status;
+        internal ManagementOperation? Handle;
+        internal CancellationToken StatusToken, StatusCallerToken;
+        internal int Sends;
+        internal bool Invalid, Sealed, StartHookReturned, StartSucceeded, TransportSucceeded, StartComplete;
+        internal bool CheckClaimed, StatusHookReturned, StatusCompleted, Complete;
+    }
+
+    private readonly Dictionary<Window, StatusDeniedNotificationUpdateRegistration> statusDeniedNotificationUpdate =
+        new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<Invocation, StatusDeniedNotificationUpdateRegistration> statusDeniedNotificationUpdateInvocations =
+        new(ReferenceEqualityComparer.Instance);
+
+    internal bool TryGetStatusDeniedNotificationUpdateStart(Window window, Binding binding,
+        VaultAdministration client, NotificationScope scope, ManagementReceipt receipt, Task startTask,
+        ManagementOperation handle, [NotNullWhen(true)] out StatusDeniedNotificationUpdateStartProof? proof)
+    {
+        lock (gate)
+        {
+            proof = null;
+            if (window is null || !statusDeniedNotificationUpdate.TryGetValue(window, out var r) ||
+                !StatusDeniedNotificationUpdateSelector(binding.Selector) ||
+                !ReferenceEquals(r.Binding, binding) || !ReferenceEquals(r.Client, client) ||
+                !ReferenceEquals(r.Scope, scope) || !ReferenceEquals(r.Receipt, receipt) ||
+                !ReferenceEquals(r.StartTask, startTask) || !ReferenceEquals(r.Handle, handle) ||
+                !StatusDeniedNotificationUpdateStartValid(r) ||
+                receipt.Evidence != DispatchEvidence.Pending ||
+                !(handle.State == NativeProvisioningState.Pending || r.Complete && handle.State == NativeProvisioningState.Failed) ||
+                !ReferenceEquals(targets.GetValueOrDefault(window), r.Target)) return false;
+            proof = r.StartProof;
+            return proof is not null;
+        }
+    }
+
+    internal bool TryGetStatusDeniedNotificationUpdateDenied(Window window, Binding binding,
+        VaultAdministration client, NotificationScope scope, ManagementReceipt receipt, Task startTask,
+        ManagementOperation handle, Task checkTask,
+        [NotNullWhen(true)] out StatusDeniedNotificationUpdateDeniedProof? proof)
+    {
+        lock (gate)
+        {
+            proof = null;
+            if (!TryGetStatusDeniedNotificationUpdateStart(window, binding, client, scope, receipt,
+                    startTask, handle, out _) || !statusDeniedNotificationUpdate.TryGetValue(window, out var r) ||
+                !ReferenceEquals(r.StatusTask, checkTask) || !r.Complete ||
+                !r.Checked.Task.IsCompletedSuccessfully || r.StatusTask is not { IsCompletedSuccessfully: true } ||
+                r.StatusToken.IsCancellationRequested || r.StatusCallerToken.IsCancellationRequested ||
+                handle.State != NativeProvisioningState.Failed || receipt.Evidence != DispatchEvidence.Pending) return false;
+            proof = r.Denied;
+            return proof is not null && ReferenceEquals(proof.Start, r.StartProof) &&
+                ReferenceEquals(proof.CheckTask, checkTask);
+        }
+    }
+
+    internal bool OwnsStatusDeniedNotificationUpdateStart(StatusDeniedNotificationUpdateStartProof proof,
+        Window window, Binding binding, VaultAdministration client, NotificationScope scope,
+        ManagementReceipt receipt, Task startTask, ManagementOperation handle) =>
+        TryGetStatusDeniedNotificationUpdateStart(window, binding, client, scope, receipt, startTask, handle, out var issued) &&
+        ReferenceEquals(proof, issued);
+
+    internal bool OwnsStatusDeniedNotificationUpdateDenied(StatusDeniedNotificationUpdateDeniedProof proof,
+        Window window, Binding binding, VaultAdministration client, NotificationScope scope,
+        ManagementReceipt receipt, Task startTask, ManagementOperation handle, Task checkTask) =>
+        TryGetStatusDeniedNotificationUpdateDenied(window, binding, client, scope, receipt, startTask, handle, checkTask, out var issued) &&
+        ReferenceEquals(proof, issued);
+
+    private static bool StatusDeniedNotificationUpdateStartValid(StatusDeniedNotificationUpdateRegistration r) =>
+        !r.Invalid && !r.Sealed && r.StartComplete && r.StartProof is not null &&
+        r.Started.Task.IsCompletedSuccessfully && r.StartTask is { IsCompletedSuccessfully: true } &&
+        !r.StartToken.IsCancellationRequested &&
+        (!r.CheckClaimed || !r.StatusToken.IsCancellationRequested && !r.StatusCallerToken.IsCancellationRequested);
+
+    internal async Task<SecretOutcome<ManagementOperation>> StartStatusDeniedNotificationUpdateAsync(
+        Window window, FixtureSelector selector, VaultAdministration client, ManagementScope scope,
+        ManagementOperationEffects.Input input, ManagementReceipt receipt, CancellationToken token = default,
+        Action<Task>? retained = null, Action? beforeSend = null)
+    {
+        StatusDeniedNotificationUpdateRegistration r;
+        lock (gate)
+        {
+            Own(window, selector);
+            Require(client is not null && receipt is not null && scope is NotificationScope &&
+                StatusDeniedNotificationUpdateSelector(selector) &&
+                ReferenceEquals(window.Binding.Selector, selector) &&
+                selector.Variant == "operation." + window.Binding.Operation &&
+                window.Binding.ApiRevision == "2025-02-15" && InputMatches(window.Binding, input) &&
+                Route(window.Binding with { Resource = scope }) == Route(window.Binding));
+            if (statusDeniedNotificationUpdate.TryGetValue(window, out var existing))
+            {
+                Require(ReferenceEquals(existing.Client, client) && ReferenceEquals(existing.Scope, scope) &&
+                    ReferenceEquals(existing.Receipt, receipt));
+                existing.Invalid = true;
+                throw new InvalidOperationException("management-capture-boundary");
+            }
+            Require(!window.Closed && window.Start is null && !token.IsCancellationRequested &&
+                receipt.Evidence == DispatchEvidence.NotDispatched && startedWindows.Add(window));
+            var invocation = window.Start = new();
+            r = new(window, invocation, client, (NotificationScope)scope, receipt, token, beforeSend)
+            { Configuration = new(input.WebhookUrl, [VaultNotificationEvent.SecretNewVersionCreated], []) };
+            statusDeniedNotificationUpdate.Add(window, r);
+            statusDeniedNotificationUpdateInvocations.Add(invocation, r);
+        }
+        try
+        {
+            Task<SecretOutcome<ManagementOperation>> task;
+            var previous = current.Value;
+            current.Value = new(window, r.Start, false);
+            try { task = ManagementOperationEffects.StartAsync(client, scope, window.Binding.Operation, input, receipt, token).AsTask(); }
+            finally { current.Value = previous; }
+            lock (gate) r.Start.SdkTask = r.StartTask = task;
+            try
+            {
+                retained?.Invoke(task);
+                lock (gate) r.StartHookReturned = true;
+            }
+            finally
+            {
+                var result = await task.ConfigureAwait(false);
+                lock (gate)
+                {
+                    r.Start.Outcome = result.Status;
+                    r.Handle = result.IsSuccess ? result.Value : null;
+                    r.Start.WrapperState = r.Handle?.State;
+                    r.StartSucceeded = task.IsCompletedSuccessfully && result.IsSuccess &&
+                        r.Handle!.State == NativeProvisioningState.Pending && receipt.Evidence == DispatchEvidence.Pending;
+                    r.Start.HasNativeHandle = r.StartSucceeded;
+                }
+            }
+            return await task.ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            lock (gate) { r.Invalid = true; r.Start.Canceled = true; }
+            throw;
+        }
+        catch
+        {
+            lock (gate) r.Invalid = true;
+            throw;
+        }
+        finally { await FinishStatusDeniedNotificationUpdateAsync(r, r.Start).ConfigureAwait(false); }
+    }
+
+    internal ValueTask<SecretStatus> CheckStatusDeniedNotificationUpdateAsync(Window window, FixtureSelector selector,
+        ManagementOperation handle, CancellationToken token, Action<Task>? retained = null)
+        => CheckStatusDeniedNotificationUpdateCoreAsync(window, selector, handle, token, retained, token);
+
+    private async ValueTask<SecretStatus> CheckStatusDeniedNotificationUpdateCoreAsync(Window window, FixtureSelector selector,
+        ManagementOperation handle, CancellationToken token, Action<Task>? retained, CancellationToken originalCallerToken)
+    {
+        StatusDeniedNotificationUpdateRegistration r;
+        Invocation invocation;
+        lock (gate)
+        {
+            Own(window, selector);
+            Require(ReferenceEquals(window.Binding.Selector, selector));
+            Require(statusDeniedNotificationUpdate.TryGetValue(window, out r!));
+            Require(handle is not null && ReferenceEquals(r.Handle, handle));
+            bool valid = !r.CheckClaimed && !window.Closed && window.Status is null &&
+                StatusDeniedNotificationUpdateStartValid(r) && !token.IsCancellationRequested && !originalCallerToken.IsCancellationRequested &&
+                handle.State == NativeProvisioningState.Pending && r.Receipt.Evidence == DispatchEvidence.Pending;
+            r.CheckClaimed = true;
+            r.Invalid |= !valid;
+            Require(valid);
+            invocation = r.Status = window.Status = new();
+            r.StatusToken = token;
+            r.StatusCallerToken = originalCallerToken;
+            statusDeniedNotificationUpdateInvocations.Add(invocation, r);
+        }
+        try
+        {
+            Task<SecretStatus> task;
+            var previous = current.Value;
+            current.Value = new(window, invocation, true);
+            try { task = handle.CheckStatusAsync(token).AsTask(); }
+            finally { current.Value = previous; }
+            lock (gate) invocation.SdkTask = r.StatusTask = task;
+            try
+            {
+                retained?.Invoke(task);
+                lock (gate) r.StatusHookReturned = true;
+            }
+            finally
+            {
+                var outcome = await task.ConfigureAwait(false);
+                lock (gate)
+                {
+                    invocation.Outcome = outcome;
+                    invocation.WrapperState = handle.State;
+                    r.StatusCompleted = task.IsCompletedSuccessfully && outcome == SecretStatus.Denied &&
+                        handle.State == NativeProvisioningState.Failed;
+                }
+            }
+            return await task.ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            lock (gate) { r.Invalid = true; invocation.Canceled = true; }
+            throw;
+        }
+        catch
+        {
+            lock (gate) r.Invalid = true;
+            throw;
+        }
+        finally { await FinishStatusDeniedNotificationUpdateAsync(r, invocation).ConfigureAwait(false); }
+    }
+
+    private async Task FinishStatusDeniedNotificationUpdateAsync(StatusDeniedNotificationUpdateRegistration r,
+        Invocation invocation)
+    {
+        bool start = ReferenceEquals(r.Start, invocation);
+        Task<Task>? borrower;
+        lock (gate)
+        {
+            Task? actual = start ? r.StartTask : r.StatusTask;
+            Require(actual is null || actual.IsCompleted);
+            finishing.Add(invocation);
+            borrower = borrowers.TryGetValue(invocation, out var pending) ? pending.Task : null;
+        }
+        if (borrower is not null)
+        {
+            var actual = await borrower.ConfigureAwait(false);
+            try { await actual.ConfigureAwait(false); }
+            catch { lock (gate) r.Invalid = true; }
+        }
+        bool custodyValid, disposalFailed = false;
+        try { custodyValid = r.Parsers.Count == (start ? 1 : 2) && r.Parsers.All(p => p.Complete && !p.Invalid); }
+        catch { custodyValid = false; }
+        if (!start)
+        {
+            try { r.Storage.Dispose(); }
+            catch { disposalFailed = true; }
+            try { custodyValid &= r.Parsers.All(p => p.Complete && !p.Invalid); }
+            catch { custodyValid = false; }
+        }
+        lock (gate)
+        {
+            r.Invalid |= !custodyValid || disposalFailed;
+            requestOwners.Remove(invocation);
+            requestCandidates.Remove(invocation);
+            borrowers.Remove(invocation);
+            if (start)
+            {
+                r.StartComplete = !r.Invalid && r.StartHookReturned && r.StartSucceeded &&
+                    r.TransportSucceeded && r.Sends == 1 && r.Candidate is not null &&
+                    r.Wire is { Ordinal: 0, HttpStatus: 201, State: WireState.Pending, Complete: true } &&
+                    r.Target is { Kind: StatusTargetKind.SelectedResource } &&
+                    r.Target.StartDispatch == r.Candidate.StartDispatch &&
+                    r.StartTask is { IsCompletedSuccessfully: true } && !r.StartToken.IsCancellationRequested &&
+                    r.Handle?.State == NativeProvisioningState.Pending && r.Receipt.Evidence == DispatchEvidence.Pending;
+                if (r.StartComplete)
+                {
+                    r.StartProof = r.Candidate;
+                    targets[r.Window] = r.Target;
+                    eligible.Add(r.Window);
+                }
+                r.Started.TrySetResult();
+            }
+            else
+            {
+                r.Complete = StatusDeniedNotificationUpdateStartValid(r) && r.StatusHookReturned && r.StatusCompleted &&
+                    r.StatusTask is { IsCompletedSuccessfully: true } && !r.StatusToken.IsCancellationRequested &&
+                    !r.StatusCallerToken.IsCancellationRequested &&
+                    r.Receipt.Evidence == DispatchEvidence.Pending && r.Handle?.State == NativeProvisioningState.Failed &&
+                    r.StatusSends == 1 && r.StatusWire is { Ordinal: 1, HttpStatus: 401 or 403, State: WireState.Denied, Complete: true } wire &&
+                    r.Target is { } target && r.Wire is { } originalWire &&
+                    wire.Uri == target.TargetUri.AbsoluteUri && wire.Dispatch != originalWire.Dispatch &&
+                    !ReferenceEquals(wire.Request, originalWire.Request);
+                if (r.Complete)
+                {
+                    var deniedWire = r.StatusWire!;
+                    r.Denied = new(r.StartProof!, r.StatusTask!, deniedWire.HttpStatus,
+                        deniedWire.ResponseSha256, deniedWire.NativeRequestId);
+                    // Denial alone cannot grant generic remote-completion authority.
+                }
+                r.Checked.TrySetResult();
+            }
+            invocation.Terminated = true;
+            invocation.Drained.TrySetResult();
+        }
+        if (disposalFailed) throw new InvalidOperationException("management-capture-finalization");
+    }
+
+    private Task<Capture> SealStatusDeniedNotificationUpdateAsync(Window window)
+    {
+        StatusDeniedNotificationUpdateRegistration r;
+        TaskCompletionSource ready;
+        Task<Capture> task;
+        lock (gate)
+        {
+            Own(window, window.Binding.Selector);
+            r = statusDeniedNotificationUpdate[window];
+            window.Closed = true;
+            if (r.SealTask is not null) return r.SealTask;
+            r.Sealed = true;
+            ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            task = r.SealTask = Drain(ready.Task);
+        }
+        ready.SetResult();
+        return task;
+
+        async Task<Capture> Drain(Task admission)
+        {
+            await admission.ConfigureAwait(false);
+            await r.Started.Task.ConfigureAwait(false);
+            if (r.Status is not null) await r.Checked.Task.ConfigureAwait(false);
+            try { r.Storage.Dispose(); r.Configuration.Dispose(); r.AuthorizationSha256 = null; }
+            catch { lock (gate) r.Invalid = true; throw; }
+            return new() { Binding = r.Binding, Start = r.Start, Status = r.Status };
+        }
+    }
+
+    private async Task SendStatusDeniedNotificationUpdateAsync(StatusDeniedNotificationUpdateRegistration r,
+        InvocationContext context, HttpMessage message, TaskCompletionSource<Task> borrower)
+    {
+        var invocation = context.Invocation;
+        bool status = context.Status;
+        lock (gate)
+        {
+            bool valid = !r.Invalid && !r.Sealed && !finishing.Contains(invocation) &&
+                ReferenceEquals(invocation, status ? r.Status : r.Start) &&
+                (status ? ++r.StatusSends == 1 && r.Target is not null && r.Receipt.Evidence == DispatchEvidence.Pending :
+                    ++r.Sends == 1 && r.Receipt.Evidence == DispatchEvidence.PossiblyDispatched) &&
+                requestCandidates.TryGetValue(invocation, out var candidates) && candidates.Contains(message.Request);
+            r.Invalid |= !valid;
+            Require(valid);
+            borrowers.Add(invocation, borrower);
+            invocation.Sending = true;
+            requestOwners.Add(invocation, message.Request);
+            requestCandidates.Remove(invocation);
+        }
+        Attempt? attempt = null;
+        RequestContent? original = message.Request.Content;
+        RequestContent? snapshot = null;
+        try
+        {
+            var request = message.Request;
+            var headers = request.Headers.ToArray();
+            string expectedUri = Origin + r.Window.Path + "?api-version=2025-02-15";
+            void Check()
+            {
+                Require(ReferenceEquals(message.Request, request) && headers.SequenceEqual(request.Headers) &&
+                    headers.Select(h => h.Name).Distinct(StringComparer.OrdinalIgnoreCase).Count() == headers.Length &&
+                    request.Method == (status ? RequestMethod.Get : Route(r.Binding).Method) &&
+                    ReferenceEquals(request.Content, snapshot) && Trusted(request.Uri.ToUri()) &&
+                    request.Uri.ToUri().AbsoluteUri == expectedUri &&
+                    (!status || expectedUri == r.Target!.TargetUri.AbsoluteUri) &&
+                    request.Headers.TryGetValue("Authorization", out var auth) &&
+                    auth.StartsWith("Bearer ", StringComparison.Ordinal) && auth.Length > 7 &&
+                    !headers.Any(h => new[] { "Content-Encoding", "Transfer-Encoding", "Content-Range", "Range" }
+                        .Contains(h.Name, StringComparer.OrdinalIgnoreCase)));
+                Headers(headers);
+                if (request.Headers.TryGetValue("Host", out var host)) Require(host == "management.azure.com");
+                r.StartToken.ThrowIfCancellationRequested();
+                if (status)
+                {
+                    r.StatusToken.ThrowIfCancellationRequested();
+                    r.StatusCallerToken.ThrowIfCancellationRequested();
+                }
+                message.CancellationToken.ThrowIfCancellationRequested();
+            }
+            string requestHash;
+            if (status)
+            {
+                Require(original is null);
+                if (request.Headers.TryGetValue("Content-Length", out var length)) Require(length == "0");
+                requestHash = Convert.ToHexString(SHA256.HashData(ReadOnlySpan<byte>.Empty));
+            }
+            else
+            {
+                long length = 0;
+                Require(original is not null && original.TryComputeLength(out length) && length > 0 && length <= maximumBytes);
+                Require(request.Headers.TryGetValue("Content-Type", out var contentType) &&
+                    contentType.Split(';')[0].Trim().Equals("application/json", StringComparison.OrdinalIgnoreCase));
+                byte[] bytes = new byte[maximumBytes];
+                r.Storage.Own(bytes);
+                using var output = new MemoryStream(bytes, 0, bytes.Length, true, true);
+                await original.WriteToAsync(output, message.CancellationToken).ConfigureAwait(false);
+                Require(output.Position == length && ReferenceEquals(request.Content, original));
+                if (request.Headers.TryGetValue("Content-Length", out var declared))
+                    Require(declared == length.ToString(CultureInfo.InvariantCulture));
+                var payload = bytes.AsMemory(0, checked((int)length));
+                using var json = JsonDocument.Parse(payload, new JsonDocumentOptions { MaxDepth = 16 });
+                int nodes = 512;
+                JsonRows(json.RootElement, ref nodes);
+                ValidateStatusDeniedNotificationUpdate(r, json.RootElement, request: true);
+                requestHash = Convert.ToHexString(SHA256.HashData(payload.Span));
+                snapshot = RequestContent.Create(payload);
+                r.Storage.Own(snapshot);
+                r.Storage.Own(original);
+                request.Content = snapshot;
+            }
+            Check();
+            request.Headers.TryGetValue("Authorization", out var authorization);
+            byte[] authorizationBytes = System.Text.Encoding.UTF8.GetBytes(authorization!);
+            string authorizationSha256;
+            try { authorizationSha256 = Convert.ToHexString(SHA256.HashData(authorizationBytes)); }
+            finally { CryptographicOperations.ZeroMemory(authorizationBytes); }
+            if (status) Require(r.AuthorizationSha256 == authorizationSha256);
+            else r.AuthorizationSha256 = authorizationSha256;
+            if (!status) r.BeforeSend?.Invoke();
+            Check();
+            Guid dispatch = Guid.NewGuid();
+            attempt = new() { Dispatch = dispatch, RequestSha256 = requestHash };
+            lock (gate) invocation.Attempts.Add(attempt);
+            message.BufferResponse = false;
+            try { await backend.ProcessAsync(message).ConfigureAwait(false); }
+            finally { if (message.HasResponse) r.Storage.Own(message.Response); }
+            Check();
+            var response = message.Response;
+            var stream = response.ContentStream;
+            var body = await OwnedArmResponse.CaptureAsync(message, maximumBytes, r.Storage, allowContinuation: !status)
+                .ConfigureAwait(false);
+            Check();
+            Require(ReferenceEquals(response.ContentStream, stream) && body.Bytes.Length > 0 &&
+                (status ? body.Response.Status is 401 or 403 : body.Response.Status == 201) &&
+                !body.Response.Headers.Contains("WWW-Authenticate"));
+            var responseHeaders = body.Response.Headers.ToArray();
+            Require(!responseHeaders.Any(h => h.Name.Equals("Retry-After", StringComparison.OrdinalIgnoreCase)) &&
+                responseHeaders.Count(h => new[] { "Location", "Azure-AsyncOperation", "Operation-Location" }
+                    .Contains(h.Name, StringComparer.OrdinalIgnoreCase)) == (status ? 0 : 1));
+            if (!status) Require(responseHeaders.Single(h => h.Name.Equals("Location", StringComparison.OrdinalIgnoreCase)).Value == expectedUri);
+            using var document = JsonDocument.Parse(body.Bytes, new JsonDocumentOptions { MaxDepth = 16 });
+            int rows = 512;
+            JsonRows(document.RootElement, ref rows);
+            if (status)
+            {
+                var root = document.RootElement;
+                Require(OnlyApprovalFields(root, "error") && root.TryGetProperty("error", out var error) &&
+                    OnlyApprovalFields(error, "code", "message") &&
+                    error.TryGetProperty("code", out var code) && code.ValueKind == JsonValueKind.String &&
+                    code.GetString() is { Length: > 0 and <= 128 } errorCode && !errorCode.Any(char.IsControl) &&
+                    error.TryGetProperty("message", out var text) && text.ValueKind == JsonValueKind.String &&
+                    text.GetString() is { Length: > 0 and <= 2048 } errorMessage && !errorMessage.Any(char.IsControl));
+            }
+            else
+            {
+                ValidateStatusDeniedNotificationUpdate(r, document.RootElement, request: false);
+                var native = ModelReaderWriter.Read<EventGridSubscriptionData>(new BinaryData(body.Bytes));
+                Require(native is not null && native.Id?.ToString() == r.Window.Path &&
+                    native.Name == r.Scope.SubscriptionName && native.ResourceType.ToString() == "Microsoft.EventGrid/eventSubscriptions" &&
+                    native.Topic == r.Scope.Vault.ExportResourceId() && native.ProvisioningState?.ToString() == "Updating" &&
+                    native.Labels.SequenceEqual(["secretkit-fixture-" + r.Binding.Selector.Nonce.ToString("N")]) &&
+                    native.Filter is not null && native.Filter.IncludedEventTypes.SequenceEqual(["Microsoft.KeyVault.SecretNewVersionCreated"]) &&
+                    native.Destination is WebHookEventSubscriptionDestination webhook &&
+                    webhook.Endpoint?.OriginalString == r.Configuration.Endpoint.Reveal() && webhook.DeliveryAttributeMappings.Count == 0);
+            }
+            r.Parsers.Add(OwnedArmResponse.ParserCustody.Install(message, body.Response, body.Bytes, r.Storage,
+                requireRebuffer: true, requireDownstreamRead: status));
+            attempt.HttpStatus = body.Response.Status;
+            attempt.ResponseObserved = true;
+            attempt.ResponseSha256 = body.Sha256;
+            attempt.State = status ? WireState.Denied : WireState.Pending;
+            attempt.Valid = true;
+            attempt.HasProviderContinuation = !status;
+            var wire = new StatusVaultCancellationWire(status ? 1 : 0, request, expectedUri, dispatch,
+                body.Response.Status, attempt.State, body.Sha256, body.NativeRequestId, true, requestHash,
+                Array.AsReadOnly(headers.Select(h => (h.Name, h.Value)).ToArray()));
+            lock (gate)
+            {
+                if (status) r.StatusWire = wire;
+                else
+                {
+                    r.Wire = wire;
+                    r.Target = new(r.Binding, dispatch, StatusTargetKind.SelectedResource, new Uri(expectedUri),
+                        Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(expectedUri))), body.Sha256);
+                    r.Candidate = new(r.Binding, dispatch, body.Response.Status, body.Bytes.Length, requestHash, body.Sha256, body.NativeRequestId);
+                    r.TransportSucceeded = true;
+                }
+            }
+        }
+        catch (OperationCanceledException) { lock (gate) r.Invalid = true; throw; }
+        catch { lock (gate) r.Invalid = true; throw new IOException("management-capture-transport"); }
+        finally
+        {
+            message.Request.Content = original;
+            lock (gate)
+            {
+                if (attempt is not null) attempt.TransportTerminated = true;
+                invocation.Sending = false;
+            }
+        }
+    }
+
+    private static void ValidateStatusDeniedNotificationUpdate(StatusDeniedNotificationUpdateRegistration r, JsonElement root,
+        bool request)
+    {
+        var scope = r.Scope;
+        var configuration = r.Configuration;
+        bool flatRequest = request && r.Binding.Operation == ManagementMutation.UpdateNotification;
+        Require(OnlyApprovalFields(root, request ? flatRequest ? ["destination", "filter"] : ["properties"] :
+            ["id", "name", "type", "properties"]));
+        if (!request)
+            Require(ApprovalText(root, "id") == r.Window.Path &&
+                ApprovalText(root, "name") == scope.SubscriptionName &&
+                ApprovalText(root, "type") == "Microsoft.EventGrid/eventSubscriptions");
+        var properties = flatRequest ? root : root.GetProperty("properties");
+        Require(OnlyApprovalFields(properties, request ? ["destination", "filter"] :
+            ["topic", "labels", "provisioningState", "destination", "filter"]));
+        if (!request)
+        {
+            Require(ApprovalText(properties, "topic") == scope.Vault.ExportResourceId() &&
+                ApprovalText(properties, "provisioningState") == "Updating");
+            var labels = properties.GetProperty("labels");
+            Require(labels.ValueKind == JsonValueKind.Array && labels.GetArrayLength() == 1 &&
+                labels[0].ValueKind == JsonValueKind.String &&
+                labels[0].GetString() == "secretkit-fixture-" + r.Binding.Selector.Nonce.ToString("N"));
+        }
+        var filter = properties.GetProperty("filter");
+        Require(OnlyApprovalFields(filter, "includedEventTypes", "advancedFilters"));
+        var events = filter.GetProperty("includedEventTypes");
+        Require(events.ValueKind == JsonValueKind.Array && events.GetArrayLength() == 1 &&
+            events[0].GetString() == "Microsoft.KeyVault.SecretNewVersionCreated");
+        if (filter.TryGetProperty("advancedFilters", out var advanced))
+            Require(advanced.ValueKind == JsonValueKind.Array && advanced.GetArrayLength() == 0);
+        var destination = properties.GetProperty("destination");
+        Require(OnlyApprovalFields(destination, "endpointType", "properties") &&
+            ApprovalText(destination, "endpointType") == "WebHook");
+        var settings = destination.GetProperty("properties");
+        Require(OnlyApprovalFields(settings, request ? ["endpointUrl"] :
+            ["endpointUrl", "endpointBaseUrl", "deliveryAttributeMappings"]) &&
+            ApprovalText(settings, "endpointUrl") == configuration.Endpoint.Reveal());
+        var endpoint = new Uri(configuration.Endpoint.Reveal(), UriKind.Absolute);
+        Require(endpoint.Scheme == "https" && endpoint.UserInfo.Length == 0 && endpoint.Fragment.Length == 0);
+        if (!request)
+        {
+            var mappings = settings.GetProperty("deliveryAttributeMappings");
+            Require(mappings.ValueKind == JsonValueKind.Array && mappings.GetArrayLength() == 0);
+            if (settings.TryGetProperty("endpointBaseUrl", out var endpointBase))
+                Require(endpointBase.ValueKind == JsonValueKind.String &&
+                    endpointBase.GetString() == endpoint.GetLeftPart(UriPartial.Path));
+        }
+    }
+
+
+    internal sealed class StatusUnknownNotificationUpdateStartProof(Binding binding, Guid startDispatch,
+        int httpStatus, int responseBytes, string requestSha256, string responseSha256, string nativeRequestId)
+    {
+        internal Binding Binding { get; } = binding;
+        internal Guid StartDispatch { get; } = startDispatch;
+        internal int HttpStatus { get; } = httpStatus;
+        internal int ResponseBytes { get; } = responseBytes;
+        internal string RequestSha256 { get; } = requestSha256;
+        internal string ResponseSha256 { get; } = responseSha256;
+        internal string NativeRequestId { get; } = nativeRequestId;
+        public override string ToString() => "[StatusUnknownNotificationUpdateStartProof]";
+    }
+
+    // This capability proves the native Unknown call drained, never remote termination.
+    internal sealed class StatusUnknownNotificationUpdateCompletionProof(StatusUnknownNotificationUpdateStartProof start)
+    {
+        internal StatusUnknownNotificationUpdateStartProof Start { get; } = start;
+        public override string ToString() => "[StatusUnknownNotificationUpdateCompletionProof]";
+    }
+
+    private sealed class StatusUnknownNotificationUpdateRegistration(Window window, Invocation start,
+        VaultAdministration client, NotificationScope scope, ManagementReceipt receipt, CancellationToken token,
+        Action? beforeSend)
+    {
+        internal readonly Window Window = window;
+        internal readonly Binding Binding = window.Binding;
+        internal readonly Invocation Start = start;
+        internal readonly VaultAdministration Client = client;
+        internal readonly NotificationScope Scope = scope;
+        internal readonly ManagementReceipt Receipt = receipt;
+        internal readonly CancellationToken StartToken = token;
+        internal readonly Action? BeforeSend = beforeSend;
+        internal readonly OwnedArmResponse.Storage Storage = new();
+        internal readonly TaskCompletionSource Started = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal readonly TaskCompletionSource Checked = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal readonly List<OwnedArmResponse.ParserCustody> Parsers = [];
+        internal NotificationConfiguration Configuration = null!;
+        internal StatusTarget? Target;
+        internal StatusVaultCancellationWire? StatusWire;
+        internal int StatusSends;
+        internal StatusVaultCancellationWire? Wire;
+        internal StatusUnknownNotificationUpdateStartProof? Candidate, StartProof;
+        internal StatusUnknownNotificationUpdateCompletionProof? Completion;
+        internal Task<SecretOutcome<ManagementOperation>>? StartTask;
+        internal Task<SecretStatus>? StatusTask;
+        internal Task<Capture>? SealTask;
+        internal Invocation? Status;
+        internal ManagementOperation? Handle;
+        internal CancellationToken StatusToken, StatusCallerToken;
+        internal int Sends;
+        internal bool Invalid, Sealed, StartHookReturned, StartSucceeded, TransportSucceeded, StartComplete;
+        internal bool CheckClaimed, StatusHookReturned, StatusCompleted, Complete;
+    }
+
+    private readonly Dictionary<Window, StatusUnknownNotificationUpdateRegistration> statusUnknownNotificationUpdate =
+        new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<Invocation, StatusUnknownNotificationUpdateRegistration> statusUnknownNotificationUpdateInvocations =
+        new(ReferenceEqualityComparer.Instance);
+
+    internal bool TryGetStatusUnknownNotificationUpdateStart(Window window, Binding binding,
+        VaultAdministration client, NotificationScope scope, ManagementReceipt receipt, Task startTask,
+        ManagementOperation handle, [NotNullWhen(true)] out StatusUnknownNotificationUpdateStartProof? proof)
+    {
+        lock (gate)
+        {
+            proof = null;
+            if (window is null || !statusUnknownNotificationUpdate.TryGetValue(window, out var r) ||
+                !NotificationFixtureProvisioner.StatusUnknownNotificationUpdateSelector(binding.Selector) ||
+                !ReferenceEquals(r.Binding, binding) || !ReferenceEquals(r.Client, client) ||
+                !ReferenceEquals(r.Scope, scope) || !ReferenceEquals(r.Receipt, receipt) ||
+                !ReferenceEquals(r.StartTask, startTask) || !ReferenceEquals(r.Handle, handle) ||
+                !StatusUnknownNotificationUpdateStartValid(r) ||
+                receipt.Evidence != DispatchEvidence.Pending ||
+                !(handle.State == NativeProvisioningState.Pending || r.Complete && handle.State == NativeProvisioningState.Unknown) ||
+                !ReferenceEquals(targets.GetValueOrDefault(window), r.Target)) return false;
+            proof = r.StartProof;
+            return proof is not null;
+        }
+    }
+
+    internal bool TryGetStatusUnknownNotificationUpdateCompletion(Window window, Binding binding,
+        VaultAdministration client, NotificationScope scope, ManagementReceipt receipt, Task startTask,
+        ManagementOperation handle, Task statusTask,
+        [NotNullWhen(true)] out StatusUnknownNotificationUpdateCompletionProof? proof)
+    {
+        lock (gate)
+        {
+            proof = null;
+            if (!TryGetStatusUnknownNotificationUpdateStart(window, binding, client, scope, receipt,
+                    startTask, handle, out _) || !statusUnknownNotificationUpdate.TryGetValue(window, out var r) ||
+                !ReferenceEquals(r.StatusTask, statusTask) || !r.Complete ||
+                !r.Checked.Task.IsCompletedSuccessfully || r.StatusTask is not { IsCompletedSuccessfully: true } ||
+                r.StatusToken.IsCancellationRequested || r.StatusCallerToken.IsCancellationRequested ||
+                handle.State != NativeProvisioningState.Unknown || receipt.Evidence != DispatchEvidence.Pending) return false;
+            proof = r.Completion;
+            return proof is not null;
+        }
+    }
+
+    private static bool StatusUnknownNotificationUpdateStartValid(StatusUnknownNotificationUpdateRegistration r) =>
+        !r.Invalid && !r.Sealed && r.StartComplete && r.StartProof is not null &&
+        r.Started.Task.IsCompletedSuccessfully && r.StartTask is { IsCompletedSuccessfully: true } &&
+        !r.StartToken.IsCancellationRequested &&
+        (!r.CheckClaimed || !r.StatusToken.IsCancellationRequested && !r.StatusCallerToken.IsCancellationRequested);
+
+    internal async Task<SecretOutcome<ManagementOperation>> StartStatusUnknownNotificationUpdateAsync(
+        Window window, FixtureSelector selector, VaultAdministration client, ManagementScope scope,
+        ManagementOperationEffects.Input input, ManagementReceipt receipt, CancellationToken token = default,
+        Action<Task>? retained = null, Action? beforeSend = null)
+    {
+        StatusUnknownNotificationUpdateRegistration r;
+        lock (gate)
+        {
+            Own(window, selector);
+            Require(client is not null && receipt is not null && scope is NotificationScope &&
+                NotificationFixtureProvisioner.StatusUnknownNotificationUpdateSelector(selector) &&
+                window.Binding.Operation == ManagementMutation.UpdateNotification &&
+                window.Binding.ApiRevision == "2025-02-15" && InputMatches(window.Binding, input) &&
+                Route(window.Binding with { Resource = scope }) == Route(window.Binding));
+            if (statusUnknownNotificationUpdate.TryGetValue(window, out var existing))
+            {
+                Require(ReferenceEquals(existing.Client, client) && ReferenceEquals(existing.Scope, scope) &&
+                    ReferenceEquals(existing.Receipt, receipt));
+                existing.Invalid = true;
+                throw new InvalidOperationException("management-capture-boundary");
+            }
+            Require(!window.Closed && window.Start is null && !token.IsCancellationRequested && startedWindows.Add(window));
+            var invocation = window.Start = new();
+            r = new(window, invocation, client, (NotificationScope)scope, receipt, token, beforeSend)
+            { Configuration = new(input.WebhookUrl, [VaultNotificationEvent.SecretNewVersionCreated], []) };
+            statusUnknownNotificationUpdate.Add(window, r);
+            statusUnknownNotificationUpdateInvocations.Add(invocation, r);
+        }
+        try
+        {
+            Task<SecretOutcome<ManagementOperation>> task;
+            var previous = current.Value;
+            current.Value = new(window, r.Start, false);
+            try { task = ManagementOperationEffects.StartAsync(client, scope, window.Binding.Operation, input, receipt, token).AsTask(); }
+            finally { current.Value = previous; }
+            lock (gate) r.Start.SdkTask = r.StartTask = task;
+            try
+            {
+                retained?.Invoke(task);
+                lock (gate) r.StartHookReturned = true;
+            }
+            finally
+            {
+                var result = await task.ConfigureAwait(false);
+                lock (gate)
+                {
+                    r.Start.Outcome = result.Status;
+                    r.Handle = result.IsSuccess ? result.Value : null;
+                    r.Start.WrapperState = r.Handle?.State;
+                    r.StartSucceeded = task.IsCompletedSuccessfully && result.IsSuccess &&
+                        r.Handle!.State == NativeProvisioningState.Pending && receipt.Evidence == DispatchEvidence.Pending;
+                    r.Start.HasNativeHandle = r.StartSucceeded;
+                }
+            }
+            return await task.ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            lock (gate) { r.Invalid = true; r.Start.Canceled = true; }
+            throw;
+        }
+        catch
+        {
+            lock (gate) r.Invalid = true;
+            throw;
+        }
+        finally { await FinishStatusUnknownNotificationUpdateAsync(r, r.Start).ConfigureAwait(false); }
+    }
+
+    private async Task<SecretStatus> CheckStatusUnknownNotificationUpdateAsync(Window window, FixtureSelector selector,
+        ManagementOperation handle, CancellationToken token, Action<Task>? retained, CancellationToken originalCallerToken)
+    {
+        StatusUnknownNotificationUpdateRegistration r;
+        Invocation invocation;
+        lock (gate)
+        {
+            Own(window, selector);
+            Require(statusUnknownNotificationUpdate.TryGetValue(window, out r!) &&
+                handle is not null && ReferenceEquals(r.Handle, handle));
+            bool valid = !r.CheckClaimed && !window.Closed && window.Status is null &&
+                StatusUnknownNotificationUpdateStartValid(r) && !token.IsCancellationRequested && !originalCallerToken.IsCancellationRequested &&
+                handle.State == NativeProvisioningState.Pending && r.Receipt.Evidence == DispatchEvidence.Pending;
+            r.CheckClaimed = true;
+            r.Invalid |= !valid;
+            Require(valid);
+            invocation = r.Status = window.Status = new();
+            r.StatusToken = token;
+            r.StatusCallerToken = originalCallerToken;
+            statusUnknownNotificationUpdateInvocations.Add(invocation, r);
+        }
+        try
+        {
+            Task<SecretStatus> task;
+            var previous = current.Value;
+            current.Value = new(window, invocation, true);
+            try { task = handle.CheckStatusAsync(token).AsTask(); }
+            finally { current.Value = previous; }
+            lock (gate) invocation.SdkTask = r.StatusTask = task;
+            try
+            {
+                retained?.Invoke(task);
+                lock (gate) r.StatusHookReturned = true;
+            }
+            finally
+            {
+                var outcome = await task.ConfigureAwait(false);
+                lock (gate)
+                {
+                    invocation.Outcome = outcome;
+                    invocation.WrapperState = handle.State;
+                    r.StatusCompleted = task.IsCompletedSuccessfully && outcome == SecretStatus.Unknown &&
+                        handle.State == NativeProvisioningState.Unknown;
+                }
+            }
+            return await task.ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            lock (gate) { r.Invalid = true; invocation.Canceled = true; }
+            throw;
+        }
+        catch
+        {
+            lock (gate) r.Invalid = true;
+            throw;
+        }
+        finally { await FinishStatusUnknownNotificationUpdateAsync(r, invocation).ConfigureAwait(false); }
+    }
+
+    private async Task FinishStatusUnknownNotificationUpdateAsync(StatusUnknownNotificationUpdateRegistration r,
+        Invocation invocation)
+    {
+        bool start = ReferenceEquals(r.Start, invocation);
+        Task<Task>? borrower;
+        lock (gate)
+        {
+            Task? actual = start ? r.StartTask : r.StatusTask;
+            Require(actual is null || actual.IsCompleted);
+            finishing.Add(invocation);
+            borrower = borrowers.TryGetValue(invocation, out var pending) ? pending.Task : null;
+        }
+        if (borrower is not null)
+        {
+            var actual = await borrower.ConfigureAwait(false);
+            try { await actual.ConfigureAwait(false); }
+            catch { lock (gate) r.Invalid = true; }
+        }
+        bool custodyValid, disposalFailed = false;
+        try { custodyValid = r.Parsers.Count == (start ? 1 : 2) && r.Parsers.All(p => p.Complete && !p.Invalid); }
+        catch { custodyValid = false; }
+        if (!start)
+        {
+            try { r.Storage.Dispose(); }
+            catch { disposalFailed = true; }
+            try { custodyValid &= r.Parsers.All(p => p.Complete && !p.Invalid); }
+            catch { custodyValid = false; }
+        }
+        lock (gate)
+        {
+            r.Invalid |= !custodyValid || disposalFailed;
+            requestOwners.Remove(invocation);
+            requestCandidates.Remove(invocation);
+            borrowers.Remove(invocation);
+            if (start)
+            {
+                r.StartComplete = !r.Invalid && r.StartHookReturned && r.StartSucceeded &&
+                    r.TransportSucceeded && r.Sends == 1 && r.Candidate is not null &&
+                    r.Wire is { Ordinal: 0, HttpStatus: 201, State: WireState.Pending, Complete: true } &&
+                    r.Target is { Kind: StatusTargetKind.SelectedResource } &&
+                    r.Target.StartDispatch == r.Candidate.StartDispatch &&
+                    r.StartTask is { IsCompletedSuccessfully: true } && !r.StartToken.IsCancellationRequested &&
+                    r.Handle?.State == NativeProvisioningState.Pending && r.Receipt.Evidence == DispatchEvidence.Pending;
+                if (r.StartComplete)
+                {
+                    r.StartProof = r.Candidate;
+                    targets[r.Window] = r.Target;
+                    eligible.Add(r.Window);
+                }
+                r.Started.TrySetResult();
+            }
+            else
+            {
+                r.Complete = StatusUnknownNotificationUpdateStartValid(r) && r.StatusHookReturned && r.StatusCompleted &&
+                    r.StatusTask is { IsCompletedSuccessfully: true } && !r.StatusToken.IsCancellationRequested &&
+                    !r.StatusCallerToken.IsCancellationRequested &&
+                    r.Receipt.Evidence == DispatchEvidence.Pending && r.Handle?.State == NativeProvisioningState.Unknown &&
+                    r.StatusSends == 1 && r.StatusWire is { Ordinal: 1, HttpStatus: 200, State: WireState.Unknown, Complete: true } wire &&
+                    r.Target is { } target && r.Wire is { } originalWire &&
+                    wire.Uri == target.TargetUri.AbsoluteUri && wire.Dispatch != originalWire.Dispatch &&
+                    !ReferenceEquals(wire.Request, originalWire.Request);
+                if (r.Complete)
+                {
+                    r.Completion = new(r.StartProof!);
+                    // Historical Unknown cannot grant generic remote-completion authority.
+                }
+                r.Checked.TrySetResult();
+            }
+            invocation.Terminated = true;
+            invocation.Drained.TrySetResult();
+        }
+        if (disposalFailed) throw new InvalidOperationException("management-capture-finalization");
+    }
+
+    private Task<Capture> SealStatusUnknownNotificationUpdateAsync(Window window)
+    {
+        StatusUnknownNotificationUpdateRegistration r;
+        TaskCompletionSource ready;
+        Task<Capture> task;
+        lock (gate)
+        {
+            Own(window, window.Binding.Selector);
+            r = statusUnknownNotificationUpdate[window];
+            window.Closed = true;
+            if (r.SealTask is not null) return r.SealTask;
+            r.Sealed = true;
+            ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            task = r.SealTask = Drain(ready.Task);
+        }
+        ready.SetResult();
+        return task;
+
+        async Task<Capture> Drain(Task admission)
+        {
+            await admission.ConfigureAwait(false);
+            await r.Started.Task.ConfigureAwait(false);
+            if (r.Status is not null) await r.Checked.Task.ConfigureAwait(false);
+            try { r.Storage.Dispose(); r.Configuration.Dispose(); }
+            catch { lock (gate) r.Invalid = true; throw; }
+            return new() { Binding = r.Binding, Start = r.Start, Status = r.Status };
+        }
+    }
+
+    private async Task SendStatusUnknownNotificationUpdateAsync(StatusUnknownNotificationUpdateRegistration r,
+        InvocationContext context, HttpMessage message, TaskCompletionSource<Task> borrower)
+    {
+        var invocation = context.Invocation;
+        bool status = context.Status;
+        lock (gate)
+        {
+            bool valid = !r.Invalid && !r.Sealed && !finishing.Contains(invocation) &&
+                ReferenceEquals(invocation, status ? r.Status : r.Start) &&
+                (status ? ++r.StatusSends == 1 && r.Target is not null && r.Receipt.Evidence == DispatchEvidence.Pending :
+                    ++r.Sends == 1 && r.Receipt.Evidence == DispatchEvidence.PossiblyDispatched) &&
+                requestCandidates.TryGetValue(invocation, out var candidates) && candidates.Contains(message.Request);
+            r.Invalid |= !valid;
+            Require(valid);
+            borrowers.Add(invocation, borrower);
+            invocation.Sending = true;
+            requestOwners.Add(invocation, message.Request);
+            requestCandidates.Remove(invocation);
+        }
+        Attempt? attempt = null;
+        RequestContent? original = message.Request.Content;
+        RequestContent? snapshot = null;
+        try
+        {
+            var request = message.Request;
+            var headers = request.Headers.ToArray();
+            string expectedUri = Origin + r.Window.Path + "?api-version=2025-02-15";
+            void Check()
+            {
+                Require(ReferenceEquals(message.Request, request) && headers.SequenceEqual(request.Headers) &&
+                    headers.Select(h => h.Name).Distinct(StringComparer.OrdinalIgnoreCase).Count() == headers.Length &&
+                    request.Method == (status ? RequestMethod.Get : RequestMethod.Patch) &&
+                    ReferenceEquals(request.Content, snapshot) && Trusted(request.Uri.ToUri()) &&
+                    request.Uri.ToUri().AbsoluteUri == expectedUri &&
+                    (!status || expectedUri == r.Target!.TargetUri.AbsoluteUri) &&
+                    request.Headers.TryGetValue("Authorization", out var auth) &&
+                    auth.StartsWith("Bearer ", StringComparison.Ordinal) && auth.Length > 7 &&
+                    !headers.Any(h => new[] { "Content-Encoding", "Transfer-Encoding", "Content-Range", "Range" }
+                        .Contains(h.Name, StringComparer.OrdinalIgnoreCase)));
+                Headers(headers);
+                if (request.Headers.TryGetValue("Host", out var host)) Require(host == "management.azure.com");
+                r.StartToken.ThrowIfCancellationRequested();
+                if (status)
+                {
+                    r.StatusToken.ThrowIfCancellationRequested();
+                    r.StatusCallerToken.ThrowIfCancellationRequested();
+                }
+                message.CancellationToken.ThrowIfCancellationRequested();
+            }
+            string requestHash;
+            if (status)
+            {
+                Require(original is null);
+                if (request.Headers.TryGetValue("Content-Length", out var length)) Require(length == "0");
+                requestHash = Convert.ToHexString(SHA256.HashData(ReadOnlySpan<byte>.Empty));
+            }
+            else
+            {
+                long length = 0;
+                Require(original is not null && original.TryComputeLength(out length) && length > 0 && length <= maximumBytes);
+                Require(request.Headers.TryGetValue("Content-Type", out var contentType) &&
+                    contentType.Split(';')[0].Trim().Equals("application/json", StringComparison.OrdinalIgnoreCase));
+                byte[] bytes = new byte[maximumBytes];
+                r.Storage.Own(bytes);
+                using var output = new MemoryStream(bytes, 0, bytes.Length, true, true);
+                await original.WriteToAsync(output, message.CancellationToken).ConfigureAwait(false);
+                Require(output.Position == length && ReferenceEquals(request.Content, original));
+                if (request.Headers.TryGetValue("Content-Length", out var declared))
+                    Require(declared == length.ToString(CultureInfo.InvariantCulture));
+                var payload = bytes.AsMemory(0, checked((int)length));
+                using var json = JsonDocument.Parse(payload, new JsonDocumentOptions { MaxDepth = 16 });
+                int nodes = 512;
+                JsonRows(json.RootElement, ref nodes);
+                ValidateStatusUnknownNotificationUpdate(r, json.RootElement, request: true, status: false);
+                requestHash = Convert.ToHexString(SHA256.HashData(payload.Span));
+                snapshot = RequestContent.Create(payload);
+                r.Storage.Own(snapshot);
+                r.Storage.Own(original);
+                request.Content = snapshot;
+            }
+            Check();
+            if (!status) r.BeforeSend?.Invoke();
+            Check();
+            Guid dispatch = Guid.NewGuid();
+            attempt = new() { Dispatch = dispatch, RequestSha256 = requestHash };
+            lock (gate) invocation.Attempts.Add(attempt);
+            message.BufferResponse = false;
+            try { await backend.ProcessAsync(message).ConfigureAwait(false); }
+            finally { if (message.HasResponse) r.Storage.Own(message.Response); }
+            Check();
+            var response = message.Response;
+            var stream = response.ContentStream;
+            var body = await OwnedArmResponse.CaptureAsync(message, maximumBytes, r.Storage, allowContinuation: !status)
+                .ConfigureAwait(false);
+            Check();
+            Require(ReferenceEquals(response.ContentStream, stream) && body.Response.Status == (status ? 200 : 201));
+            var responseHeaders = body.Response.Headers.ToArray();
+            Require(!responseHeaders.Any(h => h.Name.Equals("Retry-After", StringComparison.OrdinalIgnoreCase)) &&
+                responseHeaders.Count(h => new[] { "Location", "Azure-AsyncOperation", "Operation-Location" }
+                    .Contains(h.Name, StringComparer.OrdinalIgnoreCase)) == (status ? 0 : 1));
+            if (!status) Require(responseHeaders.Single(h => h.Name.Equals("Location", StringComparison.OrdinalIgnoreCase)).Value == expectedUri);
+            using var document = JsonDocument.Parse(body.Bytes, new JsonDocumentOptions { MaxDepth = 16 });
+            int rows = 512;
+            JsonRows(document.RootElement, ref rows);
+            ValidateStatusUnknownNotificationUpdate(r, document.RootElement, request: false, status);
+            var native = ModelReaderWriter.Read<EventGridSubscriptionData>(new BinaryData(body.Bytes));
+            Require(native is not null && native.Id?.ToString() == r.Window.Path &&
+                native.Name == r.Scope.SubscriptionName && native.ResourceType.ToString() == "Microsoft.EventGrid/eventSubscriptions" &&
+                native.Topic == r.Scope.Vault.ExportResourceId() && native.ProvisioningState?.ToString() == (status ? "Unknown" : "Updating") &&
+                native.Labels.SequenceEqual(["secretkit-fixture-" + r.Binding.Selector.Nonce.ToString("N")]) &&
+                native.Filter is not null && native.Filter.IncludedEventTypes.SequenceEqual(["Microsoft.KeyVault.SecretNewVersionCreated"]) &&
+                native.Destination is WebHookEventSubscriptionDestination webhook &&
+                webhook.Endpoint?.OriginalString == r.Configuration.Endpoint.Reveal() && webhook.DeliveryAttributeMappings.Count == 0);
+            r.Parsers.Add(OwnedArmResponse.ParserCustody.Install(message, body.Response, body.Bytes, r.Storage,
+                requireRebuffer: true, requireDownstreamRead: status));
+            attempt.HttpStatus = body.Response.Status;
+            attempt.ResponseObserved = true;
+            attempt.ResponseSha256 = body.Sha256;
+            attempt.State = status ? WireState.Unknown : WireState.Pending;
+            attempt.Valid = true;
+            attempt.HasProviderContinuation = !status;
+            var wire = new StatusVaultCancellationWire(status ? 1 : 0, request, expectedUri, dispatch,
+                body.Response.Status, attempt.State, body.Sha256, body.NativeRequestId, true, requestHash,
+                Array.AsReadOnly(headers.Select(h => (h.Name, h.Value)).ToArray()));
+            lock (gate)
+            {
+                if (status) r.StatusWire = wire;
+                else
+                {
+                    r.Wire = wire;
+                    r.Target = new(r.Binding, dispatch, StatusTargetKind.SelectedResource, new Uri(expectedUri),
+                        Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(expectedUri))), body.Sha256);
+                    r.Candidate = new(r.Binding, dispatch, body.Response.Status, body.Bytes.Length, requestHash, body.Sha256, body.NativeRequestId);
+                    r.TransportSucceeded = true;
+                }
+            }
+        }
+        catch (OperationCanceledException) { lock (gate) r.Invalid = true; throw; }
+        catch { lock (gate) r.Invalid = true; throw new IOException("management-capture-transport"); }
+        finally
+        {
+            message.Request.Content = original;
+            lock (gate)
+            {
+                if (attempt is not null) attempt.TransportTerminated = true;
+                invocation.Sending = false;
+            }
+        }
+    }
+
+    private static void ValidateStatusUnknownNotificationUpdate(StatusUnknownNotificationUpdateRegistration r, JsonElement root,
+        bool request, bool status)
+    {
+        var scope = r.Scope;
+        var configuration = r.Configuration;
+        Require(OnlyApprovalFields(root, request ? ["destination", "filter"] :
+            ["id", "name", "type", "properties"]));
+        if (!request)
+            Require(ApprovalText(root, "id") == r.Window.Path &&
+                ApprovalText(root, "name") == scope.SubscriptionName &&
+                ApprovalText(root, "type") == "Microsoft.EventGrid/eventSubscriptions");
+        var properties = request ? root : root.GetProperty("properties");
+        Require(OnlyApprovalFields(properties, request ? ["destination", "filter"] :
+            ["topic", "labels", "provisioningState", "destination", "filter"]));
+        if (!request)
+        {
+            Require(ApprovalText(properties, "topic") == scope.Vault.ExportResourceId() &&
+                ApprovalText(properties, "provisioningState") == (status ? "Unknown" : "Updating"));
+            var labels = properties.GetProperty("labels");
+            Require(labels.ValueKind == JsonValueKind.Array && labels.GetArrayLength() == 1 &&
+                labels[0].ValueKind == JsonValueKind.String &&
+                labels[0].GetString() == "secretkit-fixture-" + r.Binding.Selector.Nonce.ToString("N"));
+        }
+        var filter = properties.GetProperty("filter");
+        Require(OnlyApprovalFields(filter, "includedEventTypes", "advancedFilters"));
+        var events = filter.GetProperty("includedEventTypes");
+        Require(events.ValueKind == JsonValueKind.Array && events.GetArrayLength() == 1 &&
+            events[0].GetString() == "Microsoft.KeyVault.SecretNewVersionCreated");
+        if (filter.TryGetProperty("advancedFilters", out var advanced))
+            Require(advanced.ValueKind == JsonValueKind.Array && advanced.GetArrayLength() == 0);
+        var destination = properties.GetProperty("destination");
+        Require(OnlyApprovalFields(destination, "endpointType", "properties") &&
+            ApprovalText(destination, "endpointType") == "WebHook");
+        var settings = destination.GetProperty("properties");
+        Require(OnlyApprovalFields(settings, request ? ["endpointUrl"] :
+            ["endpointUrl", "endpointBaseUrl", "deliveryAttributeMappings"]) &&
+            ApprovalText(settings, "endpointUrl") == configuration.Endpoint.Reveal());
+        var endpoint = new Uri(configuration.Endpoint.Reveal(), UriKind.Absolute);
+        Require(endpoint.Scheme == "https" && endpoint.UserInfo.Length == 0 && endpoint.Fragment.Length == 0);
+        if (!request)
+        {
+            var mappings = settings.GetProperty("deliveryAttributeMappings");
+            Require(mappings.ValueKind == JsonValueKind.Array && mappings.GetArrayLength() == 0);
+            if (settings.TryGetProperty("endpointBaseUrl", out var endpointBase))
+                Require(endpointBase.ValueKind == JsonValueKind.String &&
+                    endpointBase.GetString() == endpoint.GetLeftPart(UriPartial.Path));
+        }
     }
 
     internal sealed class StatusNotificationUpdateIndependentStartProof(Binding binding, Guid startDispatch,
@@ -7144,12 +12180,28 @@ internal sealed class ManagementOperationNativeCapture
             target = null;
             if (window is null || !ReferenceEquals(window.Owner, owner) || !eligible.Contains(window) ||
                 window.Binding != expectedBinding ||
+                StatusDeniedVaultUpdateSelector(window.Binding.Selector) &&
+                    (!statusDeniedVaultUpdates.TryGetValue(window, out var deniedVaultUpdate) ||
+                        !StatusDeniedVaultUpdateTargetValid(deniedVaultUpdate, expectedBinding)) ||
+                StatusDeniedPrivateConnectionDeleteSelector(window.Binding.Selector) &&
+                    (!statusDeniedPrivateConnectionDeletes.TryGetValue(window, out var deniedPrivateDelete) ||
+                        !StatusDeniedPrivateConnectionDeleteTargetValid(deniedPrivateDelete, expectedBinding)) ||
+                statusDeniedPurges.TryGetValue(window, out var deniedPurge) &&
+                    !StatusDeniedPurgeTargetValid(deniedPurge, expectedBinding) ||
+                statusDeniedNotificationUpdate.TryGetValue(window, out var deniedUpdate) &&
+                    (!StatusDeniedNotificationUpdateStartValid(deniedUpdate) || !ReferenceEquals(window.Binding, expectedBinding)) ||
                 TryGetStatusPendingPurgeRun(window, out var pending) &&
                     (!ReferenceEquals(window.Binding, expectedBinding) || !StatusPendingPurgeLive(pending) ||
                         pending.SelectedRevoked || pending.StartFacts is null || pending.Start is not { Finished: true } ||
                         pending.Start.Token.IsCancellationRequested || !StatusPendingPurgeHistoryValid(pending)) ||
                 statusNotificationUpdateIndependent.TryGetValue(window, out var independentUpdate) &&
                     (!StatusNotificationUpdateIndependentStartValid(independentUpdate) || !ReferenceEquals(window.Binding, expectedBinding)) ||
+                statusUnknownNotificationUpdate.TryGetValue(window, out var unknownUpdate) &&
+                    (!StatusUnknownNotificationUpdateStartValid(unknownUpdate) || !ReferenceEquals(window.Binding, expectedBinding)) ||
+                statusUnknownNotificationUpdateCancellation.TryGetValue(window, out var unknownCancellationUpdate) &&
+                    (!StatusUnknownNotificationUpdateCancellationStartValid(unknownCancellationUpdate) || !ReferenceEquals(window.Binding, expectedBinding)) ||
+                statusUnknownNotificationUpdateIndependent.TryGetValue(window, out var unknownIndependentUpdate) &&
+                    (!StatusUnknownNotificationUpdateIndependentStartValid(unknownIndependentUpdate) || !ReferenceEquals(window.Binding, expectedBinding)) ||
                 statusNotificationCreateIndependent.TryGetValue(window, out var independentCreate) &&
                     (!StatusNotificationCreateIndependentStartValid(independentCreate) || !ReferenceEquals(window.Binding, expectedBinding)) ||
                 statusSucceededDeleteVault.TryGetValue(window, out var succeeded) &&
@@ -7181,12 +12233,28 @@ internal sealed class ManagementOperationNativeCapture
         lock (gate)
             return target is not null && target.Binding == expectedBinding &&
                 targets.Any(pair => ReferenceEquals(pair.Value, target) && eligible.Contains(pair.Key) &&
+                    (!StatusDeniedVaultUpdateSelector(pair.Key.Binding.Selector) ||
+                        statusDeniedVaultUpdates.TryGetValue(pair.Key, out var deniedVaultUpdate) &&
+                        StatusDeniedVaultUpdateTargetValid(deniedVaultUpdate, expectedBinding)) &&
+                    (!StatusDeniedPrivateConnectionDeleteSelector(pair.Key.Binding.Selector) ||
+                        statusDeniedPrivateConnectionDeletes.TryGetValue(pair.Key, out var deniedPrivateDelete) &&
+                        StatusDeniedPrivateConnectionDeleteTargetValid(deniedPrivateDelete, expectedBinding)) &&
+                    (!statusDeniedPurges.TryGetValue(pair.Key, out var deniedPurge) ||
+                        StatusDeniedPurgeTargetValid(deniedPurge, expectedBinding)) &&
+                    (!statusDeniedNotificationUpdate.TryGetValue(pair.Key, out var deniedUpdate) ||
+                        StatusDeniedNotificationUpdateStartValid(deniedUpdate) && ReferenceEquals(pair.Key.Binding, expectedBinding)) &&
                     (!TryGetStatusPendingPurgeRun(pair.Key, out var pending) ||
                         ReferenceEquals(pair.Key.Binding, expectedBinding) && StatusPendingPurgeLive(pending) &&
                         !pending.SelectedRevoked && pending.StartFacts is not null && pending.Start is { Finished: true } &&
                         !pending.Start.Token.IsCancellationRequested && StatusPendingPurgeHistoryValid(pending)) &&
                     (!statusNotificationUpdateIndependent.TryGetValue(pair.Key, out var independentUpdate) ||
                         StatusNotificationUpdateIndependentStartValid(independentUpdate) && ReferenceEquals(pair.Key.Binding, expectedBinding)) &&
+                    (!statusUnknownNotificationUpdate.TryGetValue(pair.Key, out var unknownUpdate) ||
+                        StatusUnknownNotificationUpdateStartValid(unknownUpdate) && ReferenceEquals(pair.Key.Binding, expectedBinding)) &&
+                    (!statusUnknownNotificationUpdateCancellation.TryGetValue(pair.Key, out var unknownCancellationUpdate) ||
+                        StatusUnknownNotificationUpdateCancellationStartValid(unknownCancellationUpdate) && ReferenceEquals(pair.Key.Binding, expectedBinding)) &&
+                    (!statusUnknownNotificationUpdateIndependent.TryGetValue(pair.Key, out var unknownIndependentUpdate) ||
+                        StatusUnknownNotificationUpdateIndependentStartValid(unknownIndependentUpdate) && ReferenceEquals(pair.Key.Binding, expectedBinding)) &&
                     (!statusNotificationCreateIndependent.TryGetValue(pair.Key, out var independentCreate) ||
                         StatusNotificationCreateIndependentStartValid(independentCreate) && ReferenceEquals(pair.Key.Binding, expectedBinding)) &&
                     (!statusSucceededDeleteVault.TryGetValue(pair.Key, out var succeeded) ||
@@ -7214,11 +12282,41 @@ internal sealed class ManagementOperationNativeCapture
     {
         lock (gate)
             return window is not null && ReferenceEquals(window.Owner, owner) &&
-                !StatusPendingPurgeIndependentSelector(window.Binding.Selector) &&
+                !StatusDeniedVaultUpdateSelector(window.Binding.Selector) &&
+                !statusDeniedVaultUpdates.ContainsKey(window) &&
+                !StatusDeniedPrivateConnectionDeleteSelector(window.Binding.Selector) &&
+                !statusDeniedPrivateConnectionDeletes.ContainsKey(window) &&
+                !statusDeniedPurges.ContainsKey(window) &&
+                !(StatusDeniedNotificationUpdateSelector(window.Binding.Selector) &&
+                    window.Binding.Selector.Variant == "operation." + window.Binding.Operation) &&
+                !(NotificationFixtureProvisioner.StatusUnknownNotificationUpdateCancellationSelector(window.Binding.Selector) &&
+                    window.Binding.Operation == ManagementMutation.UpdateNotification) &&
+                !(NotificationFixtureProvisioner.StatusUnknownNotificationUpdateSelector(window.Binding.Selector) &&
+                    window.Binding.Operation == ManagementMutation.UpdateNotification) &&
+                !(NotificationFixtureProvisioner.StatusUnknownNotificationUpdateIndependentSelector(window.Binding.Selector) &&
+                    window.Binding.Operation == ManagementMutation.UpdateNotification) &&
+                !(StatusCanceledPurgeCancellationSelector(window.Binding.Selector) &&
+                    window.Binding.Operation == ManagementMutation.PurgeDeletedVault) &&
+                !statusCanceledPurgeCancellations.ContainsKey(window) &&
+                !(StatusCanceledPurgeIndependentSelector(window.Binding.Selector) &&
+                    window.Binding.Operation == ManagementMutation.PurgeDeletedVault) &&
+                !statusCanceledPurgeIndependents.ContainsKey(window) &&
+                !(StatusCanceledPurgeSelector(window.Binding.Selector) &&
+                    window.Binding.Operation == ManagementMutation.PurgeDeletedVault) &&
+                !statusCanceledPurges.ContainsKey(window) &&
+                !(StatusPendingPurgeIndependentSelector(window.Binding.Selector) &&
+                    window.Binding.Operation == ManagementMutation.PurgeDeletedVault) &&
                 !(StatusPendingPurgeCancellationSelector(window.Binding.Selector) &&
                     window.Binding.Operation == ManagementMutation.PurgeDeletedVault) &&
+                !(StatusFailedPurgeSelector(window.Binding.Selector) &&
+                    window.Binding.Operation == ManagementMutation.PurgeDeletedVault) &&
+                !(StatusFailedPurgeIndependentSelector(window.Binding.Selector) &&
+                    window.Binding.Operation == ManagementMutation.PurgeDeletedVault) &&
+                !(StatusFailedPurgeCancellationSelector(window.Binding.Selector) &&
+                    window.Binding.Operation == ManagementMutation.PurgeDeletedVault) &&
                 !statusPendingPurges.ContainsKey(window) && !statusPendingPurgeIndependents.ContainsKey(window) &&
-                !statusPendingPurgeCancellations.ContainsKey(window) &&
+                !statusPendingPurgeCancellations.ContainsKey(window) && !statusFailedPurges.ContainsKey(window) &&
+                !statusFailedPurgeIndependents.ContainsKey(window) && !statusFailedPurgeCancellations.ContainsKey(window) &&
                 window.Binding == expectedBinding && completedStatusReads.Contains(window) &&
                 (!(VaultFixtureProvisioner.StatusVaultPurgeCancellationSelector(window.Binding.Selector) ||
                     VaultFixtureProvisioner.StatusVaultRecoverCancellationSelector(window.Binding.Selector) ||
@@ -8280,11 +13378,38 @@ internal sealed class ManagementOperationNativeCapture
         lock (gate)
         {
             Own(window, selector);
-            Require(!StatusPendingPurgeIndependentSelector(selector) &&
+            Require(!statusDeniedVaultUpdates.ContainsKey(window));
+            Require(!statusDeniedPrivateConnectionDeletes.ContainsKey(window));
+            Require(!statusDeniedPurges.ContainsKey(window));
+            Require(!statusDeniedNotificationUpdate.ContainsKey(window));
+            Require(!(NotificationFixtureProvisioner.StatusUnknownNotificationUpdateCancellationSelector(selector) &&
+                    window.Binding.Operation == ManagementMutation.UpdateNotification) &&
+                !(NotificationFixtureProvisioner.StatusUnknownNotificationUpdateSelector(selector) &&
+                    window.Binding.Operation == ManagementMutation.UpdateNotification) &&
+                !(NotificationFixtureProvisioner.StatusUnknownNotificationUpdateIndependentSelector(selector) &&
+                    window.Binding.Operation == ManagementMutation.UpdateNotification) &&
+                !(StatusPendingPurgeIndependentSelector(selector) &&
+                    window.Binding.Operation == ManagementMutation.PurgeDeletedVault) &&
+                !(StatusCanceledPurgeCancellationSelector(selector) &&
+                    window.Binding.Operation == ManagementMutation.PurgeDeletedVault) &&
+                !statusCanceledPurgeCancellations.ContainsKey(window) &&
                 !(StatusPendingPurgeCancellationSelector(selector) &&
                     window.Binding.Operation == ManagementMutation.PurgeDeletedVault) &&
+                !(StatusFailedPurgeSelector(selector) &&
+                    window.Binding.Operation == ManagementMutation.PurgeDeletedVault) &&
+                !(StatusFailedPurgeIndependentSelector(selector) &&
+                    window.Binding.Operation == ManagementMutation.PurgeDeletedVault) &&
+                !(StatusFailedPurgeCancellationSelector(selector) &&
+                    window.Binding.Operation == ManagementMutation.PurgeDeletedVault) &&
+                !(StatusCanceledPurgeSelector(selector) &&
+                    window.Binding.Operation == ManagementMutation.PurgeDeletedVault) &&
+                !(StatusCanceledPurgeIndependentSelector(selector) &&
+                    window.Binding.Operation == ManagementMutation.PurgeDeletedVault) &&
+                !statusCanceledPurgeIndependents.ContainsKey(window) &&
+                !statusCanceledPurges.ContainsKey(window) &&
                 !statusPendingPurges.ContainsKey(window) && !statusPendingPurgeIndependents.ContainsKey(window) &&
-                !statusPendingPurgeCancellations.ContainsKey(window) &&
+                !statusPendingPurgeCancellations.ContainsKey(window) && !statusFailedPurges.ContainsKey(window) &&
+                !statusFailedPurgeIndependents.ContainsKey(window) && !statusFailedPurgeCancellations.ContainsKey(window) &&
                 !deleteVaultWindows.Contains(window) && !purgeDeletedVaultWindows.Contains(window) &&
                 !createVaultWindows.Contains(window) && !recoverVaultWindows.Contains(window) &&
                 !privateUpdateWindows.ContainsKey(window));
@@ -8528,11 +13653,72 @@ internal sealed class ManagementOperationNativeCapture
         ManagementOperation handle, CancellationToken token = default, Action<Task>? retained = null,
         CancellationToken? originalCallerToken = null)
     {
-        lock (gate) Require(!StatusPendingPurgeIndependentSelector(selector) &&
+        bool deniedVaultUpdate;
+        lock (gate) deniedVaultUpdate = statusDeniedVaultUpdates.ContainsKey(window);
+        if (deniedVaultUpdate)
+            return await CheckStatusDeniedVaultUpdateAsync(window, selector, handle, token, retained,
+                originalCallerToken ?? token).ConfigureAwait(false);
+        bool deniedPrivateDelete;
+        lock (gate) deniedPrivateDelete = statusDeniedPrivateConnectionDeletes.ContainsKey(window);
+        if (deniedPrivateDelete)
+            return await CheckStatusDeniedPrivateConnectionDeleteCoreAsync(window, selector, handle, token, retained,
+                originalCallerToken ?? token).ConfigureAwait(false);
+        bool deniedUpdate;
+        lock (gate) deniedUpdate = statusDeniedNotificationUpdate.ContainsKey(window);
+        if (deniedUpdate)
+            return await CheckStatusDeniedNotificationUpdateCoreAsync(window, selector, handle, token, retained,
+                originalCallerToken ?? token).ConfigureAwait(false);
+        bool deniedPurge;
+        lock (gate) deniedPurge = statusDeniedPurges.ContainsKey(window);
+        if (deniedPurge)
+            return await CheckStatusDeniedPurgeAsync(window, selector, handle, token, retained).ConfigureAwait(false);
+        bool unknownCancellationUpdate;
+        lock (gate) unknownCancellationUpdate = statusUnknownNotificationUpdateCancellation.ContainsKey(window);
+        if (unknownCancellationUpdate)
+        {
+            if (token.IsCancellationRequested)
+                return await CheckStatusUnknownNotificationUpdateCancellationCanceledAsync(window, selector, handle, token, retained).ConfigureAwait(false);
+            return await CheckStatusUnknownNotificationUpdateCancellationAsync(window, selector, handle, token, retained,
+                originalCallerToken ?? token).ConfigureAwait(false);
+        }
+        lock (gate) Require(!(NotificationFixtureProvisioner.StatusUnknownNotificationUpdateCancellationSelector(selector) &&
+            window.Binding.Operation == ManagementMutation.UpdateNotification));
+        bool unknownIndependentUpdate;
+        lock (gate) unknownIndependentUpdate = statusUnknownNotificationUpdateIndependent.ContainsKey(window);
+        if (unknownIndependentUpdate)
+            return await CheckStatusUnknownNotificationUpdateIndependentAsync(window, selector, handle, token, retained,
+                originalCallerToken ?? token).ConfigureAwait(false);
+        lock (gate) Require(!(NotificationFixtureProvisioner.StatusUnknownNotificationUpdateIndependentSelector(selector) &&
+            window.Binding.Operation == ManagementMutation.UpdateNotification));
+        bool unknownUpdate;
+        lock (gate) unknownUpdate = statusUnknownNotificationUpdate.ContainsKey(window);
+        if (unknownUpdate)
+            return await CheckStatusUnknownNotificationUpdateAsync(window, selector, handle, token, retained,
+                originalCallerToken ?? token).ConfigureAwait(false);
+        lock (gate) Require(!(NotificationFixtureProvisioner.StatusUnknownNotificationUpdateSelector(selector) &&
+            window.Binding.Operation == ManagementMutation.UpdateNotification));
+        lock (gate) Require(!(StatusPendingPurgeIndependentSelector(selector) &&
+                window.Binding.Operation == ManagementMutation.PurgeDeletedVault) &&
+            !(StatusCanceledPurgeCancellationSelector(selector) &&
+                window.Binding.Operation == ManagementMutation.PurgeDeletedVault) &&
+            !statusCanceledPurgeCancellations.ContainsKey(window) &&
             !(StatusPendingPurgeCancellationSelector(selector) &&
                 window.Binding.Operation == ManagementMutation.PurgeDeletedVault) &&
+            !(StatusFailedPurgeSelector(selector) &&
+                window.Binding.Operation == ManagementMutation.PurgeDeletedVault) &&
+            !(StatusFailedPurgeIndependentSelector(selector) &&
+                window.Binding.Operation == ManagementMutation.PurgeDeletedVault) &&
+            !(StatusFailedPurgeCancellationSelector(selector) &&
+                window.Binding.Operation == ManagementMutation.PurgeDeletedVault) &&
+            !(StatusCanceledPurgeSelector(selector) &&
+                window.Binding.Operation == ManagementMutation.PurgeDeletedVault) &&
+            !(StatusCanceledPurgeIndependentSelector(selector) &&
+                window.Binding.Operation == ManagementMutation.PurgeDeletedVault) &&
+            !statusCanceledPurgeIndependents.ContainsKey(window) &&
+            !statusCanceledPurges.ContainsKey(window) &&
             !statusPendingPurges.ContainsKey(window) && !statusPendingPurgeIndependents.ContainsKey(window) &&
-            !statusPendingPurgeCancellations.ContainsKey(window));
+            !statusPendingPurgeCancellations.ContainsKey(window) && !statusFailedPurges.ContainsKey(window) &&
+            !statusFailedPurgeIndependents.ContainsKey(window) && !statusFailedPurgeCancellations.ContainsKey(window));
         bool independentPrivateUpdate;
         lock (gate) independentPrivateUpdate = statusPrivateUpdateIndependent.ContainsKey(window);
         if (independentPrivateUpdate)
@@ -8761,6 +13947,29 @@ internal sealed class ManagementOperationNativeCapture
     // No cancellation/timeout may turn a still-running SDK task into a drain.
     internal async Task<Capture> SealAsync(Window window)
     {
+        bool deniedVaultUpdate;
+        lock (gate) deniedVaultUpdate = statusDeniedVaultUpdates.ContainsKey(window);
+        if (deniedVaultUpdate) return await SealStatusDeniedVaultUpdateAsync(window).ConfigureAwait(false);
+        bool deniedPrivateDelete;
+        lock (gate) deniedPrivateDelete = statusDeniedPrivateConnectionDeletes.ContainsKey(window);
+        if (deniedPrivateDelete) return await SealStatusDeniedPrivateConnectionDeleteAsync(window).ConfigureAwait(false);
+        bool deniedUpdate;
+        lock (gate) deniedUpdate = statusDeniedNotificationUpdate.ContainsKey(window);
+        if (deniedUpdate) return await SealStatusDeniedNotificationUpdateAsync(window).ConfigureAwait(false);
+        bool deniedPurge;
+        lock (gate) deniedPurge = statusDeniedPurges.ContainsKey(window);
+        if (deniedPurge) return await SealStatusDeniedPurgeAsync(window).ConfigureAwait(false);
+        bool unknownCancellationUpdate;
+        lock (gate) unknownCancellationUpdate = statusUnknownNotificationUpdateCancellation.ContainsKey(window);
+        if (unknownCancellationUpdate) return await SealStatusUnknownNotificationUpdateCancellationAsync(window).ConfigureAwait(false);
+        lock (gate) Require(!(NotificationFixtureProvisioner.StatusUnknownNotificationUpdateCancellationSelector(window.Binding.Selector) &&
+            window.Binding.Operation == ManagementMutation.UpdateNotification));
+        bool unknownIndependentUpdate;
+        lock (gate) unknownIndependentUpdate = statusUnknownNotificationUpdateIndependent.ContainsKey(window);
+        if (unknownIndependentUpdate) return await SealStatusUnknownNotificationUpdateIndependentAsync(window).ConfigureAwait(false);
+        bool unknownUpdate;
+        lock (gate) unknownUpdate = statusUnknownNotificationUpdate.ContainsKey(window);
+        if (unknownUpdate) return await SealStatusUnknownNotificationUpdateAsync(window).ConfigureAwait(false);
         bool pendingPurge;
         lock (gate) pendingPurge = TryGetStatusPendingPurgeRun(window, out _);
         if (pendingPurge) return await SealStatusPendingPurgeAsync(window).ConfigureAwait(false);
@@ -9563,6 +14772,99 @@ internal sealed class ManagementOperationNativeCapture
     {
         public override Request CreateRequest()
         {
+            if (source.currentStatusDeniedVaultUpdate.Value is { } deniedVaultUpdate)
+            {
+                var r = deniedVaultUpdate.Registration;
+                var slot = deniedVaultUpdate.Slot;
+                lock (source.gate)
+                {
+                    bool valid = StatusDeniedVaultUpdateLive(r) && !slot.Token.IsCancellationRequested &&
+                        !slot.Caller.IsCancellationRequested && !slot.Finished && !slot.FactoryActive && !slot.Sending &&
+                        ++slot.Factories == 1 && slot.SendCount == 0;
+                    r.Invalid |= !valid;
+                    Require(valid);
+                    slot.FactoryActive = true;
+                }
+                try
+                {
+                    var request = source.backend.CreateRequest();
+                    lock (source.gate)
+                    {
+                        Require(StatusDeniedVaultUpdateLive(r) && !slot.Token.IsCancellationRequested &&
+                            !slot.Caller.IsCancellationRequested && slot.Requests.Add(request));
+                    }
+                    return request;
+                }
+                catch { r.Invalid = true; throw; }
+                finally { lock (source.gate) slot.FactoryActive = false; }
+            }
+            if (source.currentStatusDeniedPrivateConnectionDelete.Value is { } deniedPrivateDelete)
+            {
+                var r = deniedPrivateDelete.Registration;
+                var slot = deniedPrivateDelete.Slot;
+                lock (source.gate)
+                {
+                    bool valid = StatusDeniedPrivateConnectionDeleteLive(r) && !slot.Token.IsCancellationRequested &&
+                        !slot.Finished && !slot.FactoryActive && !slot.Sending &&
+                        ++slot.Factories == 1 && slot.SendCount == 0;
+                    r.Invalid |= !valid;
+                    Require(valid);
+                    slot.FactoryActive = true;
+                }
+                try
+                {
+                    var request = source.backend.CreateRequest();
+                    lock (source.gate)
+                    {
+                        Require(StatusDeniedPrivateConnectionDeleteLive(r) && !slot.Token.IsCancellationRequested &&
+                            slot.Requests.Add(request));
+                    }
+                    return request;
+                }
+                catch { r.Invalid = true; throw; }
+                finally { lock (source.gate) slot.FactoryActive = false; }
+            }
+            if (source.currentStatusDeniedPurge.Value is { } denied)
+            {
+                var r = denied.Registration;
+                var slot = denied.Slot;
+                lock (source.gate)
+                {
+                    bool valid = StatusDeniedPurgeLive(r) && !slot.Token.IsCancellationRequested &&
+                        !slot.Finished && !slot.FactoryActive && !slot.Sending &&
+                        ++slot.Factories == 1 && slot.SendCount == 0;
+                    r.Invalid |= !valid;
+                    Require(valid);
+                    slot.FactoryActive = true;
+                }
+                try
+                {
+                    var request = source.backend.CreateRequest();
+                    lock (source.gate)
+                    {
+                        Require(StatusDeniedPurgeLive(r) && !slot.Token.IsCancellationRequested &&
+                            slot.Requests.Add(request));
+                    }
+                    return request;
+                }
+                catch { r.Invalid = true; throw; }
+                finally { lock (source.gate) slot.FactoryActive = false; }
+            }
+            lock (source.gate)
+            {
+                if (source.current.Value is { } cancellationContext &&
+                    source.statusUnknownNotificationUpdateCancellationInvocations.TryGetValue(cancellationContext.Invocation, out var r))
+                {
+                    if (ReferenceEquals(cancellationContext.Invocation, r.Canceled))
+                    {
+                        r.CanceledFactories++;
+                        r.Invalid = true;
+                    }
+                    bool valid = !r.Invalid && !r.Sealed && !source.finishing.Contains(cancellationContext.Invocation);
+                    r.Invalid |= !valid;
+                    Require(valid);
+                }
+            }
             if (source.currentStatusPendingPurge.Value is { } pending)
             {
                 var r = pending.Registration;
@@ -9724,6 +15026,24 @@ internal sealed class ManagementOperationNativeCapture
             Invocation invocation = context.Invocation;
             lock (source.gate)
             {
+                if (source.statusDeniedNotificationUpdateInvocations.TryGetValue(invocation, out var deniedUpdate) &&
+                    (deniedUpdate.Invalid || deniedUpdate.Sealed || source.finishing.Contains(invocation)))
+                {
+                    deniedUpdate.Invalid = true;
+                    throw new InvalidOperationException("status-denied-notification-update-check");
+                }
+                if (source.statusUnknownNotificationUpdateIndependentInvocations.TryGetValue(invocation, out var unknownIndependentUpdate) &&
+                    (unknownIndependentUpdate.Sealed || source.finishing.Contains(invocation)))
+                {
+                    unknownIndependentUpdate.Invalid = true;
+                    throw new InvalidOperationException("status-unknown-notification-update-independent-check");
+                }
+                if (source.statusUnknownNotificationUpdateInvocations.TryGetValue(invocation, out var unknownUpdate) &&
+                    (unknownUpdate.Sealed || source.finishing.Contains(invocation)))
+                {
+                    unknownUpdate.Invalid = true;
+                    throw new InvalidOperationException("status-unknown-notification-update-check");
+                }
                 if (source.statusNotificationUpdateIndependentInvocations.TryGetValue(invocation, out var independentUpdate) &&
                     (independentUpdate.Sealed || source.finishing.Contains(invocation)))
                 {
@@ -9815,6 +15135,12 @@ internal sealed class ManagementOperationNativeCapture
                         independentRoleDelete.Invalid = true;
                     if (source.statusVaultCancellationInvocations.TryGetValue(invocation, out var statusDeletion))
                         statusDeletion.Invalid = true;
+                    if (source.statusUnknownNotificationUpdateInvocations.TryGetValue(invocation, out var unknownUpdate))
+                        unknownUpdate.Invalid = true;
+                    if (source.statusDeniedNotificationUpdateInvocations.TryGetValue(invocation, out var deniedUpdate))
+                        deniedUpdate.Invalid = true;
+                    if (source.statusUnknownNotificationUpdateIndependentInvocations.TryGetValue(invocation, out var unknownIndependentUpdate))
+                        unknownIndependentUpdate.Invalid = true;
                 }
                 throw;
             }
@@ -9822,6 +15148,24 @@ internal sealed class ManagementOperationNativeCapture
         }
         public override void Process(HttpMessage message)
         {
+            if (source.currentStatusDeniedVaultUpdate.Value is { } deniedVaultUpdate)
+                deniedVaultUpdate.Registration.Invalid = true;
+            if (source.currentStatusDeniedPrivateConnectionDelete.Value is { } deniedPrivateDelete)
+                deniedPrivateDelete.Registration.Invalid = true;
+            lock (source.gate)
+                if (source.current.Value is { } deniedContext &&
+                    source.statusDeniedNotificationUpdateInvocations.TryGetValue(deniedContext.Invocation, out var deniedUpdate))
+                    deniedUpdate.Invalid = true;
+            if (source.currentStatusDeniedPurge.Value is { } denied)
+                denied.Registration.Invalid = true;
+            lock (source.gate)
+                if (source.current.Value is { } unknownIndependent &&
+                    source.statusUnknownNotificationUpdateIndependentInvocations.TryGetValue(unknownIndependent.Invocation, out var unknownIndependentUpdate))
+                    unknownIndependentUpdate.Invalid = true;
+            lock (source.gate)
+                if (source.current.Value is { } unknown &&
+                    source.statusUnknownNotificationUpdateInvocations.TryGetValue(unknown.Invocation, out var unknownUpdate))
+                    unknownUpdate.Invalid = true;
             if (source.currentStatusPendingPurge.Value is { } pending)
                 pending.Registration.Invalid = true;
             if (source.currentStatusPrivateUpdateIndependent.Value is { } privateUpdateIndependent)
@@ -9864,6 +15208,35 @@ internal sealed class ManagementOperationNativeCapture
         }
         public override ValueTask ProcessAsync(HttpMessage message)
         {
+            if (source.currentStatusDeniedVaultUpdate.Value is { } deniedVaultUpdate)
+            {
+                var task = source.SendStatusDeniedVaultUpdateAsync(deniedVaultUpdate, message);
+                lock (source.gate) deniedVaultUpdate.Slot.Sends.Add(task);
+                return new(task);
+            }
+            if (source.currentStatusDeniedPrivateConnectionDelete.Value is { } deniedPrivateDelete)
+            {
+                var task = source.SendStatusDeniedPrivateConnectionDeleteAsync(deniedPrivateDelete, message);
+                lock (source.gate) deniedPrivateDelete.Slot.Sends.Add(task);
+                return new(task);
+            }
+            if (source.currentStatusDeniedPurge.Value is { } denied)
+            {
+                var task = source.SendStatusDeniedPurgeAsync(denied, message);
+                lock (source.gate) denied.Slot.Sends.Add(task);
+                return new(task);
+            }
+            lock (source.gate)
+            {
+                if (source.current.Value is { } cancellationContext &&
+                    source.statusUnknownNotificationUpdateCancellationInvocations.TryGetValue(cancellationContext.Invocation, out var r) &&
+                    ReferenceEquals(cancellationContext.Invocation, r.Canceled))
+                {
+                    r.CanceledSends++;
+                    r.Invalid = true;
+                    throw new InvalidOperationException("management-capture-boundary");
+                }
+            }
             if (source.currentStatusPendingPurge.Value is { } pending)
             {
                 var task = source.SendStatusPendingPurgeAsync(pending, message);
@@ -9921,6 +15294,10 @@ internal sealed class ManagementOperationNativeCapture
             var borrower = new TaskCompletionSource<Task>(TaskCreationOptions.RunContinuationsAsynchronously);
             StatusPrivateDeleteSelectedRegistration? selectedDelete = null;
             StatusPrivateDeleteIndependentRegistration? independentPrivateDelete = null;
+            StatusUnknownNotificationUpdateCancellationRegistration? unknownCancellationUpdate = null;
+            StatusUnknownNotificationUpdateIndependentRegistration? unknownIndependentUpdate = null;
+            StatusUnknownNotificationUpdateRegistration? unknownUpdate = null;
+            StatusDeniedNotificationUpdateRegistration? deniedUpdate = null;
             StatusNotificationUpdateIndependentRegistration? independentUpdate = null;
             StatusNotificationCreateIndependentRegistration? independentCreate = null;
             StatusNotificationDeleteIndependentRegistration? independentDelete = null;
@@ -9931,12 +15308,24 @@ internal sealed class ManagementOperationNativeCapture
                 {
                     source.statusPrivateDeleteSelectedInvocations.TryGetValue(context.Invocation, out selectedDelete);
                     source.statusPrivateDeleteIndependentInvocations.TryGetValue(context.Invocation, out independentPrivateDelete);
+                    source.statusUnknownNotificationUpdateCancellationInvocations.TryGetValue(context.Invocation, out unknownCancellationUpdate);
+                    source.statusUnknownNotificationUpdateIndependentInvocations.TryGetValue(context.Invocation, out unknownIndependentUpdate);
+                    source.statusUnknownNotificationUpdateInvocations.TryGetValue(context.Invocation, out unknownUpdate);
+                    source.statusDeniedNotificationUpdateInvocations.TryGetValue(context.Invocation, out deniedUpdate);
                     source.statusNotificationUpdateIndependentInvocations.TryGetValue(context.Invocation, out independentUpdate);
                     source.statusNotificationCreateIndependentInvocations.TryGetValue(context.Invocation, out independentCreate);
                     source.statusNotificationDeleteIndependentInvocations.TryGetValue(context.Invocation, out independentDelete);
                     source.statusRoleDeleteIndependentInvocations.TryGetValue(context.Invocation, out independentRoleDelete);
                 }
-            Task actual = independentCreate is not null
+            Task actual = deniedUpdate is not null
+                ? source.SendStatusDeniedNotificationUpdateAsync(deniedUpdate, context!, message, borrower)
+                : unknownCancellationUpdate is not null
+                ? source.SendStatusUnknownNotificationUpdateCancellationAsync(unknownCancellationUpdate, context!, message, borrower)
+                : unknownIndependentUpdate is not null
+                ? source.SendStatusUnknownNotificationUpdateIndependentAsync(unknownIndependentUpdate, context!, message, borrower)
+                : unknownUpdate is not null
+                ? source.SendStatusUnknownNotificationUpdateAsync(unknownUpdate, context!, message, borrower)
+                : independentCreate is not null
                 ? source.SendStatusNotificationCreateIndependentAsync(independentCreate, context!, message, borrower)
                 : independentUpdate is not null
                 ? source.SendStatusNotificationUpdateIndependentAsync(independentUpdate, context!, message, borrower)

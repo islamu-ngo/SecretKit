@@ -285,11 +285,33 @@ public sealed partial class AzureVaultFixtureProvisionerTests
         private readonly bool statusSucceededDeleteVaultCancellation;
         private readonly bool succeededDeleteVaultWire;
         private readonly bool statusPrivateDeleteIndependent;
-        private readonly bool statusNotificationUpdateIndependent;
+        private readonly bool statusNotificationUpdateIndependent, statusUnknownNotificationUpdate, statusUnknownNotificationUpdateIndependent, statusUnknownNotificationUpdateCancellation;
+        private bool UnknownNotificationWire => statusUnknownNotificationUpdate || statusUnknownNotificationUpdateIndependent ||
+            statusUnknownNotificationUpdateCancellation || statusDeniedNotificationUpdate;
+        private readonly bool statusDeniedNotificationUpdate;
+        private readonly bool statusDeniedPrivateConnectionDelete;
+        internal readonly bool statusDeniedVaultUpdate;
+        private readonly Credential deniedVaultReadCredential = new("resource-arm");
+        internal readonly CancellationTokenSource UnknownContinuity = new();
+        internal readonly Guid UnknownEpoch = Guid.NewGuid();
+        internal int UnknownTerminalReads;
+        internal Action? BeforeUnknownFinalAbsence;
+        internal Action? BeforeDeniedFinalAbsence;
+        internal Action? BeforeDeniedEndpointCredential;
+        internal int DeniedEndpointCredentialHooks;
+        private bool deniedFinalAbsenceHookCalled;
+        private bool unknownFinalAbsenceHookCalled;
+        internal bool UnknownExclusion = true;
+        internal bool UnknownNoOlderInflight = true, UnknownNoNameReuse = true, UnknownNeverApplied = true;
         private readonly bool statusNotificationCreateIndependent;
         private readonly bool statusPrivateUpdateIndependent;
-        private readonly bool statusPendingPurge, statusPendingPurgeIndependent, statusPendingPurgeCancellation;
-        private bool PendingWire => statusPendingPurge || statusPendingPurgeIndependent || statusPendingPurgeCancellation;
+        private readonly bool statusDeniedPurge;
+        private readonly NativeProvisioningState? statusDeniedVariant;
+        private readonly bool statusPendingPurge, statusPendingPurgeIndependent, statusPendingPurgeCancellation, statusFailedPurge, statusFailedPurgeIndependent, statusFailedPurgeCancellation, statusCanceledPurge, statusCanceledPurgeIndependent, statusCanceledPurgeCancellation;
+        private bool FailedPurgeWire => statusFailedPurge || statusFailedPurgeIndependent || statusFailedPurgeCancellation;
+        private bool TerminalPurgeWire => FailedPurgeWire || statusCanceledPurge || statusCanceledPurgeIndependent || statusCanceledPurgeCancellation;
+        private string TerminalFaultPrefix => statusCanceledPurge || statusCanceledPurgeIndependent || statusCanceledPurgeCancellation ? "canceled-" : "failed-";
+        private bool PurgeStatusWire => statusDeniedPurge || statusPendingPurge || statusPendingPurgeIndependent || statusPendingPurgeCancellation || TerminalPurgeWire;
         private readonly Credential pendingReadCredential = new("read-arm");
         private readonly HttpPipelineTransport pendingReadTransport;
         private readonly Credential statusSucceededResourceCredential = new("resource-arm");
@@ -350,9 +372,18 @@ public sealed partial class AzureVaultFixtureProvisionerTests
             bool statusPrivateDeleteIndependent = false, bool statusSucceededDeleteVaultIndependent = false,
             bool statusSucceededDeleteVaultCancellation = false, bool statusNotificationUpdateIndependent = false,
             bool statusNotificationCreateIndependent = false, bool statusPrivateUpdateIndependent = false,
-            bool statusPendingPurge = false, bool statusPendingPurgeIndependent = false, bool statusPendingPurgeCancellation = false)
+            bool statusPendingPurge = false, bool statusPendingPurgeIndependent = false, bool statusPendingPurgeCancellation = false, bool statusFailedPurge = false, bool statusFailedPurgeIndependent = false, bool statusFailedPurgeCancellation = false, bool statusCanceledPurge = false, bool statusCanceledPurgeIndependent = false, bool statusCanceledPurgeCancellation = false, bool statusUnknownNotificationUpdate = false, bool statusUnknownNotificationUpdateIndependent = false, bool statusUnknownNotificationUpdateCancellation = false,
+            bool statusDeniedPurge = false, NativeProvisioningState? statusDeniedVariant = null,
+            bool statusDeniedNotificationUpdate = false, bool statusDeniedPrivateConnectionDelete = false,
+            bool statusDeniedVaultUpdate = false)
         {
             Operation = operation;
+            this.statusDeniedPurge = statusDeniedPurge;
+            this.statusDeniedVariant = statusDeniedVariant;
+            this.statusDeniedNotificationUpdate = statusDeniedNotificationUpdate;
+            this.statusDeniedPrivateConnectionDelete = statusDeniedPrivateConnectionDelete;
+            this.statusDeniedVaultUpdate = statusDeniedVaultUpdate;
+            if (statusDeniedPrivateConnectionDelete) PrivateStartStatus = 202;
             this.exclusiveNotificationCreation = exclusiveNotificationCreation;
             this.statusSucceededDeleteVault = statusSucceededDeleteVault;
             this.statusSucceededDeleteVaultIndependent = statusSucceededDeleteVaultIndependent;
@@ -360,24 +391,34 @@ public sealed partial class AzureVaultFixtureProvisionerTests
             succeededDeleteVaultWire = statusSucceededDeleteVault || statusSucceededDeleteVaultIndependent || statusSucceededDeleteVaultCancellation;
             this.statusPrivateDeleteIndependent = statusPrivateDeleteIndependent;
             this.statusNotificationUpdateIndependent = statusNotificationUpdateIndependent;
+            this.statusUnknownNotificationUpdate = statusUnknownNotificationUpdate;
+            this.statusUnknownNotificationUpdateIndependent = statusUnknownNotificationUpdateIndependent;
+            this.statusUnknownNotificationUpdateCancellation = statusUnknownNotificationUpdateCancellation;
             this.statusNotificationCreateIndependent = statusNotificationCreateIndependent;
             this.statusPrivateUpdateIndependent = statusPrivateUpdateIndependent;
             this.statusPendingPurge = statusPendingPurge;
             this.statusPendingPurgeIndependent = statusPendingPurgeIndependent;
             this.statusPendingPurgeCancellation = statusPendingPurgeCancellation;
-            if ((statusPendingPurge ? 1 : 0) + (statusPendingPurgeIndependent ? 1 : 0) + (statusPendingPurgeCancellation ? 1 : 0) > 1) throw new InvalidOperationException("test-profile-conflict");
+            this.statusFailedPurge = statusFailedPurge;
+            this.statusFailedPurgeIndependent = statusFailedPurgeIndependent;
+            this.statusFailedPurgeCancellation = statusFailedPurgeCancellation;
+            this.statusCanceledPurge = statusCanceledPurge;
+            this.statusCanceledPurgeIndependent = statusCanceledPurgeIndependent;
+            this.statusCanceledPurgeCancellation = statusCanceledPurgeCancellation;
+            if ((statusPendingPurge ? 1 : 0) + (statusPendingPurgeIndependent ? 1 : 0) + (statusPendingPurgeCancellation ? 1 : 0) + (statusFailedPurge ? 1 : 0) + (statusFailedPurgeIndependent ? 1 : 0) + (statusFailedPurgeCancellation ? 1 : 0) + (statusCanceledPurge ? 1 : 0) + (statusCanceledPurgeIndependent ? 1 : 0) + (statusCanceledPurgeCancellation ? 1 : 0) > 1) throw new InvalidOperationException("test-profile-conflict");
             recoveryCancellation = operation == ManagementMutation.RecoverVault && boundary == "cancellation-boundary";
             updateCancellation = operation == ManagementMutation.CreateOrUpdateVault && boundary == "cancellation-boundary";
-            Native = new(rbac: PendingWire || succeededDeleteVaultWire || statusNotificationUpdateIndependent || statusNotificationCreateIndependent || statusPrivateUpdateIndependent ||
+            Native = new(rbac: statusDeniedPrivateConnectionDelete || PurgeStatusWire || succeededDeleteVaultWire || statusNotificationUpdateIndependent || UnknownNotificationWire || statusNotificationCreateIndependent || statusPrivateUpdateIndependent ||
                 operation == ManagementMutation.CreateOrUpdateVault || recoveryCancellation, allowPurge: true,
-                emptyPolicies: PendingWire || succeededDeleteVaultWire || statusNotificationUpdateIndependent || statusNotificationCreateIndependent || statusPrivateUpdateIndependent ||
+                emptyPolicies: statusDeniedPrivateConnectionDelete || PurgeStatusWire || succeededDeleteVaultWire || statusNotificationUpdateIndependent || UnknownNotificationWire || statusNotificationCreateIndependent || statusPrivateUpdateIndependent ||
                 operation == ManagementMutation.CreateOrUpdateVault || recoveryCancellation);
-            Baseline = PendingWire || recoveryCancellation || succeededDeleteVaultWire ? Native.Baseline with { PublicNetworkAccess = true } : Native.Baseline;
+            Baseline = statusDeniedPrivateConnectionDelete || PurgeStatusWire || recoveryCancellation || succeededDeleteVaultWire ? Native.Baseline with { PublicNetworkAccess = true } : Native.Baseline;
+            if (statusDeniedVaultUpdate) Baseline = Baseline with { PublicNetworkAccess = false };
             if (baselineOverride is not null) Baseline = baselineOverride(Baseline);
             Native.Selector = Native.Selector with
             {
                 Operation = Op.Members[0].Operation,
-                Variant = PendingWire ? "status.Pending" : succeededDeleteVaultWire ? "status.Succeeded" : "operation." + operation,
+                Variant = statusDeniedNotificationUpdate ? "operation." + operation : statusDeniedPurge ? statusDeniedVariant is { } deniedVariant ? "status." + deniedVariant : "operation.PurgeDeletedVault" : UnknownNotificationWire ? "status.Unknown" : statusCanceledPurge || statusCanceledPurgeIndependent || statusCanceledPurgeCancellation ? "status.Canceled" : FailedPurgeWire ? "status.Failed" : PurgeStatusWire ? "status.Pending" : succeededDeleteVaultWire ? "status.Succeeded" : "operation." + operation,
                 Case = boundary
             };
             HttpPipelineTransport Wire(string role)
@@ -395,7 +436,92 @@ public sealed partial class AzureVaultFixtureProvisionerTests
             statusTransport = Wire("status-arm");
             resourceTransport = Wire("resource-arm");
             statusCredential = new("status-arm", this);
-            if (statusPendingPurgeCancellation)
+            if (statusDeniedVaultUpdate)
+                provisioner = VaultFixtureProvisioner.ForStatusDeniedVaultUpdate(Native.Journal,
+                    new(Subscription, "fixture-group", "eastus", Tenant, true, true), Baseline,
+                    new("setup-arm", new Credential("setup-arm"), setup),
+                    new("resource-reader", deniedVaultReadCredential, resourceTransport), new(65536, TimeSpan.FromSeconds(20)));
+            else if (statusDeniedPrivateConnectionDelete)
+                provisioner = VaultFixtureProvisioner.ForStatusDeniedPrivateConnectionDelete(Native.Journal,
+                    new(Subscription, "fixture-group", "eastus", Tenant, true, true), Baseline,
+                    new("setup-arm", new Credential("setup-arm"), setup),
+                    new("setup-secret", new Credential("setup-secret"), secretSetup),
+                    new("read-arm", pendingReadCredential, read),
+                    new("read-secret", new Credential("read-secret"), secretRead),
+                    new(65536, TimeSpan.FromSeconds(20)));
+            else if (statusDeniedNotificationUpdate && operation == ManagementMutation.CreateOrUpdateNotification)
+                provisioner = VaultFixtureProvisioner.ForStatusDeniedNotificationPut(Native.Journal,
+                    new(Subscription, "fixture-group", "eastus", Tenant, true, true), Baseline,
+                    new("setup-arm", new Credential("setup-arm"), setup),
+                    new("setup-secret", new Credential("setup-secret"), secretSetup),
+                    new("read-arm", pendingReadCredential, read),
+                    new("read-secret", new Credential("read-secret"), secretRead),
+                    new(65536, TimeSpan.FromSeconds(20)));
+            else if (statusDeniedPurge && statusDeniedVariant is { } declaredDenied)
+                provisioner = VaultFixtureProvisioner.ForStatusDeniedPurgeStatus(Native.Journal,
+                    new(Subscription, "fixture-group", "eastus", Tenant, true, true), Baseline,
+                    new("setup-arm", new Credential("setup-arm"), setup),
+                    new("setup-secret", new Credential("setup-secret"), secretSetup),
+                    new("read-arm", pendingReadCredential, read),
+                    new("read-secret", new Credential("read-secret"), secretRead),
+                    new(65536, TimeSpan.FromSeconds(20)), declaredDenied);
+            else if (statusDeniedPurge)
+                provisioner = VaultFixtureProvisioner.ForStatusDeniedPurge(Native.Journal,
+                    new(Subscription, "fixture-group", "eastus", Tenant, true, true), Baseline,
+                    new("setup-arm", new Credential("setup-arm"), setup),
+                    new("setup-secret", new Credential("setup-secret"), secretSetup),
+                    new("read-arm", pendingReadCredential, read),
+                    new("read-secret", new Credential("read-secret"), secretRead),
+                    new(65536, TimeSpan.FromSeconds(20)));
+            else if (statusCanceledPurgeCancellation)
+                provisioner = VaultFixtureProvisioner.ForStatusCanceledPurgeCancellation(Native.Journal,
+                    new(Subscription, "fixture-group", "eastus", Tenant, true, true), Baseline,
+                    new("setup-arm", new Credential("setup-arm"), setup),
+                    new("setup-secret", new Credential("setup-secret"), secretSetup),
+                    new("read-arm", pendingReadCredential, read),
+                    new("read-secret", new Credential("read-secret"), secretRead),
+                    new(65536, TimeSpan.FromSeconds(20)));
+            else if (statusCanceledPurgeIndependent)
+                provisioner = VaultFixtureProvisioner.ForStatusCanceledPurgeIndependent(Native.Journal,
+                    new(Subscription, "fixture-group", "eastus", Tenant, true, true), Baseline,
+                    new("setup-arm", new Credential("setup-arm"), setup),
+                    new("setup-secret", new Credential("setup-secret"), secretSetup),
+                    new("read-arm", pendingReadCredential, read),
+                    new("read-secret", new Credential("read-secret"), secretRead),
+                    new(65536, TimeSpan.FromSeconds(20)));
+            else if (statusCanceledPurge)
+                provisioner = VaultFixtureProvisioner.ForStatusCanceledPurge(Native.Journal,
+                    new(Subscription, "fixture-group", "eastus", Tenant, true, true), Baseline,
+                    new("setup-arm", new Credential("setup-arm"), setup),
+                    new("setup-secret", new Credential("setup-secret"), secretSetup),
+                    new("read-arm", pendingReadCredential, read),
+                    new("read-secret", new Credential("read-secret"), secretRead),
+                    new(65536, TimeSpan.FromSeconds(20)));
+            else if (statusFailedPurgeCancellation)
+                provisioner = VaultFixtureProvisioner.ForStatusFailedPurgeCancellation(Native.Journal,
+                    new(Subscription, "fixture-group", "eastus", Tenant, true, true), Baseline,
+                    new("setup-arm", new Credential("setup-arm"), setup),
+                    new("setup-secret", new Credential("setup-secret"), secretSetup),
+                    new("read-arm", pendingReadCredential, read),
+                    new("read-secret", new Credential("read-secret"), secretRead),
+                    new(65536, TimeSpan.FromSeconds(20)));
+            else if (statusFailedPurgeIndependent)
+                provisioner = VaultFixtureProvisioner.ForStatusFailedPurgeIndependent(Native.Journal,
+                    new(Subscription, "fixture-group", "eastus", Tenant, true, true), Baseline,
+                    new("setup-arm", new Credential("setup-arm"), setup),
+                    new("setup-secret", new Credential("setup-secret"), secretSetup),
+                    new("read-arm", pendingReadCredential, read),
+                    new("read-secret", new Credential("read-secret"), secretRead),
+                    new(65536, TimeSpan.FromSeconds(20)));
+            else if (statusFailedPurge)
+                provisioner = VaultFixtureProvisioner.ForStatusFailedPurge(Native.Journal,
+                    new(Subscription, "fixture-group", "eastus", Tenant, true, true), Baseline,
+                    new("setup-arm", new Credential("setup-arm"), setup),
+                    new("setup-secret", new Credential("setup-secret"), secretSetup),
+                    new("read-arm", pendingReadCredential, read),
+                    new("read-secret", new Credential("read-secret"), secretRead),
+                    new(65536, TimeSpan.FromSeconds(20)));
+            else if (statusPendingPurgeCancellation)
                 provisioner = VaultFixtureProvisioner.ForStatusPendingPurgeCancellation(Native.Journal,
                     new(Subscription, "fixture-group", "eastus", Tenant, true, true), Baseline,
                     new("setup-arm", new Credential("setup-arm"), setup),
@@ -459,17 +585,122 @@ public sealed partial class AzureVaultFixtureProvisionerTests
         internal OpService NewSource(TimeProvider? time = null, VaultFixtureProvisioner.HostScope? declaredScope = null,
             bool cleanupOnly = false, bool omitNotificationSource = false, bool omitPrivateConnectionSource = false,
             VaultFixtureProvisioner? parent = null, bool omitExclusiveCreation = false,
-            Guid? notificationEpoch = null, bool continuousWriterExclusion = true)
+            Guid? notificationEpoch = null, bool continuousWriterExclusion = true,
+            NativeProvisioningState? deniedStatusOverride = null)
         {
             OpService.PrivateConnectionSource? endpoint = Operation is ManagementMutation.UpdatePrivateConnection or ManagementMutation.DeletePrivateConnection &&
                 !omitPrivateConnectionSource
                 ? new(DeclaredSubnet,
-                    new("endpoint-setup", new Credential("endpoint-setup-arm"), endpointSetup),
+                    new("endpoint-setup", statusDeniedPrivateConnectionDelete
+                        ? new PrivateDeniedEndpointCredential(this) : new Credential("endpoint-setup-arm"), endpointSetup),
                     new("endpoint-reader", new Credential("endpoint-reader-arm"), endpointRead),
                     new("endpoint-vault-reader", new Credential("endpoint-vault-reader-arm"), endpointVaultRead),
                     new(65536, 8192, 4096, 32, 16, TimeSpan.FromSeconds(20)),
                     new(1, 4, 65536, 8192, TimeSpan.FromSeconds(20)))
                 : null;
+
+            if (statusDeniedPurge && (deniedStatusOverride ?? statusDeniedVariant) is { } declaredDenied)
+                return cleanupOnly
+                    ? OpService.ForStatusDeniedPurgeStatusCleanup(Origin, Owner, "purge-source", capability,
+                        declaredScope ?? new(Subscription, "fixture-group", "eastus", Tenant, true, true), parent ?? provisioner,
+                        new(65536, 65536, TimeSpan.FromSeconds(20)), declaredDenied, time)
+                    : OpService.ForStatusDeniedPurgeStatus(Origin, Owner, "purge-source", capability,
+                        declaredScope ?? new(Subscription, "fixture-group", "eastus", Tenant, true, true), parent ?? provisioner,
+                        new("status-reader", statusCredential, statusTransport),
+                        new("read-arm", pendingReadCredential, pendingReadTransport), selectedTransport,
+                        new(65536, 8192, 512, TimeSpan.FromSeconds(20)),
+                        new(65536, 8192, 4096, 32, 16, TimeSpan.FromSeconds(20)),
+                        new(65536, 65536, TimeSpan.FromSeconds(20)), declaredDenied, time);
+            if (statusDeniedPurge)
+                return cleanupOnly
+                    ? OpService.ForStatusDeniedPurgeCleanup(Origin, Owner, "purge-source", capability,
+                        declaredScope ?? new(Subscription, "fixture-group", "eastus", Tenant, true, true), parent ?? provisioner,
+                        new(65536, 65536, TimeSpan.FromSeconds(20)), time ?? TimeProvider.System)
+                    : OpService.ForStatusDeniedPurge(Origin, Owner, "purge-source", capability,
+                        declaredScope ?? new(Subscription, "fixture-group", "eastus", Tenant, true, true), parent ?? provisioner,
+                        new("status-reader", statusCredential, statusTransport),
+                        new("read-arm", pendingReadCredential, pendingReadTransport), selectedTransport,
+                        new(65536, 8192, 512, TimeSpan.FromSeconds(20)),
+                        new(65536, 8192, 4096, 32, 16, TimeSpan.FromSeconds(20)),
+                        new(65536, 65536, TimeSpan.FromSeconds(20)), time ?? TimeProvider.System);
+            if (statusCanceledPurgeCancellation)
+                return cleanupOnly
+                    ? OpService.ForStatusCanceledPurgeCancellationCleanup(Origin, Owner, "purge-source", capability,
+                        declaredScope ?? new(Subscription, "fixture-group", "eastus", Tenant, true, true), parent ?? provisioner,
+                        new(65536, 65536, TimeSpan.FromSeconds(20)), time ?? TimeProvider.System)
+                    : OpService.ForStatusCanceledPurgeCancellation(Origin, Owner, "purge-source", capability,
+                        declaredScope ?? new(Subscription, "fixture-group", "eastus", Tenant, true, true), parent ?? provisioner,
+                        new("status-reader", statusCredential, statusTransport),
+                        new("read-arm", pendingReadCredential, pendingReadTransport), selectedTransport,
+                        new(65536, 8192, 512, TimeSpan.FromSeconds(20)),
+                        new(65536, 8192, 4096, 32, 16, TimeSpan.FromSeconds(20)),
+                        new(65536, 65536, TimeSpan.FromSeconds(20)),
+                        new(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(30)), time ?? TimeProvider.System);
+            if (statusCanceledPurgeIndependent)
+                return cleanupOnly
+                    ? OpService.ForStatusCanceledPurgeIndependentCleanup(Origin, Owner, "purge-source", capability,
+                        declaredScope ?? new(Subscription, "fixture-group", "eastus", Tenant, true, true), parent ?? provisioner,
+                        new(65536, 65536, TimeSpan.FromSeconds(20)), time ?? TimeProvider.System)
+                    : OpService.ForStatusCanceledPurgeIndependent(Origin, Owner, "purge-source", capability,
+                        declaredScope ?? new(Subscription, "fixture-group", "eastus", Tenant, true, true), parent ?? provisioner,
+                        new("status-reader", statusCredential, statusTransport),
+                        new("read-arm", pendingReadCredential, pendingReadTransport), selectedTransport,
+                        new(65536, 8192, 512, TimeSpan.FromSeconds(20)),
+                        new(65536, 8192, 4096, 32, 16, TimeSpan.FromSeconds(20)),
+                        new(65536, 65536, TimeSpan.FromSeconds(20)),
+                        new(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(30)), time ?? TimeProvider.System);
+            if (statusCanceledPurge)
+                return cleanupOnly
+                    ? OpService.ForStatusCanceledPurgeCleanup(Origin, Owner, "purge-source", capability,
+                        declaredScope ?? new(Subscription, "fixture-group", "eastus", Tenant, true, true), parent ?? provisioner,
+                        new(65536, 65536, TimeSpan.FromSeconds(20)), time ?? TimeProvider.System)
+                    : OpService.ForStatusCanceledPurge(Origin, Owner, "purge-source", capability,
+                        declaredScope ?? new(Subscription, "fixture-group", "eastus", Tenant, true, true), parent ?? provisioner,
+                        new("status-reader", statusCredential, statusTransport),
+                        new("read-arm", pendingReadCredential, pendingReadTransport), selectedTransport,
+                        new(65536, 8192, 512, TimeSpan.FromSeconds(20)),
+                        new(65536, 8192, 4096, 32, 16, TimeSpan.FromSeconds(20)),
+                        new(65536, 65536, TimeSpan.FromSeconds(20)),
+                        new(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(30)), time ?? TimeProvider.System);
+            if (statusFailedPurgeCancellation)
+                return cleanupOnly
+                    ? OpService.ForStatusFailedPurgeCancellationCleanup(Origin, Owner, "purge-source", capability,
+                        declaredScope ?? new(Subscription, "fixture-group", "eastus", Tenant, true, true), parent ?? provisioner,
+                        new(65536, 65536, TimeSpan.FromSeconds(20)), time ?? TimeProvider.System)
+                    : OpService.ForStatusFailedPurgeCancellation(Origin, Owner, "purge-source", capability,
+                        declaredScope ?? new(Subscription, "fixture-group", "eastus", Tenant, true, true), parent ?? provisioner,
+                        new("status-reader", statusCredential, statusTransport),
+                        new("read-arm", pendingReadCredential, pendingReadTransport), selectedTransport,
+                        new(65536, 8192, 512, TimeSpan.FromSeconds(20)),
+                        new(65536, 8192, 4096, 32, 16, TimeSpan.FromSeconds(20)),
+                        new(65536, 65536, TimeSpan.FromSeconds(20)),
+                        new(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(30)), time ?? TimeProvider.System);
+            if (statusFailedPurgeIndependent)
+                return cleanupOnly
+                    ? OpService.ForStatusFailedPurgeIndependentCleanup(Origin, Owner, "purge-source", capability,
+                        declaredScope ?? new(Subscription, "fixture-group", "eastus", Tenant, true, true), parent ?? provisioner,
+                        new(65536, 65536, TimeSpan.FromSeconds(20)), time ?? TimeProvider.System)
+                    : OpService.ForStatusFailedPurgeIndependent(Origin, Owner, "purge-source", capability,
+                        declaredScope ?? new(Subscription, "fixture-group", "eastus", Tenant, true, true), parent ?? provisioner,
+                        new("status-reader", statusCredential, statusTransport),
+                        new("read-arm", pendingReadCredential, pendingReadTransport), selectedTransport,
+                        new(65536, 8192, 512, TimeSpan.FromSeconds(20)),
+                        new(65536, 8192, 4096, 32, 16, TimeSpan.FromSeconds(20)),
+                        new(65536, 65536, TimeSpan.FromSeconds(20)),
+                        new(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(30)), time ?? TimeProvider.System);
+            if (statusFailedPurge)
+                return cleanupOnly
+                    ? OpService.ForStatusFailedPurgeCleanup(Origin, Owner, "purge-source", capability,
+                        declaredScope ?? new(Subscription, "fixture-group", "eastus", Tenant, true, true), parent ?? provisioner,
+                        new(65536, 65536, TimeSpan.FromSeconds(20)), time ?? TimeProvider.System)
+                    : OpService.ForStatusFailedPurge(Origin, Owner, "purge-source", capability,
+                        declaredScope ?? new(Subscription, "fixture-group", "eastus", Tenant, true, true), parent ?? provisioner,
+                        new("status-reader", statusCredential, statusTransport),
+                        new("read-arm", pendingReadCredential, pendingReadTransport), selectedTransport,
+                        new(65536, 8192, 512, TimeSpan.FromSeconds(20)),
+                        new(65536, 8192, 4096, 32, 16, TimeSpan.FromSeconds(20)),
+                        new(65536, 65536, TimeSpan.FromSeconds(20)),
+                        new(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(30)), time ?? TimeProvider.System);
             if (statusPendingPurgeCancellation)
                 return cleanupOnly
                     ? OpService.ForStatusPendingPurgeCancellationCleanup(Origin, Owner, "purge-source", capability,
@@ -539,6 +770,105 @@ public sealed partial class AzureVaultFixtureProvisionerTests
                         new(65536, 8192, 4096, 32, 16, TimeSpan.FromSeconds(20)),
                         new(65536, 65536, TimeSpan.FromSeconds(20)), time ?? TimeProvider.System, notification);
             }
+            if (statusDeniedNotificationUpdate && Operation == ManagementMutation.CreateOrUpdateNotification)
+            {
+                var notification = new OpService.NotificationSource(
+                    new(notificationSetupCredential, notificationSetup), new(notificationObserverCredential, notificationObserver),
+                    new(65536, 65536, 65536, 16, 32, 8192, TimeSpan.FromSeconds(20)),
+                    cleanupOnly ? null : notificationBaseline, !cleanupOnly);
+                return cleanupOnly
+                    ? OpService.ForStatusDeniedNotificationPutCleanup(Origin, Owner, "purge-source", capability,
+                        declaredScope ?? new(Subscription, "fixture-group", "eastus", Tenant, true, true), parent ?? provisioner,
+                        notification, new(65536, 65536, TimeSpan.FromSeconds(20)), time ?? TimeProvider.System)
+                    : OpService.ForStatusDeniedNotificationPut(Origin, Owner, "purge-source", capability,
+                        declaredScope ?? new(Subscription, "fixture-group", "eastus", Tenant, true, true), parent ?? provisioner,
+                        new("status-reader", statusCredential, statusTransport),
+                        new("resource-reader", new Credential("resource-arm"), resourceTransport), selectedTransport,
+                        new(65536, 8192, 512, TimeSpan.FromSeconds(20)),
+                        new(65536, 8192, 4096, 32, 16, TimeSpan.FromSeconds(20)),
+                        new(65536, 65536, TimeSpan.FromSeconds(20)), time ?? TimeProvider.System, notification,
+                        UnknownExclusion ? new OpService.StatusDeniedNotificationUpdateWriterExclusion(
+                            notificationEpoch ?? UnknownEpoch, continuousWriterExclusion, UnknownNoOlderInflight,
+                            UnknownNoNameReuse, UnknownNeverApplied, UnknownContinuity.Token) : null!);
+            }
+            if (statusDeniedNotificationUpdate)
+            {
+                var notification = new OpService.NotificationSource(
+                    new(notificationSetupCredential, notificationSetup), new(notificationObserverCredential, notificationObserver),
+                    new(65536, 65536, 65536, 16, 32, 8192, TimeSpan.FromSeconds(20)),
+                    cleanupOnly ? null : notificationBaseline, !cleanupOnly);
+                return cleanupOnly
+                    ? OpService.ForStatusDeniedNotificationUpdateCleanup(Origin, Owner, "purge-source", capability,
+                        declaredScope ?? new(Subscription, "fixture-group", "eastus", Tenant, true, true), parent ?? provisioner,
+                        notification, new(65536, 65536, TimeSpan.FromSeconds(20)), time ?? TimeProvider.System)
+                    : OpService.ForStatusDeniedNotificationUpdate(Origin, Owner, "purge-source", capability,
+                        declaredScope ?? new(Subscription, "fixture-group", "eastus", Tenant, true, true), parent ?? provisioner,
+                        new("status-reader", statusCredential, statusTransport),
+                        new("resource-reader", new Credential("resource-arm"), resourceTransport), selectedTransport,
+                        new(65536, 8192, 512, TimeSpan.FromSeconds(20)),
+                        new(65536, 8192, 4096, 32, 16, TimeSpan.FromSeconds(20)),
+                        new(65536, 65536, TimeSpan.FromSeconds(20)), time ?? TimeProvider.System, notification,
+                        UnknownExclusion ? new OpService.StatusDeniedNotificationUpdateWriterExclusion(
+                            notificationEpoch ?? UnknownEpoch, continuousWriterExclusion, UnknownNoOlderInflight,
+                            UnknownNoNameReuse, UnknownNeverApplied, UnknownContinuity.Token) : null!);
+            }
+            if (statusUnknownNotificationUpdateCancellation)
+            {
+                var notification = new OpService.NotificationSource(
+                    new(notificationSetupCredential, notificationSetup), new(notificationObserverCredential, notificationObserver),
+                    new(65536, 65536, 65536, 16, 32, 8192, TimeSpan.FromSeconds(20)),
+                    cleanupOnly ? null : notificationBaseline, !cleanupOnly);
+                return cleanupOnly
+                    ? OpService.ForStatusUnknownNotificationUpdateCancellationCleanup(Origin, Owner, "purge-source", capability,
+                        declaredScope ?? new(Subscription, "fixture-group", "eastus", Tenant, true, true), parent ?? provisioner,
+                        notification, new(65536, 65536, TimeSpan.FromSeconds(20)), time ?? TimeProvider.System)
+                    : OpService.ForStatusUnknownNotificationUpdateCancellation(Origin, Owner, "purge-source", capability,
+                        declaredScope ?? new(Subscription, "fixture-group", "eastus", Tenant, true, true), parent ?? provisioner,
+                        new("status-reader", statusCredential, statusTransport),
+                        new("resource-reader", new Credential("resource-arm"), resourceTransport), selectedTransport,
+                        new(65536, 8192, 512, TimeSpan.FromSeconds(20)),
+                        new(65536, 8192, 4096, 32, 16, TimeSpan.FromSeconds(20)),
+                        new(65536, 65536, TimeSpan.FromSeconds(20)), time ?? TimeProvider.System, notification,
+                        UnknownExclusion ? new OpService.StatusUnknownNotificationUpdateCancellationWriterExclusion(notificationEpoch ?? UnknownEpoch, continuousWriterExclusion, UnknownNoOlderInflight, UnknownNoNameReuse, UnknownNeverApplied, UnknownContinuity.Token) : null!);
+            }
+            if (statusUnknownNotificationUpdateIndependent)
+            {
+                var notification = new OpService.NotificationSource(
+                    new(notificationSetupCredential, notificationSetup), new(notificationObserverCredential, notificationObserver),
+                    new(65536, 65536, 65536, 16, 32, 8192, TimeSpan.FromSeconds(20)),
+                    cleanupOnly ? null : notificationBaseline, !cleanupOnly);
+                return cleanupOnly
+                    ? OpService.ForStatusUnknownNotificationUpdateIndependentCleanup(Origin, Owner, "purge-source", capability,
+                        declaredScope ?? new(Subscription, "fixture-group", "eastus", Tenant, true, true), parent ?? provisioner,
+                        notification, new(65536, 65536, TimeSpan.FromSeconds(20)), time ?? TimeProvider.System)
+                    : OpService.ForStatusUnknownNotificationUpdateIndependent(Origin, Owner, "purge-source", capability,
+                        declaredScope ?? new(Subscription, "fixture-group", "eastus", Tenant, true, true), parent ?? provisioner,
+                        new("status-reader", statusCredential, statusTransport),
+                        new("resource-reader", new Credential("resource-arm"), resourceTransport), selectedTransport,
+                        new(65536, 8192, 512, TimeSpan.FromSeconds(20)),
+                        new(65536, 8192, 4096, 32, 16, TimeSpan.FromSeconds(20)),
+                        new(65536, 65536, TimeSpan.FromSeconds(20)), time ?? TimeProvider.System, notification,
+                        UnknownExclusion ? new OpService.StatusUnknownNotificationUpdateIndependentWriterExclusion(notificationEpoch ?? UnknownEpoch, continuousWriterExclusion, UnknownNoOlderInflight, UnknownNoNameReuse, UnknownNeverApplied, UnknownContinuity.Token) : null!);
+            }
+            if (statusUnknownNotificationUpdate)
+            {
+                var notification = new OpService.NotificationSource(
+                    new(notificationSetupCredential, notificationSetup), new(notificationObserverCredential, notificationObserver),
+                    new(65536, 65536, 65536, 16, 32, 8192, TimeSpan.FromSeconds(20)),
+                    cleanupOnly ? null : notificationBaseline, !cleanupOnly);
+                return cleanupOnly
+                    ? OpService.ForStatusUnknownNotificationUpdateCleanup(Origin, Owner, "purge-source", capability,
+                        declaredScope ?? new(Subscription, "fixture-group", "eastus", Tenant, true, true), parent ?? provisioner,
+                        notification, new(65536, 65536, TimeSpan.FromSeconds(20)), time ?? TimeProvider.System)
+                    : OpService.ForStatusUnknownNotificationUpdate(Origin, Owner, "purge-source", capability,
+                        declaredScope ?? new(Subscription, "fixture-group", "eastus", Tenant, true, true), parent ?? provisioner,
+                        new("status-reader", statusCredential, statusTransport),
+                        new("resource-reader", new Credential("resource-arm"), resourceTransport), selectedTransport,
+                        new(65536, 8192, 512, TimeSpan.FromSeconds(20)),
+                        new(65536, 8192, 4096, 32, 16, TimeSpan.FromSeconds(20)),
+                        new(65536, 65536, TimeSpan.FromSeconds(20)), time ?? TimeProvider.System, notification,
+                        UnknownExclusion ? new OpService.StatusUnknownNotificationUpdateWriterExclusion(notificationEpoch ?? UnknownEpoch, continuousWriterExclusion, UnknownNoOlderInflight, UnknownNoNameReuse, UnknownNeverApplied, UnknownContinuity.Token) : null!);
+            }
             if (statusNotificationUpdateIndependent)
             {
                 var notification = new OpService.NotificationSource(
@@ -557,6 +887,36 @@ public sealed partial class AzureVaultFixtureProvisionerTests
                         new(65536, 8192, 4096, 32, 16, TimeSpan.FromSeconds(20)),
                         new(65536, 65536, TimeSpan.FromSeconds(20)), time ?? TimeProvider.System, notification);
             }
+            if (statusDeniedVaultUpdate)
+                return cleanupOnly
+                    ? OpService.ForStatusDeniedVaultUpdateCleanup(Origin, Owner, "purge-source", capability,
+                        declaredScope ?? new(Subscription, "fixture-group", "eastus", Tenant, true, true), parent ?? provisioner,
+                        new(65536, 65536, TimeSpan.FromSeconds(20)), time ?? TimeProvider.System)
+                    : OpService.ForStatusDeniedVaultUpdate(Origin, Owner, "purge-source", capability,
+                        declaredScope ?? new(Subscription, "fixture-group", "eastus", Tenant, true, true), parent ?? provisioner,
+                        new("status-reader", statusCredential, statusTransport),
+                        new("resource-reader", deniedVaultReadCredential, resourceTransport), selectedTransport,
+                        new(65536, 8192, 512, TimeSpan.FromSeconds(20)),
+                        new(65536, 8192, 4096, 32, 16, TimeSpan.FromSeconds(20)),
+                        new(65536, 65536, TimeSpan.FromSeconds(20)), time ?? TimeProvider.System,
+                        UnknownExclusion ? new OpService.StatusDeniedVaultUpdateWriterExclusion(
+                            notificationEpoch ?? UnknownEpoch, continuousWriterExclusion, UnknownNoOlderInflight,
+                            UnknownNoNameReuse, UnknownNeverApplied, UnknownContinuity.Token) : null!);
+            if (statusDeniedPrivateConnectionDelete)
+                return cleanupOnly
+                    ? OpService.ForStatusDeniedPrivateConnectionDeleteCleanup(Origin, Owner, "purge-source", capability,
+                        declaredScope ?? new(Subscription, "fixture-group", "eastus", Tenant, true, true), parent ?? provisioner,
+                        endpoint!, new(65536, 65536, TimeSpan.FromSeconds(20)), time ?? TimeProvider.System)
+                    : OpService.ForStatusDeniedPrivateConnectionDelete(Origin, Owner, "purge-source", capability,
+                        declaredScope ?? new(Subscription, "fixture-group", "eastus", Tenant, true, true), parent ?? provisioner,
+                        new("status-reader", statusCredential, statusTransport),
+                        new("resource-reader", new Credential("resource-arm"), resourceTransport), selectedTransport,
+                        new(65536, 8192, 512, TimeSpan.FromSeconds(20)),
+                        new(65536, 8192, 4096, 32, 16, TimeSpan.FromSeconds(20)),
+                        new(65536, 65536, TimeSpan.FromSeconds(20)), time ?? TimeProvider.System, endpoint!,
+                        UnknownExclusion ? new OpService.StatusDeniedPrivateConnectionDeleteWriterExclusion(
+                            notificationEpoch ?? UnknownEpoch, continuousWriterExclusion, UnknownNoOlderInflight,
+                            UnknownNoNameReuse, UnknownContinuity.Token) : null!);
             return statusPrivateDeleteIndependent
                 ? cleanupOnly
                     ? OpService.ForStatusPrivateConnectionDeleteIndependentCleanup(Origin, Owner, "purge-source", capability,
@@ -630,17 +990,109 @@ public sealed partial class AzureVaultFixtureProvisionerTests
                     notificationSubscribed = true;
                 return response;
             }));
-        internal VaultFixtureProvisioner.Plan Plan() => provisioner.OpenCleanupPlan(Owner, Native.Selector);
+        internal NotificationFixtureProvisioner NewNotificationCleanup(VaultFixtureProvisioner parent) =>
+            NotificationFixtureProvisioner.ForOwnedCleanup(parent, Owner, Native.Selector,
+                new(notificationSetupCredential, notificationSetup),
+                new(notificationObserverCredential, notificationObserver),
+                new(65536, 65536, 65536, 16, 32, 8192, TimeSpan.FromSeconds(20)));
+        private VaultFixtureProvisioner.Plan? wireGeometry;
+        internal VaultFixtureProvisioner.Plan Plan()
+        {
+            if (wireGeometry is { } retained && retained.Selector == Native.Selector) return retained;
+            return wireGeometry = provisioner.OpenCleanupPlan(Owner, Native.Selector);
+        }
         internal ValueTask DrainParentAsync() => provisioner.DisposeAsync();
         internal ValueTask<VaultFixtureProvisioner.Result> SettleParentAsync() => provisioner.SettleAsync(Owner, Native.Selector);
-        internal VaultFixtureProvisioner ReopenProvisioner()
+        internal VaultFixtureProvisioner ReopenProvisioner(NativeProvisioningState? deniedStatusOverride = null)
         {
+            if (statusDeniedVaultUpdate)
+                return VaultFixtureProvisioner.ForStatusDeniedVaultUpdateCleanup(Native.Journal,
+                    new(Subscription, "fixture-group", "eastus", Tenant, true, true),
+                    new("setup-arm", new Credential("setup-arm"), Wire("setup-arm")),
+                    new("read-arm", new Credential("read-arm"), Wire("read-arm")),
+                    new(65536, TimeSpan.FromSeconds(20)));
+            if (statusDeniedPrivateConnectionDelete)
+                return VaultFixtureProvisioner.ForStatusDeniedPrivateConnectionDeleteCleanup(Native.Journal,
+                    new(Subscription, "fixture-group", "eastus", Tenant, true, true),
+                    new("setup-arm", new Credential("setup-arm"), Wire("setup-arm")),
+                    new("read-arm", new Credential("read-arm"), Wire("read-arm")),
+                    new(65536, TimeSpan.FromSeconds(20)));
+            if (statusDeniedNotificationUpdate && Operation == ManagementMutation.CreateOrUpdateNotification)
+                return VaultFixtureProvisioner.ForStatusDeniedNotificationPutCleanup(Native.Journal,
+                    new(Subscription, "fixture-group", "eastus", Tenant, true, true),
+                    new("setup-arm", new Credential("setup-arm"), Wire("setup-arm")),
+                    new("read-arm", new Credential("read-arm"), Wire("read-arm")),
+                    new(65536, TimeSpan.FromSeconds(20)));
             HttpPipelineTransport Wire(string role)
             {
                 var http = new HttpClient(new VaultForwarder((request, token) => Send(request, role, token)));
                 clients.Add(http);
                 return new HttpClientTransport(http);
             }
+            if (statusDeniedPurge && (deniedStatusOverride ?? statusDeniedVariant) is { } declaredDenied)
+                return VaultFixtureProvisioner.ForStatusDeniedPurgeStatus(Native.Journal,
+                    new(Subscription, "fixture-group", "eastus", Tenant, true, true), Baseline,
+                    new("setup-arm", new Credential("setup-arm"), Wire("setup-arm")),
+                    new("setup-secret", new Credential("setup-secret"), Wire("setup-secret")),
+                    new("read-arm", new Credential("read-arm"), Wire("read-arm")),
+                    new("read-secret", new Credential("read-secret"), Wire("read-secret")),
+                    new(65536, TimeSpan.FromSeconds(20)), declaredDenied);
+            if (statusDeniedPurge)
+                return VaultFixtureProvisioner.ForStatusDeniedPurge(Native.Journal,
+                    new(Subscription, "fixture-group", "eastus", Tenant, true, true), Baseline,
+                    new("setup-arm", new Credential("setup-arm"), Wire("setup-arm")),
+                    new("setup-secret", new Credential("setup-secret"), Wire("setup-secret")),
+                    new("read-arm", new Credential("read-arm"), Wire("read-arm")),
+                    new("read-secret", new Credential("read-secret"), Wire("read-secret")),
+                    new(65536, TimeSpan.FromSeconds(20)));
+            if (statusCanceledPurgeCancellation)
+                return VaultFixtureProvisioner.ForStatusCanceledPurgeCancellation(Native.Journal,
+                    new(Subscription, "fixture-group", "eastus", Tenant, true, true), Baseline,
+                    new("setup-arm", new Credential("setup-arm"), Wire("setup-arm")),
+                    new("setup-secret", new Credential("setup-secret"), Wire("setup-secret")),
+                    new("read-arm", new Credential("read-arm"), Wire("read-arm")),
+                    new("read-secret", new Credential("read-secret"), Wire("read-secret")),
+                    new(65536, TimeSpan.FromSeconds(20)));
+            if (statusCanceledPurgeIndependent)
+                return VaultFixtureProvisioner.ForStatusCanceledPurgeIndependent(Native.Journal,
+                    new(Subscription, "fixture-group", "eastus", Tenant, true, true), Baseline,
+                    new("setup-arm", new Credential("setup-arm"), Wire("setup-arm")),
+                    new("setup-secret", new Credential("setup-secret"), Wire("setup-secret")),
+                    new("read-arm", new Credential("read-arm"), Wire("read-arm")),
+                    new("read-secret", new Credential("read-secret"), Wire("read-secret")),
+                    new(65536, TimeSpan.FromSeconds(20)));
+            if (statusCanceledPurge)
+                return VaultFixtureProvisioner.ForStatusCanceledPurge(Native.Journal,
+                    new(Subscription, "fixture-group", "eastus", Tenant, true, true), Baseline,
+                    new("setup-arm", new Credential("setup-arm"), Wire("setup-arm")),
+                    new("setup-secret", new Credential("setup-secret"), Wire("setup-secret")),
+                    new("read-arm", new Credential("read-arm"), Wire("read-arm")),
+                    new("read-secret", new Credential("read-secret"), Wire("read-secret")),
+                    new(65536, TimeSpan.FromSeconds(20)));
+            if (statusFailedPurgeCancellation)
+                return VaultFixtureProvisioner.ForStatusFailedPurgeCancellation(Native.Journal,
+                    new(Subscription, "fixture-group", "eastus", Tenant, true, true), Baseline,
+                    new("setup-arm", new Credential("setup-arm"), Wire("setup-arm")),
+                    new("setup-secret", new Credential("setup-secret"), Wire("setup-secret")),
+                    new("read-arm", new Credential("read-arm"), Wire("read-arm")),
+                    new("read-secret", new Credential("read-secret"), Wire("read-secret")),
+                    new(65536, TimeSpan.FromSeconds(20)));
+            if (statusFailedPurgeIndependent)
+                return VaultFixtureProvisioner.ForStatusFailedPurgeIndependent(Native.Journal,
+                    new(Subscription, "fixture-group", "eastus", Tenant, true, true), Baseline,
+                    new("setup-arm", new Credential("setup-arm"), Wire("setup-arm")),
+                    new("setup-secret", new Credential("setup-secret"), Wire("setup-secret")),
+                    new("read-arm", new Credential("read-arm"), Wire("read-arm")),
+                    new("read-secret", new Credential("read-secret"), Wire("read-secret")),
+                    new(65536, TimeSpan.FromSeconds(20)));
+            if (statusFailedPurge)
+                return VaultFixtureProvisioner.ForStatusFailedPurge(Native.Journal,
+                    new(Subscription, "fixture-group", "eastus", Tenant, true, true), Baseline,
+                    new("setup-arm", new Credential("setup-arm"), Wire("setup-arm")),
+                    new("setup-secret", new Credential("setup-secret"), Wire("setup-secret")),
+                    new("read-arm", new Credential("read-arm"), Wire("read-arm")),
+                    new("read-secret", new Credential("read-secret"), Wire("read-secret")),
+                    new(65536, TimeSpan.FromSeconds(20)));
             if (statusPendingPurgeCancellation)
                 return VaultFixtureProvisioner.ForStatusPendingPurgeCancellation(Native.Journal,
                     new(Subscription, "fixture-group", "eastus", Tenant, true, true), Baseline,
@@ -688,10 +1140,12 @@ public sealed partial class AzureVaultFixtureProvisionerTests
                 new(lease.Facts.LeaseId, lease.Facts.Nonce, "baseline-before-dispatch", Armed.SubscriptionId), default);
             return lease;
         }
+        internal int FailedCleanupExtraReads;
+        internal Guid FailedCleanupDispatch;
         private ManagementOperation? PendingHandle;
-        internal async Task<SecretOutcome<ManagementOperation>> Start(Op.Lease lease)
+        internal async Task<SecretOutcome<ManagementOperation>> Start(Op.Lease lease, CancellationToken token = default)
         {
-            var client = new VaultAdministration(new PurgeCredential("selected-arm", this),
+            var client = new VaultAdministration(new PurgeCredential(statusDeniedVaultUpdate || statusDeniedPurge || statusDeniedNotificationUpdate || statusDeniedPrivateConnectionDelete ? "denied-arm" : "selected-arm", this),
                 new PurgeSdkSeam(Source.SelectedTransport, this));
             ManagementScope scope = Operation is ManagementMutation.UpdateNotification or ManagementMutation.CreateOrUpdateNotification or ManagementMutation.DeleteNotification
                 ? new NotificationScope(new(new(new(Subscription), "fixture-group"), lease.VaultName), lease.NotificationName!)
@@ -702,7 +1156,7 @@ public sealed partial class AzureVaultFixtureProvisionerTests
                 : new VaultScope(new(new(Subscription), "fixture-group"), lease.VaultName);
             var receipt = client.PrepareReceipt(scope, Operation);
             OriginalReceipt = receipt;
-            var result = await Source.RunStartAsync(Native.Selector, client, scope, Operation, input, receipt, default);
+            var result = await Source.RunStartAsync(Native.Selector, client, scope, Operation, input, receipt, token);
             PendingHandle = result.IsSuccess ? result.Value : null;
             return result;
         }
@@ -710,7 +1164,7 @@ public sealed partial class AzureVaultFixtureProvisionerTests
         {
             var measured = await Observer.PostAsync<ObserveLease, Op.Measurement>("operation/observe",
                 new(lease.Facts.LeaseId, lease.Facts.Nonce, "selected-state", Armed!.SubscriptionId), default);
-            if (statusPendingPurgeCancellation && cancelPending)
+            if ((statusPendingPurgeCancellation || statusFailedPurgeCancellation || statusCanceledPurgeCancellation || statusUnknownNotificationUpdateCancellation) && cancelPending)
             {
                 using var canceled = new CancellationTokenSource();
                 canceled.Cancel();
@@ -764,7 +1218,8 @@ public sealed partial class AzureVaultFixtureProvisionerTests
                 (path.Contains("/providers/Microsoft.Network/", StringComparison.Ordinal) ||
                     path.Contains("/privateEndpointConnections", StringComparison.Ordinal)))
             {
-                if (request.RequestUri.Host != "management.azure.com" || request.Headers.Authorization?.Parameter != role ||
+                if (request.RequestUri.Host != "management.azure.com" ||
+                    request.Headers.Authorization?.Parameter != (statusDeniedPrivateConnectionDelete && role == "selected-arm" ? "denied-arm" : role) ||
                     request.RequestUri.Query != (path.Contains("/providers/Microsoft.Network/", StringComparison.Ordinal)
                         ? "?api-version=2026-01-01" : "?api-version=2026-02-01"))
                     throw new InvalidOperationException("private-approval-native-boundary");
@@ -817,7 +1272,15 @@ public sealed partial class AzureVaultFixtureProvisionerTests
                     if (Fault == "private-delete-updating") row["properties"]!["provisioningState"] = "Updating";
                     await Pause("selected-send");
                     if (Fault == "private-delete-lost") throw new IOException("controlled-private-delete-loss");
-                    var response = Reply(PrivateStartStatus, Fault == "private-delete-empty" ? "" : row.ToJsonString());
+                    var response = Reply(PrivateStartStatus, statusDeniedPrivateConnectionDelete && Fault != "private-delete-nonempty" ||
+                        Fault == "private-delete-empty" ? "" : row.ToJsonString());
+                    if (statusDeniedPrivateConnectionDelete && Fault != "no-target")
+                    {
+                        response.Headers.TryAddWithoutValidation("Location",
+                            "https://management.azure.com" + StatusPath + "?api-version=2026-02-01");
+                        response.Headers.TryAddWithoutValidation("Azure-AsyncOperation",
+                            "https://management.azure.com" + StatusPath + "?api-version=2026-02-01");
+                    }
                     if (Barrier == "private-start-body") await Body(response, "private-start-body");
                     return response;
                 }
@@ -884,12 +1347,12 @@ public sealed partial class AzureVaultFixtureProvisionerTests
                 return endpointResponse;
             }
             if (request.RequestUri.Host != "management.azure.com" || request.RequestUri.Query != "?api-version=2026-02-01" ||
-                request.Headers.Authorization?.Parameter != role)
+                request.Headers.Authorization?.Parameter != ((statusDeniedVaultUpdate || statusDeniedPurge || statusDeniedNotificationUpdate || statusDeniedPrivateConnectionDelete) && role == "selected-arm" ? "denied-arm" : role))
             {
                 if (Operation is ManagementMutation.UpdateNotification or ManagementMutation.CreateOrUpdateNotification or ManagementMutation.DeleteNotification &&
                     request.RequestUri.Host == "management.azure.com" &&
                     request.RequestUri.Query == "?api-version=2025-02-15" &&
-                    request.Headers.Authorization?.Parameter == role)
+                    request.Headers.Authorization?.Parameter == (statusDeniedNotificationUpdate && role == "selected-arm" ? "denied-arm" : role))
                     return await SendNotification(request, role, token);
                 throw new InvalidOperationException("purge-native-boundary");
             }
@@ -899,11 +1362,18 @@ public sealed partial class AzureVaultFixtureProvisionerTests
                 Native.Wire.VaultName = path[(path.LastIndexOf('/') + 1)..];
             }
             if ((succeededDeleteVaultWire && role == "resource-arm" ||
-                (PendingWire || statusNotificationUpdateIndependent || statusNotificationCreateIndependent || statusPrivateUpdateIndependent) && role is "resource-arm" or "read-arm") && request.Method == HttpMethod.Get)
+                (statusDeniedVaultUpdate || statusDeniedPrivateConnectionDelete || PurgeStatusWire || statusNotificationUpdateIndependent || UnknownNotificationWire || statusNotificationCreateIndependent || statusPrivateUpdateIndependent) && role is "resource-arm" or "read-arm") && request.Method == HttpMethod.Get)
             {
                 ResourceReads++;
-                bool closing = Native.Read().Closing, selected = SelectedDeletes > 0 || PendingWire && SelectedPurges > 0;
-                if ((PendingWire || statusNotificationUpdateIndependent || statusNotificationCreateIndependent || statusPrivateUpdateIndependent) && role == "read-arm" && closing)
+                bool closing = Native.Read().Closing, selected = SelectedDeletes > 0 || PurgeStatusWire && SelectedPurges > 0 ||
+                    statusDeniedVaultUpdate && SelectedUpdates > 0;
+                if (UnknownNotificationWire && closing && !unknownFinalAbsenceHookCalled &&
+                    !Native.Wire.Active && !Native.Wire.Deleted && Native.Read().Resources.Single(r => r.SelectedAttempted).Absent)
+                {
+                    unknownFinalAbsenceHookCalled = true;
+                    BeforeUnknownFinalAbsence?.Invoke();
+                }
+                if ((statusDeniedVaultUpdate || statusDeniedPrivateConnectionDelete || PurgeStatusWire || statusNotificationUpdateIndependent || UnknownNotificationWire || statusNotificationCreateIndependent || statusPrivateUpdateIndependent) && role == "read-arm" && closing)
                     await Pause("parent-cleanup-read");
                 if (closing) SucceededCleanupReads++;
                 else if (selected) SucceededSelectedReads++;
@@ -912,7 +1382,21 @@ public sealed partial class AzureVaultFixtureProvisionerTests
                 if (path != plan.VaultId && path != plan.DeletedId)
                     throw new InvalidOperationException("foreign-succeeded-resource");
                 bool deleted = path == plan.DeletedId;
+                if ((statusDeniedVaultUpdate || statusDeniedPurge || statusDeniedPrivateConnectionDelete) && closing && deleted && !deniedFinalAbsenceHookCalled &&
+                    !Native.Wire.Active && !Native.Wire.Deleted)
+                {
+                    deniedFinalAbsenceHookCalled = true;
+                    BeforeDeniedFinalAbsence?.Invoke();
+                }
                 if (deleted) DeletedResourceReads++;
+                if (closing && UnknownNotificationWire && Fault == "unknown-parent-malformed" &&
+                    (deleted ? Native.Wire.Deleted : Native.Wire.Active)) return Reply(200, "{");
+                if (closing && TerminalPurgeWire && Fault == TerminalFaultPrefix + "reappearance-malformed" &&
+                    (deleted ? Native.Wire.Deleted : Native.Wire.Active))
+                {
+                    CleanupFaultsReached++;
+                    return Reply(200, "{");
+                }
                 if (selected && !closing) await Pause("resource-body");
                 if (closing && Fault?.StartsWith("cleanup-", StringComparison.Ordinal) == true)
                 {
@@ -941,7 +1425,7 @@ public sealed partial class AzureVaultFixtureProvisionerTests
                 {
                     id = path,
                     name = plan.VaultName,
-                    type = PendingWire ? "Microsoft.KeyVault/deletedVaults" : "Microsoft.KeyVault/locations/deletedVaults",
+                    type = PurgeStatusWire ? "Microsoft.KeyVault/deletedVaults" : "Microsoft.KeyVault/locations/deletedVaults",
                     properties = new
                     {
                         location = "eastus",
@@ -1013,7 +1497,7 @@ public sealed partial class AzureVaultFixtureProvisionerTests
                 Native.Wire.Vault["type"] = "Microsoft.KeyVault/vaults";
                 Native.Wire.Vault["properties"]!["vaultUri"] = $"https://{plan.VaultName}.vault.azure.net";
                 Native.Wire.Vault["properties"]!["provisioningState"] = "Succeeded";
-                if (recoveryCancellation || updateCancellation) Native.Wire.Vault["properties"]!["privateEndpointConnections"] = new JsonArray();
+                if (statusDeniedVaultUpdate || recoveryCancellation || updateCancellation) Native.Wire.Vault["properties"]!["privateEndpointConnections"] = new JsonArray();
                 if (Fault == "missing-tags") Native.Wire.Vault.Remove("tags");
                 if (Fault == "foreign-tags") Native.Wire.Vault["tags"]!["secretkit-fixture"] = Guid.NewGuid().ToString("N");
                 if (Fault == "configuration") Native.Wire.Vault["properties"]!["softDeleteRetentionInDays"] = 7;
@@ -1050,7 +1534,7 @@ public sealed partial class AzureVaultFixtureProvisionerTests
                     if (method != HttpMethod.Post || path != plan.DeletedId + "/purge") throw new InvalidOperationException("foreign-selected-purge");
                     SelectedPurges++;
                     id = plan.DeletedId;
-                    Native.Wire.Deleted = PendingWire;
+                    Native.Wire.Deleted = PurgeStatusWire;
                 }
                 Prejournaled &= Native.Read().Resources.Single(r => r.Id == id).ActiveDispatch != Guid.Empty;
                 await Pause("selected-send");
@@ -1069,20 +1553,59 @@ public sealed partial class AzureVaultFixtureProvisionerTests
                 if (Barrier == "selected-body") await Body(response, "selected-body");
                 return response;
             }
-            if (PendingWire && role is "selected-arm" or "status-arm" &&
+            if ((statusDeniedVaultUpdate || statusDeniedPurge || statusDeniedPrivateConnectionDelete) && role is "selected-arm" or "status-arm" &&
+                request.Method == HttpMethod.Get && path == StatusPath)
+            {
+                bool selected = role == "selected-arm";
+                if (selected) OriginalStatusReads++;
+                else IndependentStatusReads++;
+                await Pause(selected ? "original-poll" : "status-send");
+                string prefix = selected ? "denied-selected-" : "denied-independent-";
+                string? fault = Fault?.StartsWith(prefix, StringComparison.Ordinal) == true ? Fault[prefix.Length..] : null;
+                if (fault == "lost") throw new IOException("controlled-denied-status-loss");
+                if (fault == "malformed") return Reply(selected ? 403 : 200, "{");
+                if (selected && fault is null or "unauthorized" || !selected && fault == "denied")
+                {
+                    var deniedResponse = Reply(fault == "unauthorized" ? 401 : 403,
+                        """{"error":{"code":"AuthorizationFailed","message":"controlled-denial"}}""");
+                    if (selected && Barrier == "original-poll-body")
+                        await Body(deniedResponse, "original-poll-body");
+                    return deniedResponse;
+                }
+                string state = fault switch
+                {
+                    "pending" => "InProgress", "failed" => "Failed", "canceled" => "Canceled",
+                    "unknown" => "future-state", _ => "Succeeded"
+                };
+                if (!selected && state == "Succeeded") Native.Wire.Deleted = Fault == "deleted-present";
+                var response = Reply(selected && fault == "absent" ? 404 : 200,
+                    selected && fault == "absent" ? """{"error":{"code":"ResourceNotFound"}}""" :
+                    JsonSerializer.Serialize(new { id = StatusPath,
+                        name = StatusPath[(StatusPath.LastIndexOf('/') + 1)..], status = state }));
+                if (Barrier == (selected ? "original-poll-body" : "status-body"))
+                    await Body(response, selected ? "original-poll-body" : "status-body");
+                return response;
+            }
+            if (PurgeStatusWire && role is "selected-arm" or "status-arm" &&
                 request.Method == HttpMethod.Get && path == StatusPath)
             {
                 bool cleanup = role == "selected-arm" && Native.Read().Closing;
                 if (role == "selected-arm") OriginalStatusReads++;
                 else IndependentStatusReads++;
                 await Pause(cleanup ? "pending-cleanup" : role == "selected-arm" ? "original-poll" : "status-send");
-                string phaseFault = cleanup ? "pending-cleanup-" : role == "selected-arm" ? "pending-selected-" : "pending-independent-";
+                string phaseFault = TerminalPurgeWire
+                    ? TerminalFaultPrefix + (role == "selected-arm" ? "selected-" : "independent-")
+                    : cleanup ? "pending-cleanup-" : role == "selected-arm" ? "pending-selected-" : "pending-independent-";
                 string? fault = Fault?.StartsWith(phaseFault, StringComparison.Ordinal) == true ? Fault[phaseFault.Length..] : null;
                 if (fault == "lost") throw new IOException("controlled-pending-response-loss");
                 if (fault == "denied") return Reply(403, "{\"error\":{\"code\":\"Forbidden\"}}");
                 if (fault == "malformed") return Reply(200, "{");
                 if (cleanup && fault != "pending") Native.Wire.Deleted = false;
-                string state = cleanup && fault != "pending" || fault == "succeeded" ? "Succeeded" : "InProgress";
+                string state = TerminalPurgeWire ? fault switch
+                {
+                    "pending" => "InProgress", "succeeded" => "Succeeded", "canceled" => "Canceled",
+                    "unknown" => "future-state", "failed" => "Failed", _ => statusCanceledPurge || statusCanceledPurgeIndependent || statusCanceledPurgeCancellation ? "Canceled" : "Failed"
+                } : cleanup && fault != "pending" || fault == "succeeded" ? "Succeeded" : "InProgress";
                 var response = Reply(200, role == "selected-arm"
                     ? JsonSerializer.Serialize(new { id = StatusPath, status = state })
                     : JsonSerializer.Serialize(new { id = StatusPath,
@@ -1285,13 +1808,41 @@ public sealed partial class AzureVaultFixtureProvisionerTests
                 if (!Native.Wire.Deleted && Barrier == "resource-body") await Body(response, "resource-body");
                 return response;
             }
+            if (TerminalPurgeWire && role == "setup-arm" && request.Method == HttpMethod.Get && path == StatusPath)
+            {
+                FailedCleanupExtraReads++;
+                throw new InvalidOperationException("unexpected-failed-cleanup-status-read");
+            }
+            if (TerminalPurgeWire && role == "setup-arm" && request.Method == HttpMethod.Post &&
+                path == Plan().DeletedId + "/purge")
+            {
+                SetupPurges++;
+                FailedCleanupDispatch = Native.Read().Resources.Single(r => r.Id == Plan().DeletedId).ActiveDispatch;
+                Prejournaled &= FailedCleanupDispatch != Guid.Empty;
+                string? fault = Fault?.StartsWith(TerminalFaultPrefix + "cleanup-", StringComparison.Ordinal) == true
+                    ? Fault[(TerminalFaultPrefix + "cleanup-").Length..] : null;
+                Native.Wire.Deleted = fault is "denied" or "failed" or "async";
+                await Pause("failed-cleanup-send");
+                if (fault == "lost") throw new IOException("controlled-failed-cleanup-loss");
+                var response = Reply(fault == "denied" ? 403 : fault == "async" ? 202 : 200, fault switch
+                {
+                    "empty" => "", "malformed" => "{", "denied" => "{\"error\":{\"code\":\"Forbidden\"}}",
+                    "failed" => "{\"status\":\"Failed\"}", "async" => "{\"status\":\"InProgress\"}",
+                    _ => "{\"status\":\"Succeeded\"}"
+                });
+                if (fault is "async" or "continuation")
+                    response.Headers.TryAddWithoutValidation("Azure-AsyncOperation",
+                        "https://management.azure.com" + StatusPath + "?api-version=2026-02-01");
+                if (Barrier == "failed-cleanup-body") await Body(response, "failed-cleanup-body");
+                return response;
+            }
             if (role == "setup-arm" && request.Method == HttpMethod.Post) SetupPurges++;
             if (role == "setup-arm" && request.Method == HttpMethod.Delete) SetupDeletes++;
             var native = await Native.Wire.Respond(request, role, token);
-            if ((recoveryCancellation || updateCancellation || PendingWire || succeededDeleteVaultWire || statusNotificationUpdateIndependent || statusNotificationCreateIndependent || statusPrivateUpdateIndependent) &&
+            if ((statusDeniedVaultUpdate || statusDeniedPrivateConnectionDelete || recoveryCancellation || updateCancellation || PurgeStatusWire || succeededDeleteVaultWire || statusNotificationUpdateIndependent || UnknownNotificationWire || statusNotificationCreateIndependent || statusPrivateUpdateIndependent) &&
                 Native.Wire.Vault is not null)
                 Native.Wire.Vault["properties"]!["privateEndpointConnections"] = new JsonArray();
-            if ((PendingWire || statusNotificationUpdateIndependent || statusNotificationCreateIndependent || statusPrivateUpdateIndependent) && role == "setup-arm")
+            if ((statusDeniedVaultUpdate || statusDeniedPrivateConnectionDelete || PurgeStatusWire || statusNotificationUpdateIndependent || UnknownNotificationWire || statusNotificationCreateIndependent || statusPrivateUpdateIndependent) && role == "setup-arm")
             {
                 if (request.Method == HttpMethod.Put) await Pause("parent-setup");
                 if (Barrier == "parent-cleanup-body" && request.Method == HttpMethod.Delete)
@@ -1389,6 +1940,17 @@ public sealed partial class AzureVaultFixtureProvisionerTests
                 return response;
             }
             if (request.Method != HttpMethod.Get) throw new InvalidOperationException("foreign-notification-write");
+            if (statusDeniedNotificationUpdate && role == "notification-observer-arm" &&
+                SelectedUpdates > 0 && !Native.Read().Closing &&
+                Fault is "denied-native-malformed" or "denied-native-absent" or "denied-native-foreign-label")
+            {
+                NotificationReadFaultsReached++;
+                if (Fault == "denied-native-malformed") return Reply(200, "{");
+                if (Fault == "denied-native-absent") return Reply(404, """{"error":{"code":"NotFound"}}""");
+                var foreign = NotificationRow!.DeepClone();
+                foreign["properties"]!["labels"] = new JsonArray("foreign");
+                return Reply(200, foreign.ToJsonString());
+            }
             bool notificationCancellation = Operation == ManagementMutation.DeleteNotification &&
                 Native.Selector.Case is "cancellation-boundary" or "independent-effect";
             if (notificationCancellation && role == "notification-observer-arm" &&
@@ -1416,13 +1978,27 @@ public sealed partial class AzureVaultFixtureProvisionerTests
                 IndependentStatusReads++;
                 await Pause("status-send");
                 if (Fault == "status-denied") return Reply(403, """{"error":{"code":"Forbidden"}}""");
+                if (UnknownNotificationWire && Fault == "status-malformed") return Reply(200, "{");
             }
             if (role == "selected-arm")
             {
                 OriginalStatusReads++;
                 await Pause("original-final");
+                if (statusDeniedNotificationUpdate)
+                {
+                    if (Fault == "original-lost") throw new IOException("controlled-denied-notification-status-loss");
+                    if (Fault is not ("original-success" or "original-pending" or "original-absent"))
+                    {
+                        var denial = Reply(Fault == "original-unauthorized" ? 401 : 403,
+                            Fault == "original-malformed" ? "{" :
+                            """{"error":{"code":"AuthorizationFailed","message":"controlled-denial"}}""");
+                        if (Barrier == "original-final-body") await Body(denial, "original-final-body");
+                        return denial;
+                    }
+                    if (Fault == "original-absent") return Reply(404, """{"error":{"code":"NotFound"}}""");
+                }
                 if (Operation is ManagementMutation.UpdateNotification or ManagementMutation.CreateOrUpdateNotification &&
-                    (Native.Selector.Case == "cancellation-boundary" || statusNotificationUpdateIndependent || statusNotificationCreateIndependent))
+                    (Native.Selector.Case == "cancellation-boundary" || statusNotificationUpdateIndependent || UnknownNotificationWire || statusNotificationCreateIndependent))
                 {
                     if (Fault == "original-denied") return Reply(403, """{"error":{"code":"Forbidden"}}""");
                     if (Fault == "original-malformed") return Reply(200, "{");
@@ -1445,6 +2021,25 @@ public sealed partial class AzureVaultFixtureProvisionerTests
                 return absence;
             }
             var copy = NotificationRow.DeepClone().AsObject();
+            if (UnknownNotificationWire && !statusDeniedNotificationUpdate && SelectedUpdates > 0 && !Native.Read().Closing &&
+                role is "selected-arm" or "status-arm" or "notification-observer-arm")
+                copy["properties"]!["provisioningState"] = "Unknown";
+            if (statusDeniedNotificationUpdate && role == "selected-arm" && Fault == "original-pending")
+                copy["properties"]!["provisioningState"] = "Updating";
+            if (UnknownNotificationWire && role == "status-arm")
+            {
+                if (Fault == "status-future") copy["properties"]!["provisioningState"] = "future-state";
+                if (Fault == "status-foreign-id") copy["id"] = id + "-foreign";
+                if (Fault == "status-foreign-name") copy["name"] = "foreign-name";
+                if (Fault == "status-foreign-type") copy["type"] = "Microsoft.KeyVault/vaults";
+                if (Fault == "status-foreign-topic") copy["properties"]!["topic"] = plan.VaultId + "-foreign";
+                if (Fault == "status-foreign-label") copy["properties"]!["labels"] = new JsonArray("foreign");
+                if (Fault == "status-missing-label") copy["properties"]!.AsObject().Remove("labels");
+                if (Fault == "status-baseline") copy["properties"]!["filter"]!["includedEventTypes"] = new JsonArray("Microsoft.KeyVault.SecretNearExpiry");
+                if (Fault == "status-foreign-endpoint") copy["properties"]!["destination"]!["properties"]!["endpointUrl"] = "https://foreign.example/webhook";
+                if (Fault == "status-hidden-mappings") copy["properties"]!["destination"]!["properties"]!.AsObject().Remove("deliveryAttributeMappings");
+                if (Fault == "status-extra-field") copy["properties"]!["unexpected"] = true;
+            }
             if (role == "notification-observer-arm" && notificationSubscribed && !Native.Read().Closing &&
                 (SelectedUpdates == 0 ? NotificationBaselineTransform : NotificationPostTransform) is { } transform)
             {
@@ -1453,7 +2048,7 @@ public sealed partial class AzureVaultFixtureProvisionerTests
                 transform(copy);
             }
             if (role == "selected-arm" && Operation is ManagementMutation.UpdateNotification or ManagementMutation.CreateOrUpdateNotification &&
-                (Native.Selector.Case == "cancellation-boundary" || statusNotificationUpdateIndependent || statusNotificationCreateIndependent))
+                (Native.Selector.Case == "cancellation-boundary" || statusNotificationUpdateIndependent || UnknownNotificationWire || statusNotificationCreateIndependent))
             {
                 if (Fault == "original-updating") copy["properties"]!["provisioningState"] = "Updating";
                 if (Fault == "original-foreign-topic") copy["properties"]!["topic"] = plan.VaultId + "-foreign";
@@ -1472,6 +2067,26 @@ public sealed partial class AzureVaultFixtureProvisionerTests
                 if (Fault == "malformed") return Reply(200, "{");
                 if (Fault == "failed") copy["properties"]!["provisioningState"] = "Failed";
                 if (Fault == "nonterminal") copy["properties"]!["provisioningState"] = "Updating";
+            }
+            if (UnknownNotificationWire && SelectedUpdates > 0)
+            {
+                bool closing = Native.Read().Closing;
+                if (closing && role == "notification-observer-arm" &&
+                    Native.Read().Resources.Single(r => r.Id == id) is { ActiveDispatch: var active, DeleteAttempted: false } &&
+                    active != Guid.Empty)
+                {
+                    UnknownTerminalReads++;
+                    string? terminal = Fault?.StartsWith("terminal-", StringComparison.Ordinal) == true ? Fault["terminal-".Length..] : null;
+                    if (terminal == "lost") throw new IOException("controlled-terminal-read-loss");
+                    if (terminal == "denied") return Reply(403, "{\"error\":{\"code\":\"Forbidden\"}}");
+                    if (terminal == "malformed") return Reply(200, "{");
+                    if (terminal == "absent") return Reply(404, "{\"error\":{\"code\":\"NotFound\"}}");
+                    if (terminal is "Unknown" or "Updating" or "Failed" or "Canceled")
+                        copy["properties"]!["provisioningState"] = terminal;
+                    if (terminal == "baseline") copy["properties"]!["filter"]!["includedEventTypes"] = new JsonArray("Microsoft.KeyVault.SecretNearExpiry");
+                    if (terminal == "foreign-label") copy["properties"]!["labels"] = new JsonArray("foreign");
+                    if (terminal == "foreign-topic") copy["properties"]!["topic"] = plan.VaultId + "-foreign";
+                }
             }
             var readback = Reply(200, copy.ToJsonString());
             if (Barrier == "notification-read-body" && role == "notification-observer-arm")
@@ -1529,6 +2144,25 @@ public sealed partial class AzureVaultFixtureProvisionerTests
             return await base.ReadAsync(buffer, cancellationToken);
         }
     }
+    private sealed class PrivateDeniedEndpointCredential(PurgeServiceFixture fixture) : TokenCredential
+    {
+        public override AccessToken GetToken(TokenRequestContext requestContext, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("async-only");
+        public override ValueTask<AccessToken> GetTokenAsync(TokenRequestContext requestContext, CancellationToken cancellationToken)
+        {
+            if (requestContext.Scopes.Single() != "https://management.azure.com/.default")
+                throw new InvalidOperationException("foreign-audience");
+            cancellationToken.ThrowIfCancellationRequested();
+            if (fixture.BeforeDeniedEndpointCredential is { } hook)
+            {
+                fixture.DeniedEndpointCredentialHooks++;
+                hook();
+            }
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.FromResult(new AccessToken("endpoint-setup-arm", DateTimeOffset.MaxValue));
+        }
+    }
+
     private sealed class PurgeCredential(string role, PurgeServiceFixture fixture) : TokenCredential
     {
         public override AccessToken GetToken(TokenRequestContext requestContext, CancellationToken cancellationToken) =>
@@ -1536,7 +2170,9 @@ public sealed partial class AzureVaultFixtureProvisionerTests
         public override async ValueTask<AccessToken> GetTokenAsync(TokenRequestContext requestContext, CancellationToken cancellationToken)
         {
             if (requestContext.Scopes.Single() != "https://management.azure.com/.default") throw new InvalidOperationException("foreign-audience");
-            await fixture.Pause(role == "selected-arm" ? "selected-credential" : "status-credential");
+            await fixture.Pause(role == "selected-arm" ||
+                role == "denied-arm" && (fixture.Operation == ManagementMutation.DeletePrivateConnection || fixture.statusDeniedVaultUpdate)
+                ? "selected-credential" : "status-credential");
             cancellationToken.ThrowIfCancellationRequested();
             return new(role, DateTimeOffset.MaxValue);
         }

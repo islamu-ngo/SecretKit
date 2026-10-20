@@ -66,6 +66,210 @@ internal sealed class PrivateEndpointFixtureProvisioner : IAsyncDisposable
         public override string ToString() => "[PrivateEndpointAbsenceCandidate]";
     }
 
+    private enum DeniedDeleteStage { Admission, Drain, Absence }
+    private sealed record DeniedDeleteFacts(VaultFixtureProvisioner.Plan Parent,
+        RoleFixtureJournal.Snapshot Preimage, RoleFixtureJournal.Snapshot Postimage, Guid Dispatch,
+        bool Delete, bool Settled, string? ConnectionId, DeniedDeleteStage Stage,
+        CancellationToken[] Tokens, Task[] Tasks, Resource.StatusDeniedPrivateConnectionDeleteReadProof? ReadProof = null)
+    {
+        public override string ToString() => "[StatusDeniedPrivateConnectionDeleteFixtureFacts]";
+    }
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<object, DeniedDeleteFacts> deniedDeleteFacts =
+        new(ReferenceEqualityComparer.Instance);
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<VaultFixtureProvisioner.Plan, object> deniedDeletePending =
+        new(ReferenceEqualityComparer.Instance);
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<VaultFixtureProvisioner.Plan, CancellationToken[]> deniedDeleteTokens =
+        new(ReferenceEqualityComparer.Instance);
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, byte> deniedDeleteRevoked = new();
+
+    internal sealed class StatusDeniedPrivateConnectionDeleteFixtureAdmission(PrivateEndpointFixtureProvisioner source)
+    {
+        internal string ResourceId => source.deniedDeleteFacts.TryGetValue(this, out var f) ? f.Preimage.PrivateEndpoint!.Declaration.EndpointId : "";
+        internal Guid Dispatch => source.deniedDeleteFacts.TryGetValue(this, out var f) ? f.Dispatch : Guid.Empty;
+        internal bool Delete => source.deniedDeleteFacts.TryGetValue(this, out var f) && f.Delete;
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.ValidateDeniedDelete(this, journal, state, DeniedDeleteStage.Admission);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.ValidateDeniedDelete(this, journal, state, DeniedDeleteStage.Admission, true);
+        internal RoleFixtureJournal.Snapshot Postimage => source.DeniedDeletePostimage(this);
+        public override string ToString() => "[StatusDeniedPrivateConnectionDeleteFixtureAdmission]";
+    }
+    internal sealed class StatusDeniedPrivateConnectionDeleteFixtureDrain(PrivateEndpointFixtureProvisioner source)
+    {
+        internal string ResourceId => source.deniedDeleteFacts.TryGetValue(this, out var f) ? f.Preimage.PrivateEndpoint!.Declaration.EndpointId : "";
+        internal Guid Dispatch => source.deniedDeleteFacts.TryGetValue(this, out var f) ? f.Dispatch : Guid.Empty;
+        internal bool Delete => source.deniedDeleteFacts.TryGetValue(this, out var f) && f.Delete;
+        internal bool Settled => source.deniedDeleteFacts.TryGetValue(this, out var f) && f.Settled;
+        internal string? ConnectionId => source.deniedDeleteFacts.TryGetValue(this, out var f) ? f.ConnectionId : null;
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.ValidateDeniedDelete(this, journal, state, DeniedDeleteStage.Drain);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.ValidateDeniedDelete(this, journal, state, DeniedDeleteStage.Drain, true);
+        internal RoleFixtureJournal.Snapshot Postimage => source.DeniedDeletePostimage(this);
+        public override string ToString() => "[StatusDeniedPrivateConnectionDeleteFixtureDrain]";
+    }
+    internal sealed class StatusDeniedPrivateConnectionDeleteAbsence(PrivateEndpointFixtureProvisioner source)
+    {
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.ValidateDeniedDelete(this, journal, state, DeniedDeleteStage.Absence);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.ValidateDeniedDelete(this, journal, state, DeniedDeleteStage.Absence, true);
+        internal RoleFixtureJournal.Snapshot Postimage => source.DeniedDeletePostimage(this);
+        internal bool ValidateParentDependency(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state, VaultFixtureProvisioner.Plan parent) =>
+            source.deniedDeleteFacts.TryGetValue(this, out var f) && ReferenceEquals(f.Parent, parent) &&
+            source.ValidateDeniedDelete(this, journal, state, DeniedDeleteStage.Absence, true);
+        public override string ToString() => "[StatusDeniedPrivateConnectionDeleteAbsence]";
+    }
+    private RoleFixtureJournal.Snapshot DeniedDeletePostimage(object capability)
+    {
+        Require(deniedDeleteFacts.TryGetValue(capability, out var f));
+        return RoleFixtureJournal.CopyStatusDeniedPrivateConnectionDeleteSnapshot(f.Postimage);
+    }
+    private bool ValidateDeniedDelete(object capability, RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state,
+        DeniedDeleteStage stage, bool postimage = false) =>
+        ReferenceEquals(journal, vaultSource.Journal) && deniedDeleteFacts.TryGetValue(capability, out var f) && f.Stage == stage &&
+        (stage == DeniedDeleteStage.Drain && !f.Settled ||
+            (!closed || deniedDeletePending.TryGetValue(f.Parent, out var retained) && ReferenceEquals(retained, capability)) &&
+            !deniedDeleteRevoked.ContainsKey(f.Parent.Selector.Nonce) &&
+            f.Tokens.All(t => !t.IsCancellationRequested) &&
+            deniedDeleteTokens.GetValueOrDefault(f.Parent, []).All(t => !t.IsCancellationRequested)) &&
+        f.Tasks.All(t => t.IsCompleted) &&
+        (stage == DeniedDeleteStage.Drain && !f.Settled || f.Tasks.All(t => t.IsCompletedSuccessfully)) &&
+        (stage == DeniedDeleteStage.Admission || stage == DeniedDeleteStage.Drain && !f.Settled ||
+            f.ConnectionId is null && stage == DeniedDeleteStage.Absence ||
+            f.ReadProof is { } proof && proof.NativeTask.IsCompleted &&
+            (stage == DeniedDeleteStage.Drain && !f.Delete
+                ? proof is { HttpStatus: 200, Phase: Resource.StatusDeniedPrivateConnectionDeleteReadPhase.Discovery,
+                    Facts: { State: "Pending", Provisioning: "Succeeded" } } && proof.Facts.Id == f.ConnectionId &&
+                    proof.Facts.EndpointId == f.Preimage.PrivateEndpoint!.Declaration.EndpointId
+                : proof is { HttpStatus: 404, Facts: null, ErrorCode: "NotFound" or "ResourceNotFound",
+                    Phase: Resource.StatusDeniedPrivateConnectionDeleteReadPhase.Cleanup })) &&
+        RoleFixtureJournal.SameStatusDeniedPrivateConnectionDeleteSnapshot(postimage ? f.Postimage : f.Preimage, state);
+
+    private void TrackDeniedDeleteTokens(VaultFixtureProvisioner.Plan parent, CancellationToken token, CancellationToken caller)
+    {
+        var old = deniedDeleteTokens.GetValueOrDefault(parent, []);
+        Require(!deniedDeleteRevoked.ContainsKey(parent.Selector.Nonce) &&
+            old.All(t => !t.IsCancellationRequested) && !token.IsCancellationRequested && !caller.IsCancellationRequested);
+        deniedDeleteTokens[parent] = [.. old, token, caller];
+    }
+    private void RevokeDeniedDelete(VaultFixtureProvisioner.Plan parent)
+    {
+        deniedDeleteRevoked.TryAdd(parent.Selector.Nonce, 0);
+        foreach (var pair in deniedDeleteFacts)
+            if (ReferenceEquals(pair.Value.Parent, parent)) deniedDeleteFacts.TryRemove(pair.Key, out _);
+        deniedDeletePending.TryRemove(parent, out _);
+    }
+    internal bool HasStatusDeniedPrivateConnectionDeletePersistence(VaultFixtureProvisioner.Plan parent) =>
+        deniedDeletePending.ContainsKey(parent);
+
+    internal RoleFixtureJournal.Snapshot RetryStatusDeniedPrivateConnectionDeletePersistence(VaultFixtureProvisioner.Plan parent)
+    {
+        Require(deniedDeletePending.TryGetValue(parent, out var capability) &&
+            deniedDeleteFacts.TryGetValue(capability, out var f) && ReferenceEquals(f.Parent, parent));
+        return PersistDeniedDelete(capability);
+    }
+    private RoleFixtureJournal.Snapshot PersistDeniedDelete(object capability)
+    {
+        Require(deniedDeleteFacts.TryGetValue(capability, out var f) &&
+            deniedDeletePending.TryGetValue(f.Parent, out var pending) && ReferenceEquals(pending, capability));
+        try
+        {
+            var committed = capability switch
+            {
+                StatusDeniedPrivateConnectionDeleteFixtureAdmission admission =>
+                    vaultSource.Journal.BeginStatusDeniedPrivateConnectionDeleteFixtureDispatch(f.Parent.Owner, f.Parent.Selector, f.Parent.LeaseId, admission),
+                StatusDeniedPrivateConnectionDeleteFixtureDrain drain =>
+                    vaultSource.Journal.EndStatusDeniedPrivateConnectionDeleteFixtureDispatch(f.Parent.Owner, f.Parent.Selector, f.Parent.LeaseId, drain),
+                StatusDeniedPrivateConnectionDeleteAbsence absence =>
+                    vaultSource.Journal.RecordStatusDeniedPrivateConnectionDeleteAbsence(f.Parent.Owner, f.Parent.Selector, f.Parent.LeaseId, absence),
+                _ => throw new InvalidOperationException("private-endpoint-fixture-boundary")
+            };
+            Require(RoleFixtureJournal.SameStatusDeniedPrivateConnectionDeleteSnapshot(f.Postimage, committed));
+            if (capability is StatusDeniedPrivateConnectionDeleteAbsence dependency)
+                vaultSource.RetainStatusDeniedPrivateConnectionDeleteAbsence(f.Parent, dependency, committed);
+            lock (gate)
+            {
+                var registration = plans.Values.SingleOrDefault(r => ReferenceEquals(r.Parent, f.Parent));
+                cleanup.TryGetValue(f.Parent, out var teardown);
+                if (capability is StatusDeniedPrivateConnectionDeleteFixtureAdmission)
+                {
+                    if (!f.Delete && registration is not null)
+                    {
+                        registration.DeniedDeleteAdmitted = RoleFixtureJournal.CopyStatusDeniedPrivateConnectionDeleteSnapshot(committed);
+                        registration.Dispatch = f.Dispatch;
+                    }
+                    if (f.Delete && teardown is not null)
+                    {
+                        teardown.DeniedDeleteAdmitted = RoleFixtureJournal.CopyStatusDeniedPrivateConnectionDeleteSnapshot(committed);
+                        teardown.Dispatch = f.Dispatch;
+                    }
+                }
+                if (capability is StatusDeniedPrivateConnectionDeleteFixtureDrain)
+                {
+                    if (!f.Delete && registration is not null) registration.Bound = f.Settled;
+                    if (f.Delete && teardown is not null) teardown.Settled = f.Settled;
+                }
+                if (capability is StatusDeniedPrivateConnectionDeleteAbsence absence && teardown is not null)
+                {
+                    teardown.DeniedDeletePublishedAbsence = absence;
+                    teardown.DeniedDeleteAbsence = null;
+                }
+            }
+            deniedDeletePending.TryRemove(f.Parent, out _);
+            return RoleFixtureJournal.CopyStatusDeniedPrivateConnectionDeleteSnapshot(committed);
+        }
+        catch (IOException) { throw; }
+        catch { RevokeDeniedDelete(f.Parent); throw; }
+    }
+    private RoleFixtureJournal.Snapshot BeginDeniedDelete(VaultFixtureProvisioner.Plan parent, bool delete, CancellationToken token)
+    {
+        Require(!deniedDeletePending.ContainsKey(parent));
+        var preimage = RoleFixtureJournal.CopyStatusDeniedPrivateConnectionDeleteSnapshot(vaultSource.Journal.Read(parent.Owner, parent.Selector));
+        Require(!closed && RoleFixtureJournal.StatusDeniedPrivateConnectionDeleteRoot(preimage) &&
+            !deniedDeleteRevoked.ContainsKey(parent.Selector.Nonce) && !token.IsCancellationRequested);
+        var dispatch = Guid.NewGuid();
+        var slot = preimage.PrivateEndpoint!;
+        var postimage = preimage with
+        {
+            Revision = preimage.Revision + 1,
+            Resources = preimage.Resources.Select(r => r.Borrowed ? r : r.Id == slot.Declaration.EndpointId ? r with
+            { CreateAttempted = r.CreateAttempted || !delete, DeleteAttempted = r.DeleteAttempted || delete,
+                InvocationTerminated = false, ActiveDispatch = dispatch, Absent = false } : r with { Absent = false }).ToArray(),
+            PrivateEndpoint = slot with { CreationDispatch = delete ? slot.CreationDispatch : dispatch,
+                DeletionDispatch = delete ? dispatch : slot.DeletionDispatch, NicAbsent = false,
+                Connection = slot.Connection is null ? null : slot.Connection with { Absent = false } }
+        };
+        var admission = new StatusDeniedPrivateConnectionDeleteFixtureAdmission(this);
+        Require(deniedDeleteFacts.TryAdd(admission, new(parent, preimage, postimage, dispatch, delete, false,
+            slot.Connection?.Id, DeniedDeleteStage.Admission, [.. deniedDeleteTokens.GetValueOrDefault(parent, []), token], [])));
+        Require(deniedDeletePending.TryAdd(parent, admission));
+        return PersistDeniedDelete(admission);
+    }
+    private StatusDeniedPrivateConnectionDeleteFixtureDrain RetainDeniedDeleteDrain(VaultFixtureProvisioner.Plan parent,
+        bool delete, bool settled, string? connectionId, Resource.StatusDeniedPrivateConnectionDeleteReadProof? readProof, params Task[] tasks)
+    {
+        Require(!deniedDeletePending.ContainsKey(parent) && tasks.Length != 0 && tasks.All(t => t.IsCompleted) &&
+            (!settled || tasks.All(t => t.IsCompletedSuccessfully)));
+        var preimage = RoleFixtureJournal.CopyStatusDeniedPrivateConnectionDeleteSnapshot(vaultSource.Journal.Read(parent.Owner, parent.Selector));
+        var slot = preimage.PrivateEndpoint!;
+        var dispatch = delete ? slot.DeletionDispatch : slot.CreationDispatch;
+        Require(dispatch != Guid.Empty);
+        var postimage = preimage with
+        {
+            Revision = preimage.Revision + 1,
+            Resources = preimage.Resources.Select(r => r.Id == slot.Declaration.EndpointId ? r with
+                { InvocationTerminated = true, ActiveDispatch = settled ? Guid.Empty : dispatch } : r).ToArray(),
+            PrivateEndpoint = !settled ? slot : slot with { CreationDispatch = Guid.Empty, DeletionDispatch = Guid.Empty,
+                Connection = slot.Connection ?? new(connectionId!, false, CreateAttempted: true, InvocationTerminated: true) }
+        };
+        var drain = new StatusDeniedPrivateConnectionDeleteFixtureDrain(this);
+        Require(deniedDeleteFacts.TryAdd(drain, new(parent, preimage, postimage, dispatch, delete, settled,
+            connectionId, DeniedDeleteStage.Drain, deniedDeleteTokens.GetValueOrDefault(parent, []).ToArray(), tasks.ToArray(), readProof)));
+        Require(deniedDeletePending.TryAdd(parent, drain));
+        return drain;
+    }
+
     private enum PrivateUpdateIndependentStage { Admission, Drain, Absence }
     private sealed record PrivateUpdateIndependentFacts(VaultFixtureProvisioner.Plan Parent,
         RoleFixtureJournal.Snapshot Preimage, RoleFixtureJournal.Snapshot Postimage, Guid Dispatch,
@@ -211,6 +415,10 @@ internal sealed class PrivateEndpointFixtureProvisioner : IAsyncDisposable
         internal RoleFixtureJournal.Snapshot? IndependentAdmitted;
         internal StatusPrivateConnectionUpdateIndependentFixtureDrain? IndependentDrain;
         internal StatusPrivateConnectionUpdateIndependentAbsence? IndependentAbsence, IndependentPublishedAbsence;
+        internal RoleFixtureJournal.Snapshot? DeniedDeleteAdmitted;
+        internal StatusDeniedPrivateConnectionDeleteFixtureDrain? DeniedDeleteDrain;
+        internal StatusDeniedPrivateConnectionDeleteAbsence? DeniedDeleteAbsence, DeniedDeletePublishedAbsence;
+        internal Resource.StatusDeniedPrivateConnectionDeleteReadProof? DeniedDeleteBeforeChild;
         internal Task<Endpoint.Measurement>? IndependentBeforeEndpoint;
         internal TaskCompletionSource? Drained;
         internal PrivateEndpointNativeCapture? Native;
@@ -262,6 +470,9 @@ internal sealed class PrivateEndpointFixtureProvisioner : IAsyncDisposable
         internal RoleFixtureJournal.Snapshot? IndependentAdmitted;
         internal StatusPrivateConnectionUpdateIndependentFixtureDrain? IndependentDrain;
         internal Resource.StatusPrivateConnectionUpdateIndependentReadProof? IndependentDiscovery;
+        internal RoleFixtureJournal.Snapshot? DeniedDeleteAdmitted;
+        internal StatusDeniedPrivateConnectionDeleteFixtureDrain? DeniedDeleteDrain;
+        internal Resource.StatusDeniedPrivateConnectionDeleteReadProof? DeniedDeleteDiscovery;
         internal TaskCompletionSource? Drained;
         internal Task<Endpoint.Measurement>? EndpointAbsent, NicAbsent, EndpointRead;
         internal Task<Vault.Measurement>? Inventory;
@@ -355,6 +566,11 @@ internal sealed class PrivateEndpointFixtureProvisioner : IAsyncDisposable
         try
         {
             lock (gate) { Require(!r.Consumed); r.Consumed = true; }
+            if (VaultFixtureProvisioner.StatusDeniedPrivateConnectionDeleteSelector(r.Parent.Selector))
+            {
+                Require(!HasStatusDeniedPrivateConnectionDeletePersistence(r.Parent));
+                TrackDeniedDeleteTokens(r.Parent, cancellationToken, originalCallerToken ?? cancellationToken);
+            }
             if (VaultFixtureProvisioner.StatusPrivateConnectionUpdateIndependentSelector(r.Parent.Selector))
             {
                 TrackPrivateUpdateIndependentTokens(r.Parent, cancellationToken, originalCallerToken ?? cancellationToken);
@@ -363,7 +579,9 @@ internal sealed class PrivateEndpointFixtureProvisioner : IAsyncDisposable
                 r.IndependentAdmitted = BeginPrivateUpdateIndependent(r.Parent, false, r.IndependentTokens.ToArray());
                 r.Dispatch = r.IndependentAdmitted.PrivateEndpoint!.CreationDispatch;
             }
-            using var linked = VaultFixtureProvisioner.StatusPrivateConnectionUpdateIndependentSelector(r.Parent.Selector)
+            using var linked = VaultFixtureProvisioner.StatusDeniedPrivateConnectionDeleteSelector(r.Parent.Selector)
+                ? CancellationTokenSource.CreateLinkedTokenSource([.. deniedDeleteTokens.GetValueOrDefault(r.Parent, []), cancellationToken, r.Stop.Token])
+                : VaultFixtureProvisioner.StatusPrivateConnectionUpdateIndependentSelector(r.Parent.Selector)
                 ? CancellationTokenSource.CreateLinkedTokenSource([.. privateUpdateIndependentTokens.GetValueOrDefault(r.Parent, []), cancellationToken, r.Stop.Token])
                 : CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, r.Stop.Token);
             // These are fresh original observations by distinct single-arm
@@ -384,7 +602,12 @@ internal sealed class PrivateEndpointFixtureProvisioner : IAsyncDisposable
                 {
                     Require(!closed && (r.IndependentAdmitted is not null || r.Dispatch == Guid.Empty));
                     linked.Token.ThrowIfCancellationRequested();
-                    if (r.IndependentAdmitted is null) r.Dispatch = vaultSource.BeginPrivateEndpointCreate(r.Parent);
+                    if (VaultFixtureProvisioner.StatusDeniedPrivateConnectionDeleteSelector(r.Parent.Selector))
+                    {
+                        r.DeniedDeleteAdmitted = BeginDeniedDelete(r.Parent, false, linked.Token);
+                        r.Dispatch = r.DeniedDeleteAdmitted.PrivateEndpoint!.CreationDispatch;
+                    }
+                    else if (r.IndependentAdmitted is null) r.Dispatch = vaultSource.BeginPrivateEndpointCreate(r.Parent);
                     else Require(r.IndependentTokens.All(t => !t.IsCancellationRequested) &&
                         RoleFixtureJournal.SameStatusPrivateConnectionUpdateIndependentSnapshot(r.IndependentAdmitted, Snapshot(r)));
                     var admitted = Snapshot(r);
@@ -413,6 +636,28 @@ internal sealed class PrivateEndpointFixtureProvisioner : IAsyncDisposable
     {
         lock (gate)
         {
+            if (originalParent is not null && VaultFixtureProvisioner.StatusDeniedPrivateConnectionDeleteSelector(originalParent.Selector))
+            {
+                if (closed || originalEndpointPlan is null || originalParent.Restored ||
+                    !plans.TryGetValue(originalEndpointPlan, out var denied) || denied.Busy || !denied.Consumed || !denied.Bound ||
+                    !ReferenceEquals(denied.Parent, originalParent) || !originalEndpointPlan.Matches(source, originalParent) ||
+                    denied.DeniedDeleteDrain is null || denied.DeniedDeleteDiscovery is null ||
+                    HasStatusDeniedPrivateConnectionDeletePersistence(originalParent) ||
+                    !deniedDeleteFacts.TryGetValue(denied.DeniedDeleteDrain, out var f) ||
+                    f.Stage != DeniedDeleteStage.Drain || !f.Settled || f.Delete || f.ConnectionId != connectionId ||
+                    deniedDeleteRevoked.ContainsKey(originalParent.Selector.Nonce) ||
+                    f.Tokens.Any(t => t.IsCancellationRequested) ||
+                    deniedDeleteTokens.GetValueOrDefault(originalParent, []).Any(t => t.IsCancellationRequested) ||
+                    f.Tasks.Any(t => !t.IsCompletedSuccessfully)) return false;
+                var current = Snapshot(denied);
+                return vaultSource.MatchesOwnedPlan(originalParent, current) &&
+                    RoleFixtureJournal.StatusDeniedPrivateConnectionDeleteRoot(current) &&
+                    current.PrivateEndpoint is { CreationDispatch: var deniedCreation, Connection: { } deniedChild } &&
+                    deniedCreation == Guid.Empty && deniedChild.Id == connectionId && deniedChild.CreateAttempted && !deniedChild.Borrowed && !deniedChild.CleanupOnly &&
+                    current.PrivateEndpoint.Declaration == f.Postimage.PrivateEndpoint!.Declaration &&
+                    current.Resources[3] is { CreateAttempted: true, InvocationTerminated: true, ActiveDispatch: var deniedActive } &&
+                    deniedActive == Guid.Empty;
+            }
             if (originalParent is not null && VaultFixtureProvisioner.StatusPrivateConnectionUpdateIndependentSelector(originalParent.Selector))
             {
                 if (closed || originalEndpointPlan is null || originalParent.Restored || !plans.TryGetValue(originalEndpointPlan, out var independent) ||
@@ -458,6 +703,12 @@ internal sealed class PrivateEndpointFixtureProvisioner : IAsyncDisposable
         Registration r = Enter(originalPlan, preparation: false);
         try
         {
+            if (VaultFixtureProvisioner.StatusDeniedPrivateConnectionDeleteSelector(r.Parent.Selector))
+            {
+                if (HasStatusDeniedPrivateConnectionDeletePersistence(r.Parent))
+                    _ = RetryStatusDeniedPrivateConnectionDeletePersistence(r.Parent);
+                TrackDeniedDeleteTokens(r.Parent, cancellationToken, originalCallerToken ?? cancellationToken);
+            }
             Require(r.Consumed && r.Dispatch != Guid.Empty);
             if (VaultFixtureProvisioner.StatusPrivateConnectionUpdateIndependentSelector(r.Parent.Selector))
             {
@@ -466,7 +717,9 @@ internal sealed class PrivateEndpointFixtureProvisioner : IAsyncDisposable
                 r.IndependentTokens.Add(cancellationToken);
                 r.IndependentTokens.Add(originalCallerToken ?? cancellationToken);
             }
-            using var linked = VaultFixtureProvisioner.StatusPrivateConnectionUpdateIndependentSelector(r.Parent.Selector)
+            using var linked = VaultFixtureProvisioner.StatusDeniedPrivateConnectionDeleteSelector(r.Parent.Selector)
+                ? CancellationTokenSource.CreateLinkedTokenSource([.. deniedDeleteTokens.GetValueOrDefault(r.Parent, []), cancellationToken, r.Stop.Token])
+                : VaultFixtureProvisioner.StatusPrivateConnectionUpdateIndependentSelector(r.Parent.Selector)
                 ? CancellationTokenSource.CreateLinkedTokenSource([.. privateUpdateIndependentTokens.GetValueOrDefault(r.Parent, []), cancellationToken, r.Stop.Token])
                 : CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, r.Stop.Token);
             return await CompleteCore(r, linked.Token).ConfigureAwait(false);
@@ -505,11 +758,20 @@ internal sealed class PrivateEndpointFixtureProvisioner : IAsyncDisposable
     private async ValueTask<CleanupResult> CleanupCore(VaultFixtureProvisioner.Plan parent, bool delete,
         bool parentEntered, CancellationToken cancellationToken, CancellationToken? originalCallerToken)
     {
+        if (parent is not null && VaultFixtureProvisioner.StatusDeniedPrivateConnectionDeleteSelector(parent.Selector))
+        {
+            deniedDeletePending.TryGetValue(parent, out var retained);
+            foreach (var pair in deniedDeleteFacts)
+                if (ReferenceEquals(pair.Value.Parent, parent) && pair.Value.Stage == DeniedDeleteStage.Absence &&
+                    !ReferenceEquals(pair.Key, retained)) deniedDeleteFacts.TryRemove(pair.Key, out _);
+        }
         cancellationToken.ThrowIfCancellationRequested();
         CleanupRegistration r;
         lock (gate)
         {
             Require(!closed && parent is not null);
+            Require(!VaultFixtureProvisioner.StatusDeniedPrivateConnectionDeleteSelector(parent.Selector) ||
+                !HasStatusDeniedPrivateConnectionDeletePersistence(parent));
             var binding = vaultSource.EndpointBinding(parent);
             var snapshot = delete ? vaultSource.CloseSelectedRoot(parent.Owner, parent.Selector) :
                 vaultSource.Journal.Read(parent.Owner, parent.Selector);
@@ -526,6 +788,8 @@ internal sealed class PrivateEndpointFixtureProvisioner : IAsyncDisposable
         }
         try
         {
+            if (VaultFixtureProvisioner.StatusDeniedPrivateConnectionDeleteSelector(parent.Selector))
+                TrackDeniedDeleteTokens(parent, cancellationToken, originalCallerToken ?? cancellationToken);
             if (VaultFixtureProvisioner.StatusPrivateConnectionUpdateIndependentSelector(parent.Selector))
             {
                 lock (gate)
@@ -536,7 +800,9 @@ internal sealed class PrivateEndpointFixtureProvisioner : IAsyncDisposable
                     r.IndependentTokens.Add(originalCallerToken ?? cancellationToken);
                 }
             }
-            using var linked = VaultFixtureProvisioner.StatusPrivateConnectionUpdateIndependentSelector(r.Parent.Selector)
+            using var linked = VaultFixtureProvisioner.StatusDeniedPrivateConnectionDeleteSelector(r.Parent.Selector)
+                ? CancellationTokenSource.CreateLinkedTokenSource([.. deniedDeleteTokens.GetValueOrDefault(r.Parent, []), cancellationToken, r.Stop.Token])
+                : VaultFixtureProvisioner.StatusPrivateConnectionUpdateIndependentSelector(r.Parent.Selector)
                 ? CancellationTokenSource.CreateLinkedTokenSource([.. privateUpdateIndependentTokens.GetValueOrDefault(r.Parent, []), cancellationToken, r.Stop.Token])
                 : CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, r.Stop.Token);
             var snapshot = CleanupSnapshot(r);
@@ -545,7 +811,8 @@ internal sealed class PrivateEndpointFixtureProvisioner : IAsyncDisposable
             // exact approval marker can permit endpoint cleanup.
             if (!snapshot.PrivateConnectionCleanupEligible)
             {
-                if (VaultFixtureProvisioner.StatusPrivateConnectionUpdateIndependentSelector(parent.Selector))
+                if (VaultFixtureProvisioner.StatusDeniedPrivateConnectionDeleteSelector(parent.Selector) ||
+                    VaultFixtureProvisioner.StatusPrivateConnectionUpdateIndependentSelector(parent.Selector))
                     _ = vaultSource.Journal.InvalidatePrivateEndpointAbsence(parent.Owner, parent.Selector);
                 else _ = vaultSource.Journal.BeginPrivateEndpointAbsence(parent.Owner, parent.Selector, parent.LeaseId);
                 return CleanupFinish(r, CleanupState.Uncertain);
@@ -576,7 +843,12 @@ internal sealed class PrivateEndpointFixtureProvisioner : IAsyncDisposable
                     {
                         linked.Token.ThrowIfCancellationRequested();
                         Require(!closed && r.Busy && r.ConnectionId is not null && (r.IndependentAdmitted is not null || r.Dispatch == Guid.Empty));
-                        if (r.IndependentAdmitted is null)
+                        if (VaultFixtureProvisioner.StatusDeniedPrivateConnectionDeleteSelector(parent.Selector))
+                        {
+                            r.DeniedDeleteAdmitted = BeginDeniedDelete(parent, true, linked.Token);
+                            r.Dispatch = r.DeniedDeleteAdmitted.PrivateEndpoint!.DeletionDispatch;
+                        }
+                        else if (r.IndependentAdmitted is null)
                             r.Dispatch = vaultSource.Journal.BeginPrivateEndpointDelete(parent.Owner, parent.Selector, parent.LeaseId, parent.PrivateEndpoint!, r.ConnectionId);
                         else Require(r.IndependentTokens.All(t => !t.IsCancellationRequested) &&
                             RoleFixtureJournal.SameStatusPrivateConnectionUpdateIndependentSnapshot(r.IndependentAdmitted, CleanupSnapshot(r)));
@@ -590,6 +862,13 @@ internal sealed class PrivateEndpointFixtureProvisioner : IAsyncDisposable
         }
         catch (Exception)
         {
+            if (VaultFixtureProvisioner.StatusDeniedPrivateConnectionDeleteSelector(parent.Selector))
+            {
+                if (r.DeniedDeletePublishedAbsence is { } old) deniedDeleteFacts.TryRemove(old, out _);
+                r.DeniedDeletePublishedAbsence = null;
+                if (r.DeniedDeleteAbsence is null && !HasStatusDeniedPrivateConnectionDeletePersistence(parent))
+                    _ = vaultSource.Journal.InvalidatePrivateEndpointAbsence(parent.Owner, parent.Selector);
+            }
             cancellationToken.ThrowIfCancellationRequested();
             return CleanupFinish(r, CleanupState.Uncertain);
         }
@@ -624,6 +903,138 @@ internal sealed class PrivateEndpointFixtureProvisioner : IAsyncDisposable
                 }
             }
         }
+    }
+
+    private async Task<CleanupResult> RefreshDeniedDelete(CleanupRegistration r, CancellationToken token)
+    {
+        if (r.DeniedDeletePublishedAbsence is { } old) deniedDeleteFacts.TryRemove(old, out _);
+        r.DeniedDeletePublishedAbsence = null;
+        // Revoke source membership before any callback can fail, including time,
+        // credentials and journal reads. Only the retained append is retryable.
+        var state = CleanupSnapshot(r);
+        Require(RoleFixtureJournal.StatusDeniedPrivateConnectionDeleteRoot(state) && state.PrivateEndpointCleanupEligible);
+        var preimage = RoleFixtureJournal.CopyStatusDeniedPrivateConnectionDeleteSnapshot(state);
+        var row = state.Resources[3];
+        if (row.CreateAttempted && (!row.DeleteAttempted || !row.InvocationTerminated || row.ActiveDispatch != Guid.Empty))
+            return CleanupFinish(r, CleanupState.Pending);
+        try
+        {
+            var endpoint = new Endpoint(endpointReader, limits, time);
+            var endpointTask = endpoint.CollectAsync(endpoint.Arm(r.Binding), r.Binding, token).AsTask();
+            var endpointResult = await endpointTask.ConfigureAwait(false);
+            var nic = new Endpoint(endpointReader, limits, time);
+            var nicTask = nic.CollectAsync(nic.ArmNicAbsence(r.Binding), r.Binding, token).AsTask();
+            var nicResult = await nicTask.ConfigureAwait(false);
+            var tasks = new List<Task> { endpointTask, nicTask };
+            Require(endpointResult is { ResponseComplete: true, Kind: Endpoint.ReadKind.Endpoint, ResourceStatus: SecretStatus.Absent, HttpStatus: 404 } &&
+                nicResult is { ResponseComplete: true, Kind: Endpoint.ReadKind.NicAbsence, ResourceStatus: SecretStatus.Absent, HttpStatus: 404 });
+            Resource.StatusDeniedPrivateConnectionDeleteReadProof? childProof = null;
+            if (state.PrivateEndpoint!.Connection is { } child)
+            {
+                var scope = new PrivateConnectionScope(vaultSource.Scope(r.Parent), child.Id.Split('/')[^1]);
+                Require(scope.Vault.ExportResourceId() + "/privateEndpointConnections/" + scope.ConnectionName == child.Id);
+                var binding = new ManagementOperationNativeCapture.Binding(r.Parent.Selector, r.Parent.LeaseId, scope,
+                    ManagementMutation.DeletePrivateConnection, r.Binding.Location, Vault.Revision);
+                var reader = new Resource(new(vaultReader.Label, vaultReader.Credential, vaultReader.Transport), limits, time, vaultSource.FixtureTenantId);
+                var window = reader.ArmStatusDeniedPrivateConnectionDelete(binding, Resource.StatusDeniedPrivateConnectionDeleteReadPhase.Cleanup);
+                var task = reader.CollectAsync(window, binding, token, deniedDeleteTokens[r.Parent][0]).AsTask();
+                using var result = await task.ConfigureAwait(false);
+                Require(reader.TryGetStatusDeniedPrivateConnectionDeleteRead(window, binding, task, out childProof) &&
+                    reader.OwnsStatusDeniedPrivateConnectionDeleteRead(childProof, window, binding, task) &&
+                    childProof is { HttpStatus: 404, Facts: null, ErrorCode: "NotFound" or "ResourceNotFound",
+                        Phase: Resource.StatusDeniedPrivateConnectionDeleteReadPhase.Cleanup });
+                tasks.Add(task);
+            }
+            token.ThrowIfCancellationRequested();
+            Require(deniedDeleteTokens[r.Parent].All(t => !t.IsCancellationRequested) &&
+                RoleFixtureJournal.SameStatusDeniedPrivateConnectionDeleteSnapshot(preimage, CleanupSnapshot(r)));
+            var slot = preimage.PrivateEndpoint!;
+            var postimage = preimage with
+            {
+                Revision = preimage.Revision + 1,
+                Resources = preimage.Resources.Select(resource => resource.Id == slot.Declaration.EndpointId ? resource with { Absent = true } : resource).ToArray(),
+                PrivateEndpoint = slot with { NicAbsent = true, Connection = slot.Connection is null ? null : slot.Connection with { Absent = true } }
+            };
+            var absence = new StatusDeniedPrivateConnectionDeleteAbsence(this);
+            Require(deniedDeleteFacts.TryAdd(absence, new(r.Parent, preimage, postimage, Guid.Empty, false, false,
+                slot.Connection?.Id, DeniedDeleteStage.Absence, [.. deniedDeleteTokens[r.Parent], token], tasks.ToArray(), childProof)));
+            Require(deniedDeletePending.TryAdd(r.Parent, absence));
+            r.DeniedDeleteAbsence = absence;
+            _ = PersistDeniedDelete(absence);
+            token.ThrowIfCancellationRequested();
+            r.DeniedDeletePublishedAbsence = absence;
+            r.DeniedDeleteAbsence = null;
+            return CleanupFinish(r, CleanupState.DependenciesAbsent);
+        }
+        catch
+        {
+            if (r.DeniedDeleteAbsence is null)
+                _ = vaultSource.Journal.InvalidatePrivateEndpointAbsence(r.Parent.Owner, r.Parent.Selector);
+            throw;
+        }
+    }
+
+    private async ValueTask ValidateDeniedDeleteBeforeSend(CleanupRegistration r, HttpMessage message)
+    {
+        Require(r.DeniedDeleteAdmitted is not null && r.ConnectionId is not null && r.BeforeDeleteChildRead is null &&
+            r.DeniedDeleteBeforeChild is null && r.Dispatch != Guid.Empty);
+        var preimage = r.DeniedDeleteAdmitted;
+        var request = message.Request;
+        var headers = request.Headers.ToArray();
+        void Check()
+        {
+            Require(!closed && r.Busy && !HasStatusDeniedPrivateConnectionDeletePersistence(r.Parent) &&
+                deniedDeleteTokens[r.Parent].All(t => !t.IsCancellationRequested) &&
+                RoleFixtureJournal.StatusDeniedPrivateConnectionDeleteRoot(preimage) && preimage.PrivateConnectionCleanupEligible &&
+                preimage.PrivateEndpoint!.Connection?.Id == r.ConnectionId && preimage.PrivateEndpoint.DeletionDispatch == r.Dispatch &&
+                (!preimage.PrivateEndpoint.Connection.SelectedAttempted || preimage.PrivateEndpoint.StatusDeleteSettledDispatch != Guid.Empty) &&
+                ReferenceEquals(message.Request, request) && request.Method == RequestMethod.Delete && request.Content is null &&
+                request.Uri.ToUri().OriginalString == Resource.ArmOrigin + r.Binding.EndpointId + "?api-version=" + Endpoint.Revision &&
+                headers.SequenceEqual(request.Headers) && request.Headers.TryGetValue("Authorization", out var auth) &&
+                auth.StartsWith("Bearer ", StringComparison.Ordinal) && auth.Length > 7 &&
+                RoleFixtureJournal.SameStatusDeniedPrivateConnectionDeleteSnapshot(preimage, CleanupSnapshot(r)));
+            message.CancellationToken.ThrowIfCancellationRequested();
+        }
+        Check();
+        var scope = new PrivateConnectionScope(vaultSource.Scope(r.Parent), r.ConnectionId.Split('/')[^1]);
+        Require(scope.Vault.ExportResourceId() + "/privateEndpointConnections/" + scope.ConnectionName == r.ConnectionId);
+        var binding = new ManagementOperationNativeCapture.Binding(r.Parent.Selector, r.Parent.LeaseId, scope,
+            ManagementMutation.DeletePrivateConnection, r.Binding.Location, Vault.Revision);
+        var reader = new Resource(new(vaultReader.Label, vaultReader.Credential, vaultReader.Transport), limits, time, vaultSource.FixtureTenantId);
+        var window = reader.ArmStatusDeniedPrivateConnectionDelete(binding, Resource.StatusDeniedPrivateConnectionDeleteReadPhase.Cleanup);
+        r.BeforeDeleteChildRead = reader.CollectAsync(window, binding, message.CancellationToken, deniedDeleteTokens[r.Parent][0]).AsTask();
+        _ = await r.BeforeDeleteChildRead.ConfigureAwait(false);
+        Require(reader.TryGetStatusDeniedPrivateConnectionDeleteRead(window, binding, r.BeforeDeleteChildRead, out var proof) &&
+            reader.OwnsStatusDeniedPrivateConnectionDeleteRead(proof, window, binding, r.BeforeDeleteChildRead) &&
+            proof is { HttpStatus: 404, Facts: null, ErrorCode: "NotFound" or "ResourceNotFound",
+                Phase: Resource.StatusDeniedPrivateConnectionDeleteReadPhase.Cleanup });
+        Check();
+        r.DeniedDeleteBeforeChild = proof;
+    }
+
+    private async Task<bool> CompleteDeniedDeleteDeletion(CleanupRegistration r, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        if (r.DeniedDeleteDrain is null)
+        {
+            if (r.Start is null || await r.Start.ConfigureAwait(false) != SecretStatus.Success) return false;
+            Require(r.Native is not null && r.Window is not null && r.DeniedDeleteAdmitted is not null);
+            r.Check ??= r.Native.CheckDeleteStatusAsync(r.Window, r.Binding, token).AsTask();
+            if (await r.Check.ConfigureAwait(false) != SecretStatus.Success ||
+                !r.Native.TryGetDeletionProof(r.Window, r.Binding, out var proof) ||
+                !r.Native.OwnsDeletionProof(proof, r.Window, r.Binding, r.Dispatch)) return false;
+            Require(r.BeforeDeleteChildRead is { IsCompletedSuccessfully: true } && r.DeniedDeleteBeforeChild is not null &&
+                RoleFixtureJournal.SameStatusDeniedPrivateConnectionDeleteSnapshot(r.DeniedDeleteAdmitted, CleanupSnapshot(r)));
+            r.Proof = proof;
+            r.DeniedDeleteDrain = RetainDeniedDeleteDrain(r.Parent, true, true, r.ConnectionId, r.DeniedDeleteBeforeChild,
+                r.Start, r.Check, r.BeforeDeleteChildRead);
+        }
+        if (HasStatusDeniedPrivateConnectionDeletePersistence(r.Parent)) _ = PersistDeniedDelete(r.DeniedDeleteDrain);
+        token.ThrowIfCancellationRequested();
+        Require(r.DeniedDeleteDrain.Settled &&
+            RoleFixtureJournal.SameStatusDeniedPrivateConnectionDeleteSnapshot(r.DeniedDeleteDrain.Postimage, CleanupSnapshot(r)));
+        r.Settled = true;
+        return true;
     }
 
     private async Task<CleanupResult> RefreshPrivateUpdateIndependent(CleanupRegistration r, CancellationToken token)
@@ -745,6 +1156,8 @@ internal sealed class PrivateEndpointFixtureProvisioner : IAsyncDisposable
 
     private async Task<bool> CompleteDeletion(CleanupRegistration r, CancellationToken token)
     {
+        if (VaultFixtureProvisioner.StatusDeniedPrivateConnectionDeleteSelector(r.Parent.Selector))
+            return await CompleteDeniedDeleteDeletion(r, token).ConfigureAwait(false);
         if (VaultFixtureProvisioner.StatusPrivateConnectionUpdateIndependentSelector(r.Parent.Selector))
             return await CompletePrivateUpdateIndependentDeletion(r, token).ConfigureAwait(false);
         token.ThrowIfCancellationRequested();
@@ -784,6 +1197,8 @@ internal sealed class PrivateEndpointFixtureProvisioner : IAsyncDisposable
 
     private async Task<CleanupResult> RefreshCore(CleanupRegistration r, CancellationToken token)
     {
+        if (VaultFixtureProvisioner.StatusDeniedPrivateConnectionDeleteSelector(r.Parent.Selector))
+            return await RefreshDeniedDelete(r, token).ConfigureAwait(false);
         if (VaultFixtureProvisioner.StatusPrivateConnectionUpdateIndependentSelector(r.Parent.Selector))
             return await RefreshPrivateUpdateIndependent(r, token).ConfigureAwait(false);
         var revision = vaultSource.Journal.BeginPrivateEndpointAbsence(r.Parent.Owner, r.Parent.Selector,
@@ -949,6 +1364,8 @@ internal sealed class PrivateEndpointFixtureProvisioner : IAsyncDisposable
 
     private async ValueTask ValidateDeleteBeforeSendAsync(CleanupRegistration r, HttpMessage message)
     {
+        if (VaultFixtureProvisioner.StatusDeniedPrivateConnectionDeleteSelector(r.Parent.Selector))
+        { await ValidateDeniedDeleteBeforeSend(r, message).ConfigureAwait(false); return; }
         if (VaultFixtureProvisioner.StatusPrivateConnectionUpdateIndependentSelector(r.Parent.Selector))
         { await ValidatePrivateUpdateIndependentDeleteBeforeSend(r, message).ConfigureAwait(false); return; }
         ValidateDeleteBeforeSend(r);
@@ -1052,6 +1469,19 @@ internal sealed class PrivateEndpointFixtureProvisioner : IAsyncDisposable
 
     private void RetainDeletionFence(CleanupRegistration r)
     {
+        if (VaultFixtureProvisioner.StatusDeniedPrivateConnectionDeleteSelector(r.Parent.Selector))
+        {
+            if (r.Dispatch == Guid.Empty || r.Settled || r.DeniedDeleteDrain is not null ||
+                HasStatusDeniedPrivateConnectionDeletePersistence(r.Parent)) return;
+            var state = CleanupSnapshot(r);
+            if (state.PrivateEndpoint?.DeletionDispatch != r.Dispatch ||
+                state.Resources[3].InvocationTerminated) return;
+            var tasks = new Task?[] { r.Start, r.Check, r.BeforeDeleteChildRead }.OfType<Task>().ToArray();
+            Require(tasks.All(t => t.IsCompleted));
+            r.DeniedDeleteDrain = RetainDeniedDeleteDrain(r.Parent, true, false, r.ConnectionId, null, tasks);
+            _ = PersistDeniedDelete(r.DeniedDeleteDrain);
+            return;
+        }
         if (r.Dispatch == Guid.Empty || r.Settled || r.IndependentDrain is not null) return;
         var snapshot = CleanupSnapshot(r);
         if (snapshot.PrivateEndpoint?.DeletionDispatch == r.Dispatch)
@@ -1084,6 +1514,7 @@ internal sealed class PrivateEndpointFixtureProvisioner : IAsyncDisposable
     {
         RoleFixtureJournal.Snapshot snapshot;
         try { snapshot = vaultSource.Journal.Read(r.Parent.Owner, r.Parent.Selector); }
+        catch (RoleFixtureJournal.StatusDeniedPrivateConnectionDeleteHistoryException) { RevokeDeniedDelete(r.Parent); throw; }
         catch (RoleFixtureJournal.StatusPrivateConnectionUpdateIndependentHistoryException) { RevokePrivateUpdateIndependent(r.Parent); throw; }
         Require(MatchesCleanupRoot(r, snapshot));
         return snapshot;
@@ -1107,6 +1538,18 @@ internal sealed class PrivateEndpointFixtureProvisioner : IAsyncDisposable
     private async Task<Result> CompleteCore(Registration r, CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
+        if (VaultFixtureProvisioner.StatusDeniedPrivateConnectionDeleteSelector(r.Parent.Selector))
+        {
+            if (HasStatusDeniedPrivateConnectionDeletePersistence(r.Parent))
+                _ = RetryStatusDeniedPrivateConnectionDeletePersistence(r.Parent);
+            if (r.DeniedDeleteDrain is not null)
+            {
+                if (!r.DeniedDeleteDrain.Settled) return Finish(r, State.Uncertain);
+                Require(RoleFixtureJournal.SameStatusDeniedPrivateConnectionDeleteSnapshot(r.DeniedDeleteDrain.Postimage, Snapshot(r)));
+                r.Bound = true;
+                return Finish(r, State.Ready);
+            }
+        }
         if (r.Bound) return Finish(r, State.Ready);
         if (r.IndependentDrain is not null)
         { PersistPrivateUpdateIndependentDrain(r.IndependentDrain); r.Bound = true; return Finish(r, State.Ready); }
@@ -1128,6 +1571,8 @@ internal sealed class PrivateEndpointFixtureProvisioner : IAsyncDisposable
             endpoint.ResourceStatus != SecretStatus.Success || !endpoint.MatchesDeclaration ||
             endpoint.NativeState != "Succeeded" || endpoint.ManualConnectionState != "Pending")
             return Finish(r, State.Incomplete);
+        if (VaultFixtureProvisioner.StatusDeniedPrivateConnectionDeleteSelector(r.Parent.Selector) &&
+            !endpoint.MatchesDeclarationConfiguration) return Finish(r, State.Incomplete);
         if (r.Inventory is null)
         {
             // A native inventory selector describes the read, not the selected
@@ -1144,7 +1589,8 @@ internal sealed class PrivateEndpointFixtureProvisioner : IAsyncDisposable
             r.Inventory = reader.CollectAsync(reader.Arm(b), b, token).AsTask();
         }
         var inventory = await r.Inventory.ConfigureAwait(false);
-        if (!inventory.InventoryComplete || VaultFixtureProvisioner.StatusPrivateConnectionUpdateIndependentSelector(r.Parent.Selector) &&
+        if (!inventory.InventoryComplete || (VaultFixtureProvisioner.StatusDeniedPrivateConnectionDeleteSelector(r.Parent.Selector) ||
+            VaultFixtureProvisioner.StatusPrivateConnectionUpdateIndependentSelector(r.Parent.Selector)) &&
             inventory.Connections.Count() != 1) return Finish(r, State.Incomplete);
         var matching = inventory.Connections.Where(c => Same(c.PrivateEndpointId, r.Binding.EndpointId)).ToArray();
         if (matching.Length != 1 || matching[0].State != PrivateConnectionState.Pending ||
@@ -1156,20 +1602,34 @@ internal sealed class PrivateEndpointFixtureProvisioner : IAsyncDisposable
         Require(row.ResourceId == id);
         if (r.ConnectionRead is null)
         {
-            var selector = r.Parent.Selector with
+            bool deniedDelete = VaultFixtureProvisioner.StatusDeniedPrivateConnectionDeleteSelector(r.Parent.Selector);
+            var selector = deniedDelete ? r.Parent.Selector : r.Parent.Selector with
             {
                 Operation = ManagementOperationEffects.Members[0].Operation,
                 Variant = "operation.UpdatePrivateConnection",
                 Case = "independent-effect"
             };
             var b = new ManagementOperationNativeCapture.Binding(selector, r.Parent.LeaseId, scope,
-                ManagementMutation.UpdatePrivateConnection, r.Binding.Location, Vault.Revision);
+                deniedDelete ? ManagementMutation.DeletePrivateConnection : ManagementMutation.UpdatePrivateConnection, r.Binding.Location, Vault.Revision);
             var reader = new Resource(new(vaultReader.Label, vaultReader.Credential, vaultReader.Transport),
                 limits, time, vaultSource.FixtureTenantId);
-            var window = VaultFixtureProvisioner.StatusPrivateConnectionUpdateIndependentSelector(r.Parent.Selector)
+            var window = deniedDelete
+                ? reader.ArmStatusDeniedPrivateConnectionDelete(b, Resource.StatusDeniedPrivateConnectionDeleteReadPhase.Discovery)
+                : VaultFixtureProvisioner.StatusPrivateConnectionUpdateIndependentSelector(r.Parent.Selector)
                 ? reader.ArmStatusPrivateConnectionUpdateIndependent(b, Resource.StatusPrivateConnectionUpdateIndependentReadPhase.Discovery)
                 : reader.Arm(b);
-            r.ConnectionRead = reader.CollectAsync(window, b, token, r.IndependentTokens.Count == 0 ? null : r.IndependentTokens[0]).AsTask();
+            r.ConnectionRead = reader.CollectAsync(window, b, token, deniedDelete ? deniedDeleteTokens[r.Parent][0] :
+                r.IndependentTokens.Count == 0 ? null : r.IndependentTokens[0]).AsTask();
+            if (deniedDelete)
+            {
+                using var result = await r.ConnectionRead.ConfigureAwait(false);
+                Require(reader.TryGetStatusDeniedPrivateConnectionDeleteRead(window, b, r.ConnectionRead, out var discovery) &&
+                    reader.OwnsStatusDeniedPrivateConnectionDeleteRead(discovery, window, b, r.ConnectionRead) &&
+                    discovery is { HttpStatus: 200, Phase: Resource.StatusDeniedPrivateConnectionDeleteReadPhase.Discovery,
+                        Facts: { State: "Pending", Provisioning: "Succeeded" } } &&
+                    discovery.Facts.Id == id && discovery.Facts.EndpointId == r.Binding.EndpointId);
+                r.DeniedDeleteDiscovery = discovery;
+            }
             if (VaultFixtureProvisioner.StatusPrivateConnectionUpdateIndependentSelector(r.Parent.Selector))
             {
                 _ = await r.ConnectionRead.ConfigureAwait(false);
@@ -1186,6 +1646,17 @@ internal sealed class PrivateEndpointFixtureProvisioner : IAsyncDisposable
             !Same(connection.PrivateEndpointId, r.Binding.EndpointId)) return Finish(r, State.Incomplete);
         token.ThrowIfCancellationRequested();
         Require(r.Native.OwnsCreationProof(proof, r.Window, r.Binding, r.Dispatch));
+        if (VaultFixtureProvisioner.StatusDeniedPrivateConnectionDeleteSelector(r.Parent.Selector))
+        {
+            Require(r.DeniedDeleteAdmitted is not null && r.DeniedDeleteDiscovery is not null &&
+                RoleFixtureJournal.SameStatusDeniedPrivateConnectionDeleteSnapshot(r.DeniedDeleteAdmitted, Snapshot(r)));
+            r.DeniedDeleteDrain = RetainDeniedDeleteDrain(r.Parent, false, true, id, r.DeniedDeleteDiscovery,
+                r.Start!, r.Check!, r.EndpointAbsent!, r.NicAbsent!, r.EndpointRead!, r.Inventory!, r.ConnectionRead!);
+            _ = PersistDeniedDelete(r.DeniedDeleteDrain);
+            token.ThrowIfCancellationRequested();
+            r.Bound = true;
+            return Finish(r, State.Ready);
+        }
         if (VaultFixtureProvisioner.StatusPrivateConnectionUpdateIndependentSelector(r.Parent.Selector))
         {
             Require(r.IndependentAdmitted is not null && r.IndependentDiscovery is not null);
@@ -1258,6 +1729,10 @@ internal sealed class PrivateEndpointFixtureProvisioner : IAsyncDisposable
             Require(!closed && r.Busy && r.Dispatch != Guid.Empty &&
                 plans.TryGetValue(r.Plan, out var retained) && ReferenceEquals(retained, r));
             var snapshot = Snapshot(r);
+            Require(!VaultFixtureProvisioner.StatusDeniedPrivateConnectionDeleteSelector(r.Parent.Selector) ||
+                r.DeniedDeleteAdmitted is not null && !HasStatusDeniedPrivateConnectionDeletePersistence(r.Parent) &&
+                deniedDeleteTokens[r.Parent].All(t => !t.IsCancellationRequested) &&
+                RoleFixtureJournal.SameStatusDeniedPrivateConnectionDeleteSnapshot(r.DeniedDeleteAdmitted, snapshot));
             Require(r.IndependentAdmitted is null || r.IndependentTokens.All(t => !t.IsCancellationRequested) &&
                 RoleFixtureJournal.SameStatusPrivateConnectionUpdateIndependentSnapshot(r.IndependentAdmitted, snapshot));
             Require(!snapshot.Closing && !snapshot.Released &&
@@ -1284,6 +1759,19 @@ internal sealed class PrivateEndpointFixtureProvisioner : IAsyncDisposable
 
     private void RetainCreationFence(Registration r)
     {
+        if (VaultFixtureProvisioner.StatusDeniedPrivateConnectionDeleteSelector(r.Parent.Selector))
+        {
+            if (r.Dispatch == Guid.Empty || r.Bound || r.DeniedDeleteDrain is not null ||
+                HasStatusDeniedPrivateConnectionDeletePersistence(r.Parent)) return;
+            var state = Snapshot(r);
+            if (state.PrivateEndpoint?.CreationDispatch != r.Dispatch || state.Resources[3].InvocationTerminated) return;
+            var tasks = new Task?[] { r.Start, r.Check, r.EndpointAbsent, r.NicAbsent, r.EndpointRead, r.Inventory, r.ConnectionRead }
+                .OfType<Task>().ToArray();
+            Require(tasks.All(t => t.IsCompleted));
+            r.DeniedDeleteDrain = RetainDeniedDeleteDrain(r.Parent, false, false, null, null, tasks);
+            _ = PersistDeniedDelete(r.DeniedDeleteDrain);
+            return;
+        }
         if (r.Dispatch == Guid.Empty || r.Bound || r.IndependentDrain is not null) return;
         var snapshot = Snapshot(r);
         if (snapshot.PrivateEndpoint?.CreationDispatch == r.Dispatch)
@@ -1295,6 +1783,7 @@ internal sealed class PrivateEndpointFixtureProvisioner : IAsyncDisposable
     {
         RoleFixtureJournal.Snapshot snapshot;
         try { snapshot = vaultSource.Journal.Read(r.Parent.Owner, r.Parent.Selector); }
+        catch (RoleFixtureJournal.StatusDeniedPrivateConnectionDeleteHistoryException) { RevokeDeniedDelete(r.Parent); throw; }
         catch (RoleFixtureJournal.StatusPrivateConnectionUpdateIndependentHistoryException) { RevokePrivateUpdateIndependent(r.Parent); throw; }
         Require(MatchesRoot(r, snapshot));
         return snapshot;
@@ -1364,11 +1853,25 @@ internal sealed class PrivateEndpointFixtureProvisioner : IAsyncDisposable
         Exception? failure = null;
         try
         {
+            // Finish only the already-retained exact append before Close can
+            // change its pre/postimage. This does not create a new capability.
+            foreach (var parent in registrations.Select(r => r.Parent).Concat(cleanups.Select(r => r.Parent)).Distinct())
+                if (HasStatusDeniedPrivateConnectionDeletePersistence(parent))
+                    try { _ = RetryStatusDeniedPrivateConnectionDeletePersistence(parent); }
+                    catch (Exception exception) { failure ??= exception; }
             foreach (var r in registrations)
-                try { vaultSource.CloseSelectedRoot(r.Parent.Owner, r.Parent.Selector); }
+                try
+                {
+                    if (!HasStatusDeniedPrivateConnectionDeletePersistence(r.Parent))
+                        vaultSource.CloseSelectedRoot(r.Parent.Owner, r.Parent.Selector);
+                }
                 catch (Exception exception) { failure ??= exception; }
             foreach (var r in cleanups)
-                try { vaultSource.CloseSelectedRoot(r.Parent.Owner, r.Parent.Selector); }
+                try
+                {
+                    if (!HasStatusDeniedPrivateConnectionDeletePersistence(r.Parent))
+                        vaultSource.CloseSelectedRoot(r.Parent.Owner, r.Parent.Selector);
+                }
                 catch (Exception exception) { failure ??= exception; }
         }
         finally
@@ -1412,6 +1915,9 @@ internal sealed class PrivateEndpointFixtureProvisioner : IAsyncDisposable
                 absences.Clear();
                 privateUpdateIndependentFacts.Clear();
                 privateUpdateIndependentTokens.Clear();
+                deniedDeleteFacts.Clear();
+                deniedDeletePending.Clear();
+                deniedDeleteTokens.Clear();
             }
         }
         if (failure is not null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();

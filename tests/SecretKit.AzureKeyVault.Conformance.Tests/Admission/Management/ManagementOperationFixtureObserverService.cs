@@ -22,21 +22,1972 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
     VaultAdministrationEffects.PrivateConnectionUpdateSelectedInvocation,
     VaultAdministrationEffects.PrivateConnectionDeleteSelectedInvocation, IAsyncDisposable
 {
+    private bool statusDeniedVaultUpdateProfile, statusDeniedVaultUpdateCleanup;
+    private VaultAdministrationEffects.Configuration? deniedVaultUpdateConfiguration;
+    private StatusDeniedVaultUpdateWriterExclusion? deniedVaultUpdateExclusion;
+    internal sealed class StatusDeniedVaultUpdateWriterExclusion(Guid namespaceEpoch, bool continuousWriterExclusion,
+        bool noOlderInflightInvocations, bool noNameReuse, bool selectedNeverPreviouslyApplied, CancellationToken continuityToken)
+    {
+        internal Guid NamespaceEpoch { get; } = namespaceEpoch;
+        internal bool ContinuousWriterExclusion { get; } = continuousWriterExclusion;
+        internal bool NoOlderInflightInvocations { get; } = noOlderInflightInvocations;
+        internal bool NoNameReuse { get; } = noNameReuse;
+        internal bool SelectedNeverPreviouslyApplied { get; } = selectedNeverPreviouslyApplied;
+        internal CancellationToken ContinuityToken { get; } = continuityToken;
+        public override string ToString() => "[StatusDeniedVaultUpdateWriterExclusion]";
+    }
+    private sealed class DeniedVaultUpdateRun(StatusDeniedVaultUpdateWriterExclusion? exclusion)
+    {
+        internal readonly StatusDeniedVaultUpdateWriterExclusion? Exclusion = exclusion;
+        internal readonly SemaphoreSlim Release = new(1, 1);
+        internal CancellationToken[] Tokens = [];
+        internal volatile bool Invalid;
+        internal object? Pending;
+        internal RoleFixtureJournal.Snapshot? Ready, Begun, Drained, Read;
+        internal DeniedVaultUpdateRead? Baseline, Observed;
+        internal C.StatusDeniedVaultUpdateStartProof? Start;
+        internal C.StatusDeniedVaultUpdateDeniedProof? Denied;
+        internal PendingStatusWitness? Status;
+        internal bool Settled, PhysicalDrain;
+    }
+    private sealed record DeniedVaultUpdateRead(R ActiveReader, C.Binding Binding, R.Window ActiveWindow,
+        Task<R.Measurement> ActiveTask, R.StatusDeniedVaultUpdateReadProof Active, R DeletedReader,
+        C.Binding DeletedBinding, R.Window DeletedWindow, Task<R.Measurement> DeletedTask,
+        R.StatusDeniedVaultUpdateReadProof Deleted, Task<VaultFixtureProvisioner.Result> ParentTask,
+        Guid Subscription, DateTimeOffset ArmedAt, DateTimeOffset FinishedAt);
+    private sealed record DeniedVaultUpdateFacts(RoleFixtureJournal.Snapshot Before, RoleFixtureJournal.Snapshot After,
+        Guid Dispatch, int Edge, DeniedVaultUpdateRun Run, CancellationToken[] Tokens, Task[] Tasks,
+        VaultFixtureProvisioner.Plan Parent, C.Binding Binding, C.Window? Window, VaultAdministration? Client,
+        VaultScope? Scope, ManagementReceipt? Receipt, ManagementOperation? Handle, Task? StartTask, Task? CheckTask,
+        DeniedVaultUpdateRead? Baseline, DeniedVaultUpdateRead? Observed, PendingStatusWitness? Status,
+        C.StatusDeniedVaultUpdateStartProof? Start, C.StatusDeniedVaultUpdateDeniedProof? Denied);
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<Session, DeniedVaultUpdateRun> deniedVaultUpdateRuns =
+        new(ReferenceEqualityComparer.Instance);
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<object, DeniedVaultUpdateFacts> deniedVaultUpdateFacts =
+        new(ReferenceEqualityComparer.Instance);
+    internal sealed class StatusDeniedVaultUpdateAdmission(ManagementOperationFixtureObserverService source)
+    {
+        internal Guid Dispatch => source.deniedVaultUpdateFacts.TryGetValue(this, out var f) ? f.Dispatch : Guid.Empty;
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) => source.ValidateDeniedVaultUpdate(this, journal, state, 1, false);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) => source.ValidateDeniedVaultUpdate(this, journal, state, 1, true);
+        internal RoleFixtureJournal.Snapshot Postimage => RoleFixtureJournal.CopyStatusDeniedVaultUpdateSnapshot(source.deniedVaultUpdateFacts[this].After);
+    }
+    internal sealed class StatusDeniedVaultUpdateStartDrain(ManagementOperationFixtureObserverService source)
+    {
+        internal Guid Dispatch => source.deniedVaultUpdateFacts.TryGetValue(this, out var f) ? f.Dispatch : Guid.Empty;
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) => source.ValidateDeniedVaultUpdate(this, journal, state, 2, false);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) => source.ValidateDeniedVaultUpdate(this, journal, state, 2, true);
+        internal RoleFixtureJournal.Snapshot Postimage => RoleFixtureJournal.CopyStatusDeniedVaultUpdateSnapshot(source.deniedVaultUpdateFacts[this].After);
+    }
+    internal sealed class StatusDeniedVaultUpdateReadAdmission(ManagementOperationFixtureObserverService source)
+    {
+        internal Guid Dispatch => source.deniedVaultUpdateFacts.TryGetValue(this, out var f) ? f.Dispatch : Guid.Empty;
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) => source.ValidateDeniedVaultUpdate(this, journal, state, 3, false);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) => source.ValidateDeniedVaultUpdate(this, journal, state, 3, true);
+        internal RoleFixtureJournal.Snapshot Postimage => RoleFixtureJournal.CopyStatusDeniedVaultUpdateSnapshot(source.deniedVaultUpdateFacts[this].After);
+    }
+    internal sealed class StatusDeniedVaultUpdateObservation(ManagementOperationFixtureObserverService source)
+    {
+        internal Guid Dispatch => source.deniedVaultUpdateFacts.TryGetValue(this, out var f) ? f.Dispatch : Guid.Empty;
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) => source.ValidateDeniedVaultUpdate(this, journal, state, 4, false);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) => source.ValidateDeniedVaultUpdate(this, journal, state, 4, true);
+        internal RoleFixtureJournal.Snapshot Postimage => RoleFixtureJournal.CopyStatusDeniedVaultUpdateSnapshot(source.deniedVaultUpdateFacts[this].After);
+    }
+    internal sealed class StatusDeniedVaultUpdateInvocationDrain(ManagementOperationFixtureObserverService source)
+    {
+        internal Guid Dispatch => source.deniedVaultUpdateFacts.TryGetValue(this, out var f) ? f.Dispatch : Guid.Empty;
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) => source.ValidateDeniedVaultUpdate(this, journal, state, 5, false);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) => source.ValidateDeniedVaultUpdate(this, journal, state, 5, true);
+        internal RoleFixtureJournal.Snapshot Postimage => RoleFixtureJournal.CopyStatusDeniedVaultUpdateSnapshot(source.deniedVaultUpdateFacts[this].After);
+    }
+    private static bool DeniedVaultUpdateExclusionValid(StatusDeniedVaultUpdateWriterExclusion? exclusion) =>
+        exclusion is { NamespaceEpoch: var epoch, ContinuousWriterExclusion: true, NoOlderInflightInvocations: true,
+            NoNameReuse: true, SelectedNeverPreviouslyApplied: true } &&
+        epoch != Guid.Empty && !exclusion.ContinuityToken.IsCancellationRequested;
+    private bool ValidateDeniedVaultUpdate(object candidate, RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state, int edge, bool post) =>
+        ReferenceEquals(journal, provisioner.Journal) && deniedVaultUpdateFacts.TryGetValue(candidate, out var f) &&
+        f.Edge == edge && f.Tasks.All(t => t.IsCompleted) &&
+        (edge == 5 || !disposed && !state.Closing && !f.Run.Invalid &&
+            ReferenceEquals(f.Run.Exclusion, deniedVaultUpdateExclusion) && DeniedVaultUpdateExclusionValid(f.Run.Exclusion) &&
+            f.Tokens.All(t => !t.IsCancellationRequested)) &&
+        (edge != 4 || f.Start is not null && f.Denied is not null && ReferenceEquals(f.Denied.Start, f.Start) &&
+            ReferenceEquals(f.Start.StartTask, f.StartTask) && ReferenceEquals(f.Denied.CheckTask, f.CheckTask) &&
+            f.Baseline is not null && f.Observed is not null && f.Status is not null &&
+            ReferenceEquals(f.Status.Target, f.Start.Target)) &&
+        RoleFixtureJournal.SameStatusDeniedVaultUpdateSnapshot(post ? f.After : f.Before, state);
+    private bool DeniedVaultUpdateLive(Session session)
+    {
+        if (!deniedVaultUpdateRuns.TryGetValue(session, out var run)) return false;
+        if (disposed || session.Closed || lifetime.IsCancellationRequested || run.Invalid ||
+            !ReferenceEquals(run.Exclusion, deniedVaultUpdateExclusion) || !DeniedVaultUpdateExclusionValid(run.Exclusion) ||
+            run.Tokens.Any(t => t.IsCancellationRequested)) { run.Invalid = true; return false; }
+        return true;
+    }
+    private void TrackDeniedVaultUpdate(Session session, params CancellationToken[] tokens)
+    {
+        var run = deniedVaultUpdateRuns[session];
+        run.Tokens = [.. run.Tokens, .. tokens];
+        Require(DeniedVaultUpdateLive(session));
+    }
+    internal static ManagementOperationFixtureObserverService ForStatusDeniedVaultUpdate(Uri origin, string owner,
+        string observerIdentity, SecretMaterial capability, VaultFixtureProvisioner.HostScope scope, VaultFixtureProvisioner provisioner,
+        S.Authority statusReader, R.Authority resourceReader, HttpPipelineTransport selectedBackend, S.Limits statusLimits,
+        R.Limits resourceLimits, Limits limits, TimeProvider time, StatusDeniedVaultUpdateWriterExclusion writerExclusion)
+    {
+        Require(DeniedVaultUpdateExclusionValid(writerExclusion));
+        var configuration = provisioner.StatusDeniedVaultUpdateConfiguration(scope, statusReader, resourceReader, selectedBackend);
+        return new(origin, owner, observerIdentity, capability, scope, provisioner, statusReader, resourceReader,
+            selectedBackend, statusLimits, resourceLimits, limits, time)
+        { statusDeniedVaultUpdateProfile = true, deniedVaultUpdateConfiguration = configuration, deniedVaultUpdateExclusion = writerExclusion };
+    }
+    internal static ManagementOperationFixtureObserverService ForStatusDeniedVaultUpdateCleanup(Uri origin, string owner,
+        string observerIdentity, SecretMaterial capability, VaultFixtureProvisioner.HostScope scope, VaultFixtureProvisioner provisioner,
+        Limits limits, TimeProvider? time = null) =>
+        new(origin, owner, observerIdentity, capability, scope, provisioner, limits, time)
+        { statusDeniedVaultUpdateProfile = true, statusDeniedVaultUpdateCleanup = true };
+
+    private void IssueDeniedVaultUpdate(Session session, object candidate, int edge, RoleFixtureJournal.Snapshot preimage)
+    {
+        var run = deniedVaultUpdateRuns[session];
+        Require(run.Pending is null && (edge == 5 || DeniedVaultUpdateLive(session)));
+        var pre = RoleFixtureJournal.CopyStatusDeniedVaultUpdateSnapshot(preimage);
+        Task[] tasks = [.. new Task?[] { run.Baseline?.ActiveTask, run.Baseline?.DeletedTask, run.Baseline?.ParentTask,
+            session.StartTask, run.Status?.Task, run.Observed?.ActiveTask, run.Observed?.DeletedTask, run.Observed?.ParentTask,
+            session.StatusTask }.OfType<Task>()];
+        Require(tasks.All(t => t.IsCompleted));
+        Require(deniedVaultUpdateFacts.TryAdd(candidate, new(pre,
+            RoleFixtureJournal.CopyStatusDeniedVaultUpdateSnapshot(RoleFixtureJournal.StatusDeniedVaultUpdateSelectedImage(pre, session.Dispatch, edge)),
+            session.Dispatch, edge, run, run.Tokens.ToArray(), tasks, session.Plan!, session.Binding!, session.Capture,
+            session.Client, session.ActualVaultScope, session.Receipt, session.Handle, session.StartTask, session.StatusTask,
+            run.Baseline, run.Observed, run.Status, run.Start, run.Denied)));
+        run.Pending = candidate;
+    }
+    private RoleFixtureJournal.Snapshot PersistDeniedVaultUpdate(Session session)
+    {
+        var run = deniedVaultUpdateRuns[session];
+        var candidate = run.Pending ?? throw Failure();
+        Require(deniedVaultUpdateFacts.TryGetValue(candidate, out var f));
+        try
+        {
+            // Revalidate reference membership outside Jlock. The transaction
+            // below sees only the frozen fact, never a nested C/R callback.
+            if (f.Edge != 5)
+            {
+                Require(DeniedVaultUpdateLive(session) && f.Baseline is not null && OwnsDeniedVaultUpdateReads(f.Baseline));
+                if (f.Edge >= 2)
+                    Require(OwnsDeniedVaultUpdateStart(session, out var start) && ReferenceEquals(start, f.Start));
+                if (f.Edge >= 3)
+                    Require(f.Observed is not null && OwnsDeniedVaultUpdateReads(f.Observed) &&
+                        f.Status is not null && f.Status.Task.IsCompletedSuccessfully && f.Status.Transport.Valid);
+                if (f.Edge == 4)
+                    Require(capture.TryGetStatusDeniedVaultUpdateDenied(f.Window!, f.Binding, f.Client!, f.Scope!,
+                        f.Receipt!, f.StartTask!, f.Handle!, f.CheckTask!, out var denied) && ReferenceEquals(denied, f.Denied));
+            }
+            var journal = provisioner.Journal;
+            var image = candidate switch
+            {
+                StatusDeniedVaultUpdateAdmission admission => journal.BeginStatusDeniedVaultUpdateInvocation(owner, session.Selector, session.Plan!.LeaseId, admission),
+                StatusDeniedVaultUpdateStartDrain drain => journal.EndStatusDeniedVaultUpdateStart(owner, session.Selector, session.Plan!.LeaseId, session.Dispatch, drain),
+                StatusDeniedVaultUpdateReadAdmission admission => journal.AdmitStatusDeniedVaultUpdateRead(owner, session.Selector, session.Plan!.LeaseId, session.Dispatch, admission),
+                StatusDeniedVaultUpdateObservation observation => journal.CompleteStatusDeniedVaultUpdateRead(owner, session.Selector, session.Plan!.LeaseId, session.Dispatch, observation),
+                StatusDeniedVaultUpdateInvocationDrain drain => journal.EndStatusDeniedVaultUpdateInvocation(owner, session.Selector, session.Plan!.LeaseId, session.Dispatch, drain),
+                _ => throw Failure()
+            };
+            Require(RoleFixtureJournal.SameStatusDeniedVaultUpdateSnapshot(f.After, image));
+            if (f.Edge == 1) run.Begun = RoleFixtureJournal.CopyStatusDeniedVaultUpdateSnapshot(image);
+            if (f.Edge == 2) run.Drained = RoleFixtureJournal.CopyStatusDeniedVaultUpdateSnapshot(image);
+            if (f.Edge == 3) run.Read = RoleFixtureJournal.CopyStatusDeniedVaultUpdateSnapshot(image);
+            if (f.Edge == 4) run.Settled = true;
+            run.Pending = null;
+            return image;
+        }
+        catch (IOException) { throw; }
+        catch { run.Invalid = true; run.Pending = null; throw; }
+    }
+    internal RoleFixtureJournal.Snapshot RetryStatusDeniedVaultUpdatePersistence(FixtureSelector selector, CancellationToken token = default)
+    {
+        token.ThrowIfCancellationRequested();
+        Session session;
+        DeniedVaultUpdateRun run;
+        lock (gate)
+        {
+            ValidateSelector(selector);
+            Require(statusDeniedVaultUpdateProfile && !disposed);
+            Require(sessions.TryGetValue(selector.Nonce, out session!));
+            Require(session.Selector == selector && session.Active == 0 && !session.Releasing);
+            run = deniedVaultUpdateRuns[session];
+            Require(run.Release.Wait(0));
+            session.Active++; active++;
+        }
+        try
+        {
+            session.Plan ??= provisioner.OpenCleanupPlan(owner, selector);
+            if (provisioner.HasStatusDeniedVaultUpdatePersistence(session.Plan))
+                return provisioner.RetryStatusDeniedVaultUpdatePersistence(session.Plan);
+            if (!session.Closed) TrackDeniedVaultUpdate(session, token);
+            Require(!session.Closed || run.Pending is StatusDeniedVaultUpdateInvocationDrain);
+            return PersistDeniedVaultUpdate(session);
+        }
+        finally { Leave(session); run.Release.Release(); }
+    }
+    private void RequireDeniedVaultUpdateImage(Session session, RoleFixtureJournal.Snapshot image)
+    {
+        Require(DeniedVaultUpdateLive(session) && provisioner.MatchesOwnedPlan(session.Plan!, image) &&
+            RoleFixtureJournal.SameStatusDeniedVaultUpdateSnapshot(image, provisioner.Journal.Read(owner, session.Selector)));
+    }
+    private bool OwnsDeniedVaultUpdateStart(Session session, [NotNullWhen(true)] out C.StatusDeniedVaultUpdateStartProof? proof)
+    {
+        proof = null;
+        return DeniedVaultUpdateLive(session) && session.Capture is not null && session.Binding is not null &&
+            session.Client is not null && session.ActualVaultScope is not null && session.Receipt is not null &&
+            session.StartTask is { IsCompletedSuccessfully: true } && session.Handle is not null &&
+            capture.TryGetStatusDeniedVaultUpdateStart(session.Capture, session.Binding, session.Client, session.ActualVaultScope,
+                session.Receipt, session.StartTask, session.Handle, out proof);
+    }
+    private static bool OwnsDeniedVaultUpdateReads(DeniedVaultUpdateRead read) =>
+        read.ActiveReader.OwnsStatusDeniedVaultUpdateRead(read.Active, read.ActiveWindow, read.Binding, read.Active.Phase, read.ActiveTask) &&
+        read.DeletedReader.OwnsStatusDeniedVaultUpdateRead(read.Deleted, read.DeletedWindow, read.DeletedBinding, read.Deleted.Phase, read.DeletedTask) &&
+        read.ParentTask.IsCompletedSuccessfully;
+
+    private async Task<HttpResponseMessage> PrepareDeniedVaultUpdate(E.Prepare input, CancellationToken token, CancellationToken caller)
+    {
+        ValidateSelector(input.Selection);
+        var expected = deniedVaultUpdateConfiguration;
+        Require(expected is not null);
+        Require(!statusDeniedVaultUpdateCleanup && input.Operation == ManagementMutation.CreateOrUpdateVault &&
+            input.SubscriptionId == scope.SubscriptionId && input.ResourceGroup == scope.ResourceGroup &&
+            input.Location == scope.Location && input.TenantId == scope.TenantId && Text(input.WebhookUrl, 2048) &&
+            VaultAdministrationEffects.SameConfiguration(expected,
+                new(input.Location, input.TenantId, input.Sku, true, false, input.RetentionDays, false, [])));
+        Session session;
+        lock (gate)
+        {
+            Require(!disposed && sessions.Count < 32 && !sessions.ContainsKey(input.Selection.Nonce));
+            session = new(input.Selection with { }) { Active = 1, Preparation = input with { Selection = input.Selection with { } } };
+            sessions.Add(session.Selector.Nonce, session);
+            Require(deniedVaultUpdateRuns.TryAdd(session, new(deniedVaultUpdateExclusion)));
+        }
+        try
+        {
+            TrackDeniedVaultUpdate(session, token, caller);
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, session.Stop.Token, deniedVaultUpdateExclusion!.ContinuityToken);
+            TrackDeniedVaultUpdate(session, linked.Token);
+            session.Plan = provisioner.PlanFixture(owner, session.Selector, VaultFixtureProvisioner.Preparation.Active,
+                [], seedCanary: false, originalCallerToken: caller, preparationToken: linked.Token);
+            provisioner.BindStatusDeniedVaultUpdateLifetime(session.Plan, () => Require(DeniedVaultUpdateLive(session)));
+            var task = provisioner.ProvisionAsync(session.Plan, cancellationToken: linked.Token, originalCallerToken: caller).AsTask();
+            var prepared = await task.ConfigureAwait(false);
+            Require(prepared.State == VaultFixtureProvisioner.State.Ready && prepared.VaultPresent == true &&
+                prepared.DeletedVaultPresent == false && prepared.Configuration is not null &&
+                VaultAdministrationEffects.SameConfiguration(prepared.Configuration, expected) &&
+                provisioner.OwnsStatusDeniedVaultUpdatePreparation(session.Plan));
+            var image = provisioner.Journal.Read(owner, session.Selector);
+            Require(DeniedVaultUpdateLive(session) && image.Idle && !image.Closing && RoleFixtureJournal.StatusDeniedVaultUpdateRoot(image));
+            deniedVaultUpdateRuns[session].Ready = RoleFixtureJournal.CopyStatusDeniedVaultUpdateSnapshot(image);
+            session.Lease = new(new(session.Selector.Nonce, image.LeaseId, observerIdentity, S.ArmOrigin, "2026-02-01",
+                time.GetUtcNow(), image.Resources.Select(r => r.Id).ToArray()), session.Plan.VaultName,
+                null, null, null, ManagementMutation.CreateOrUpdateVault, NativeProvisioningState.Succeeded);
+            return Reply(session.Lease);
+        }
+        finally { LeaveSession(session); }
+    }
+    private HttpResponseMessage ArmDeniedVaultUpdate(ObserveLease input, CancellationToken token, CancellationToken caller)
+    {
+        Session session;
+        lock (gate)
+        {
+            session = Find(input.Nonce, input.LeaseId);
+            Require(DeniedVaultUpdateLive(session) && session.Active == 0 && !session.ArmClaimed &&
+                input.Phase == "subscribe-before-trigger" && input.SubscriptionId is null);
+            session.ArmClaimed = true; session.Active++;
+        }
+        try
+        {
+            TrackDeniedVaultUpdate(session, token, caller);
+            RequireDeniedVaultUpdateImage(session, deniedVaultUpdateRuns[session].Ready!);
+            var binding = new C.Binding(session.Selector, session.Plan!.LeaseId, provisioner.Scope(session.Plan),
+                ManagementMutation.CreateOrUpdateVault, scope.Location, "2026-02-01");
+            var counterpart = new C.Binding(session.Selector, session.Plan.LeaseId,
+                new DeletedVaultScope(new(scope.SubscriptionId), scope.Location, session.Plan.VaultName),
+                ManagementMutation.CreateOrUpdateVault, scope.Location, "2026-02-01");
+            session.Binding = binding; session.CounterpartBinding = counterpart;
+            session.Before = before.ArmStatusDeniedVaultUpdate(binding, deniedVaultUpdateConfiguration!, R.StatusDeniedVaultUpdateReadPhase.BaselineActive);
+            session.CounterpartBefore = statusCounterpartBeforeCollector!.ArmStatusDeniedVaultUpdate(counterpart,
+                deniedVaultUpdateConfiguration!, R.StatusDeniedVaultUpdateReadPhase.BaselineDeletedAbsent);
+            session.Subscription = Guid.NewGuid(); session.ArmedAt = time.GetUtcNow(); session.Armed = true;
+            return Reply(new ObservationSubscription(session.Plan.LeaseId, session.Selector.Nonce, session.Subscription, session.ArmedAt));
+        }
+        finally { LeaveSession(session); }
+    }
+    private async Task<HttpResponseMessage> ObserveDeniedVaultUpdate(ObserveLease input, CancellationToken token, CancellationToken caller)
+    {
+        bool baseline = input.Phase == "baseline-before-dispatch";
+        Session session;
+        DeniedVaultUpdateRun run;
+        lock (gate)
+        {
+            session = Find(input.Nonce, input.LeaseId); run = deniedVaultUpdateRuns[session];
+            bool valid = DeniedVaultUpdateLive(session) && session.Active == 0 && run.Pending is null && session.Armed &&
+                input.SubscriptionId == session.Subscription && (baseline ? !session.BaselineClaimed && !session.StartClaimed :
+                    input.Phase == "selected-state" && session.StartFinished && session.StartSucceeded && run.Drained is not null && !session.AfterClaimed);
+            if (!valid) run.Invalid = true;
+            Require(valid);
+            if (baseline) session.BaselineClaimed = true; else session.AfterClaimed = true;
+            session.Active++;
+        }
+        try
+        {
+            TrackDeniedVaultUpdate(session, token, caller);
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource([.. run.Tokens, session.Stop.Token, run.Exclusion!.ContinuityToken]);
+            TrackDeniedVaultUpdate(session, linked.Token);
+            var image = baseline ? run.Ready! : run.Drained!;
+            RequireDeniedVaultUpdateImage(session, image);
+            var expected = baseline ? deniedVaultUpdateConfiguration! : deniedVaultUpdateConfiguration! with { PublicNetworkAccess = true };
+            DateTimeOffset earliest = session.ArmedAt;
+            if (!baseline)
+            {
+                Require(run.Baseline is not null && OwnsDeniedVaultUpdateReads(run.Baseline));
+                Require(OwnsDeniedVaultUpdateStart(session, out var start) && ReferenceEquals(run.Start, start) &&
+                    capture.OwnsStatusTarget(start.Target, session.Binding!));
+                var authority = unknownStatusReader!;
+                using var transport = new PendingStatusTransport(authority.Transport, start!.Target.TargetUri,
+                    unknownStatusLimits!.MaximumResponseBytes, expectedState: "Succeeded", resourceState: false);
+                var collector = new S(capture, authority with { Transport = transport }, unknownStatusLimits, time);
+                var window = collector.Arm(start.Target, session.Binding!);
+                var task = collector.CollectAsync(window, session.Binding!, linked.Token).AsTask();
+                var status = await task.ConfigureAwait(false);
+                transport.Dispose();
+                Require(task.IsCompletedSuccessfully && transport.Valid && ReferenceEquals(status.Binding, session.Binding) &&
+                    status.WindowId == window.Id && status.ArmedAt == window.ArmedAt && status.StartedAt >= session.StartedAt &&
+                    status.FinishedAt >= status.StartedAt && status.ResponseComplete && status.Terminal && status.HttpStatus == 200 &&
+                    status.Status == SecretStatus.Success && status.OperationState == NativeProvisioningState.Succeeded &&
+                    status.StartDispatch == start.StartDispatch && status.StartResponseSha256 == start.ResponseSha256 &&
+                    status.TargetSha256 == start.Target.TargetSha256 && Text(status.NativeRequestId, 256));
+                run.Status = new(collector, window, task, start.Target, session.Binding!, transport, linked.Token);
+                earliest = status.FinishedAt;
+            }
+            var reader = baseline ? before : after;
+            var deletedReader = baseline ? statusCounterpartBeforeCollector! : statusCounterpartAfterCollector!;
+            var activeWindow = baseline ? session.Before! : session.After!;
+            var deletedWindow = baseline ? session.CounterpartBefore! : session.CounterpartAfter!;
+            var activePhase = baseline ? R.StatusDeniedVaultUpdateReadPhase.BaselineActive : R.StatusDeniedVaultUpdateReadPhase.SelectedActive;
+            var deletedPhase = baseline ? R.StatusDeniedVaultUpdateReadPhase.BaselineDeletedAbsent : R.StatusDeniedVaultUpdateReadPhase.SelectedDeletedAbsent;
+            var activeTask = reader.CollectAsync(activeWindow, session.Binding!, linked.Token, caller).AsTask();
+            using var activeResult = await activeTask.ConfigureAwait(false);
+            Require(reader.TryGetStatusDeniedVaultUpdateRead(activeWindow, session.Binding!, activePhase, activeTask, out var activeProof) &&
+                activeProof.HttpStatus == 200 && activeProof.StartedAt >= earliest && activeProof.FinishedAt >= activeProof.StartedAt &&
+                activeResult.PersistedStateEligible && activeResult.ResourceStatus == SecretStatus.Success &&
+                activeResult.NativeState == "Succeeded" && activeResult.ResourceId == session.Plan!.VaultId &&
+                VaultAdministrationEffects.SameConfiguration(activeProof.ExpectedConfiguration, expected));
+            var deletedTask = deletedReader.CollectAsync(deletedWindow, session.CounterpartBinding!, linked.Token, caller).AsTask();
+            using var deletedResult = await deletedTask.ConfigureAwait(false);
+            Require(deletedReader.TryGetStatusDeniedVaultUpdateRead(deletedWindow, session.CounterpartBinding!, deletedPhase, deletedTask, out var deletedProof) &&
+                deletedProof.HttpStatus == 404 && deletedProof.NativeTask.IsFaulted && deletedProof.StartedAt >= activeProof.FinishedAt &&
+                deletedProof.FinishedAt >= deletedProof.StartedAt && deletedResult.ResourceStatus == SecretStatus.Absent);
+            var parentTask = provisioner.ObserveAsync(owner, session.Selector, linked.Token).AsTask();
+            var parent = await parentTask.ConfigureAwait(false);
+            Require(parent.State == (baseline ? VaultFixtureProvisioner.State.Ready : VaultFixtureProvisioner.State.Pending) &&
+                parent.VaultPresent == true && parent.DeletedVaultPresent == false && parent.DeletedVault is null &&
+                parent.Configuration is not null && VaultAdministrationEffects.SameConfiguration(parent.Configuration, expected) &&
+                RoleFixtureJournal.SameStatusDeniedVaultUpdateSnapshot(image, parent.Journal));
+            RequireDeniedVaultUpdateImage(session, image);
+            var finished = time.GetUtcNow();
+            Require(finished >= deletedProof.FinishedAt);
+            var observation = new DeniedVaultUpdateRead(reader, session.Binding!, activeWindow, activeTask, activeProof, deletedReader,
+                session.CounterpartBinding!, deletedWindow, deletedTask, deletedProof, parentTask, session.Subscription, session.ArmedAt, finished);
+            if (baseline) { run.Baseline = observation; session.BaselineAt = finished; session.BaselineReady = true; }
+            else { run.Observed = observation; session.IndependentAt = finished; session.IndependentReady = true; }
+            return Reply(Project(session, finished, baseline ? NativeProvisioningState.Unknown : NativeProvisioningState.Succeeded, SecretStatus.Success, expected));
+        }
+        finally { LeaveSession(session); }
+    }
+
+    private async ValueTask<SecretOutcome<ManagementOperation>> StartDeniedVaultUpdate(FixtureSelector selector, VaultAdministration client,
+        ManagementScope originalScope, ManagementMutation operation, E.Input input, ManagementReceipt receipt, CancellationToken caller)
+    {
+        ArgumentNullException.ThrowIfNull(client); ArgumentNullException.ThrowIfNull(receipt);
+        Session session;
+        DeniedVaultUpdateRun run;
+        lock (gate)
+        {
+            session = OpenSelector(selector); run = deniedVaultUpdateRuns[session];
+            bool valid = !statusDeniedVaultUpdateCleanup && DeniedVaultUpdateLive(session) && session.Active == 0 &&
+                !session.StartClaimed && run.Pending is null && session.Armed && session.BaselineReady && run.Baseline is not null &&
+                InputMatches(session, input) && operation == ManagementMutation.CreateOrUpdateVault && originalScope is VaultScope vault &&
+                vault.ExportResourceId() == session.Plan!.VaultId && !caller.IsCancellationRequested;
+            session.StartClaimed = true;
+            if (!valid) run.Invalid = true;
+            Require(valid);
+            session.Active++; active++;
+        }
+        try
+        {
+            TrackDeniedVaultUpdate(session, caller);
+            RequireDeniedVaultUpdateImage(session, run.Ready!);
+            Require(provisioner.OwnsStatusDeniedVaultUpdatePreparation(session.Plan!) && OwnsDeniedVaultUpdateReads(run.Baseline!));
+            session.Dispatch = Guid.NewGuid();
+            session.Binding = new(session.Selector, session.Plan!.LeaseId, originalScope, operation, scope.Location, "2026-02-01");
+            session.Client = client; session.ActualVaultScope = (VaultScope)originalScope; session.Receipt = receipt;
+            IssueDeniedVaultUpdate(session, new StatusDeniedVaultUpdateAdmission(this), 1, run.Ready!);
+            PersistDeniedVaultUpdate(session);
+            provisioner.RetainStatusDeniedVaultUpdateDispatch(session.Plan, session.Dispatch);
+            session.StartedAt = time.GetUtcNow();
+            Require(session.StartedAt >= session.BaselineAt);
+            using var deadline = new CancellationTokenSource(limits.Timeout, time);
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(
+                [.. run.Tokens, caller, lifetime.Token, session.Stop.Token, deadline.Token, run.Exclusion!.ContinuityToken]);
+            TrackDeniedVaultUpdate(session, linked.Token);
+            session.Capture = capture.ArmStatusDeniedVaultUpdate(session.Binding);
+            var expected = deniedVaultUpdateConfiguration! with { PublicNetworkAccess = true };
+            session.After = after.ArmStatusDeniedVaultUpdate(session.Binding, expected, R.StatusDeniedVaultUpdateReadPhase.SelectedActive);
+            session.CounterpartAfter = statusCounterpartAfterCollector!.ArmStatusDeniedVaultUpdate(session.CounterpartBinding!,
+                expected, R.StatusDeniedVaultUpdateReadPhase.SelectedDeletedAbsent);
+            var result = await capture.StartStatusDeniedVaultUpdateAsync(session.Capture, selector, client, originalScope, input,
+                receipt, linked.Token, task => session.StartTask = task,
+                () => RequireDeniedVaultUpdateImage(session, run.Begun!)).ConfigureAwait(false);
+            session.Handle = result.IsSuccess ? result.Value : null;
+            Require(result.IsSuccess);
+            Require(OwnsDeniedVaultUpdateStart(session, out var proof));
+            run.Start = proof; session.StartSucceeded = true;
+            IssueDeniedVaultUpdate(session, new StatusDeniedVaultUpdateStartDrain(this), 2, run.Begun!);
+            PersistDeniedVaultUpdate(session);
+            return result;
+        }
+        finally
+        {
+            session.StartFinished = true;
+            try
+            {
+                if (run.Pending is null && (run.Invalid || run.Drained is null))
+                {
+                    run.Invalid = true;
+                    if (session.Capture is not null) await capture.SealAsync(session.Capture).ConfigureAwait(false);
+                    run.PhysicalDrain = true;
+                }
+                DrainDeniedVaultUpdate(session);
+            }
+            finally { Leave(session); }
+        }
+    }
+    private async ValueTask<SecretStatus> CheckDeniedVaultUpdate(FixtureSelector selector, ManagementOperation handle, CancellationToken caller)
+    {
+        Session session;
+        DeniedVaultUpdateRun run;
+        lock (gate)
+        {
+            session = OpenSelector(selector); run = deniedVaultUpdateRuns[session];
+            Require(ReferenceEquals(handle, session.Handle));
+            bool valid = !statusDeniedVaultUpdateCleanup && DeniedVaultUpdateLive(session) && session.Active == 0 &&
+                !session.StatusClaimed && run.Pending is null && session.StartFinished && session.StartSucceeded &&
+                session.IndependentReady && run.Observed is not null && run.Status is not null && !caller.IsCancellationRequested;
+            session.StatusClaimed = true;
+            if (!valid) run.Invalid = true;
+            Require(valid);
+            session.Active++; active++;
+        }
+        try
+        {
+            TrackDeniedVaultUpdate(session, caller);
+            RequireDeniedVaultUpdateImage(session, run.Drained!);
+            Require(OwnsDeniedVaultUpdateStart(session, out var start) && ReferenceEquals(start, run.Start) &&
+                OwnsDeniedVaultUpdateReads(run.Baseline!) && OwnsDeniedVaultUpdateReads(run.Observed!) &&
+                run.Baseline!.Subscription == session.Subscription && run.Observed!.Subscription == session.Subscription &&
+                run.Baseline.ArmedAt == session.ArmedAt && run.Observed.ArmedAt == session.ArmedAt &&
+                run.Status!.Task.IsCompletedSuccessfully && run.Status.Transport.Valid && ReferenceEquals(run.Status.Target, start!.Target));
+            IssueDeniedVaultUpdate(session, new StatusDeniedVaultUpdateReadAdmission(this), 3, run.Drained!);
+            PersistDeniedVaultUpdate(session);
+            using var deadline = new CancellationTokenSource(limits.Timeout, time);
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(
+                [.. run.Tokens, caller, lifetime.Token, session.Stop.Token, deadline.Token, run.Exclusion!.ContinuityToken]);
+            TrackDeniedVaultUpdate(session, linked.Token);
+            var result = await capture.CheckStatusDeniedVaultUpdateAsync(session.Capture!, selector, handle, linked.Token,
+                task => session.StatusTask = task, originalCallerToken: caller).ConfigureAwait(false);
+            Require(result == SecretStatus.Denied && handle.State == NativeProvisioningState.Failed && session.Receipt!.Evidence == DispatchEvidence.Pending);
+            Require(capture.TryGetStatusDeniedVaultUpdateDenied(session.Capture!, session.Binding!, session.Client!, session.ActualVaultScope!,
+                session.Receipt, session.StartTask!, handle, session.StatusTask!, out var proof) && ReferenceEquals(proof.Start, run.Start));
+            RequireDeniedVaultUpdateImage(session, run.Read!);
+            run.Denied = proof; run.PhysicalDrain = true;
+            IssueDeniedVaultUpdate(session, new StatusDeniedVaultUpdateObservation(this), 4, run.Read!);
+            PersistDeniedVaultUpdate(session);
+            session.StatusSucceeded = true;
+            return result;
+        }
+        finally
+        {
+            try
+            {
+                if (!run.Settled && run.Pending is null)
+                {
+                    run.Invalid = true;
+                    if (session.Capture is not null) await capture.SealAsync(session.Capture).ConfigureAwait(false);
+                    run.PhysicalDrain = true;
+                }
+                DrainDeniedVaultUpdate(session);
+            }
+            finally { Leave(session); }
+        }
+    }
+    private void DrainDeniedVaultUpdate(Session session)
+    {
+        var run = deniedVaultUpdateRuns[session];
+        if (run.Pending is StatusDeniedVaultUpdateInvocationDrain) { PersistDeniedVaultUpdate(session); return; }
+        // A pending image never disappears merely because Close or disposal ran.
+        if (run.Pending is not null || run.Settled || session.Dispatch == Guid.Empty ||
+            run.Read is null && run.Drained is not null && !run.Invalid ||
+            session.StartTask is { IsCompleted: false } || session.StatusTask is { IsCompleted: false } ||
+            session.Capture is not null && !run.PhysicalDrain) return;
+        var image = provisioner.Journal.Read(owner, session.Selector);
+        if (image.CreateOrUpdateVault?.InvocationDispatch != session.Dispatch ||
+            image.Resources[0] is not { InvocationTerminated: false }) return;
+        run.Invalid = true;
+        IssueDeniedVaultUpdate(session, new StatusDeniedVaultUpdateInvocationDrain(this), 5, image);
+        PersistDeniedVaultUpdate(session);
+    }
+
+    private async Task<HttpResponseMessage> ReleaseDeniedVaultUpdate(FixtureSelector selector, CancellationToken token, CancellationToken caller)
+    {
+        ValidateReleaseSelector(selector);
+        Session session;
+        DeniedVaultUpdateRun run;
+        lock (gate)
+        {
+            if (!sessions.TryGetValue(selector.Nonce, out session!))
+            {
+                Require(!disposed && sessions.Count < 32);
+                session = new(selector with { }); sessions.Add(selector.Nonce, session);
+                Require(deniedVaultUpdateRuns.TryAdd(session, new(null)));
+            }
+            Require(session.Selector == selector);
+            run = deniedVaultUpdateRuns[session];
+        }
+        await run.Release.WaitAsync(token).ConfigureAwait(false);
+        try
+        {
+            token.ThrowIfCancellationRequested(); caller.ThrowIfCancellationRequested();
+            lock (gate)
+            {
+                Require(!session.Releasing);
+                session.Releasing = true;
+                if (!session.Closed && session.Active == 0 && run.Pending is not null)
+                {
+                    TrackDeniedVaultUpdate(session, token, caller);
+                    PersistDeniedVaultUpdate(session);
+                }
+                if (session.Active == 0 && session.Plan is not null && provisioner.HasStatusDeniedVaultUpdatePersistence(session.Plan))
+                    provisioner.RetryStatusDeniedVaultUpdatePersistence(session.Plan);
+                provisioner.CloseSelectedRoot(owner, selector);
+                session.Closed = true; run.Invalid = true;
+                if (session.Active == 0) session.PrivateDrained.TrySetResult();
+            }
+            if (session.Capture is not null) capture.RevokeStatusDeniedVaultUpdateSelected(session.Capture);
+            session.Stop.Cancel();
+            using var deadline = new CancellationTokenSource(limits.Timeout, time);
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, caller, deadline.Token);
+            var image = provisioner.Journal.Read(owner, selector);
+            try
+            {
+                await session.PrivateDrained.Task.WaitAsync(linked.Token).ConfigureAwait(false);
+                if (session.Capture is not null) await capture.SealAsync(session.Capture).WaitAsync(linked.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (!token.IsCancellationRequested && !caller.IsCancellationRequested)
+            { return Reply(ReleaseMeasurement(session, image)); }
+            run.PhysicalDrain = true;
+            DrainDeniedVaultUpdate(session);
+            image = provisioner.Journal.Read(owner, selector);
+            if (image.Resources.Length == 0 || !image.Idle) return Reply(ReleaseMeasurement(session, image));
+            session.Plan ??= provisioner.OpenCleanupPlan(owner, selector);
+            var result = await provisioner.ReleaseAsync(owner, selector, purge: true, cancellationToken: linked.Token,
+                originalCallerToken: caller).ConfigureAwait(false);
+            return Reply(ReleaseMeasurement(session, result.Journal, result.State == VaultFixtureProvisioner.State.Released ? 0 : 1));
+        }
+        finally { lock (gate) session.Releasing = false; run.Release.Release(); }
+    }
+
+    private ValueTask DisposeDeniedVaultUpdateAsync()
+    {
+        TaskCompletionSource completion;
+        Session[] owned;
+        bool valid = true;
+        lock (gate)
+        {
+            if (disposal is not null) return new(disposal.Task);
+            completion = disposal = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            owned = sessions.Values.ToArray();
+            foreach (var session in owned)
+            {
+                try
+                {
+                    if (!session.Closed && session.Active == 0 && deniedVaultUpdateRuns[session].Pending is not null)
+                        PersistDeniedVaultUpdate(session);
+                    if (session.Active == 0 && session.Plan is not null && provisioner.HasStatusDeniedVaultUpdatePersistence(session.Plan))
+                        provisioner.RetryStatusDeniedVaultUpdatePersistence(session.Plan);
+                    provisioner.CloseSelectedRoot(owner, session.Selector);
+                }
+                catch (Exception) { valid = false; }
+                session.Closed = true;
+                deniedVaultUpdateRuns[session].Invalid = true;
+                if (session.Active == 0) session.PrivateDrained.TrySetResult();
+            }
+            disposed = true;
+            if (active == 0) drained.TrySetResult();
+        }
+        _ = Drain();
+        return new(completion.Task);
+        async Task Drain()
+        {
+            foreach (var session in owned)
+            {
+                try { if (session.Capture is not null) capture.RevokeStatusDeniedVaultUpdateSelected(session.Capture); }
+                catch (Exception) { valid = false; }
+                try { session.Stop.Cancel(); } catch (Exception) { valid = false; }
+            }
+            try { lifetime.Cancel(); } catch (Exception) { valid = false; }
+            try
+            {
+                await drained.Task.ConfigureAwait(false);
+                foreach (var session in owned)
+                {
+                    try
+                    {
+                        if (session.Capture is not null) await capture.SealAsync(session.Capture).ConfigureAwait(false);
+                        deniedVaultUpdateRuns[session].PhysicalDrain = true;
+                        DrainDeniedVaultUpdate(session);
+                    }
+                    catch (Exception) { valid = false; }
+                    finally
+                    {
+                        try { session.Stop.Dispose(); } catch (Exception) { valid = false; }
+                    }
+                }
+            }
+            catch (Exception) { valid = false; }
+            finally
+            {
+                try { lifetime.Dispose(); } catch (Exception) { valid = false; }
+                if (valid) completion.TrySetResult(); else completion.TrySetException(Failure());
+            }
+        }
+    }
+
+    private bool statusDeniedPrivateDeleteProfile, statusDeniedPrivateDeleteCleanup;
+    private bool deniedPrivateDeleteDisposePublicationFailed;
+    private VaultAdministrationEffects.Configuration? deniedPrivateDeleteConfiguration;
+    private StatusDeniedPrivateConnectionDeleteWriterExclusion? deniedPrivateDeleteExclusion;
+    internal sealed class StatusDeniedPrivateConnectionDeleteWriterExclusion(Guid namespaceEpoch, bool continuousWriterExclusion,
+        bool noOlderInflightInvocations, bool noNameReuse, CancellationToken continuityToken)
+    {
+        internal Guid NamespaceEpoch { get; } = namespaceEpoch;
+        internal bool ContinuousWriterExclusion { get; } = continuousWriterExclusion;
+        internal bool NoOlderInflightInvocations { get; } = noOlderInflightInvocations;
+        internal bool NoNameReuse { get; } = noNameReuse;
+        internal CancellationToken ContinuityToken { get; } = continuityToken;
+        public override string ToString() => "[StatusDeniedPrivateConnectionDeleteWriterExclusion]";
+    }
+    private sealed class DeniedPrivateDeleteRun(StatusDeniedPrivateConnectionDeleteWriterExclusion? exclusion)
+    {
+        internal readonly StatusDeniedPrivateConnectionDeleteWriterExclusion? Exclusion = exclusion;
+        internal readonly List<CancellationToken> Tokens = [];
+        internal readonly SemaphoreSlim Release = new(1, 1);
+        internal volatile bool Invalid;
+        internal object? Pending;
+        internal RoleFixtureJournal.Snapshot? Ready, Begun, Drained, Read;
+        internal DeniedPrivateDeleteRead? Baseline, Observed;
+        internal C.StatusDeniedPrivateConnectionDeleteStartProof? Start;
+        internal C.StatusDeniedPrivateConnectionDeleteDeniedProof? Denied;
+        internal PendingStatusWitness? Status;
+        internal bool Settled;
+        internal bool PhysicalDrain;
+    }
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<Session, DeniedPrivateDeleteRun> deniedPrivateDeleteRuns =
+        new(ReferenceEqualityComparer.Instance);
+    private sealed record DeniedPrivateDeleteRead(R Reader, C.Binding Binding, R.Window Window, Task<R.Measurement> Task,
+        R.StatusDeniedPrivateConnectionDeleteReadProof Proof, PrivateEndpointResourceCollector EndpointReader,
+        PrivateEndpointResourceCollector.Binding EndpointBinding, PrivateEndpointResourceCollector.Window EndpointWindow,
+        Task<PrivateEndpointResourceCollector.Measurement> EndpointTask, PrivateEndpointResourceCollector.Measurement Endpoint,
+        Guid Subscription, DateTimeOffset ArmedAt)
+    {
+        public override string ToString() => "[StatusDeniedPrivateConnectionDeleteRead]";
+    }
+    private sealed record DeniedPrivateDeleteFacts(RoleFixtureJournal.Snapshot Before, RoleFixtureJournal.Snapshot After,
+        Guid Dispatch, int Edge, DeniedPrivateDeleteRun Run, CancellationToken[] Tokens, Task[] Tasks,
+        VaultFixtureProvisioner.Plan Parent, PrivateEndpointFixtureProvisioner Endpoints, PrivateEndpointFixtureProvisioner.Plan Endpoint,
+        C.Binding Binding, C.Window? Window, VaultAdministration? Client, PrivateConnectionScope? Scope,
+        ManagementReceipt? Receipt, ManagementOperation? Handle, Task? StartTask, Task? CheckTask,
+        DeniedPrivateDeleteRead? Baseline, DeniedPrivateDeleteRead? Observed, PendingStatusWitness? Status,
+        C.StatusDeniedPrivateConnectionDeleteStartProof? Start, C.StatusDeniedPrivateConnectionDeleteDeniedProof? Denied)
+    {
+        public override string ToString() => "[StatusDeniedPrivateConnectionDeleteFacts]";
+    }
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<object, DeniedPrivateDeleteFacts> deniedPrivateDeleteFacts =
+        new(ReferenceEqualityComparer.Instance);
+
+    internal sealed class StatusDeniedPrivateConnectionDeleteAdmission(ManagementOperationFixtureObserverService source)
+    {
+        internal Guid Dispatch => source.deniedPrivateDeleteFacts.TryGetValue(this, out var f) ? f.Dispatch : Guid.Empty;
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) => source.ValidateDeniedPrivateDelete(this, journal, state, 1, false);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) => source.ValidateDeniedPrivateDelete(this, journal, state, 1, true);
+        internal RoleFixtureJournal.Snapshot Postimage => RoleFixtureJournal.CopyStatusDeniedPrivateConnectionDeleteSnapshot(source.deniedPrivateDeleteFacts[this].After);
+    }
+    internal sealed class StatusDeniedPrivateConnectionDeleteStartDrain(ManagementOperationFixtureObserverService source)
+    {
+        internal Guid Dispatch => source.deniedPrivateDeleteFacts.TryGetValue(this, out var f) ? f.Dispatch : Guid.Empty;
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) => source.ValidateDeniedPrivateDelete(this, journal, state, 2, false);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) => source.ValidateDeniedPrivateDelete(this, journal, state, 2, true);
+        internal RoleFixtureJournal.Snapshot Postimage => RoleFixtureJournal.CopyStatusDeniedPrivateConnectionDeleteSnapshot(source.deniedPrivateDeleteFacts[this].After);
+    }
+    internal sealed class StatusDeniedPrivateConnectionDeleteReadAdmission(ManagementOperationFixtureObserverService source)
+    {
+        internal Guid Dispatch => source.deniedPrivateDeleteFacts.TryGetValue(this, out var f) ? f.Dispatch : Guid.Empty;
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) => source.ValidateDeniedPrivateDelete(this, journal, state, 3, false);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) => source.ValidateDeniedPrivateDelete(this, journal, state, 3, true);
+        internal RoleFixtureJournal.Snapshot Postimage => RoleFixtureJournal.CopyStatusDeniedPrivateConnectionDeleteSnapshot(source.deniedPrivateDeleteFacts[this].After);
+    }
+    internal sealed class StatusDeniedPrivateConnectionDeleteObservation(ManagementOperationFixtureObserverService source)
+    {
+        internal Guid Dispatch => source.deniedPrivateDeleteFacts.TryGetValue(this, out var f) ? f.Dispatch : Guid.Empty;
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) => source.ValidateDeniedPrivateDelete(this, journal, state, 4, false);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) => source.ValidateDeniedPrivateDelete(this, journal, state, 4, true);
+        internal RoleFixtureJournal.Snapshot Postimage => RoleFixtureJournal.CopyStatusDeniedPrivateConnectionDeleteSnapshot(source.deniedPrivateDeleteFacts[this].After);
+    }
+    internal sealed class StatusDeniedPrivateConnectionDeleteInvocationDrain(ManagementOperationFixtureObserverService source)
+    {
+        internal Guid Dispatch => source.deniedPrivateDeleteFacts.TryGetValue(this, out var f) ? f.Dispatch : Guid.Empty;
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) => source.ValidateDeniedPrivateDelete(this, journal, state, 5, false);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) => source.ValidateDeniedPrivateDelete(this, journal, state, 5, true);
+        internal RoleFixtureJournal.Snapshot Postimage => RoleFixtureJournal.CopyStatusDeniedPrivateConnectionDeleteSnapshot(source.deniedPrivateDeleteFacts[this].After);
+    }
+    private bool ValidateDeniedPrivateDelete(object capability, RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state, int edge, bool post) =>
+        ReferenceEquals(journal, provisioner.Journal) && deniedPrivateDeleteFacts.TryGetValue(capability, out var f) &&
+        f.Edge == edge && f.Tasks.All(t => t.IsCompleted) &&
+        (edge == 5 || !disposed && !state.Closing && !f.Run.Invalid && ReferenceEquals(f.Run.Exclusion, deniedPrivateDeleteExclusion) &&
+            f.Run.Exclusion is { NamespaceEpoch: var epoch, ContinuousWriterExclusion: true, NoOlderInflightInvocations: true, NoNameReuse: true } &&
+            epoch != Guid.Empty && !f.Run.Exclusion.ContinuityToken.IsCancellationRequested &&
+            f.Tokens.All(t => !t.IsCancellationRequested)) &&
+        (edge != 4 || f.Start is not null && f.Denied is not null && ReferenceEquals(f.Denied.Start, f.Start) &&
+            ReferenceEquals(f.Start.StartTask, f.StartTask) && ReferenceEquals(f.Denied.CheckTask, f.CheckTask) &&
+            f.Baseline is not null && f.Observed is not null && f.Status is not null &&
+            ReferenceEquals(f.Status.Target, f.Start.Target)) &&
+        RoleFixtureJournal.SameStatusDeniedPrivateConnectionDeleteSnapshot(post ? f.After : f.Before, state);
+
+    private bool DeniedPrivateDeleteLive(Session session)
+    {
+        if (!deniedPrivateDeleteRuns.TryGetValue(session, out var run)) return false;
+        if (disposed || session.Closed || lifetime.IsCancellationRequested || run.Invalid ||
+            !ReferenceEquals(run.Exclusion, deniedPrivateDeleteExclusion) ||
+            run.Exclusion is not { NamespaceEpoch: var epoch, ContinuousWriterExclusion: true, NoOlderInflightInvocations: true, NoNameReuse: true } ||
+            epoch == Guid.Empty || run.Exclusion.ContinuityToken.IsCancellationRequested || run.Tokens.Any(t => t.IsCancellationRequested))
+        { run.Invalid = true; return false; }
+        return true;
+    }
+    private void TrackDeniedPrivateDelete(Session session, params CancellationToken[] tokens)
+    {
+        var run = deniedPrivateDeleteRuns[session];
+        run.Tokens.AddRange(tokens);
+        Require(DeniedPrivateDeleteLive(session));
+    }
+    internal static ManagementOperationFixtureObserverService ForStatusDeniedPrivateConnectionDelete(Uri origin, string owner,
+        string observerIdentity, SecretMaterial capability, VaultFixtureProvisioner.HostScope scope, VaultFixtureProvisioner provisioner,
+        S.Authority statusReader, R.Authority resourceReader, HttpPipelineTransport selectedBackend, S.Limits statusLimits,
+        R.Limits resourceLimits, Limits limits, TimeProvider time, PrivateConnectionSource privateConnectionSource,
+        StatusDeniedPrivateConnectionDeleteWriterExclusion writerExclusion)
+    {
+        Require(privateConnectionSource is not null &&
+            writerExclusion is { NamespaceEpoch: var epoch, ContinuousWriterExclusion: true, NoOlderInflightInvocations: true, NoNameReuse: true } &&
+            epoch != Guid.Empty && !writerExclusion.ContinuityToken.IsCancellationRequested &&
+            statusReader is { Credential: not null, Transport: not null } &&
+            !ReferenceEquals(statusReader.Credential, resourceReader.Credential) &&
+            !ReferenceEquals(statusReader.Transport, resourceReader.Transport) &&
+            !ReferenceEquals(statusReader.Transport, selectedBackend) &&
+            !ReferenceEquals(statusReader.Credential, privateConnectionSource.EndpointSetup.Credential) &&
+            !ReferenceEquals(statusReader.Transport, privateConnectionSource.EndpointSetup.Transport));
+        var configuration = provisioner.StatusDeniedPrivateConnectionDeleteConfiguration(scope, resourceReader, selectedBackend);
+        _ = provisioner.StatusDeniedPrivateConnectionDeleteConfiguration(scope,
+            new(statusReader.Label, statusReader.Credential, statusReader.Transport), selectedBackend);
+        return new(origin, owner, observerIdentity, capability, scope, provisioner, statusReader, resourceReader,
+            selectedBackend, statusLimits, resourceLimits, limits, time, privateConnectionSource: privateConnectionSource)
+        { statusDeniedPrivateDeleteProfile = true, deniedPrivateDeleteConfiguration = configuration, deniedPrivateDeleteExclusion = writerExclusion };
+    }
+    internal static ManagementOperationFixtureObserverService ForStatusDeniedPrivateConnectionDeleteCleanup(Uri origin, string owner,
+        string observerIdentity, SecretMaterial capability, VaultFixtureProvisioner.HostScope scope, VaultFixtureProvisioner provisioner,
+        PrivateConnectionSource endpoint, Limits limits, TimeProvider? time = null)
+    {
+        Require(endpoint is not null && Text(endpoint.BorrowedSubnetId, 2048));
+        _ = new PrivateEndpointFixtureProvisioner(provisioner, endpoint.EndpointSetup, endpoint.EndpointReader,
+            endpoint.VaultConnectionReader, endpoint.ResourceLimits, endpoint.InventoryLimits, time ?? TimeProvider.System);
+        return new(origin, owner, observerIdentity, capability, scope, provisioner, endpoint, limits, time,
+            independent: false, deniedPrivateDelete: true);
+    }
+
+    private void IssueDeniedPrivateDelete(Session session, object capability, int edge, RoleFixtureJournal.Snapshot beforeImage)
+    {
+        var run = deniedPrivateDeleteRuns[session];
+        Require(run.Pending is null && (edge == 5 || DeniedPrivateDeleteLive(session)));
+        var pre = RoleFixtureJournal.CopyStatusDeniedPrivateConnectionDeleteSnapshot(beforeImage);
+        var post = pre with { Revision = pre.Revision + 1, PrivateEndpoint = pre.PrivateEndpoint! with
+        {
+            StatusDeleteSettledDispatch = edge == 4 ? session.Dispatch : pre.PrivateEndpoint.StatusDeleteSettledDispatch,
+            Connection = pre.PrivateEndpoint.Connection! with
+            { SelectedAttempted = true, DeleteAttempted = true, InvocationTerminated = edge is 2 or 4 or 5,
+                ActiveDispatch = edge == 4 ? Guid.Empty : session.Dispatch }
+        } };
+        Task[] tasks = [.. new Task?[] { run.Baseline?.Task, run.Baseline?.EndpointTask, session.StartTask,
+            run.Status?.Task, run.Observed?.Task, run.Observed?.EndpointTask, session.StatusTask }.OfType<Task>()];
+        Require(tasks.All(t => t.IsCompleted));
+        Require(deniedPrivateDeleteFacts.TryAdd(capability, new(pre, post, session.Dispatch, edge, run,
+            run.Tokens.ToArray(), tasks, session.Plan!, session.Endpoints!, session.EndpointPlan!, session.Binding!, session.Capture,
+            session.Client, session.ActualPrivateScope, session.Receipt, session.Handle, session.StartTask, session.StatusTask,
+            run.Baseline, run.Observed, run.Status, run.Start, run.Denied)));
+        run.Pending = capability;
+    }
+    private RoleFixtureJournal.Snapshot PersistDeniedPrivateDelete(Session session)
+    {
+        var run = deniedPrivateDeleteRuns[session];
+        var candidate = run.Pending ?? throw Failure();
+        Require(deniedPrivateDeleteFacts.TryGetValue(candidate, out var f));
+        try
+        {
+            var journal = provisioner.Journal;
+            var image = candidate switch
+            {
+                StatusDeniedPrivateConnectionDeleteAdmission admission =>
+                    journal.BeginStatusDeniedPrivateConnectionDeleteInvocation(owner, session.Selector, session.Plan!.LeaseId, admission),
+                StatusDeniedPrivateConnectionDeleteStartDrain drain =>
+                    journal.EndStatusDeniedPrivateConnectionDeleteStart(owner, session.Selector, session.Plan!.LeaseId, session.Dispatch, drain),
+                StatusDeniedPrivateConnectionDeleteReadAdmission admission =>
+                    journal.AdmitStatusDeniedPrivateConnectionDeleteRead(owner, session.Selector, session.Plan!.LeaseId, session.Dispatch, admission),
+                StatusDeniedPrivateConnectionDeleteObservation observation =>
+                    journal.CompleteStatusDeniedPrivateConnectionDeleteRead(owner, session.Selector, session.Plan!.LeaseId, session.Dispatch, observation),
+                StatusDeniedPrivateConnectionDeleteInvocationDrain drain =>
+                    journal.EndStatusDeniedPrivateConnectionDeleteInvocation(owner, session.Selector, session.Plan!.LeaseId, session.Dispatch, drain),
+                _ => throw Failure()
+            };
+            Require(RoleFixtureJournal.SameStatusDeniedPrivateConnectionDeleteSnapshot(f.After, image));
+            if (f.Edge == 1) run.Begun = RoleFixtureJournal.CopyStatusDeniedPrivateConnectionDeleteSnapshot(image);
+            if (f.Edge == 2) run.Drained = RoleFixtureJournal.CopyStatusDeniedPrivateConnectionDeleteSnapshot(image);
+            if (f.Edge == 3) run.Read = RoleFixtureJournal.CopyStatusDeniedPrivateConnectionDeleteSnapshot(image);
+            if (f.Edge == 4) run.Settled = true;
+            run.Pending = null;
+            return image;
+        }
+        catch (IOException) { throw; }
+        catch { run.Invalid = true; throw; }
+    }
+    internal RoleFixtureJournal.Snapshot RetryStatusDeniedPrivateConnectionDeletePersistence(FixtureSelector selector, CancellationToken token = default)
+    {
+        token.ThrowIfCancellationRequested();
+        Session session;
+        DeniedPrivateDeleteRun run;
+        lock (gate)
+        {
+            ValidateSelector(selector);
+            Require(statusDeniedPrivateDeleteProfile && !disposed);
+            Require(sessions.TryGetValue(selector.Nonce, out session!) && session.Selector == selector &&
+                session.Plan is not null && session.Active == 0 && !session.Releasing);
+            if (!session.Closed) TrackDeniedPrivateDelete(session, token);
+            run = deniedPrivateDeleteRuns[session];
+            Require(run.Release.Wait(0));
+            session.Active++; active++;
+        }
+        try
+        {
+            if (provisioner.HasStatusDeniedPrivateConnectionDeletePersistence(session.Plan!))
+                return provisioner.RetryStatusDeniedPrivateConnectionDeletePersistence(session.Plan!);
+            if (session.Endpoints?.HasStatusDeniedPrivateConnectionDeletePersistence(session.Plan!) == true)
+                return session.Endpoints.RetryStatusDeniedPrivateConnectionDeletePersistence(session.Plan!);
+            Require(!session.Closed || deniedPrivateDeleteRuns[session].Pending is StatusDeniedPrivateConnectionDeleteInvocationDrain);
+            return PersistDeniedPrivateDelete(session);
+        }
+        finally { Leave(session); run.Release.Release(); }
+    }
+
+    private bool OwnsDeniedPrivateDeleteStart(Session session,
+        [NotNullWhen(true)] out C.StatusDeniedPrivateConnectionDeleteStartProof? proof)
+    {
+        proof = null;
+        return DeniedPrivateDeleteLive(session) && session.Capture is not null && session.Binding is not null &&
+            session.Client is not null && session.ActualPrivateScope is not null && session.Receipt is not null &&
+            session.StartTask is { IsCompletedSuccessfully: true } && session.Handle is not null &&
+            capture.TryGetStatusDeniedPrivateConnectionDeleteStart(session.Capture, session.Binding, session.Client,
+                session.ActualPrivateScope, session.Receipt, session.StartTask, session.Handle, out proof) &&
+            capture.OwnsStatusDeniedPrivateConnectionDeleteStart(proof, session.Capture, session.Binding, session.Client,
+                session.ActualPrivateScope, session.Receipt, session.StartTask, session.Handle);
+    }
+    private void RequireDeniedPrivateDeleteImage(Session session, RoleFixtureJournal.Snapshot expected)
+    {
+        Require(DeniedPrivateDeleteLive(session) && provisioner.MatchesOwnedPlan(session.Plan!, expected) &&
+            RoleFixtureJournal.SameStatusDeniedPrivateConnectionDeleteSnapshot(expected, provisioner.Journal.Read(owner, session.Selector)));
+        RequireOriginalPrivateEndpoint(session);
+    }
+    private async Task<HttpResponseMessage> ObserveDeniedPrivateDelete(Session session, bool baseline, CancellationToken token, CancellationToken caller)
+    {
+        var run = deniedPrivateDeleteRuns[session];
+        TrackDeniedPrivateDelete(session, token, caller);
+        Require(run.Pending is null && provisioner.TryEnterPrivateConnection(session.Plan!, session.ConnectionId!));
+        DeniedPrivateDeleteRead observation;
+        try
+        {
+            var image = baseline ? run.Ready! : run.Drained!;
+            RequireDeniedPrivateDeleteImage(session, image);
+            DateTimeOffset earliest = session.ArmedAt;
+            if (!baseline)
+            {
+                Require(run.Baseline is not null && run.Baseline.Subscription == session.Subscription &&
+                    run.Baseline.ArmedAt == session.ArmedAt);
+                Require(OwnsDeniedPrivateDeleteStart(session, out var start) && ReferenceEquals(start, run.Start));
+                Require(capture.TryGetStatusTarget(session.Capture!, session.Binding!, out var target) &&
+                    ReferenceEquals(target, start!.Target) && capture.OwnsStatusTarget(target, session.Binding!));
+                var authority = unknownStatusReader!;
+                using var transport = new PendingStatusTransport(authority.Transport, target.TargetUri,
+                    unknownStatusLimits!.MaximumResponseBytes, expectedState: "Succeeded", resourceState: false);
+                var collector = new S(capture, authority with { Transport = transport }, unknownStatusLimits, time);
+                var statusWindow = collector.Arm(target, session.Binding!);
+                var statusTask = collector.CollectAsync(statusWindow, session.Binding!, token).AsTask();
+                var status = await statusTask.ConfigureAwait(false);
+                transport.Dispose();
+                Require(statusTask.IsCompletedSuccessfully && transport.Valid && ReferenceEquals(status.Binding, session.Binding) &&
+                    status.WindowId == statusWindow.Id && status.ArmedAt == statusWindow.ArmedAt &&
+                    status.StartedAt >= session.StartedAt && status.FinishedAt >= status.StartedAt &&
+                    status.ResponseComplete && status.Terminal && status.HttpStatus == 200 && status.Status == SecretStatus.Success &&
+                    status.OperationState == NativeProvisioningState.Succeeded && status.StartDispatch == start.StartDispatch &&
+                    status.StartResponseSha256 == start.ResponseSha256 && status.TargetSha256 == target.TargetSha256 &&
+                    Text(status.NativeRequestId, 256));
+                run.Status = new(collector, statusWindow, statusTask, target, session.Binding!, transport, token);
+                earliest = status.FinishedAt;
+            }
+            var reader = baseline ? before : after;
+            var window = baseline ? session.Before! : session.After!;
+            var task = reader.CollectAsync(window, session.Binding!, token, caller).AsTask();
+            using var result = await task.ConfigureAwait(false);
+            Require(reader.TryGetStatusDeniedPrivateConnectionDeleteRead(window, session.Binding!, task, out var proof) &&
+                reader.OwnsStatusDeniedPrivateConnectionDeleteRead(proof, window, session.Binding!, task) &&
+                proof.StartedAt >= earliest && proof.FinishedAt >= proof.StartedAt &&
+                proof.Phase == (baseline ? R.StatusDeniedPrivateConnectionDeleteReadPhase.Baseline : R.StatusDeniedPrivateConnectionDeleteReadPhase.SelectedState));
+            if (baseline)
+                Require(proof.HttpStatus == 200 && proof.Facts is { Provisioning: "Succeeded", State: "Pending" } facts &&
+                    facts.Id == session.ConnectionId && facts.EndpointId == session.Plan!.PrivateEndpoint!.EndpointId &&
+                    PrivateResourceMatches(session, result, session.Binding!, window, PrivateConnectionState.Pending));
+            else Require(proof.HttpStatus == 404 && proof.Facts is null && proof.NativeTask.IsFaulted &&
+                proof.ErrorCode is "NotFound" or "ResourceNotFound" && result.ResponseComplete &&
+                result.ResourceStatus == SecretStatus.Absent && result.ResourceId is null);
+            var endpointReader = new PrivateEndpointResourceCollector(privateConnectionSource!.EndpointReader,
+                privateConnectionSource.ResourceLimits, time);
+            var binding = provisioner.EndpointBinding(session.Plan!);
+            var endpointWindow = endpointReader.Arm(binding);
+            var endpointTask = endpointReader.CollectAsync(endpointWindow, binding, token).AsTask();
+            var endpoint = await endpointTask.ConfigureAwait(false);
+            Require(endpointTask.IsCompletedSuccessfully && endpoint is { ResponseComplete: true, HttpStatus: 200,
+                ResourceStatus: SecretStatus.Success, Kind: PrivateEndpointResourceCollector.ReadKind.Endpoint,
+                NativeState: "Succeeded", MatchesDeclarationConfiguration: true } &&
+                endpoint.ManualConnectionState == (baseline ? "Pending" : "Disconnected") &&
+                ReferenceEquals(endpoint.Binding, binding) && endpoint.WindowId == endpointWindow.Id &&
+                endpoint.StartedAt >= proof.FinishedAt && endpoint.FinishedAt >= endpoint.StartedAt);
+            RequireDeniedPrivateDeleteImage(session, image);
+            observation = new(reader, session.Binding!, window, task, proof, endpointReader, binding, endpointWindow,
+                endpointTask, endpoint, session.Subscription, session.ArmedAt);
+        }
+        finally { provisioner.ExitPrivateConnection(session.Plan!); }
+        lock (gate)
+        {
+            Require(DeniedPrivateDeleteLive(session));
+            if (baseline) { run.Baseline = observation; session.BaselineAt = observation.Endpoint.FinishedAt; session.BaselineReady = true; }
+            else { run.Observed = observation; session.IndependentAt = observation.Endpoint.FinishedAt; session.IndependentReady = true; }
+        }
+        return Reply(new E.Measurement(session.Plan!.LeaseId, session.Selector.Nonce, observerIdentity,
+            observation.Endpoint.FinishedAt, ManagementMutation.DeletePrivateConnection,
+            baseline ? NativeProvisioningState.Unknown : NativeProvisioningState.Succeeded,
+            session.ConnectionId!, baseline ? SecretStatus.Success : SecretStatus.Absent, null,
+            baseline ? PrivateConnectionState.Pending : null, null));
+    }
+
+    private async ValueTask<SecretOutcome<ManagementOperation>> StartDeniedPrivateDelete(FixtureSelector selector, VaultAdministration client,
+        ManagementScope originalScope, ManagementMutation operation, E.Input input, ManagementReceipt receipt, CancellationToken caller)
+    {
+        ArgumentNullException.ThrowIfNull(client);
+        ArgumentNullException.ThrowIfNull(receipt);
+        Session session;
+        DeniedPrivateDeleteRun run;
+        lock (gate)
+        {
+            session = OpenSelector(selector); run = deniedPrivateDeleteRuns[session];
+            bool valid = DeniedPrivateDeleteLive(session) && session.Active == 0 && !session.StartClaimed && run.Pending is null &&
+                session.Armed && session.BaselineReady && run.Baseline is not null && InputMatches(session, input) &&
+                operation == ManagementMutation.DeletePrivateConnection && originalScope is PrivateConnectionScope connection &&
+                connection.Vault.ExportResourceId() == session.Plan!.VaultId &&
+                connection.Vault.ExportResourceId() + "/privateEndpointConnections/" + connection.ConnectionName == session.ConnectionId &&
+                !caller.IsCancellationRequested;
+            session.StartClaimed = true;
+            if (!valid) run.Invalid = true;
+            Require(valid);
+            TrackDeniedPrivateDelete(session, caller);
+            session.Active++; active++;
+        }
+        bool entered = false;
+        try
+        {
+            Require(entered = provisioner.TryEnterPrivateConnection(session.Plan!, session.ConnectionId!));
+            RequireDeniedPrivateDeleteImage(session, run.Ready!);
+            var baseline = run.Baseline!;
+            Require(baseline.Reader.OwnsStatusDeniedPrivateConnectionDeleteRead(baseline.Proof, baseline.Window, baseline.Binding, baseline.Task) &&
+                baseline.Subscription == session.Subscription && baseline.ArmedAt == session.ArmedAt);
+            session.Dispatch = Guid.NewGuid();
+            // Preserve the baseline binding; C binds the actual caller scope
+            // once. Its initial value-equal scope never becomes caller custody.
+            session.Binding = new(session.Selector, session.Plan!.LeaseId, originalScope,
+                ManagementMutation.DeletePrivateConnection, scope.Location, "2026-02-01");
+            session.Client = client; session.ActualPrivateScope = (PrivateConnectionScope)originalScope; session.Receipt = receipt;
+            var admission = new StatusDeniedPrivateConnectionDeleteAdmission(this);
+            IssueDeniedPrivateDelete(session, admission, 1, run.Ready!);
+            PersistDeniedPrivateDelete(session);
+            session.StartedAt = time.GetUtcNow();
+            Require(session.StartedAt >= session.BaselineAt);
+            using var deadline = new CancellationTokenSource(limits.Timeout, time);
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(
+                [.. run.Tokens, caller, lifetime.Token, session.Stop.Token, deadline.Token, run.Exclusion!.ContinuityToken]);
+            TrackDeniedPrivateDelete(session, linked.Token);
+            session.Capture = capture.ArmStatusDeniedPrivateConnectionDelete(session.Binding!);
+            session.After = after.ArmStatusDeniedPrivateConnectionDelete(session.Binding!, R.StatusDeniedPrivateConnectionDeleteReadPhase.SelectedState);
+            var result = await capture.StartStatusDeniedPrivateConnectionDeleteAsync(session.Capture, session.Selector, client, originalScope,
+                input, receipt, linked.Token, task => session.StartTask = task,
+                () => RequireDeniedPrivateDeleteImage(session, run.Begun!)).ConfigureAwait(false);
+            session.Handle = result.IsSuccess ? result.Value : null;
+            Require(result.IsSuccess);
+            Require(OwnsDeniedPrivateDeleteStart(session, out var proof));
+            run.Start = proof;
+            session.StartSucceeded = true;
+            provisioner.ExitPrivateConnection(session.Plan!); entered = false;
+            IssueDeniedPrivateDelete(session, new StatusDeniedPrivateConnectionDeleteStartDrain(this), 2, run.Begun!);
+            PersistDeniedPrivateDelete(session);
+            return result;
+        }
+        finally
+        {
+            session.StartFinished = true;
+            try
+            {
+                if (run.Pending is null && (run.Invalid || run.Drained is null))
+                {
+                    run.Invalid = true;
+                    if (session.Capture is not null) await capture.SealAsync(session.Capture).ConfigureAwait(false);
+                    run.PhysicalDrain = true;
+                }
+                DrainDeniedPrivateDelete(session);
+            }
+            finally { if (entered) provisioner.ExitPrivateConnection(session.Plan!); Leave(session); }
+        }
+    }
+    private async ValueTask<SecretStatus> CheckDeniedPrivateDelete(FixtureSelector selector, ManagementOperation handle, CancellationToken caller)
+    {
+        Session session;
+        DeniedPrivateDeleteRun run;
+        lock (gate)
+        {
+            session = OpenSelector(selector); run = deniedPrivateDeleteRuns[session];
+            Require(ReferenceEquals(handle, session.Handle));
+            bool valid = DeniedPrivateDeleteLive(session) && session.Active == 0 && !session.StatusClaimed &&
+                run.Pending is null && session.StartFinished && session.StartSucceeded && session.IndependentReady &&
+                run.Observed is not null && run.Status is not null && ReferenceEquals(handle, session.Handle) &&
+                !caller.IsCancellationRequested;
+            session.StatusClaimed = true;
+            if (!valid) run.Invalid = true;
+            Require(valid);
+            TrackDeniedPrivateDelete(session, caller);
+            session.Active++; active++;
+        }
+        bool entered = false;
+        try
+        {
+            Require(entered = provisioner.TryEnterPrivateConnection(session.Plan!, session.ConnectionId!));
+            RequireDeniedPrivateDeleteImage(session, run.Drained!);
+            Require(OwnsDeniedPrivateDeleteStart(session, out var start) && ReferenceEquals(start, run.Start));
+            var baseline = run.Baseline!; var observed = run.Observed!; var status = run.Status!;
+            Require(baseline.Reader.OwnsStatusDeniedPrivateConnectionDeleteRead(baseline.Proof, baseline.Window, baseline.Binding, baseline.Task) &&
+                observed.Reader.OwnsStatusDeniedPrivateConnectionDeleteRead(observed.Proof, observed.Window, observed.Binding, observed.Task) &&
+                baseline.Subscription == session.Subscription && baseline.ArmedAt == session.ArmedAt &&
+                observed.Subscription == session.Subscription && observed.ArmedAt == session.ArmedAt &&
+                status.Task.IsCompletedSuccessfully && status.Transport.Valid && ReferenceEquals(status.Target, start!.Target) &&
+                capture.OwnsStatusTarget(status.Target, session.Binding!));
+            IssueDeniedPrivateDelete(session, new StatusDeniedPrivateConnectionDeleteReadAdmission(this), 3, run.Drained!);
+            PersistDeniedPrivateDelete(session);
+            using var deadline = new CancellationTokenSource(limits.Timeout, time);
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(
+                [.. run.Tokens, caller, lifetime.Token, session.Stop.Token, deadline.Token, run.Exclusion!.ContinuityToken]);
+            TrackDeniedPrivateDelete(session, linked.Token);
+            var result = await capture.CheckStatusDeniedPrivateConnectionDeleteAsync(session.Capture!, session.Selector, handle,
+                linked.Token, task => session.StatusTask = task).ConfigureAwait(false);
+            Require(result == SecretStatus.Denied && handle.State == NativeProvisioningState.Failed &&
+                session.Receipt!.Evidence == DispatchEvidence.Pending);
+            Require(capture.TryGetStatusDeniedPrivateConnectionDeleteDenied(session.Capture!, session.Binding!, session.Client!,
+                    session.ActualPrivateScope!, session.Receipt, session.StartTask!, handle, session.StatusTask!, out var proof) &&
+                capture.OwnsStatusDeniedPrivateConnectionDeleteDenied(proof, session.Capture!, session.Binding!, session.Client!,
+                    session.ActualPrivateScope!, session.Receipt, session.StartTask!, handle, session.StatusTask!) &&
+                ReferenceEquals(proof.Start, run.Start));
+            RequireDeniedPrivateDeleteImage(session, run.Read!);
+            run.Denied = proof;
+            run.PhysicalDrain = true;
+            provisioner.ExitPrivateConnection(session.Plan!); entered = false;
+            IssueDeniedPrivateDelete(session, new StatusDeniedPrivateConnectionDeleteObservation(this), 4, run.Read!);
+            // This single publication is the only path clearing d. The local
+            // Failed state and the independent 404 cannot publish separately.
+            PersistDeniedPrivateDelete(session);
+            session.StatusSucceeded = true;
+            return result;
+        }
+        finally
+        {
+            try
+            {
+                if (!run.Settled && run.Pending is null)
+                {
+                    run.Invalid = true;
+                    if (session.Capture is not null) await capture.SealAsync(session.Capture).ConfigureAwait(false);
+                    run.PhysicalDrain = true;
+                }
+                DrainDeniedPrivateDelete(session);
+            }
+            finally { if (entered) provisioner.ExitPrivateConnection(session.Plan!); Leave(session); }
+        }
+    }
+    private void DrainDeniedPrivateDelete(Session session)
+    {
+        var run = deniedPrivateDeleteRuns[session];
+        if (run.Pending is StatusDeniedPrivateConnectionDeleteInvocationDrain)
+        {
+            PersistDeniedPrivateDelete(session);
+            return;
+        }
+        if (session.Closed && (session.StartTask is null || session.StartTask.IsCompleted) &&
+            (session.StatusTask is null || session.StatusTask.IsCompleted))
+            run.Pending = null;
+        if (run.Pending is not null || run.Settled || session.Dispatch == Guid.Empty ||
+            run.Read is null && run.Drained is not null && !run.Invalid) return;
+        if (session.StartTask is { IsCompleted: false } || session.StatusTask is { IsCompleted: false }) return;
+        if (session.Capture is not null && !run.PhysicalDrain) return;
+        run.Invalid = true;
+        var image = provisioner.Journal.Read(owner, session.Selector);
+        if (image.PrivateEndpoint?.Connection is not { InvocationTerminated: false } child ||
+            child.ActiveDispatch != session.Dispatch) return;
+        IssueDeniedPrivateDelete(session, new StatusDeniedPrivateConnectionDeleteInvocationDrain(this), 5, image);
+        PersistDeniedPrivateDelete(session);
+    }
+
+    private async Task<HttpResponseMessage> ReleaseDeniedPrivateDelete(FixtureSelector selector, CancellationToken token, CancellationToken caller)
+    {
+        Session session;
+        DeniedPrivateDeleteRun run;
+        lock (gate)
+        {
+            Require(statusDeniedPrivateDeleteProfile && VaultFixtureProvisioner.StatusDeniedPrivateConnectionDeleteSelector(selector));
+            if (!sessions.TryGetValue(selector.Nonce, out session!))
+            {
+                Require(!disposed && sessions.Count < 32);
+                session = new(selector with { });
+                sessions.Add(selector.Nonce, session);
+                Require(deniedPrivateDeleteRuns.TryAdd(session, new(null)));
+            }
+            Require(session.Selector == selector);
+            run = deniedPrivateDeleteRuns[session];
+        }
+        await run.Release.WaitAsync(token).ConfigureAwait(false);
+        try
+        {
+            token.ThrowIfCancellationRequested(); caller.ThrowIfCancellationRequested();
+            if (session.Closed && session.Active == 0 && session.Plan is not null)
+            {
+                if (provisioner.HasStatusDeniedPrivateConnectionDeletePersistence(session.Plan))
+                    return Reply(ReleaseMeasurement(session, provisioner.RetryStatusDeniedPrivateConnectionDeletePersistence(session.Plan)));
+                if (session.Endpoints?.HasStatusDeniedPrivateConnectionDeletePersistence(session.Plan) == true)
+                    return Reply(ReleaseMeasurement(session, session.Endpoints.RetryStatusDeniedPrivateConnectionDeletePersistence(session.Plan)));
+            }
+            // An inactive completed observation owns the next revision. Finish
+            // precisely that Flush before the first new Close; closing first
+            // would destroy its immutable preimage. No new proof is minted here.
+            lock (gate)
+            {
+                if (!session.Closed && session.Active == 0 && run.Pending is not null)
+                {
+                    TrackDeniedPrivateDelete(session, token, caller);
+                    PersistDeniedPrivateDelete(session);
+                }
+                if (!session.Closed && session.Active == 0 && session.Plan is not null)
+                {
+                    if (provisioner.HasStatusDeniedPrivateConnectionDeletePersistence(session.Plan))
+                        provisioner.RetryStatusDeniedPrivateConnectionDeletePersistence(session.Plan);
+                    if (session.Endpoints?.HasStatusDeniedPrivateConnectionDeletePersistence(session.Plan) == true)
+                        session.Endpoints.RetryStatusDeniedPrivateConnectionDeletePersistence(session.Plan);
+                }
+                // Both Close and selected publication are serialized by the
+                // journal transaction. Revocation follows durable Close.
+                provisioner.CloseSelectedRoot(owner, selector);
+                session.Closed = true;
+                run.Invalid = true;
+                if (session.Active == 0) session.PrivateDrained.TrySetResult();
+            }
+            if (session.Capture is not null) capture.RevokeStatusDeniedPrivateConnectionDeleteSelected(session.Capture);
+            session.Stop.Cancel();
+            using var deadline = new CancellationTokenSource(limits.Timeout, time);
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, caller, deadline.Token);
+            var snapshot = provisioner.Journal.Read(owner, selector);
+            try { await session.PrivateDrained.Task.WaitAsync(linked.Token).ConfigureAwait(false); }
+            catch (OperationCanceledException) when (!token.IsCancellationRequested && !caller.IsCancellationRequested)
+            { return Reply(ReleaseMeasurement(session, snapshot)); }
+            if (session.Capture is not null)
+            {
+                var seal = capture.SealAsync(session.Capture);
+                try { await seal.WaitAsync(linked.Token).ConfigureAwait(false); }
+                catch (OperationCanceledException) when (!token.IsCancellationRequested && !caller.IsCancellationRequested)
+                { return Reply(ReleaseMeasurement(session, snapshot)); }
+            }
+            run.PhysicalDrain = true;
+            DrainDeniedPrivateDelete(session);
+            snapshot = provisioner.Journal.Read(owner, selector);
+            // Cold unresolved and physically drained but unproven invocations
+            // retain d. Cleanup never converts their 404s into settlement.
+            if (snapshot.Resources.Length == 0 || !snapshot.Idle) return Reply(ReleaseMeasurement(session, snapshot));
+            Require(RoleFixtureJournal.StatusDeniedPrivateConnectionDeleteRoot(snapshot));
+            if (snapshot.Released && session.Plan is null) return Reply(ReleaseMeasurement(session, snapshot));
+            var parent = session.Plan ?? provisioner.OpenCleanupPlan(owner, selector);
+            session.Plan = parent;
+            Require(provisioner.MatchesOwnedPlan(parent, snapshot) && snapshot.PrivateConnectionCleanupEligible &&
+                parent.PrivateEndpoint!.BorrowedSubnetId == privateConnectionSource!.BorrowedSubnetId);
+            if (session.Endpoints is null)
+            {
+                var source = privateConnectionSource!;
+                session.Endpoints = new(provisioner, source.EndpointSetup, source.EndpointReader,
+                    source.VaultConnectionReader, source.ResourceLimits, source.InventoryLimits, time);
+            }
+            // Retained persistence always precedes fresh cleanup and reads.
+            if (provisioner.HasStatusDeniedPrivateConnectionDeletePersistence(parent))
+            {
+                snapshot = provisioner.RetryStatusDeniedPrivateConnectionDeletePersistence(parent);
+                return Reply(ReleaseMeasurement(session, snapshot));
+            }
+            if (session.Endpoints.HasStatusDeniedPrivateConnectionDeletePersistence(parent))
+            {
+                snapshot = session.Endpoints.RetryStatusDeniedPrivateConnectionDeletePersistence(parent);
+                return Reply(ReleaseMeasurement(session, snapshot));
+            }
+            var endpoint = await session.Endpoints.CleanupAsync(parent, linked.Token, caller).ConfigureAwait(false);
+            if (endpoint.State != PrivateEndpointFixtureProvisioner.CleanupState.DependenciesAbsent)
+                return Reply(ReleaseMeasurement(session, endpoint.Journal));
+            var result = await provisioner.ReleaseAsync(owner, selector, purge: true, cancellationToken: linked.Token,
+                privateEndpointCleanup: session.Endpoints, originalCallerToken: caller).ConfigureAwait(false);
+            return Reply(ReleaseMeasurement(session, result.Journal));
+        }
+        finally { run.Release.Release(); }
+    }
     internal sealed record Limits(int MaximumBodyBytes, int MaximumReplyBytes, TimeSpan Timeout);
+    private sealed class StatusFailedPurgeCancellationProfile { }
+    private StatusFailedPurgeCancellationProfile? failedCancellationProfile;
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<StatusFailedPurgeCancellationAdmission, PendingFacts>
+        failedCancellationAdmissions = new(ReferenceEqualityComparer.Instance);
+    internal sealed class StatusFailedPurgeCancellationAdmission(ManagementOperationFixtureObserverService source)
+    {
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.PendingValid(source.failedCancellationAdmissions.GetValueOrDefault(this), journal, state, false, failedCancellation: true);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.PendingValid(source.failedCancellationAdmissions.GetValueOrDefault(this), journal, state, true, failedCancellation: true);
+        internal RoleFixtureJournal.Snapshot Postimage => RoleFixtureJournal.CopyStatusPendingPurgeSnapshot(source.failedCancellationAdmissions[this].After);
+        public override string ToString() => "[StatusFailedPurgeCancellationAdmission]";
+    }
+
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<StatusFailedPurgeCancellationStartDrain, PendingFacts>
+        failedCancellationStartDrains = new(ReferenceEqualityComparer.Instance);
+    internal sealed class StatusFailedPurgeCancellationStartDrain(ManagementOperationFixtureObserverService source)
+    {
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.PendingValid(source.failedCancellationStartDrains.GetValueOrDefault(this), journal, state, false, failedCancellation: true);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.PendingValid(source.failedCancellationStartDrains.GetValueOrDefault(this), journal, state, true, failedCancellation: true);
+        internal RoleFixtureJournal.Snapshot Postimage => RoleFixtureJournal.CopyStatusPendingPurgeSnapshot(source.failedCancellationStartDrains[this].After);
+        public override string ToString() => "[StatusFailedPurgeCancellationStartDrain]";
+    }
+
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<StatusFailedPurgeCancellationReadAdmission, PendingFacts>
+        failedCancellationReadAdmissions = new(ReferenceEqualityComparer.Instance);
+    internal sealed class StatusFailedPurgeCancellationReadAdmission(ManagementOperationFixtureObserverService source)
+    {
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.PendingValid(source.failedCancellationReadAdmissions.GetValueOrDefault(this), journal, state, false, failedCancellation: true);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.PendingValid(source.failedCancellationReadAdmissions.GetValueOrDefault(this), journal, state, true, failedCancellation: true);
+        internal RoleFixtureJournal.Snapshot Postimage => RoleFixtureJournal.CopyStatusPendingPurgeSnapshot(source.failedCancellationReadAdmissions[this].After);
+        public override string ToString() => "[StatusFailedPurgeCancellationReadAdmission]";
+    }
+
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<StatusFailedPurgeCancellationTerminalFailure, PendingFacts>
+        failedCancellationTerminalFailures = new(ReferenceEqualityComparer.Instance);
+    internal sealed class StatusFailedPurgeCancellationTerminalFailure(ManagementOperationFixtureObserverService source)
+    {
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.PendingValid(source.failedCancellationTerminalFailures.GetValueOrDefault(this), journal, state, false, failedCancellation: true);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.PendingValid(source.failedCancellationTerminalFailures.GetValueOrDefault(this), journal, state, true, failedCancellation: true);
+        internal RoleFixtureJournal.Snapshot Postimage => RoleFixtureJournal.CopyStatusPendingPurgeSnapshot(source.failedCancellationTerminalFailures[this].After);
+        public override string ToString() => "[StatusFailedPurgeCancellationTerminalFailure]";
+    }
+
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<StatusFailedPurgeCancellationInvocationDrain, PendingFacts>
+        failedCancellationInvocationDrains = new(ReferenceEqualityComparer.Instance);
+    internal sealed class StatusFailedPurgeCancellationInvocationDrain(ManagementOperationFixtureObserverService source)
+    {
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.PendingValid(source.failedCancellationInvocationDrains.GetValueOrDefault(this), journal, state, false, failedCancellation: true);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.PendingValid(source.failedCancellationInvocationDrains.GetValueOrDefault(this), journal, state, true, failedCancellation: true);
+        internal RoleFixtureJournal.Snapshot Postimage => RoleFixtureJournal.CopyStatusPendingPurgeSnapshot(source.failedCancellationInvocationDrains[this].After);
+        public override string ToString() => "[StatusFailedPurgeCancellationInvocationDrain]";
+    }
+
+    internal static ManagementOperationFixtureObserverService ForStatusFailedPurgeCancellation(Uri origin, string owner,
+        string observerIdentity, SecretMaterial capability, VaultFixtureProvisioner.HostScope scope,
+        VaultFixtureProvisioner provisioner, S.Authority statusReader, R.Authority resourceReader,
+        HttpPipelineTransport selectedBackend, S.Limits statusLimits, R.Limits resourceLimits, Limits limits,
+        C.StatusPendingPurgeClockBounds clockBounds, TimeProvider time)
+    {
+        Require(ReferenceEquals(time, TimeProvider.System) && clockBounds is not null &&
+            clockBounds.MaxForwardUtcDeviation >= TimeSpan.Zero && clockBounds.MaxAuthorizationDelay > TimeSpan.Zero &&
+            typeof(Azure.Core.TokenCredential).Assembly.GetName().Version == new Version(1, 63, 0, 0) &&
+            typeof(Azure.ResourceManager.ArmClient).Assembly.GetName().Version == new Version(1, 14, 0, 0) &&
+            typeof(Azure.ResourceManager.KeyVault.KeyVaultResource).Assembly.GetName().Version == new Version(1, 4, 0, 0));
+        _ = DateTimeOffset.UtcNow + limits.Timeout + clockBounds.MaxForwardUtcDeviation +
+            clockBounds.MaxAuthorizationDelay + TimeSpan.FromMinutes(5);
+        var configuration = provisioner.StatusFailedPurgeCancellationConfiguration(scope, statusReader, resourceReader, selectedBackend);
+        return new(origin, owner, observerIdentity, capability, scope, provisioner, statusReader, resourceReader,
+            selectedBackend, statusLimits, resourceLimits, limits, time)
+        {
+            failedCancellationProfile = new(), pendingConfiguration = configuration, pendingClockBounds = clockBounds,
+            pendingResourceAuthority = resourceReader, pendingResourceLimits = resourceLimits,
+            pendingStatusAuthority = statusReader, pendingStatusLimits = statusLimits
+        };
+    }
+    internal static ManagementOperationFixtureObserverService ForStatusFailedPurgeCancellationCleanup(Uri origin, string owner,
+        string observerIdentity, SecretMaterial capability, VaultFixtureProvisioner.HostScope scope,
+        VaultFixtureProvisioner provisioner, Limits limits, TimeProvider time)
+    {
+        Require(ReferenceEquals(time, TimeProvider.System));
+        var configuration = provisioner.StatusFailedPurgeCancellationCleanupConfiguration(scope);
+        return new(origin, owner, observerIdentity, capability, scope, provisioner, limits, time)
+        { failedCancellationProfile = new(), statusPendingPurgeCleanup = true, pendingConfiguration = configuration };
+    }
+
+    private sealed class StatusFailedPurgeIndependentProfile { }
+    private StatusFailedPurgeIndependentProfile? failedIndependentProfile;
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<StatusFailedPurgeIndependentAdmission, PendingFacts>
+        failedIndependentAdmissions = new(ReferenceEqualityComparer.Instance);
+    internal sealed class StatusFailedPurgeIndependentAdmission(ManagementOperationFixtureObserverService source)
+    {
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.PendingValid(source.failedIndependentAdmissions.GetValueOrDefault(this), journal, state, false, failedIndependent: true);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.PendingValid(source.failedIndependentAdmissions.GetValueOrDefault(this), journal, state, true, failedIndependent: true);
+        internal RoleFixtureJournal.Snapshot Postimage => RoleFixtureJournal.CopyStatusPendingPurgeSnapshot(source.failedIndependentAdmissions[this].After);
+        public override string ToString() => "[StatusFailedPurgeIndependentAdmission]";
+    }
+
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<StatusFailedPurgeIndependentStartDrain, PendingFacts>
+        failedIndependentStartDrains = new(ReferenceEqualityComparer.Instance);
+    internal sealed class StatusFailedPurgeIndependentStartDrain(ManagementOperationFixtureObserverService source)
+    {
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.PendingValid(source.failedIndependentStartDrains.GetValueOrDefault(this), journal, state, false, failedIndependent: true);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.PendingValid(source.failedIndependentStartDrains.GetValueOrDefault(this), journal, state, true, failedIndependent: true);
+        internal RoleFixtureJournal.Snapshot Postimage => RoleFixtureJournal.CopyStatusPendingPurgeSnapshot(source.failedIndependentStartDrains[this].After);
+        public override string ToString() => "[StatusFailedPurgeIndependentStartDrain]";
+    }
+
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<StatusFailedPurgeIndependentReadAdmission, PendingFacts>
+        failedIndependentReadAdmissions = new(ReferenceEqualityComparer.Instance);
+    internal sealed class StatusFailedPurgeIndependentReadAdmission(ManagementOperationFixtureObserverService source)
+    {
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.PendingValid(source.failedIndependentReadAdmissions.GetValueOrDefault(this), journal, state, false, failedIndependent: true);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.PendingValid(source.failedIndependentReadAdmissions.GetValueOrDefault(this), journal, state, true, failedIndependent: true);
+        internal RoleFixtureJournal.Snapshot Postimage => RoleFixtureJournal.CopyStatusPendingPurgeSnapshot(source.failedIndependentReadAdmissions[this].After);
+        public override string ToString() => "[StatusFailedPurgeIndependentReadAdmission]";
+    }
+
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<StatusFailedPurgeIndependentTerminalFailure, PendingFacts>
+        failedIndependentTerminalFailures = new(ReferenceEqualityComparer.Instance);
+    internal sealed class StatusFailedPurgeIndependentTerminalFailure(ManagementOperationFixtureObserverService source)
+    {
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.PendingValid(source.failedIndependentTerminalFailures.GetValueOrDefault(this), journal, state, false, failedIndependent: true);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.PendingValid(source.failedIndependentTerminalFailures.GetValueOrDefault(this), journal, state, true, failedIndependent: true);
+        internal RoleFixtureJournal.Snapshot Postimage => RoleFixtureJournal.CopyStatusPendingPurgeSnapshot(source.failedIndependentTerminalFailures[this].After);
+        public override string ToString() => "[StatusFailedPurgeIndependentTerminalFailure]";
+    }
+
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<StatusFailedPurgeIndependentInvocationDrain, PendingFacts>
+        failedIndependentInvocationDrains = new(ReferenceEqualityComparer.Instance);
+    internal sealed class StatusFailedPurgeIndependentInvocationDrain(ManagementOperationFixtureObserverService source)
+    {
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.PendingValid(source.failedIndependentInvocationDrains.GetValueOrDefault(this), journal, state, false, failedIndependent: true);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.PendingValid(source.failedIndependentInvocationDrains.GetValueOrDefault(this), journal, state, true, failedIndependent: true);
+        internal RoleFixtureJournal.Snapshot Postimage => RoleFixtureJournal.CopyStatusPendingPurgeSnapshot(source.failedIndependentInvocationDrains[this].After);
+        public override string ToString() => "[StatusFailedPurgeIndependentInvocationDrain]";
+    }
+
+    internal static ManagementOperationFixtureObserverService ForStatusFailedPurgeIndependent(Uri origin, string owner,
+        string observerIdentity, SecretMaterial capability, VaultFixtureProvisioner.HostScope scope,
+        VaultFixtureProvisioner provisioner, S.Authority statusReader, R.Authority resourceReader,
+        HttpPipelineTransport selectedBackend, S.Limits statusLimits, R.Limits resourceLimits, Limits limits,
+        C.StatusPendingPurgeClockBounds clockBounds, TimeProvider time)
+    {
+        Require(ReferenceEquals(time, TimeProvider.System) && clockBounds is not null &&
+            clockBounds.MaxForwardUtcDeviation >= TimeSpan.Zero && clockBounds.MaxAuthorizationDelay > TimeSpan.Zero &&
+            typeof(Azure.Core.TokenCredential).Assembly.GetName().Version == new Version(1, 63, 0, 0) &&
+            typeof(Azure.ResourceManager.ArmClient).Assembly.GetName().Version == new Version(1, 14, 0, 0) &&
+            typeof(Azure.ResourceManager.KeyVault.KeyVaultResource).Assembly.GetName().Version == new Version(1, 4, 0, 0));
+        _ = DateTimeOffset.UtcNow + limits.Timeout + clockBounds.MaxForwardUtcDeviation +
+            clockBounds.MaxAuthorizationDelay + TimeSpan.FromMinutes(5);
+        var configuration = provisioner.StatusFailedPurgeIndependentConfiguration(scope, statusReader, resourceReader, selectedBackend);
+        return new(origin, owner, observerIdentity, capability, scope, provisioner, statusReader, resourceReader,
+            selectedBackend, statusLimits, resourceLimits, limits, time)
+        {
+            failedIndependentProfile = new(), pendingConfiguration = configuration, pendingClockBounds = clockBounds,
+            pendingResourceAuthority = resourceReader, pendingResourceLimits = resourceLimits,
+            pendingStatusAuthority = statusReader, pendingStatusLimits = statusLimits
+        };
+    }
+    internal static ManagementOperationFixtureObserverService ForStatusFailedPurgeIndependentCleanup(Uri origin, string owner,
+        string observerIdentity, SecretMaterial capability, VaultFixtureProvisioner.HostScope scope,
+        VaultFixtureProvisioner provisioner, Limits limits, TimeProvider time)
+    {
+        Require(ReferenceEquals(time, TimeProvider.System));
+        var configuration = provisioner.StatusFailedPurgeIndependentCleanupConfiguration(scope);
+        return new(origin, owner, observerIdentity, capability, scope, provisioner, limits, time)
+        { failedIndependentProfile = new(), statusPendingPurgeCleanup = true, pendingConfiguration = configuration };
+    }
+
+    private sealed class StatusCanceledPurgeCancellationProfile { }
+    private StatusCanceledPurgeCancellationProfile? canceledCancellationProfile;
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<StatusCanceledPurgeCancellationAdmission, PendingFacts>
+        canceledCancellationAdmissions = new(ReferenceEqualityComparer.Instance);
+    internal sealed class StatusCanceledPurgeCancellationAdmission(ManagementOperationFixtureObserverService source)
+    {
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.CanceledCancellationValid(source.canceledCancellationAdmissions.GetValueOrDefault(this), journal, state, false);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.CanceledCancellationValid(source.canceledCancellationAdmissions.GetValueOrDefault(this), journal, state, true);
+        internal RoleFixtureJournal.Snapshot Postimage => RoleFixtureJournal.CopyStatusPendingPurgeSnapshot(source.canceledCancellationAdmissions[this].After);
+        public override string ToString() => "[StatusCanceledPurgeCancellationAdmission]";
+    }
+
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<StatusCanceledPurgeCancellationStartDrain, PendingFacts>
+        canceledCancellationStartDrains = new(ReferenceEqualityComparer.Instance);
+    internal sealed class StatusCanceledPurgeCancellationStartDrain(ManagementOperationFixtureObserverService source)
+    {
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.CanceledCancellationValid(source.canceledCancellationStartDrains.GetValueOrDefault(this), journal, state, false);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.CanceledCancellationValid(source.canceledCancellationStartDrains.GetValueOrDefault(this), journal, state, true);
+        internal RoleFixtureJournal.Snapshot Postimage => RoleFixtureJournal.CopyStatusPendingPurgeSnapshot(source.canceledCancellationStartDrains[this].After);
+        public override string ToString() => "[StatusCanceledPurgeCancellationStartDrain]";
+    }
+
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<StatusCanceledPurgeCancellationReadAdmission, PendingFacts>
+        canceledCancellationReadAdmissions = new(ReferenceEqualityComparer.Instance);
+    internal sealed class StatusCanceledPurgeCancellationReadAdmission(ManagementOperationFixtureObserverService source)
+    {
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.CanceledCancellationValid(source.canceledCancellationReadAdmissions.GetValueOrDefault(this), journal, state, false);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.CanceledCancellationValid(source.canceledCancellationReadAdmissions.GetValueOrDefault(this), journal, state, true);
+        internal RoleFixtureJournal.Snapshot Postimage => RoleFixtureJournal.CopyStatusPendingPurgeSnapshot(source.canceledCancellationReadAdmissions[this].After);
+        public override string ToString() => "[StatusCanceledPurgeCancellationReadAdmission]";
+    }
+
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<StatusCanceledPurgeCancellationTerminalCancellation, PendingFacts>
+        canceledCancellationTerminalCancellations = new(ReferenceEqualityComparer.Instance);
+    internal sealed class StatusCanceledPurgeCancellationTerminalCancellation(ManagementOperationFixtureObserverService source)
+    {
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.CanceledCancellationValid(source.canceledCancellationTerminalCancellations.GetValueOrDefault(this), journal, state, false);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.CanceledCancellationValid(source.canceledCancellationTerminalCancellations.GetValueOrDefault(this), journal, state, true);
+        internal RoleFixtureJournal.Snapshot Postimage => RoleFixtureJournal.CopyStatusPendingPurgeSnapshot(source.canceledCancellationTerminalCancellations[this].After);
+        public override string ToString() => "[StatusCanceledPurgeCancellationTerminalCancellation]";
+    }
+
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<StatusCanceledPurgeCancellationInvocationDrain, PendingFacts>
+        canceledCancellationInvocationDrains = new(ReferenceEqualityComparer.Instance);
+    internal sealed class StatusCanceledPurgeCancellationInvocationDrain(ManagementOperationFixtureObserverService source)
+    {
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.CanceledCancellationValid(source.canceledCancellationInvocationDrains.GetValueOrDefault(this), journal, state, false);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.CanceledCancellationValid(source.canceledCancellationInvocationDrains.GetValueOrDefault(this), journal, state, true);
+        internal RoleFixtureJournal.Snapshot Postimage => RoleFixtureJournal.CopyStatusPendingPurgeSnapshot(source.canceledCancellationInvocationDrains[this].After);
+        public override string ToString() => "[StatusCanceledPurgeCancellationInvocationDrain]";
+    }
+
+    internal static ManagementOperationFixtureObserverService ForStatusCanceledPurgeCancellation(Uri origin, string owner,
+        string observerIdentity, SecretMaterial capability, VaultFixtureProvisioner.HostScope scope,
+        VaultFixtureProvisioner provisioner, S.Authority statusReader, R.Authority resourceReader,
+        HttpPipelineTransport selectedBackend, S.Limits statusLimits, R.Limits resourceLimits, Limits limits,
+        C.StatusPendingPurgeClockBounds clockBounds, TimeProvider time)
+    {
+        Require(ReferenceEquals(time, TimeProvider.System) && clockBounds is not null &&
+            clockBounds.MaxForwardUtcDeviation >= TimeSpan.Zero && clockBounds.MaxAuthorizationDelay > TimeSpan.Zero &&
+            typeof(Azure.Core.TokenCredential).Assembly.GetName().Version == new Version(1, 63, 0, 0) &&
+            typeof(Azure.ResourceManager.ArmClient).Assembly.GetName().Version == new Version(1, 14, 0, 0) &&
+            typeof(Azure.ResourceManager.KeyVault.KeyVaultResource).Assembly.GetName().Version == new Version(1, 4, 0, 0));
+        _ = DateTimeOffset.UtcNow + limits.Timeout + clockBounds.MaxForwardUtcDeviation +
+            clockBounds.MaxAuthorizationDelay + TimeSpan.FromMinutes(5);
+        var configuration = provisioner.StatusCanceledPurgeCancellationConfiguration(scope, statusReader, resourceReader, selectedBackend);
+        return new(origin, owner, observerIdentity, capability, scope, provisioner, statusReader, resourceReader,
+            selectedBackend, statusLimits, resourceLimits, limits, time)
+        {
+            canceledCancellationProfile = new(), pendingConfiguration = configuration, pendingClockBounds = clockBounds,
+            pendingResourceAuthority = resourceReader, pendingResourceLimits = resourceLimits,
+            pendingStatusAuthority = statusReader, pendingStatusLimits = statusLimits
+        };
+    }
+    internal static ManagementOperationFixtureObserverService ForStatusCanceledPurgeCancellationCleanup(Uri origin, string owner,
+        string observerIdentity, SecretMaterial capability, VaultFixtureProvisioner.HostScope scope,
+        VaultFixtureProvisioner provisioner, Limits limits, TimeProvider time)
+    {
+        Require(ReferenceEquals(time, TimeProvider.System));
+        var configuration = provisioner.StatusCanceledPurgeCancellationCleanupConfiguration(scope);
+        return new(origin, owner, observerIdentity, capability, scope, provisioner, limits, time)
+        { canceledCancellationProfile = new(), statusPendingPurgeCleanup = true, pendingConfiguration = configuration };
+    }
+    private sealed class StatusCanceledPurgeIndependentProfile { }
+    private StatusCanceledPurgeIndependentProfile? canceledIndependentProfile;
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<StatusCanceledPurgeIndependentAdmission, PendingFacts>
+        canceledIndependentAdmissions = new(ReferenceEqualityComparer.Instance);
+    internal sealed class StatusCanceledPurgeIndependentAdmission(ManagementOperationFixtureObserverService source)
+    {
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.CanceledIndependentValid(source.canceledIndependentAdmissions.GetValueOrDefault(this), journal, state, false);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.CanceledIndependentValid(source.canceledIndependentAdmissions.GetValueOrDefault(this), journal, state, true);
+        internal RoleFixtureJournal.Snapshot Postimage => RoleFixtureJournal.CopyStatusPendingPurgeSnapshot(source.canceledIndependentAdmissions[this].After);
+        public override string ToString() => "[StatusCanceledPurgeIndependentAdmission]";
+    }
+
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<StatusCanceledPurgeIndependentStartDrain, PendingFacts>
+        canceledIndependentStartDrains = new(ReferenceEqualityComparer.Instance);
+    internal sealed class StatusCanceledPurgeIndependentStartDrain(ManagementOperationFixtureObserverService source)
+    {
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.CanceledIndependentValid(source.canceledIndependentStartDrains.GetValueOrDefault(this), journal, state, false);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.CanceledIndependentValid(source.canceledIndependentStartDrains.GetValueOrDefault(this), journal, state, true);
+        internal RoleFixtureJournal.Snapshot Postimage => RoleFixtureJournal.CopyStatusPendingPurgeSnapshot(source.canceledIndependentStartDrains[this].After);
+        public override string ToString() => "[StatusCanceledPurgeIndependentStartDrain]";
+    }
+
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<StatusCanceledPurgeIndependentReadAdmission, PendingFacts>
+        canceledIndependentReadAdmissions = new(ReferenceEqualityComparer.Instance);
+    internal sealed class StatusCanceledPurgeIndependentReadAdmission(ManagementOperationFixtureObserverService source)
+    {
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.CanceledIndependentValid(source.canceledIndependentReadAdmissions.GetValueOrDefault(this), journal, state, false);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.CanceledIndependentValid(source.canceledIndependentReadAdmissions.GetValueOrDefault(this), journal, state, true);
+        internal RoleFixtureJournal.Snapshot Postimage => RoleFixtureJournal.CopyStatusPendingPurgeSnapshot(source.canceledIndependentReadAdmissions[this].After);
+        public override string ToString() => "[StatusCanceledPurgeIndependentReadAdmission]";
+    }
+
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<StatusCanceledPurgeIndependentTerminalCancellation, PendingFacts>
+        canceledIndependentTerminalCancellations = new(ReferenceEqualityComparer.Instance);
+    internal sealed class StatusCanceledPurgeIndependentTerminalCancellation(ManagementOperationFixtureObserverService source)
+    {
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.CanceledIndependentValid(source.canceledIndependentTerminalCancellations.GetValueOrDefault(this), journal, state, false);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.CanceledIndependentValid(source.canceledIndependentTerminalCancellations.GetValueOrDefault(this), journal, state, true);
+        internal RoleFixtureJournal.Snapshot Postimage => RoleFixtureJournal.CopyStatusPendingPurgeSnapshot(source.canceledIndependentTerminalCancellations[this].After);
+        public override string ToString() => "[StatusCanceledPurgeIndependentTerminalCancellation]";
+    }
+
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<StatusCanceledPurgeIndependentInvocationDrain, PendingFacts>
+        canceledIndependentInvocationDrains = new(ReferenceEqualityComparer.Instance);
+    internal sealed class StatusCanceledPurgeIndependentInvocationDrain(ManagementOperationFixtureObserverService source)
+    {
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.CanceledIndependentValid(source.canceledIndependentInvocationDrains.GetValueOrDefault(this), journal, state, false);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.CanceledIndependentValid(source.canceledIndependentInvocationDrains.GetValueOrDefault(this), journal, state, true);
+        internal RoleFixtureJournal.Snapshot Postimage => RoleFixtureJournal.CopyStatusPendingPurgeSnapshot(source.canceledIndependentInvocationDrains[this].After);
+        public override string ToString() => "[StatusCanceledPurgeIndependentInvocationDrain]";
+    }
+
+    internal static ManagementOperationFixtureObserverService ForStatusCanceledPurgeIndependent(Uri origin, string owner,
+        string observerIdentity, SecretMaterial capability, VaultFixtureProvisioner.HostScope scope,
+        VaultFixtureProvisioner provisioner, S.Authority statusReader, R.Authority resourceReader,
+        HttpPipelineTransport selectedBackend, S.Limits statusLimits, R.Limits resourceLimits, Limits limits,
+        C.StatusPendingPurgeClockBounds clockBounds, TimeProvider time)
+    {
+        Require(ReferenceEquals(time, TimeProvider.System) && clockBounds is not null &&
+            clockBounds.MaxForwardUtcDeviation >= TimeSpan.Zero && clockBounds.MaxAuthorizationDelay > TimeSpan.Zero &&
+            typeof(Azure.Core.TokenCredential).Assembly.GetName().Version == new Version(1, 63, 0, 0) &&
+            typeof(Azure.ResourceManager.ArmClient).Assembly.GetName().Version == new Version(1, 14, 0, 0) &&
+            typeof(Azure.ResourceManager.KeyVault.KeyVaultResource).Assembly.GetName().Version == new Version(1, 4, 0, 0));
+        _ = DateTimeOffset.UtcNow + limits.Timeout + clockBounds.MaxForwardUtcDeviation +
+            clockBounds.MaxAuthorizationDelay + TimeSpan.FromMinutes(5);
+        var configuration = provisioner.StatusCanceledPurgeIndependentConfiguration(scope, statusReader, resourceReader, selectedBackend);
+        return new(origin, owner, observerIdentity, capability, scope, provisioner, statusReader, resourceReader,
+            selectedBackend, statusLimits, resourceLimits, limits, time)
+        {
+            canceledIndependentProfile = new(), pendingConfiguration = configuration, pendingClockBounds = clockBounds,
+            pendingResourceAuthority = resourceReader, pendingResourceLimits = resourceLimits,
+            pendingStatusAuthority = statusReader, pendingStatusLimits = statusLimits
+        };
+    }
+    internal static ManagementOperationFixtureObserverService ForStatusCanceledPurgeIndependentCleanup(Uri origin, string owner,
+        string observerIdentity, SecretMaterial capability, VaultFixtureProvisioner.HostScope scope,
+        VaultFixtureProvisioner provisioner, Limits limits, TimeProvider time)
+    {
+        Require(ReferenceEquals(time, TimeProvider.System));
+        var configuration = provisioner.StatusCanceledPurgeIndependentCleanupConfiguration(scope);
+        return new(origin, owner, observerIdentity, capability, scope, provisioner, limits, time)
+        { canceledIndependentProfile = new(), statusPendingPurgeCleanup = true, pendingConfiguration = configuration };
+    }
+
+    private sealed class StatusCanceledPurgeProfile { }
+    private StatusCanceledPurgeProfile? canceledProfile;
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<StatusCanceledPurgeAdmission, PendingFacts>
+        canceledAdmissions = new(ReferenceEqualityComparer.Instance);
+    internal sealed class StatusCanceledPurgeAdmission(ManagementOperationFixtureObserverService source)
+    {
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.CanceledValid(source.canceledAdmissions.GetValueOrDefault(this), journal, state, false);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.CanceledValid(source.canceledAdmissions.GetValueOrDefault(this), journal, state, true);
+        internal RoleFixtureJournal.Snapshot Postimage => RoleFixtureJournal.CopyStatusPendingPurgeSnapshot(source.canceledAdmissions[this].After);
+        public override string ToString() => "[StatusCanceledPurgeAdmission]";
+    }
+
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<StatusCanceledPurgeStartDrain, PendingFacts>
+        canceledStartDrains = new(ReferenceEqualityComparer.Instance);
+    internal sealed class StatusCanceledPurgeStartDrain(ManagementOperationFixtureObserverService source)
+    {
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.CanceledValid(source.canceledStartDrains.GetValueOrDefault(this), journal, state, false);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.CanceledValid(source.canceledStartDrains.GetValueOrDefault(this), journal, state, true);
+        internal RoleFixtureJournal.Snapshot Postimage => RoleFixtureJournal.CopyStatusPendingPurgeSnapshot(source.canceledStartDrains[this].After);
+        public override string ToString() => "[StatusCanceledPurgeStartDrain]";
+    }
+
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<StatusCanceledPurgeReadAdmission, PendingFacts>
+        canceledReadAdmissions = new(ReferenceEqualityComparer.Instance);
+    internal sealed class StatusCanceledPurgeReadAdmission(ManagementOperationFixtureObserverService source)
+    {
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.CanceledValid(source.canceledReadAdmissions.GetValueOrDefault(this), journal, state, false);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.CanceledValid(source.canceledReadAdmissions.GetValueOrDefault(this), journal, state, true);
+        internal RoleFixtureJournal.Snapshot Postimage => RoleFixtureJournal.CopyStatusPendingPurgeSnapshot(source.canceledReadAdmissions[this].After);
+        public override string ToString() => "[StatusCanceledPurgeReadAdmission]";
+    }
+
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<StatusCanceledPurgeTerminalCancellation, PendingFacts>
+        canceledTerminalCancellations = new(ReferenceEqualityComparer.Instance);
+    internal sealed class StatusCanceledPurgeTerminalCancellation(ManagementOperationFixtureObserverService source)
+    {
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.CanceledValid(source.canceledTerminalCancellations.GetValueOrDefault(this), journal, state, false);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.CanceledValid(source.canceledTerminalCancellations.GetValueOrDefault(this), journal, state, true);
+        internal RoleFixtureJournal.Snapshot Postimage => RoleFixtureJournal.CopyStatusPendingPurgeSnapshot(source.canceledTerminalCancellations[this].After);
+        public override string ToString() => "[StatusCanceledPurgeTerminalCancellation]";
+    }
+
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<StatusCanceledPurgeInvocationDrain, PendingFacts>
+        canceledInvocationDrains = new(ReferenceEqualityComparer.Instance);
+    internal sealed class StatusCanceledPurgeInvocationDrain(ManagementOperationFixtureObserverService source)
+    {
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.CanceledValid(source.canceledInvocationDrains.GetValueOrDefault(this), journal, state, false);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.CanceledValid(source.canceledInvocationDrains.GetValueOrDefault(this), journal, state, true);
+        internal RoleFixtureJournal.Snapshot Postimage => RoleFixtureJournal.CopyStatusPendingPurgeSnapshot(source.canceledInvocationDrains[this].After);
+        public override string ToString() => "[StatusCanceledPurgeInvocationDrain]";
+    }
+
+    internal static ManagementOperationFixtureObserverService ForStatusCanceledPurge(Uri origin, string owner,
+        string observerIdentity, SecretMaterial capability, VaultFixtureProvisioner.HostScope scope,
+        VaultFixtureProvisioner provisioner, S.Authority statusReader, R.Authority resourceReader,
+        HttpPipelineTransport selectedBackend, S.Limits statusLimits, R.Limits resourceLimits, Limits limits,
+        C.StatusPendingPurgeClockBounds clockBounds, TimeProvider time)
+    {
+        Require(ReferenceEquals(time, TimeProvider.System) && clockBounds is not null &&
+            clockBounds.MaxForwardUtcDeviation >= TimeSpan.Zero && clockBounds.MaxAuthorizationDelay > TimeSpan.Zero &&
+            typeof(Azure.Core.TokenCredential).Assembly.GetName().Version == new Version(1, 63, 0, 0) &&
+            typeof(Azure.ResourceManager.ArmClient).Assembly.GetName().Version == new Version(1, 14, 0, 0) &&
+            typeof(Azure.ResourceManager.KeyVault.KeyVaultResource).Assembly.GetName().Version == new Version(1, 4, 0, 0));
+        _ = DateTimeOffset.UtcNow + limits.Timeout + clockBounds.MaxForwardUtcDeviation +
+            clockBounds.MaxAuthorizationDelay + TimeSpan.FromMinutes(5);
+        var configuration = provisioner.StatusCanceledPurgeConfiguration(scope, statusReader, resourceReader, selectedBackend);
+        return new(origin, owner, observerIdentity, capability, scope, provisioner, statusReader, resourceReader,
+            selectedBackend, statusLimits, resourceLimits, limits, time)
+        {
+            canceledProfile = new(), pendingConfiguration = configuration, pendingClockBounds = clockBounds,
+            pendingResourceAuthority = resourceReader, pendingResourceLimits = resourceLimits,
+            pendingStatusAuthority = statusReader, pendingStatusLimits = statusLimits
+        };
+    }
+    internal static ManagementOperationFixtureObserverService ForStatusCanceledPurgeCleanup(Uri origin, string owner,
+        string observerIdentity, SecretMaterial capability, VaultFixtureProvisioner.HostScope scope,
+        VaultFixtureProvisioner provisioner, Limits limits, TimeProvider time)
+    {
+        Require(ReferenceEquals(time, TimeProvider.System));
+        var configuration = provisioner.StatusCanceledPurgeCleanupConfiguration(scope);
+        return new(origin, owner, observerIdentity, capability, scope, provisioner, limits, time)
+        { canceledProfile = new(), statusPendingPurgeCleanup = true, pendingConfiguration = configuration };
+    }
+
+    private sealed class StatusDeniedPurgeProfile(string variant = "operation.PurgeDeletedVault")
+    {
+        internal string Variant { get; } = variant;
+    }
+    private StatusDeniedPurgeProfile? deniedProfile;
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<StatusDeniedPurgeAdmission, PendingFacts>
+        deniedAdmissions = new(ReferenceEqualityComparer.Instance);
+    internal sealed class StatusDeniedPurgeAdmission(ManagementOperationFixtureObserverService source)
+    {
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.PendingValid(source.deniedAdmissions.GetValueOrDefault(this), journal, state, false, denied: true);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.PendingValid(source.deniedAdmissions.GetValueOrDefault(this), journal, state, true, denied: true);
+        internal RoleFixtureJournal.Snapshot Postimage => RoleFixtureJournal.CopyStatusPendingPurgeSnapshot(source.deniedAdmissions[this].After);
+        public override string ToString() => "[StatusDeniedPurgeAdmission]";
+    }
+
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<StatusDeniedPurgeStartDrain, PendingFacts>
+        deniedStartDrains = new(ReferenceEqualityComparer.Instance);
+    internal sealed class StatusDeniedPurgeStartDrain(ManagementOperationFixtureObserverService source)
+    {
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.PendingValid(source.deniedStartDrains.GetValueOrDefault(this), journal, state, false, denied: true);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.PendingValid(source.deniedStartDrains.GetValueOrDefault(this), journal, state, true, denied: true);
+        internal RoleFixtureJournal.Snapshot Postimage => RoleFixtureJournal.CopyStatusPendingPurgeSnapshot(source.deniedStartDrains[this].After);
+        public override string ToString() => "[StatusDeniedPurgeStartDrain]";
+    }
+
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<StatusDeniedPurgeReadAdmission, PendingFacts>
+        deniedReadAdmissions = new(ReferenceEqualityComparer.Instance);
+    internal sealed class StatusDeniedPurgeReadAdmission(ManagementOperationFixtureObserverService source)
+    {
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.PendingValid(source.deniedReadAdmissions.GetValueOrDefault(this), journal, state, false, denied: true);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.PendingValid(source.deniedReadAdmissions.GetValueOrDefault(this), journal, state, true, denied: true);
+        internal RoleFixtureJournal.Snapshot Postimage => RoleFixtureJournal.CopyStatusPendingPurgeSnapshot(source.deniedReadAdmissions[this].After);
+        public override string ToString() => "[StatusDeniedPurgeReadAdmission]";
+    }
+
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<StatusDeniedPurgeObservation, PendingFacts>
+        deniedObservations = new(ReferenceEqualityComparer.Instance);
+    internal sealed class StatusDeniedPurgeObservation(ManagementOperationFixtureObserverService source)
+    {
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.PendingValid(source.deniedObservations.GetValueOrDefault(this), journal, state, false, denied: true);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.PendingValid(source.deniedObservations.GetValueOrDefault(this), journal, state, true, denied: true);
+        internal RoleFixtureJournal.Snapshot Postimage => RoleFixtureJournal.CopyStatusPendingPurgeSnapshot(source.deniedObservations[this].After);
+        public override string ToString() => "[StatusDeniedPurgeObservation]";
+    }
+
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<StatusDeniedPurgeInvocationDrain, PendingFacts>
+        deniedInvocationDrains = new(ReferenceEqualityComparer.Instance);
+    internal sealed class StatusDeniedPurgeInvocationDrain(ManagementOperationFixtureObserverService source)
+    {
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.PendingValid(source.deniedInvocationDrains.GetValueOrDefault(this), journal, state, false, denied: true);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.PendingValid(source.deniedInvocationDrains.GetValueOrDefault(this), journal, state, true, denied: true);
+        internal RoleFixtureJournal.Snapshot Postimage => RoleFixtureJournal.CopyStatusPendingPurgeSnapshot(source.deniedInvocationDrains[this].After);
+        public override string ToString() => "[StatusDeniedPurgeInvocationDrain]";
+    }
+
+    private sealed class StatusFailedPurgeProfile { }
+    private StatusFailedPurgeProfile? failedProfile;
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<StatusFailedPurgeAdmission, PendingFacts>
+        failedAdmissions = new(ReferenceEqualityComparer.Instance);
+    internal sealed class StatusFailedPurgeAdmission(ManagementOperationFixtureObserverService source)
+    {
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.PendingValid(source.failedAdmissions.GetValueOrDefault(this), journal, state, false, failed: true);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.PendingValid(source.failedAdmissions.GetValueOrDefault(this), journal, state, true, failed: true);
+        internal RoleFixtureJournal.Snapshot Postimage => RoleFixtureJournal.CopyStatusPendingPurgeSnapshot(source.failedAdmissions[this].After);
+        public override string ToString() => "[StatusFailedPurgeAdmission]";
+    }
+
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<StatusFailedPurgeStartDrain, PendingFacts>
+        failedStartDrains = new(ReferenceEqualityComparer.Instance);
+    internal sealed class StatusFailedPurgeStartDrain(ManagementOperationFixtureObserverService source)
+    {
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.PendingValid(source.failedStartDrains.GetValueOrDefault(this), journal, state, false, failed: true);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.PendingValid(source.failedStartDrains.GetValueOrDefault(this), journal, state, true, failed: true);
+        internal RoleFixtureJournal.Snapshot Postimage => RoleFixtureJournal.CopyStatusPendingPurgeSnapshot(source.failedStartDrains[this].After);
+        public override string ToString() => "[StatusFailedPurgeStartDrain]";
+    }
+
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<StatusFailedPurgeReadAdmission, PendingFacts>
+        failedReadAdmissions = new(ReferenceEqualityComparer.Instance);
+    internal sealed class StatusFailedPurgeReadAdmission(ManagementOperationFixtureObserverService source)
+    {
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.PendingValid(source.failedReadAdmissions.GetValueOrDefault(this), journal, state, false, failed: true);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.PendingValid(source.failedReadAdmissions.GetValueOrDefault(this), journal, state, true, failed: true);
+        internal RoleFixtureJournal.Snapshot Postimage => RoleFixtureJournal.CopyStatusPendingPurgeSnapshot(source.failedReadAdmissions[this].After);
+        public override string ToString() => "[StatusFailedPurgeReadAdmission]";
+    }
+
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<StatusFailedPurgeTerminalFailure, PendingFacts>
+        failedTerminalFailures = new(ReferenceEqualityComparer.Instance);
+    internal sealed class StatusFailedPurgeTerminalFailure(ManagementOperationFixtureObserverService source)
+    {
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.PendingValid(source.failedTerminalFailures.GetValueOrDefault(this), journal, state, false, failed: true);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.PendingValid(source.failedTerminalFailures.GetValueOrDefault(this), journal, state, true, failed: true);
+        internal RoleFixtureJournal.Snapshot Postimage => RoleFixtureJournal.CopyStatusPendingPurgeSnapshot(source.failedTerminalFailures[this].After);
+        public override string ToString() => "[StatusFailedPurgeTerminalFailure]";
+    }
+
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<StatusFailedPurgeInvocationDrain, PendingFacts>
+        failedInvocationDrains = new(ReferenceEqualityComparer.Instance);
+    internal sealed class StatusFailedPurgeInvocationDrain(ManagementOperationFixtureObserverService source)
+    {
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.PendingValid(source.failedInvocationDrains.GetValueOrDefault(this), journal, state, false, failed: true);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.PendingValid(source.failedInvocationDrains.GetValueOrDefault(this), journal, state, true, failed: true);
+        internal RoleFixtureJournal.Snapshot Postimage => RoleFixtureJournal.CopyStatusPendingPurgeSnapshot(source.failedInvocationDrains[this].After);
+        public override string ToString() => "[StatusFailedPurgeInvocationDrain]";
+    }
+
+    internal static ManagementOperationFixtureObserverService ForStatusDeniedPurge(Uri origin, string owner,
+        string observerIdentity, SecretMaterial capability, VaultFixtureProvisioner.HostScope scope,
+        VaultFixtureProvisioner provisioner, S.Authority statusReader, R.Authority resourceReader,
+        HttpPipelineTransport selectedBackend, S.Limits statusLimits, R.Limits resourceLimits, Limits limits,
+        TimeProvider? time = null)
+    {
+        var configuration = provisioner.StatusDeniedPurgeConfiguration(scope, statusReader, resourceReader, selectedBackend);
+        return new(origin, owner, observerIdentity, capability, scope, provisioner, statusReader, resourceReader,
+            selectedBackend, statusLimits, resourceLimits, limits, time ?? TimeProvider.System)
+        {
+            deniedProfile = new(), pendingConfiguration = configuration,
+            pendingResourceAuthority = resourceReader, pendingResourceLimits = resourceLimits,
+            pendingStatusAuthority = statusReader, pendingStatusLimits = statusLimits
+        };
+    }
+    internal static ManagementOperationFixtureObserverService ForStatusDeniedPurgeCleanup(Uri origin, string owner,
+        string observerIdentity, SecretMaterial capability, VaultFixtureProvisioner.HostScope scope,
+        VaultFixtureProvisioner provisioner, Limits limits, TimeProvider time)
+    {
+        var configuration = provisioner.StatusDeniedPurgeCleanupConfiguration(scope);
+        return new(origin, owner, observerIdentity, capability, scope, provisioner, limits, time)
+        { deniedProfile = new(), statusPendingPurgeCleanup = true, pendingConfiguration = configuration };
+    }
+    internal static ManagementOperationFixtureObserverService ForStatusDeniedPurgeStatus(Uri origin, string owner,
+        string observerIdentity, SecretMaterial capability, VaultFixtureProvisioner.HostScope scope,
+        VaultFixtureProvisioner provisioner, S.Authority statusReader, R.Authority resourceReader,
+        HttpPipelineTransport selectedBackend, S.Limits statusLimits, R.Limits resourceLimits, Limits limits,
+        NativeProvisioningState variant, TimeProvider? time = null)
+    {
+        Require(Enum.IsDefined(variant));
+        var configuration = provisioner.StatusDeniedPurgeConfiguration(scope, statusReader, resourceReader, selectedBackend, variant);
+        return new(origin, owner, observerIdentity, capability, scope, provisioner, statusReader, resourceReader,
+            selectedBackend, statusLimits, resourceLimits, limits, time ?? TimeProvider.System)
+        {
+            deniedProfile = new("status." + variant), pendingConfiguration = configuration,
+            pendingResourceAuthority = resourceReader, pendingResourceLimits = resourceLimits,
+            pendingStatusAuthority = statusReader, pendingStatusLimits = statusLimits
+        };
+    }
+    internal static ManagementOperationFixtureObserverService ForStatusDeniedPurgeStatusCleanup(Uri origin, string owner,
+        string observerIdentity, SecretMaterial capability, VaultFixtureProvisioner.HostScope scope,
+        VaultFixtureProvisioner provisioner, Limits limits, NativeProvisioningState variant, TimeProvider? time = null)
+    {
+        Require(Enum.IsDefined(variant));
+        var configuration = provisioner.StatusDeniedPurgeCleanupConfiguration(scope, variant);
+        return new(origin, owner, observerIdentity, capability, scope, provisioner, limits, time)
+        { deniedProfile = new("status." + variant), statusPendingPurgeCleanup = true, pendingConfiguration = configuration };
+    }
+
+    internal static ManagementOperationFixtureObserverService ForStatusFailedPurge(Uri origin, string owner,
+        string observerIdentity, SecretMaterial capability, VaultFixtureProvisioner.HostScope scope,
+        VaultFixtureProvisioner provisioner, S.Authority statusReader, R.Authority resourceReader,
+        HttpPipelineTransport selectedBackend, S.Limits statusLimits, R.Limits resourceLimits, Limits limits,
+        C.StatusPendingPurgeClockBounds clockBounds, TimeProvider time)
+    {
+        Require(ReferenceEquals(time, TimeProvider.System) && clockBounds is not null &&
+            clockBounds.MaxForwardUtcDeviation >= TimeSpan.Zero && clockBounds.MaxAuthorizationDelay > TimeSpan.Zero &&
+            typeof(Azure.Core.TokenCredential).Assembly.GetName().Version == new Version(1, 63, 0, 0) &&
+            typeof(Azure.ResourceManager.ArmClient).Assembly.GetName().Version == new Version(1, 14, 0, 0) &&
+            typeof(Azure.ResourceManager.KeyVault.KeyVaultResource).Assembly.GetName().Version == new Version(1, 4, 0, 0));
+        _ = DateTimeOffset.UtcNow + limits.Timeout + clockBounds.MaxForwardUtcDeviation +
+            clockBounds.MaxAuthorizationDelay + TimeSpan.FromMinutes(5);
+        var configuration = provisioner.StatusFailedPurgeConfiguration(scope, statusReader, resourceReader, selectedBackend);
+        return new(origin, owner, observerIdentity, capability, scope, provisioner, statusReader, resourceReader,
+            selectedBackend, statusLimits, resourceLimits, limits, time)
+        {
+            failedProfile = new(), pendingConfiguration = configuration, pendingClockBounds = clockBounds,
+            pendingResourceAuthority = resourceReader, pendingResourceLimits = resourceLimits,
+            pendingStatusAuthority = statusReader, pendingStatusLimits = statusLimits
+        };
+    }
+    internal static ManagementOperationFixtureObserverService ForStatusFailedPurgeCleanup(Uri origin, string owner,
+        string observerIdentity, SecretMaterial capability, VaultFixtureProvisioner.HostScope scope,
+        VaultFixtureProvisioner provisioner, Limits limits, TimeProvider time)
+    {
+        Require(ReferenceEquals(time, TimeProvider.System));
+        var configuration = provisioner.StatusFailedPurgeCleanupConfiguration(scope);
+        return new(origin, owner, observerIdentity, capability, scope, provisioner, limits, time)
+        { failedProfile = new(), statusPendingPurgeCleanup = true, pendingConfiguration = configuration };
+    }
+
     private bool statusPendingPurgeProfile, statusPendingPurgeCleanup;
     private sealed class StatusPendingPurgeIndependentProfile { }
     private StatusPendingPurgeIndependentProfile? pendingIndependentProfile;
     private sealed class StatusPendingPurgeCancellationProfile { }
     private StatusPendingPurgeCancellationProfile? pendingCancellationProfile;
-    private bool PendingProfile => statusPendingPurgeProfile || pendingIndependentProfile is not null || pendingCancellationProfile is not null;
+    private bool PendingProfile => deniedProfile is not null || canceledCancellationProfile is not null || canceledIndependentProfile is not null || canceledProfile is not null || statusPendingPurgeProfile || pendingIndependentProfile is not null || pendingCancellationProfile is not null || failedProfile is not null || failedIndependentProfile is not null || failedCancellationProfile is not null || failedCancellationProfile is not null;
     private VaultAdministrationEffects.Configuration? pendingConfiguration;
     private C.StatusPendingPurgeClockBounds? pendingClockBounds;
     private R.Authority? pendingResourceAuthority;
     private R.Limits? pendingResourceLimits;
     private S.Authority? pendingStatusAuthority;
     private S.Limits? pendingStatusLimits;
-    private sealed class PendingSession(StatusPendingPurgeIndependentProfile? profile, StatusPendingPurgeCancellationProfile? cancellationProfile)
+    private sealed class PendingSession(StatusPendingPurgeIndependentProfile? profile, StatusPendingPurgeCancellationProfile? cancellationProfile, StatusFailedPurgeProfile? failedProfile = null, StatusFailedPurgeIndependentProfile? failedIndependentProfile = null, StatusFailedPurgeCancellationProfile? failedCancellationProfile = null, StatusCanceledPurgeProfile? canceledProfile = null, StatusCanceledPurgeIndependentProfile? canceledIndependentProfile = null, StatusCanceledPurgeCancellationProfile? canceledCancellationProfile = null, StatusDeniedPurgeProfile? deniedProfile = null)
     {
+        internal readonly StatusCanceledPurgeCancellationProfile? CanceledCancellationProfile = canceledCancellationProfile;
+        internal StatusCanceledPurgeCancellationCleanupAuthorization? CanceledCancellationCleanup;
+        internal RoleFixtureJournal.Snapshot? CanceledCancellationClosedImage;
+        internal readonly StatusCanceledPurgeIndependentProfile? CanceledIndependentProfile = canceledIndependentProfile;
+        internal StatusCanceledPurgeIndependentCleanupAuthorization? CanceledIndependentCleanup;
+        internal RoleFixtureJournal.Snapshot? CanceledIndependentClosedImage;
+        internal C.StatusCanceledPurgeCancellationCanceledProof? CanceledCancellationProof;
+        internal readonly StatusCanceledPurgeProfile? CanceledProfile = canceledProfile;
+        internal StatusCanceledPurgeCleanupAuthorization? CanceledCleanup;
+        internal RoleFixtureJournal.Snapshot? CanceledClosedImage;
+        internal readonly StatusFailedPurgeCancellationProfile? FailedCancellationProfile = failedCancellationProfile;
+        internal StatusFailedPurgeCancellationCleanupAuthorization? FailedCancellationCleanup;
+        internal RoleFixtureJournal.Snapshot? FailedCancellationClosedImage;
+        internal C.StatusFailedPurgeCancellationCanceledProof? FailedCanceledProof;
+        internal readonly StatusFailedPurgeIndependentProfile? FailedIndependentProfile = failedIndependentProfile;
+        internal StatusFailedPurgeIndependentCleanupAuthorization? FailedIndependentCleanup;
+        internal RoleFixtureJournal.Snapshot? FailedIndependentClosedImage;
+        internal readonly StatusDeniedPurgeProfile? DeniedProfile = deniedProfile;
+        internal readonly StatusFailedPurgeProfile? FailedProfile = failedProfile;
+        internal StatusFailedPurgeCleanupAuthorization? FailedCleanup;
+        internal RoleFixtureJournal.Snapshot? FailedClosedImage;
         internal readonly StatusPendingPurgeIndependentProfile? Profile = profile;
         internal readonly StatusPendingPurgeCancellationProfile? CancellationProfile = cancellationProfile;
         internal CancellationToken OriginalCaller, CanceledOperand;
@@ -63,7 +2014,8 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
     private sealed record PendingPair(PendingRead Active, PendingRead Deleted, DateTimeOffset FinishedAt);
     private sealed record PendingStatusWitness(S Collector, S.Window Window, Task<S.Measurement> Task,
         C.StatusTarget Target, C.Binding Binding, PendingStatusTransport Transport, CancellationToken Token);
-    private sealed class PendingStatusTransport(HttpPipelineTransport inner, Uri target, int maximum)
+    private sealed class PendingStatusTransport(HttpPipelineTransport inner, Uri target, int maximum, string expectedState = "InProgress",
+        bool resourceState = false, NotificationFixtureProvisioner.Plan? notificationPlan = null, NotificationConfiguration? configuration = null)
         : HttpPipelineTransport, IDisposable
     {
         private readonly OwnedArmResponse.Storage storage = new();
@@ -98,8 +2050,49 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
             Require(body.Response.Status == 200);
             using var document = JsonDocument.Parse(body.Bytes);
             Unique(document.RootElement);
-            Require(document.RootElement.TryGetProperty("status", out var status) &&
-                status.ValueKind == JsonValueKind.String && status.GetString() == "InProgress");
+            var stateRoot = document.RootElement;
+            if (resourceState)
+            {
+                Require(notificationPlan is not null && configuration is not null);
+                bool Fields(JsonElement value, params string[] allowed) => value.ValueKind == JsonValueKind.Object &&
+                    value.EnumerateObject().All(p => allowed.Contains(p.Name, StringComparer.Ordinal));
+                Require(Fields(stateRoot, "id", "name", "type", "properties") &&
+                    stateRoot.GetProperty("id").GetString() == notificationPlan.ResourceId &&
+                    stateRoot.GetProperty("name").GetString() == notificationPlan.Scope.SubscriptionName &&
+                    stateRoot.GetProperty("type").GetString() == "Microsoft.EventGrid/eventSubscriptions");
+                Require(stateRoot.TryGetProperty("properties", out var properties) && properties.ValueKind == JsonValueKind.Object);
+                Unique(properties);
+                Require(Fields(properties, "topic", "labels", "provisioningState", "destination", "filter") &&
+                    properties.GetProperty("topic").GetString() == notificationPlan.Scope.Vault.ExportResourceId());
+                var labels = properties.GetProperty("labels");
+                Require(labels.ValueKind == JsonValueKind.Array && labels.GetArrayLength() == 1 &&
+                    labels[0].GetString() == "secretkit-fixture-" + notificationPlan.Selector.Nonce.ToString("N"));
+                var filter = properties.GetProperty("filter");
+                Unique(filter);
+                Require(Fields(filter, "includedEventTypes", "advancedFilters"));
+                var events = filter.GetProperty("includedEventTypes");
+                Require(events.ValueKind == JsonValueKind.Array && events.GetArrayLength() == 1 &&
+                    events[0].GetString() == "Microsoft.KeyVault.SecretNewVersionCreated");
+                if (filter.TryGetProperty("advancedFilters", out var advanced))
+                    Require(advanced.ValueKind == JsonValueKind.Array && advanced.GetArrayLength() == 0);
+                var destination = properties.GetProperty("destination");
+                Unique(destination);
+                Require(Fields(destination, "endpointType", "properties") &&
+                    destination.GetProperty("endpointType").GetString() == "WebHook");
+                var settings = destination.GetProperty("properties");
+                Unique(settings);
+                Require(Fields(settings, "endpointUrl", "endpointBaseUrl", "deliveryAttributeMappings") &&
+                    settings.GetProperty("endpointUrl").GetString() == configuration.Endpoint.Reveal());
+                var endpoint = new Uri(configuration.Endpoint.Reveal(), UriKind.Absolute);
+                Require(endpoint.Scheme == "https" && endpoint.UserInfo.Length == 0 && endpoint.Fragment.Length == 0);
+                var mappings = settings.GetProperty("deliveryAttributeMappings");
+                Require(mappings.ValueKind == JsonValueKind.Array && mappings.GetArrayLength() == 0);
+                if (settings.TryGetProperty("endpointBaseUrl", out var endpointBase))
+                    Require(endpointBase.GetString() == endpoint.GetLeftPart(UriPartial.Path));
+                stateRoot = properties;
+            }
+            Require(stateRoot.TryGetProperty(resourceState ? "provisioningState" : "status", out var status) &&
+                status.ValueKind == JsonValueKind.String && status.GetString() == expectedState);
             parser = OwnedArmResponse.ParserCustody.Install(message, body.Response, body.Bytes, storage,
                 requireRebuffer: false, requireDownstreamRead: true);
         }
@@ -347,19 +2340,73 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
         internal RoleFixtureJournal.Snapshot Postimage => RoleFixtureJournal.CopyStatusPendingPurgeSnapshot(source.pendingCancellationInvocationDrains[this].After);
         public override string ToString() => "[StatusPendingPurgeCancellationInvocationDrain]";
     }
-    private bool PendingValid(PendingFacts? facts, RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state, bool post, bool independent = false,
-        bool cancellation = false)
+    private bool CanceledCancellationValid(PendingFacts? facts, RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state, bool post)
     {
         if (facts is null || facts.Invalid || !ReferenceEquals(journal, provisioner.Journal)) return false;
         var p = facts.Session.Pending!;
-        if (cancellation ? pendingCancellationProfile is null || !ReferenceEquals(p.CancellationProfile, pendingCancellationProfile) ||
+        if (canceledCancellationProfile is null || !ReferenceEquals(p.CanceledCancellationProfile, canceledCancellationProfile) ||
+            !VaultFixtureProvisioner.StatusCanceledPurgeCancellationSelector(facts.Session.Selector)) return false;
+        bool live = facts.DrainOnly || !disposed && !p.Invalid && p.Clock is not null &&
+            !p.Clock.Token.IsCancellationRequested && p.Callers.All(t => !t.IsCancellationRequested) &&
+            facts.Tokens.All(t => !t.IsCancellationRequested) &&
+            (facts.Cleanup ? facts.Session.Closed && p.SelectedRevoked : !facts.Session.Closed);
+        bool before = RoleFixtureJournal.SameStatusPendingPurgeSnapshot(facts.Before, state);
+        bool after = RoleFixtureJournal.SameStatusPendingPurgeSnapshot(facts.After, state);
+        if (!live || !before && !after) facts.Invalid = true;
+        return !facts.Invalid && facts.Tasks.All(t => t.IsCompleted) && (post ? after : before);
+    }
+    private bool CanceledIndependentValid(PendingFacts? facts, RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state, bool post)
+    {
+        if (facts is null || facts.Invalid || !ReferenceEquals(journal, provisioner.Journal)) return false;
+        var p = facts.Session.Pending!;
+        if (canceledIndependentProfile is null || !ReferenceEquals(p.CanceledIndependentProfile, canceledIndependentProfile) ||
+            !VaultFixtureProvisioner.StatusCanceledPurgeIndependentSelector(facts.Session.Selector)) return false;
+        bool live = facts.DrainOnly || !disposed && !p.Invalid && p.Clock is not null &&
+            !p.Clock.Token.IsCancellationRequested && p.Callers.All(t => !t.IsCancellationRequested) &&
+            facts.Tokens.All(t => !t.IsCancellationRequested) &&
+            (facts.Cleanup ? facts.Session.Closed && p.SelectedRevoked : !facts.Session.Closed);
+        bool before = RoleFixtureJournal.SameStatusPendingPurgeSnapshot(facts.Before, state);
+        bool after = RoleFixtureJournal.SameStatusPendingPurgeSnapshot(facts.After, state);
+        if (!live || !before && !after) facts.Invalid = true;
+        return !facts.Invalid && facts.Tasks.All(t => t.IsCompleted) && (post ? after : before);
+    }
+    private bool CanceledValid(PendingFacts? facts, RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state, bool post)
+    {
+        if (facts is null || facts.Invalid || !ReferenceEquals(journal, provisioner.Journal)) return false;
+        var p = facts.Session.Pending!;
+        if (canceledProfile is null || !ReferenceEquals(p.CanceledProfile, canceledProfile) ||
+            !VaultFixtureProvisioner.StatusCanceledPurgeSelector(facts.Session.Selector)) return false;
+        bool live = facts.DrainOnly || !disposed && !p.Invalid && p.Clock is not null &&
+            !p.Clock.Token.IsCancellationRequested && p.Callers.All(t => !t.IsCancellationRequested) &&
+            facts.Tokens.All(t => !t.IsCancellationRequested) &&
+            (facts.Cleanup ? facts.Session.Closed && p.SelectedRevoked : !facts.Session.Closed);
+        bool before = RoleFixtureJournal.SameStatusPendingPurgeSnapshot(facts.Before, state);
+        bool after = RoleFixtureJournal.SameStatusPendingPurgeSnapshot(facts.After, state);
+        if (!live || !before && !after) facts.Invalid = true;
+        return !facts.Invalid && facts.Tasks.All(t => t.IsCompleted) && (post ? after : before);
+    }
+    private bool PendingValid(PendingFacts? facts, RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state, bool post, bool independent = false,
+        bool cancellation = false, bool failed = false, bool failedIndependent = false, bool failedCancellation = false, bool denied = false)
+    {
+        if (facts is null || facts.Invalid || !ReferenceEquals(journal, provisioner.Journal)) return false;
+        var p = facts.Session.Pending!;
+        if (denied ? deniedProfile is null || !ReferenceEquals(p.DeniedProfile, deniedProfile) ||
+            !VaultFixtureProvisioner.StatusDeniedPurgeSelector(facts.Session.Selector) ||
+            facts.Session.Selector.Variant != deniedProfile.Variant :
+            failedCancellation ? failedCancellationProfile is null || !ReferenceEquals(p.FailedCancellationProfile, failedCancellationProfile) ||
+            !VaultFixtureProvisioner.StatusFailedPurgeCancellationSelector(facts.Session.Selector) :
+            failedIndependent ? failedIndependentProfile is null || !ReferenceEquals(p.FailedIndependentProfile, failedIndependentProfile) ||
+            !VaultFixtureProvisioner.StatusFailedPurgeIndependentSelector(facts.Session.Selector) :
+            failed ? failedProfile is null || !ReferenceEquals(p.FailedProfile, failedProfile) ||
+            !VaultFixtureProvisioner.StatusFailedPurgeSelector(facts.Session.Selector) :
+            cancellation ? pendingCancellationProfile is null || !ReferenceEquals(p.CancellationProfile, pendingCancellationProfile) ||
             !VaultFixtureProvisioner.StatusPendingPurgeCancellationSelector(facts.Session.Selector) :
             independent ? pendingIndependentProfile is null || !ReferenceEquals(p.Profile, pendingIndependentProfile) ||
             !VaultFixtureProvisioner.StatusPendingPurgeIndependentSelector(facts.Session.Selector) :
             !statusPendingPurgeProfile || p.Profile is not null || !VaultFixtureProvisioner.StatusPendingPurgeSelector(facts.Session.Selector))
             return false;
-        bool live = facts.DrainOnly || !disposed && !p.Invalid && p.Clock is not null &&
-            !p.Clock.Token.IsCancellationRequested && p.Callers.All(t => !t.IsCancellationRequested) &&
+        bool live = facts.DrainOnly || !disposed && !p.Invalid &&
+            (denied || p.Clock is not null && !p.Clock.Token.IsCancellationRequested) && p.Callers.All(t => !t.IsCancellationRequested) &&
             facts.Tokens.All(t => !t.IsCancellationRequested) &&
             (facts.Cleanup ? facts.Session.Closed && p.SelectedRevoked : !facts.Session.Closed);
         bool before = RoleFixtureJournal.SameStatusPendingPurgeSnapshot(facts.Before, state);
@@ -482,6 +2529,20 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
     private async Task<HttpResponseMessage> DispatchPendingPurge(string path, JsonElement body,
         CancellationToken token, CancellationToken caller)
     {
+        if (path == "/operation/release" && deniedProfile is not null)
+            return await ReleaseDeniedPurge(body.Deserialize<FixtureSelector>(Json) ?? throw Failure(), token, caller).ConfigureAwait(false);
+        if (path == "/operation/release" && canceledCancellationProfile is not null)
+            return await ReleaseCanceledCancellationPurge(body.Deserialize<FixtureSelector>(Json) ?? throw Failure(), token, caller).ConfigureAwait(false);
+        if (path == "/operation/release" && canceledIndependentProfile is not null)
+            return await ReleaseCanceledIndependentPurge(body.Deserialize<FixtureSelector>(Json) ?? throw Failure(), token, caller).ConfigureAwait(false);
+        if (path == "/operation/release" && canceledProfile is not null)
+            return await ReleaseCanceledPurge(body.Deserialize<FixtureSelector>(Json) ?? throw Failure(), token, caller).ConfigureAwait(false);
+        if (path == "/operation/release" && failedCancellationProfile is not null)
+            return await ReleaseFailedCancellationPurge(body.Deserialize<FixtureSelector>(Json) ?? throw Failure(), token, caller).ConfigureAwait(false);
+        if (path == "/operation/release" && failedIndependentProfile is not null)
+            return await ReleaseFailedIndependentPurge(body.Deserialize<FixtureSelector>(Json) ?? throw Failure(), token, caller).ConfigureAwait(false);
+        if (path == "/operation/release" && failedProfile is not null)
+            return await ReleaseFailedPurge(body.Deserialize<FixtureSelector>(Json) ?? throw Failure(), token, caller).ConfigureAwait(false);
         if (path == "/operation/release")
             return await ReleasePendingPurge(body.Deserialize<FixtureSelector>(Json) ?? throw Failure(), token, caller).ConfigureAwait(false);
         Require(!statusPendingPurgeCleanup);
@@ -497,7 +2558,7 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
             lock (gate)
             {
                 Require(!disposed && sessions.Count < 32 && !sessions.ContainsKey(input.Selection.Nonce));
-                session = new(input.Selection with { }) { Preparation = input, Pending = new(pendingIndependentProfile, pendingCancellationProfile), Active = 1 };
+                session = new(input.Selection with { }) { Preparation = input, Pending = new(pendingIndependentProfile, pendingCancellationProfile, failedProfile, failedIndependentProfile, failedCancellationProfile, canceledProfile, canceledIndependentProfile, canceledCancellationProfile, deniedProfile), Active = 1 };
                 session.Pending.Callers.Enqueue(caller);
                 sessions.Add(input.Selection.Nonce, session);
             }
@@ -515,7 +2576,8 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
                 Require(!snapshot.Closing && snapshot.Idle && !session.Closed);
                 session.Lease = new(new(session.Selector.Nonce, session.Plan.LeaseId, observerIdentity,
                     S.ArmOrigin, "2026-02-01", time.GetUtcNow(), snapshot.Resources.Select(r => r.Id).ToArray()),
-                    session.Plan.VaultName, null, null, null, ManagementMutation.PurgeDeletedVault, NativeProvisioningState.Pending);
+                    session.Plan.VaultName, null, null, null, ManagementMutation.PurgeDeletedVault,
+                    deniedProfile is not null ? NativeProvisioningState.Succeeded : (canceledCancellationProfile is not null || canceledIndependentProfile is not null || canceledProfile is not null) ? NativeProvisioningState.Canceled : failedProfile is null && failedIndependentProfile is null && failedCancellationProfile is null ? NativeProvisioningState.Pending : NativeProvisioningState.Failed);
                 return Reply(session.Lease);
             }
             finally { LeaveSession(session); }
@@ -561,7 +2623,7 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
                 _ = PendingStartProof(selected);
                 Require(capture.TryGetStatusTarget(selected.Capture!, selected.Binding!, out var target));
                 using var boundary = new PendingStatusTransport(pendingStatusAuthority!.Transport, target!.TargetUri,
-                    pendingStatusLimits!.MaximumResponseBytes);
+                    pendingStatusLimits!.MaximumResponseBytes, deniedProfile is not null ? "Succeeded" : (canceledCancellationProfile is not null || canceledIndependentProfile is not null || canceledProfile is not null) ? "Canceled" : failedProfile is not null || failedIndependentProfile is not null || failedCancellationProfile is not null ? "Failed" : "InProgress");
                 selected.Pending.StatusTransport = boundary;
                 var independent = new S(capture, new(pendingStatusAuthority.Label, pendingStatusAuthority.Credential, boundary),
                     pendingStatusLimits, time);
@@ -569,8 +2631,10 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
                 var task = independent.CollectAsync(window, selected.Binding!, linked.Token).AsTask();
                 var measurement = await task.ConfigureAwait(false);
                 Require(ReferenceEquals(measurement.Binding, selected.Binding) && measurement.WindowId == window.Id &&
-                    measurement.HttpStatus == 200 && measurement.ResponseComplete && !measurement.Terminal &&
-                    measurement.Status == SecretStatus.Pending && measurement.OperationState == NativeProvisioningState.Pending &&
+                    measurement.Failure == S.Failure.None && measurement.HttpStatus == 200 && measurement.ResponseComplete &&
+                    measurement.Terminal == (deniedProfile is not null || (canceledCancellationProfile is not null || canceledIndependentProfile is not null || canceledProfile is not null) || failedProfile is not null || failedIndependentProfile is not null || failedCancellationProfile is not null) &&
+                    measurement.Status == (deniedProfile is not null ? SecretStatus.Success : canceledCancellationProfile is null && canceledIndependentProfile is null && canceledProfile is null && failedProfile is null && failedIndependentProfile is null && failedCancellationProfile is null ? SecretStatus.Pending : SecretStatus.Unknown) &&
+                    measurement.OperationState == (deniedProfile is not null ? NativeProvisioningState.Succeeded : (canceledCancellationProfile is not null || canceledIndependentProfile is not null || canceledProfile is not null) ? NativeProvisioningState.Canceled : failedProfile is null && failedIndependentProfile is null && failedCancellationProfile is null ? NativeProvisioningState.Pending : NativeProvisioningState.Failed) &&
                     measurement.ArmedAt == window.ArmedAt && measurement.ArmedAt >= selected.StartedAt &&
                     measurement.StartedAt >= measurement.ArmedAt && measurement.FinishedAt >= measurement.StartedAt &&
                     measurement.StartDispatch == target!.StartDispatch && measurement.TargetSha256 == target.TargetSha256 &&
@@ -597,7 +2661,8 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
                 selected.IndependentAt = pair.FinishedAt;
             }
             return Reply(Project(selected, pair.FinishedAt,
-                baseline ? NativeProvisioningState.Unknown : NativeProvisioningState.Pending, SecretStatus.Success));
+                baseline ? NativeProvisioningState.Unknown : deniedProfile is not null ? NativeProvisioningState.Succeeded : (canceledCancellationProfile is not null || canceledIndependentProfile is not null || canceledProfile is not null) ? NativeProvisioningState.Canceled : failedProfile is null && failedIndependentProfile is null && failedCancellationProfile is null ? NativeProvisioningState.Pending : NativeProvisioningState.Failed,
+                !baseline && deniedProfile is not null ? SecretStatus.Absent : SecretStatus.Success));
         }
         finally { LeaveSession(selected); }
     }
@@ -613,20 +2678,62 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
         var d = new R(pendingResourceAuthority!, pendingResourceLimits!, time, scope.TenantId);
         bool independent = IndependentPending(session);
         bool cancellation = CancellationPending(session);
-        object ap = cancellation
+        object ap = session.Pending!.DeniedProfile is not null
+            ? baseline ? R.StatusDeniedPurgeReadPhase.BaselineActiveAbsent : R.StatusDeniedPurgeReadPhase.SelectedActiveAbsent
+            : session.Pending!.FailedCancellationProfile is not null
+            ? baseline ? R.StatusFailedPurgeCancellationReadPhase.BaselineActiveAbsent : R.StatusFailedPurgeCancellationReadPhase.SelectedActiveAbsent
+            : session.Pending!.FailedIndependentProfile is not null
+            ? baseline ? R.StatusFailedPurgeIndependentReadPhase.BaselineActiveAbsent : R.StatusFailedPurgeIndependentReadPhase.SelectedActiveAbsent
+            : session.Pending!.CanceledCancellationProfile is not null
+            ? baseline ? R.StatusCanceledPurgeCancellationReadPhase.BaselineActiveAbsent : R.StatusCanceledPurgeCancellationReadPhase.SelectedActiveAbsent
+            : session.Pending!.CanceledIndependentProfile is not null
+            ? baseline ? R.StatusCanceledPurgeIndependentReadPhase.BaselineActiveAbsent : R.StatusCanceledPurgeIndependentReadPhase.SelectedActiveAbsent
+            : session.Pending!.CanceledProfile is not null
+            ? baseline ? R.StatusCanceledPurgeReadPhase.BaselineActiveAbsent : R.StatusCanceledPurgeReadPhase.SelectedActiveAbsent
+            : session.Pending!.FailedProfile is not null
+            ? baseline ? R.StatusFailedPurgeReadPhase.BaselineActiveAbsent : R.StatusFailedPurgeReadPhase.SelectedActiveAbsent
+            : cancellation
             ? baseline ? R.StatusPendingPurgeCancellationReadPhase.BaselineActiveAbsent : R.StatusPendingPurgeCancellationReadPhase.SelectedActiveAbsent
             : independent
             ? baseline ? R.StatusPendingPurgeIndependentReadPhase.BaselineActiveAbsent : R.StatusPendingPurgeIndependentReadPhase.SelectedActiveAbsent
             : baseline ? R.StatusPendingPurgeReadPhase.BaselineActiveAbsent : R.StatusPendingPurgeReadPhase.SelectedActiveAbsent;
-        object dp = cancellation
+        object dp = session.Pending!.DeniedProfile is not null
+            ? baseline ? R.StatusDeniedPurgeReadPhase.BaselineDeletedPresent : R.StatusDeniedPurgeReadPhase.SelectedDeletedAbsent
+            : session.Pending!.FailedCancellationProfile is not null
+            ? baseline ? R.StatusFailedPurgeCancellationReadPhase.BaselineDeletedPresent : R.StatusFailedPurgeCancellationReadPhase.SelectedDeletedPresent
+            : session.Pending!.FailedIndependentProfile is not null
+            ? baseline ? R.StatusFailedPurgeIndependentReadPhase.BaselineDeletedPresent : R.StatusFailedPurgeIndependentReadPhase.SelectedDeletedPresent
+            : session.Pending!.CanceledCancellationProfile is not null
+            ? baseline ? R.StatusCanceledPurgeCancellationReadPhase.BaselineDeletedPresent : R.StatusCanceledPurgeCancellationReadPhase.SelectedDeletedPresent
+            : session.Pending!.CanceledIndependentProfile is not null
+            ? baseline ? R.StatusCanceledPurgeIndependentReadPhase.BaselineDeletedPresent : R.StatusCanceledPurgeIndependentReadPhase.SelectedDeletedPresent
+            : session.Pending!.CanceledProfile is not null
+            ? baseline ? R.StatusCanceledPurgeReadPhase.BaselineDeletedPresent : R.StatusCanceledPurgeReadPhase.SelectedDeletedPresent
+            : session.Pending!.FailedProfile is not null
+            ? baseline ? R.StatusFailedPurgeReadPhase.BaselineDeletedPresent : R.StatusFailedPurgeReadPhase.SelectedDeletedPresent
+            : cancellation
             ? baseline ? R.StatusPendingPurgeCancellationReadPhase.BaselineDeletedPresent : R.StatusPendingPurgeCancellationReadPhase.SelectedDeletedPresent
             : independent
             ? baseline ? R.StatusPendingPurgeIndependentReadPhase.BaselineDeletedPresent : R.StatusPendingPurgeIndependentReadPhase.SelectedDeletedPresent
             : baseline ? R.StatusPendingPurgeReadPhase.BaselineDeletedPresent : R.StatusPendingPurgeReadPhase.SelectedDeletedPresent;
-        var aw = cancellation ? a.ArmStatusPendingPurgeCancellation(activeBinding, pendingConfiguration!, (R.StatusPendingPurgeCancellationReadPhase)ap)
+        var aw = session.Pending!.DeniedProfile is not null ? a.ArmStatusDeniedPurge(activeBinding, pendingConfiguration!, (R.StatusDeniedPurgeReadPhase)ap)
+            : session.Pending!.FailedCancellationProfile is not null ? a.ArmStatusFailedPurgeCancellation(activeBinding, pendingConfiguration!, (R.StatusFailedPurgeCancellationReadPhase)ap)
+            : session.Pending!.FailedIndependentProfile is not null ? a.ArmStatusFailedPurgeIndependent(activeBinding, pendingConfiguration!, (R.StatusFailedPurgeIndependentReadPhase)ap)
+            : session.Pending!.CanceledCancellationProfile is not null ? a.ArmStatusCanceledPurgeCancellation(activeBinding, pendingConfiguration!, (R.StatusCanceledPurgeCancellationReadPhase)ap)
+            : session.Pending!.CanceledIndependentProfile is not null ? a.ArmStatusCanceledPurgeIndependent(activeBinding, pendingConfiguration!, (R.StatusCanceledPurgeIndependentReadPhase)ap)
+            : session.Pending!.CanceledProfile is not null ? a.ArmStatusCanceledPurge(activeBinding, pendingConfiguration!, (R.StatusCanceledPurgeReadPhase)ap)
+            : session.Pending!.FailedProfile is not null ? a.ArmStatusFailedPurge(activeBinding, pendingConfiguration!, (R.StatusFailedPurgeReadPhase)ap)
+            : cancellation ? a.ArmStatusPendingPurgeCancellation(activeBinding, pendingConfiguration!, (R.StatusPendingPurgeCancellationReadPhase)ap)
             : independent ? a.ArmStatusPendingPurgeIndependent(activeBinding, pendingConfiguration!, (R.StatusPendingPurgeIndependentReadPhase)ap)
             : a.ArmStatusPendingPurge(activeBinding, pendingConfiguration!, (R.StatusPendingPurgeReadPhase)ap);
-        var dw = cancellation ? d.ArmStatusPendingPurgeCancellation(deletedBinding, pendingConfiguration!, (R.StatusPendingPurgeCancellationReadPhase)dp)
+        var dw = session.Pending!.DeniedProfile is not null ? d.ArmStatusDeniedPurge(deletedBinding, pendingConfiguration!, (R.StatusDeniedPurgeReadPhase)dp)
+            : session.Pending!.FailedCancellationProfile is not null ? d.ArmStatusFailedPurgeCancellation(deletedBinding, pendingConfiguration!, (R.StatusFailedPurgeCancellationReadPhase)dp)
+            : session.Pending!.FailedIndependentProfile is not null ? d.ArmStatusFailedPurgeIndependent(deletedBinding, pendingConfiguration!, (R.StatusFailedPurgeIndependentReadPhase)dp)
+            : session.Pending!.CanceledCancellationProfile is not null ? d.ArmStatusCanceledPurgeCancellation(deletedBinding, pendingConfiguration!, (R.StatusCanceledPurgeCancellationReadPhase)dp)
+            : session.Pending!.CanceledIndependentProfile is not null ? d.ArmStatusCanceledPurgeIndependent(deletedBinding, pendingConfiguration!, (R.StatusCanceledPurgeIndependentReadPhase)dp)
+            : session.Pending!.CanceledProfile is not null ? d.ArmStatusCanceledPurge(deletedBinding, pendingConfiguration!, (R.StatusCanceledPurgeReadPhase)dp)
+            : session.Pending!.FailedProfile is not null ? d.ArmStatusFailedPurge(deletedBinding, pendingConfiguration!, (R.StatusFailedPurgeReadPhase)dp)
+            : cancellation ? d.ArmStatusPendingPurgeCancellation(deletedBinding, pendingConfiguration!, (R.StatusPendingPurgeCancellationReadPhase)dp)
             : independent ? d.ArmStatusPendingPurgeIndependent(deletedBinding, pendingConfiguration!, (R.StatusPendingPurgeIndependentReadPhase)dp)
             : d.ArmStatusPendingPurge(deletedBinding, pendingConfiguration!, (R.StatusPendingPurgeReadPhase)dp);
         var at = a.CollectAsync(aw, activeBinding, token).AsTask();
@@ -635,7 +2742,56 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
         var dt = d.CollectAsync(dw, deletedBinding, token).AsTask();
         using var dv = await dt.ConfigureAwait(false);
         object aproof, dproof;
-        if (cancellation)
+        if (session.Pending!.DeniedProfile is not null)
+        {
+            Require(a.TryGetStatusDeniedPurgeRead(aw, activeBinding, (R.StatusDeniedPurgeReadPhase)ap, at, out var active));
+            Require(d.TryGetStatusDeniedPurgeRead(dw, deletedBinding, (R.StatusDeniedPurgeReadPhase)dp, dt, out var deleted));
+            Require(!baseline || deleted!.OriginalVaultId == session.Plan.VaultId);
+            aproof = active!; dproof = deleted;
+        }
+        else if (session.Pending!.FailedCancellationProfile is not null)
+        {
+            Require(a.TryGetStatusFailedPurgeCancellationRead(aw, activeBinding, (R.StatusFailedPurgeCancellationReadPhase)ap, at, out var active));
+            Require(d.TryGetStatusFailedPurgeCancellationRead(dw, deletedBinding, (R.StatusFailedPurgeCancellationReadPhase)dp, dt, out var deleted));
+            Require(deleted!.OriginalVaultId == session.Plan.VaultId);
+            aproof = active!; dproof = deleted;
+        }
+        else if (session.Pending!.FailedIndependentProfile is not null)
+        {
+            Require(a.TryGetStatusFailedPurgeIndependentRead(aw, activeBinding, (R.StatusFailedPurgeIndependentReadPhase)ap, at, out var active));
+            Require(d.TryGetStatusFailedPurgeIndependentRead(dw, deletedBinding, (R.StatusFailedPurgeIndependentReadPhase)dp, dt, out var deleted));
+            Require(deleted!.OriginalVaultId == session.Plan.VaultId);
+            aproof = active!; dproof = deleted;
+        }
+        else if (session.Pending!.CanceledCancellationProfile is not null)
+        {
+            Require(a.TryGetStatusCanceledPurgeCancellationRead(aw, activeBinding, (R.StatusCanceledPurgeCancellationReadPhase)ap, at, out var active));
+            Require(d.TryGetStatusCanceledPurgeCancellationRead(dw, deletedBinding, (R.StatusCanceledPurgeCancellationReadPhase)dp, dt, out var deleted));
+            Require(deleted!.OriginalVaultId == session.Plan.VaultId);
+            aproof = active!; dproof = deleted;
+        }
+        else if (session.Pending!.CanceledIndependentProfile is not null)
+        {
+            Require(a.TryGetStatusCanceledPurgeIndependentRead(aw, activeBinding, (R.StatusCanceledPurgeIndependentReadPhase)ap, at, out var active));
+            Require(d.TryGetStatusCanceledPurgeIndependentRead(dw, deletedBinding, (R.StatusCanceledPurgeIndependentReadPhase)dp, dt, out var deleted));
+            Require(deleted!.OriginalVaultId == session.Plan.VaultId);
+            aproof = active!; dproof = deleted;
+        }
+        else if (session.Pending!.CanceledProfile is not null)
+        {
+            Require(a.TryGetStatusCanceledPurgeRead(aw, activeBinding, (R.StatusCanceledPurgeReadPhase)ap, at, out var active));
+            Require(d.TryGetStatusCanceledPurgeRead(dw, deletedBinding, (R.StatusCanceledPurgeReadPhase)dp, dt, out var deleted));
+            Require(deleted!.OriginalVaultId == session.Plan.VaultId);
+            aproof = active!; dproof = deleted;
+        }
+        else if (session.Pending!.FailedProfile is not null)
+        {
+            Require(a.TryGetStatusFailedPurgeRead(aw, activeBinding, (R.StatusFailedPurgeReadPhase)ap, at, out var active));
+            Require(d.TryGetStatusFailedPurgeRead(dw, deletedBinding, (R.StatusFailedPurgeReadPhase)dp, dt, out var deleted));
+            Require(deleted!.OriginalVaultId == session.Plan.VaultId);
+            aproof = active!; dproof = deleted;
+        }
+        else if (cancellation)
         {
             Require(a.TryGetStatusPendingPurgeCancellationRead(aw, activeBinding, (R.StatusPendingPurgeCancellationReadPhase)ap, at, out var active));
             Require(d.TryGetStatusPendingPurgeCancellationRead(dw, deletedBinding, (R.StatusPendingPurgeCancellationReadPhase)dp, dt, out var deleted));
@@ -663,6 +2819,27 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
     private static bool OwnsPendingPair(PendingPair pair) => Owns(pair.Active) && Owns(pair.Deleted);
     private static bool Owns(PendingRead read) => (read.Phase, read.Proof) switch
     {
+        (R.StatusFailedPurgeCancellationReadPhase phase, R.StatusFailedPurgeCancellationReadProof proof) =>
+            VaultFixtureProvisioner.StatusFailedPurgeCancellationSelector(read.Binding.Selector) &&
+            read.Collector.OwnsStatusFailedPurgeCancellationRead(proof, read.Window, read.Binding, phase, read.Task),
+        (R.StatusFailedPurgeIndependentReadPhase phase, R.StatusFailedPurgeIndependentReadProof proof) =>
+            VaultFixtureProvisioner.StatusFailedPurgeIndependentSelector(read.Binding.Selector) &&
+            read.Collector.OwnsStatusFailedPurgeIndependentRead(proof, read.Window, read.Binding, phase, read.Task),
+        (R.StatusCanceledPurgeCancellationReadPhase phase, R.StatusCanceledPurgeCancellationReadProof proof) =>
+            VaultFixtureProvisioner.StatusCanceledPurgeCancellationSelector(read.Binding.Selector) &&
+            read.Collector.OwnsStatusCanceledPurgeCancellationRead(proof, read.Window, read.Binding, phase, read.Task),
+        (R.StatusCanceledPurgeIndependentReadPhase phase, R.StatusCanceledPurgeIndependentReadProof proof) =>
+            VaultFixtureProvisioner.StatusCanceledPurgeIndependentSelector(read.Binding.Selector) &&
+            read.Collector.OwnsStatusCanceledPurgeIndependentRead(proof, read.Window, read.Binding, phase, read.Task),
+        (R.StatusCanceledPurgeReadPhase phase, R.StatusCanceledPurgeReadProof proof) =>
+            VaultFixtureProvisioner.StatusCanceledPurgeSelector(read.Binding.Selector) &&
+            read.Collector.OwnsStatusCanceledPurgeRead(proof, read.Window, read.Binding, phase, read.Task),
+        (R.StatusDeniedPurgeReadPhase phase, R.StatusDeniedPurgeReadProof proof) =>
+            VaultFixtureProvisioner.StatusDeniedPurgeSelector(read.Binding.Selector) &&
+            read.Collector.OwnsStatusDeniedPurgeRead(proof, read.Window, read.Binding, phase, read.Task),
+        (R.StatusFailedPurgeReadPhase phase, R.StatusFailedPurgeReadProof proof) =>
+            VaultFixtureProvisioner.StatusFailedPurgeSelector(read.Binding.Selector) &&
+            read.Collector.OwnsStatusFailedPurgeRead(proof, read.Window, read.Binding, phase, read.Task),
         (R.StatusPendingPurgeIndependentReadPhase phase, R.StatusPendingPurgeIndependentReadProof proof) =>
             VaultFixtureProvisioner.StatusPendingPurgeIndependentSelector(read.Binding.Selector) &&
             read.Collector.OwnsStatusPendingPurgeIndependentRead(proof, read.Window, read.Binding, phase, read.Task),
@@ -677,6 +2854,48 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
 
     private bool IndependentPending(Session session)
     {
+        if (VaultFixtureProvisioner.StatusFailedPurgeCancellationSelector(session.Selector))
+        {
+            Require(failedCancellationProfile is not null && session.Pending is not null &&
+                ReferenceEquals(session.Pending.FailedCancellationProfile, failedCancellationProfile));
+            return false;
+        }
+        if (VaultFixtureProvisioner.StatusFailedPurgeIndependentSelector(session.Selector))
+        {
+            Require(failedIndependentProfile is not null && session.Pending is not null &&
+                ReferenceEquals(session.Pending.FailedIndependentProfile, failedIndependentProfile));
+            return false;
+        }
+        if (VaultFixtureProvisioner.StatusCanceledPurgeCancellationSelector(session.Selector))
+        {
+            Require(canceledCancellationProfile is not null && session.Pending is not null &&
+                ReferenceEquals(session.Pending.CanceledCancellationProfile, canceledCancellationProfile));
+            return false;
+        }
+        if (VaultFixtureProvisioner.StatusCanceledPurgeIndependentSelector(session.Selector))
+        {
+            Require(canceledIndependentProfile is not null && session.Pending is not null &&
+                ReferenceEquals(session.Pending.CanceledIndependentProfile, canceledIndependentProfile));
+            return false;
+        }
+        if (VaultFixtureProvisioner.StatusCanceledPurgeSelector(session.Selector))
+        {
+            Require(canceledProfile is not null && session.Pending is not null &&
+                ReferenceEquals(session.Pending.CanceledProfile, canceledProfile));
+            return false;
+        }
+        if (VaultFixtureProvisioner.StatusDeniedPurgeSelector(session.Selector))
+        {
+            Require(deniedProfile is not null && session.Pending is not null &&
+                ReferenceEquals(session.Pending.DeniedProfile, deniedProfile));
+            return false;
+        }
+        if (VaultFixtureProvisioner.StatusFailedPurgeSelector(session.Selector))
+        {
+            Require(failedProfile is not null && session.Pending is not null &&
+                ReferenceEquals(session.Pending.FailedProfile, failedProfile));
+            return false;
+        }
         if (VaultFixtureProvisioner.StatusPendingPurgeCancellationSelector(session.Selector))
         {
             Require(CancellationPending(session));
@@ -691,6 +2910,18 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
     }
     private bool CancellationPending(Session session)
     {
+        if (VaultFixtureProvisioner.StatusCanceledPurgeCancellationSelector(session.Selector))
+        {
+            Require(session.Pending is not null && canceledCancellationProfile is not null &&
+                ReferenceEquals(session.Pending.CanceledCancellationProfile, canceledCancellationProfile));
+            return true;
+        }
+        if (VaultFixtureProvisioner.StatusFailedPurgeCancellationSelector(session.Selector))
+        {
+            Require(session.Pending is not null && failedCancellationProfile is not null &&
+                ReferenceEquals(session.Pending.FailedCancellationProfile, failedCancellationProfile));
+            return true;
+        }
         if (!VaultFixtureProvisioner.StatusPendingPurgeCancellationSelector(session.Selector))
         {
             _ = IndependentPending(session);
@@ -702,6 +2933,48 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
     }
     private object PendingStartProof(Session session)
     {
+        if (session.Pending?.DeniedProfile is not null)
+        {
+            Require(capture.TryGetStatusDeniedPurgeStart(session.Capture!, session.Binding!, session.Client!,
+                session.ActualDeletedVaultScope!, session.Receipt!, session.StartTask!, session.Handle!, out var denied));
+            return denied!;
+        }
+        if (session.Pending?.FailedCancellationProfile is not null)
+        {
+            Require(capture.TryGetStatusFailedPurgeCancellationStart(session.Capture!, session.Binding!, session.Client!,
+                session.ActualDeletedVaultScope!, session.Receipt!, session.StartTask!, session.Handle!, out var failed));
+            return failed!;
+        }
+        if (session.Pending?.FailedIndependentProfile is not null)
+        {
+            Require(capture.TryGetStatusFailedPurgeIndependentStart(session.Capture!, session.Binding!, session.Client!,
+                session.ActualDeletedVaultScope!, session.Receipt!, session.StartTask!, session.Handle!, out var failed));
+            return failed!;
+        }
+        if (session.Pending?.CanceledCancellationProfile is not null)
+        {
+            Require(capture.TryGetStatusCanceledPurgeCancellationStart(session.Capture!, session.Binding!, session.Client!,
+                session.ActualDeletedVaultScope!, session.Receipt!, session.StartTask!, session.Handle!, out var canceled));
+            return canceled!;
+        }
+        if (session.Pending?.CanceledIndependentProfile is not null)
+        {
+            Require(capture.TryGetStatusCanceledPurgeIndependentStart(session.Capture!, session.Binding!, session.Client!,
+                session.ActualDeletedVaultScope!, session.Receipt!, session.StartTask!, session.Handle!, out var canceled));
+            return canceled!;
+        }
+        if (session.Pending?.CanceledProfile is not null)
+        {
+            Require(capture.TryGetStatusCanceledPurgeStart(session.Capture!, session.Binding!, session.Client!,
+                session.ActualDeletedVaultScope!, session.Receipt!, session.StartTask!, session.Handle!, out var canceled));
+            return canceled!;
+        }
+        if (session.Pending?.FailedProfile is not null)
+        {
+            Require(capture.TryGetStatusFailedPurgeStart(session.Capture!, session.Binding!, session.Client!,
+                session.ActualDeletedVaultScope!, session.Receipt!, session.StartTask!, session.Handle!, out var failed));
+            return failed!;
+        }
         if (CancellationPending(session))
         {
             Require(capture.TryGetStatusPendingPurgeCancellationStart(session.Capture!, session.Binding!, session.Client!,
@@ -718,8 +2991,52 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
             session.ActualDeletedVaultScope!, session.Receipt!, session.StartTask!, session.Handle!, out var selected));
         return selected!;
     }
+    private object DeniedSelectedProof(Session session)
+    {
+        Require(session.Pending?.DeniedProfile is not null);
+        Require(capture.TryGetStatusDeniedPurgeDenied(session.Capture!, session.Binding!, session.Client!,
+                session.ActualDeletedVaultScope!, session.Receipt!, session.StartTask!, session.Handle!, session.StatusTask!, out var proof));
+        return proof!;
+    }
     private object PendingSelectedProof(Session session)
     {
+        if (session.Pending?.DeniedProfile is not null) return DeniedSelectedProof(session);
+        if (session.Pending?.CanceledCancellationProfile is not null)
+        {
+            Require(capture.TryGetStatusCanceledPurgeCancellationTerminalCancellation(session.Capture!, session.Binding!, session.Client!,
+                session.ActualDeletedVaultScope!, session.Receipt!, session.StartTask!, session.Handle!, session.Pending!.CanceledTask!, session.StatusTask!, out var failed));
+            return failed!;
+        }
+        if (session.Pending?.FailedCancellationProfile is not null)
+        {
+            Require(capture.TryGetStatusFailedPurgeCancellationTerminalFailure(session.Capture!, session.Binding!, session.Client!,
+                session.ActualDeletedVaultScope!, session.Receipt!, session.StartTask!, session.Handle!, session.Pending!.CanceledTask!, session.StatusTask!, out var failed));
+            return failed!;
+        }
+        if (session.Pending?.FailedIndependentProfile is not null)
+        {
+            Require(capture.TryGetStatusFailedPurgeIndependentTerminalFailure(session.Capture!, session.Binding!, session.Client!,
+                session.ActualDeletedVaultScope!, session.Receipt!, session.StartTask!, session.Handle!, session.StatusTask!, out var failed));
+            return failed!;
+        }
+        if (session.Pending?.CanceledIndependentProfile is not null)
+        {
+            Require(capture.TryGetStatusCanceledPurgeIndependentTerminalCancellation(session.Capture!, session.Binding!, session.Client!,
+                session.ActualDeletedVaultScope!, session.Receipt!, session.StartTask!, session.Handle!, session.StatusTask!, out var canceled));
+            return canceled!;
+        }
+        if (session.Pending?.CanceledProfile is not null)
+        {
+            Require(capture.TryGetStatusCanceledPurgeTerminalCancellation(session.Capture!, session.Binding!, session.Client!,
+                session.ActualDeletedVaultScope!, session.Receipt!, session.StartTask!, session.Handle!, session.StatusTask!, out var canceled));
+            return canceled!;
+        }
+        if (session.Pending?.FailedProfile is not null)
+        {
+            Require(capture.TryGetStatusFailedPurgeTerminalFailure(session.Capture!, session.Binding!, session.Client!,
+                session.ActualDeletedVaultScope!, session.Receipt!, session.StartTask!, session.Handle!, session.StatusTask!, out var failed));
+            return failed!;
+        }
         if (CancellationPending(session))
         {
             Require(capture.TryGetStatusPendingPurgeCancellationSelected(session.Capture!, session.Binding!, session.Client!,
@@ -756,6 +3073,180 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
     }
     private object RegisterPending(PendingFacts facts)
     {
+        if (facts.Session.Pending!.FailedCancellationProfile is not null)
+        {
+            Require(ReferenceEquals(facts.Session.Pending.FailedCancellationProfile, failedCancellationProfile) &&
+                VaultFixtureProvisioner.StatusFailedPurgeCancellationSelector(facts.Session.Selector));
+            object failed = (facts.DrainOnly, facts.After.PurgeDeletedVault!.FailedStage) switch
+            {
+                (true, _) => new StatusFailedPurgeCancellationInvocationDrain(this),
+                (false, RoleFixtureJournal.StatusFailedPurgeStage.OriginalAdmitted) => new StatusFailedPurgeCancellationAdmission(this),
+                (false, RoleFixtureJournal.StatusFailedPurgeStage.OriginalDrained) => new StatusFailedPurgeCancellationStartDrain(this),
+                (false, RoleFixtureJournal.StatusFailedPurgeStage.SelectedAdmitted) => new StatusFailedPurgeCancellationReadAdmission(this),
+                (false, RoleFixtureJournal.StatusFailedPurgeStage.TerminalFailed) => new StatusFailedPurgeCancellationTerminalFailure(this),
+                _ => throw Failure()
+            };
+            Require(failed switch
+            {
+                StatusFailedPurgeCancellationAdmission value => failedCancellationAdmissions.TryAdd(value, facts),
+                StatusFailedPurgeCancellationStartDrain value => failedCancellationStartDrains.TryAdd(value, facts),
+                StatusFailedPurgeCancellationReadAdmission value => failedCancellationReadAdmissions.TryAdd(value, facts),
+                StatusFailedPurgeCancellationTerminalFailure value => failedCancellationTerminalFailures.TryAdd(value, facts),
+                StatusFailedPurgeCancellationInvocationDrain value => failedCancellationInvocationDrains.TryAdd(value, facts),
+                _ => false
+            });
+            return failed;
+        }
+        if (facts.Session.Pending!.FailedIndependentProfile is not null)
+        {
+            Require(ReferenceEquals(facts.Session.Pending.FailedIndependentProfile, failedIndependentProfile) &&
+                VaultFixtureProvisioner.StatusFailedPurgeIndependentSelector(facts.Session.Selector));
+            object failed = (facts.DrainOnly, facts.After.PurgeDeletedVault!.FailedStage) switch
+            {
+                (true, _) => new StatusFailedPurgeIndependentInvocationDrain(this),
+                (false, RoleFixtureJournal.StatusFailedPurgeStage.OriginalAdmitted) => new StatusFailedPurgeIndependentAdmission(this),
+                (false, RoleFixtureJournal.StatusFailedPurgeStage.OriginalDrained) => new StatusFailedPurgeIndependentStartDrain(this),
+                (false, RoleFixtureJournal.StatusFailedPurgeStage.SelectedAdmitted) => new StatusFailedPurgeIndependentReadAdmission(this),
+                (false, RoleFixtureJournal.StatusFailedPurgeStage.TerminalFailed) => new StatusFailedPurgeIndependentTerminalFailure(this),
+                _ => throw Failure()
+            };
+            Require(failed switch
+            {
+                StatusFailedPurgeIndependentAdmission value => failedIndependentAdmissions.TryAdd(value, facts),
+                StatusFailedPurgeIndependentStartDrain value => failedIndependentStartDrains.TryAdd(value, facts),
+                StatusFailedPurgeIndependentReadAdmission value => failedIndependentReadAdmissions.TryAdd(value, facts),
+                StatusFailedPurgeIndependentTerminalFailure value => failedIndependentTerminalFailures.TryAdd(value, facts),
+                StatusFailedPurgeIndependentInvocationDrain value => failedIndependentInvocationDrains.TryAdd(value, facts),
+                _ => false
+            });
+            return failed;
+        }
+        if (facts.Session.Pending!.CanceledCancellationProfile is not null)
+        {
+            Require(ReferenceEquals(facts.Session.Pending.CanceledCancellationProfile, canceledCancellationProfile) &&
+                VaultFixtureProvisioner.StatusCanceledPurgeCancellationSelector(facts.Session.Selector));
+            object canceled = (facts.DrainOnly, facts.After.PurgeDeletedVault!.CanceledStage) switch
+            {
+                (true, _) => new StatusCanceledPurgeCancellationInvocationDrain(this),
+                (false, RoleFixtureJournal.StatusCanceledPurgeStage.OriginalAdmitted) => new StatusCanceledPurgeCancellationAdmission(this),
+                (false, RoleFixtureJournal.StatusCanceledPurgeStage.OriginalDrained) => new StatusCanceledPurgeCancellationStartDrain(this),
+                (false, RoleFixtureJournal.StatusCanceledPurgeStage.SelectedAdmitted) => new StatusCanceledPurgeCancellationReadAdmission(this),
+                (false, RoleFixtureJournal.StatusCanceledPurgeStage.TerminalCanceled) => new StatusCanceledPurgeCancellationTerminalCancellation(this),
+                _ => throw Failure()
+            };
+            Require(canceled switch
+            {
+                StatusCanceledPurgeCancellationAdmission value => canceledCancellationAdmissions.TryAdd(value, facts),
+                StatusCanceledPurgeCancellationStartDrain value => canceledCancellationStartDrains.TryAdd(value, facts),
+                StatusCanceledPurgeCancellationReadAdmission value => canceledCancellationReadAdmissions.TryAdd(value, facts),
+                StatusCanceledPurgeCancellationTerminalCancellation value => canceledCancellationTerminalCancellations.TryAdd(value, facts),
+                StatusCanceledPurgeCancellationInvocationDrain value => canceledCancellationInvocationDrains.TryAdd(value, facts),
+                _ => false
+            });
+            return canceled;
+        }
+        if (facts.Session.Pending!.CanceledIndependentProfile is not null)
+        {
+            Require(ReferenceEquals(facts.Session.Pending.CanceledIndependentProfile, canceledIndependentProfile) &&
+                VaultFixtureProvisioner.StatusCanceledPurgeIndependentSelector(facts.Session.Selector));
+            object canceled = (facts.DrainOnly, facts.After.PurgeDeletedVault!.CanceledStage) switch
+            {
+                (true, _) => new StatusCanceledPurgeIndependentInvocationDrain(this),
+                (false, RoleFixtureJournal.StatusCanceledPurgeStage.OriginalAdmitted) => new StatusCanceledPurgeIndependentAdmission(this),
+                (false, RoleFixtureJournal.StatusCanceledPurgeStage.OriginalDrained) => new StatusCanceledPurgeIndependentStartDrain(this),
+                (false, RoleFixtureJournal.StatusCanceledPurgeStage.SelectedAdmitted) => new StatusCanceledPurgeIndependentReadAdmission(this),
+                (false, RoleFixtureJournal.StatusCanceledPurgeStage.TerminalCanceled) => new StatusCanceledPurgeIndependentTerminalCancellation(this),
+                _ => throw Failure()
+            };
+            Require(canceled switch
+            {
+                StatusCanceledPurgeIndependentAdmission value => canceledIndependentAdmissions.TryAdd(value, facts),
+                StatusCanceledPurgeIndependentStartDrain value => canceledIndependentStartDrains.TryAdd(value, facts),
+                StatusCanceledPurgeIndependentReadAdmission value => canceledIndependentReadAdmissions.TryAdd(value, facts),
+                StatusCanceledPurgeIndependentTerminalCancellation value => canceledIndependentTerminalCancellations.TryAdd(value, facts),
+                StatusCanceledPurgeIndependentInvocationDrain value => canceledIndependentInvocationDrains.TryAdd(value, facts),
+                _ => false
+            });
+            return canceled;
+        }
+        if (facts.Session.Pending!.CanceledProfile is not null)
+        {
+            Require(ReferenceEquals(facts.Session.Pending.CanceledProfile, canceledProfile) &&
+                VaultFixtureProvisioner.StatusCanceledPurgeSelector(facts.Session.Selector));
+            object canceled = (facts.DrainOnly, facts.After.PurgeDeletedVault!.CanceledStage) switch
+            {
+                (true, _) => new StatusCanceledPurgeInvocationDrain(this),
+                (false, RoleFixtureJournal.StatusCanceledPurgeStage.OriginalAdmitted) => new StatusCanceledPurgeAdmission(this),
+                (false, RoleFixtureJournal.StatusCanceledPurgeStage.OriginalDrained) => new StatusCanceledPurgeStartDrain(this),
+                (false, RoleFixtureJournal.StatusCanceledPurgeStage.SelectedAdmitted) => new StatusCanceledPurgeReadAdmission(this),
+                (false, RoleFixtureJournal.StatusCanceledPurgeStage.TerminalCanceled) => new StatusCanceledPurgeTerminalCancellation(this),
+                _ => throw Failure()
+            };
+            Require(canceled switch
+            {
+                StatusCanceledPurgeIndependentAdmission value => canceledIndependentAdmissions.TryAdd(value, facts),
+                StatusCanceledPurgeAdmission value => canceledAdmissions.TryAdd(value, facts),
+                StatusCanceledPurgeIndependentStartDrain value => canceledIndependentStartDrains.TryAdd(value, facts),
+                StatusCanceledPurgeStartDrain value => canceledStartDrains.TryAdd(value, facts),
+                StatusCanceledPurgeIndependentReadAdmission value => canceledIndependentReadAdmissions.TryAdd(value, facts),
+                StatusCanceledPurgeReadAdmission value => canceledReadAdmissions.TryAdd(value, facts),
+                StatusCanceledPurgeIndependentTerminalCancellation value => canceledIndependentTerminalCancellations.TryAdd(value, facts),
+                StatusCanceledPurgeTerminalCancellation value => canceledTerminalCancellations.TryAdd(value, facts),
+                StatusCanceledPurgeIndependentInvocationDrain value => canceledIndependentInvocationDrains.TryAdd(value, facts),
+                StatusCanceledPurgeInvocationDrain value => canceledInvocationDrains.TryAdd(value, facts),
+                _ => false
+            });
+            return canceled;
+        }
+        if (facts.Session.Pending!.DeniedProfile is not null)
+        {
+            Require(ReferenceEquals(facts.Session.Pending.DeniedProfile, deniedProfile) &&
+                VaultFixtureProvisioner.StatusDeniedPurgeSelector(facts.Session.Selector));
+            object denied = (facts.DrainOnly, facts.After.PurgeDeletedVault!.DeniedStage) switch
+            {
+                (true, _) => new StatusDeniedPurgeInvocationDrain(this),
+                (false, RoleFixtureJournal.StatusDeniedPurgeStage.OriginalAdmitted) => new StatusDeniedPurgeAdmission(this),
+                (false, RoleFixtureJournal.StatusDeniedPurgeStage.OriginalDrained) => new StatusDeniedPurgeStartDrain(this),
+                (false, RoleFixtureJournal.StatusDeniedPurgeStage.SelectedAdmitted) => new StatusDeniedPurgeReadAdmission(this),
+                (false, RoleFixtureJournal.StatusDeniedPurgeStage.DeniedObserved) => new StatusDeniedPurgeObservation(this),
+                _ => throw Failure()
+            };
+            Require(denied switch
+            {
+                StatusDeniedPurgeAdmission value => deniedAdmissions.TryAdd(value, facts),
+                StatusDeniedPurgeStartDrain value => deniedStartDrains.TryAdd(value, facts),
+                StatusDeniedPurgeReadAdmission value => deniedReadAdmissions.TryAdd(value, facts),
+                StatusDeniedPurgeObservation value => deniedObservations.TryAdd(value, facts),
+                StatusDeniedPurgeInvocationDrain value => deniedInvocationDrains.TryAdd(value, facts),
+                _ => false
+            });
+            return denied;
+        }
+        if (facts.Session.Pending!.FailedProfile is not null)
+        {
+            Require(ReferenceEquals(facts.Session.Pending.FailedProfile, failedProfile) &&
+                VaultFixtureProvisioner.StatusFailedPurgeSelector(facts.Session.Selector));
+            object failed = (facts.DrainOnly, facts.After.PurgeDeletedVault!.FailedStage) switch
+            {
+                (true, _) => new StatusFailedPurgeInvocationDrain(this),
+                (false, RoleFixtureJournal.StatusFailedPurgeStage.OriginalAdmitted) => new StatusFailedPurgeAdmission(this),
+                (false, RoleFixtureJournal.StatusFailedPurgeStage.OriginalDrained) => new StatusFailedPurgeStartDrain(this),
+                (false, RoleFixtureJournal.StatusFailedPurgeStage.SelectedAdmitted) => new StatusFailedPurgeReadAdmission(this),
+                (false, RoleFixtureJournal.StatusFailedPurgeStage.TerminalFailed) => new StatusFailedPurgeTerminalFailure(this),
+                _ => throw Failure()
+            };
+            Require(failed switch
+            {
+                StatusFailedPurgeAdmission value => failedAdmissions.TryAdd(value, facts),
+                StatusFailedPurgeStartDrain value => failedStartDrains.TryAdd(value, facts),
+                StatusFailedPurgeReadAdmission value => failedReadAdmissions.TryAdd(value, facts),
+                StatusFailedPurgeTerminalFailure value => failedTerminalFailures.TryAdd(value, facts),
+                StatusFailedPurgeInvocationDrain value => failedInvocationDrains.TryAdd(value, facts),
+                _ => false
+            });
+            return failed;
+        }
+
         bool independent = IndependentPending(facts.Session);
         object capability = CancellationPending(facts.Session) ? (facts.DrainOnly, facts.After.PurgeDeletedVault!.PendingStage) switch
         {
@@ -813,6 +3304,62 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
         return capability;
     }
 
+    private PendingFacts CanceledCancellationFact(Session session, RoleFixtureJournal.Snapshot before,
+        RoleFixtureJournal.StatusCanceledPurgeStage stage, bool terminated, CancellationToken token,
+        Task[] tasks, object[] proofs, bool cleanup = false, bool drain = false)
+    {
+        Require(canceledCancellationProfile is not null && ReferenceEquals(session.Pending!.CanceledCancellationProfile, canceledCancellationProfile) &&
+            VaultFixtureProvisioner.StatusCanceledPurgeCancellationSelector(session.Selector));
+        bool terminal = stage == RoleFixtureJournal.StatusCanceledPurgeStage.TerminalCanceled;
+        var image = before with
+        {
+            Revision = before.Revision + 1,
+            Resources = before.Resources.Select((r, i) => i == 2 ? r with
+            { SelectedAttempted = true, InvocationTerminated = terminated, ActiveDispatch = terminal ? Guid.Empty : session.Dispatch } : r).ToArray(),
+            PurgeDeletedVault = before.PurgeDeletedVault! with
+            { CanceledStage = stage, InvocationDispatch = session.Dispatch, SettledDispatch = terminal ? session.Dispatch : Guid.Empty }
+        };
+        return new(session, RoleFixtureJournal.CopyStatusPendingPurgeSnapshot(before), image,
+            [token], tasks, proofs, cleanup, drain);
+    }
+    private PendingFacts CanceledIndependentFact(Session session, RoleFixtureJournal.Snapshot before,
+        RoleFixtureJournal.StatusCanceledPurgeStage stage, bool terminated, CancellationToken token,
+        Task[] tasks, object[] proofs, bool cleanup = false, bool drain = false)
+    {
+        Require(canceledIndependentProfile is not null && ReferenceEquals(session.Pending!.CanceledIndependentProfile, canceledIndependentProfile) &&
+            VaultFixtureProvisioner.StatusCanceledPurgeIndependentSelector(session.Selector));
+        bool terminal = stage == RoleFixtureJournal.StatusCanceledPurgeStage.TerminalCanceled;
+        var image = before with
+        {
+            Revision = before.Revision + 1,
+            Resources = before.Resources.Select((r, i) => i == 2 ? r with
+            { SelectedAttempted = true, InvocationTerminated = terminated, ActiveDispatch = terminal ? Guid.Empty : session.Dispatch } : r).ToArray(),
+            PurgeDeletedVault = before.PurgeDeletedVault! with
+            { CanceledStage = stage, InvocationDispatch = session.Dispatch, SettledDispatch = terminal ? session.Dispatch : Guid.Empty }
+        };
+        return new(session, RoleFixtureJournal.CopyStatusPendingPurgeSnapshot(before), image,
+            [token], tasks, proofs, cleanup, drain);
+    }
+
+    private PendingFacts CanceledFact(Session session, RoleFixtureJournal.Snapshot before,
+        RoleFixtureJournal.StatusCanceledPurgeStage stage, bool terminated, CancellationToken token,
+        Task[] tasks, object[] proofs, bool cleanup = false, bool drain = false)
+    {
+        Require(canceledProfile is not null && ReferenceEquals(session.Pending!.CanceledProfile, canceledProfile) &&
+            VaultFixtureProvisioner.StatusCanceledPurgeSelector(session.Selector));
+        bool terminal = stage == RoleFixtureJournal.StatusCanceledPurgeStage.TerminalCanceled;
+        var image = before with
+        {
+            Revision = before.Revision + 1,
+            Resources = before.Resources.Select((r, i) => i == 2 ? r with
+            { SelectedAttempted = true, InvocationTerminated = terminated, ActiveDispatch = terminal ? Guid.Empty : session.Dispatch } : r).ToArray(),
+            PurgeDeletedVault = before.PurgeDeletedVault! with
+            { CanceledStage = stage, InvocationDispatch = session.Dispatch, SettledDispatch = terminal ? session.Dispatch : Guid.Empty }
+        };
+        return new(session, RoleFixtureJournal.CopyStatusPendingPurgeSnapshot(before), image,
+            [token], tasks, proofs, cleanup, drain);
+    }
+
     private RoleFixtureJournal.Snapshot PendingImage(RoleFixtureJournal.Snapshot before,
         RoleFixtureJournal.StatusPendingPurgeStage stage, bool terminated, Guid dispatch, bool terminal = false) => before with
     {
@@ -830,9 +3377,35 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
     };
     private PendingFacts PendingFact(Session session, RoleFixtureJournal.Snapshot before,
         RoleFixtureJournal.StatusPendingPurgeStage stage, bool terminated, CancellationToken token,
-        Task[] tasks, object[] proofs, bool cleanup = false, bool terminal = false, bool drain = false) =>
-        new(session, RoleFixtureJournal.CopyStatusPendingPurgeSnapshot(before),
+        Task[] tasks, object[] proofs, bool cleanup = false, bool terminal = false, bool drain = false)
+    {
+        if (session.Pending!.DeniedProfile is not null)
+        {
+            var image = PendingImage(before, stage, terminated, session.Dispatch,
+                terminal: stage == RoleFixtureJournal.StatusPendingPurgeStage.PendingObserved);
+            image = image with { PurgeDeletedVault = image.PurgeDeletedVault! with
+                { PendingStage = default, DeniedStage = (RoleFixtureJournal.StatusDeniedPurgeStage)(int)stage } };
+            return new(session, RoleFixtureJournal.CopyStatusPendingPurgeSnapshot(before), image,
+                [token], tasks, proofs, cleanup, drain);
+        }
+        if (session.Pending!.FailedProfile is not null || session.Pending.FailedIndependentProfile is not null || session.Pending.FailedCancellationProfile is not null)
+        {
+            bool failed = stage == RoleFixtureJournal.StatusPendingPurgeStage.PendingObserved;
+            var image = before with
+            {
+                Revision = before.Revision + 1,
+                Resources = before.Resources.Select((r, i) => i == 2 ? r with
+                { SelectedAttempted = true, InvocationTerminated = terminated, ActiveDispatch = failed ? Guid.Empty : session.Dispatch } : r).ToArray(),
+                PurgeDeletedVault = before.PurgeDeletedVault! with
+                { FailedStage = (RoleFixtureJournal.StatusFailedPurgeStage)(int)stage,
+                    InvocationDispatch = session.Dispatch, SettledDispatch = failed ? session.Dispatch : Guid.Empty }
+            };
+            return new(session, RoleFixtureJournal.CopyStatusPendingPurgeSnapshot(before), image,
+                [token], tasks, proofs, cleanup, drain);
+        }
+        return new PendingFacts(session, RoleFixtureJournal.CopyStatusPendingPurgeSnapshot(before),
             PendingImage(before, stage, terminated, session.Dispatch, terminal), [token], tasks, proofs, cleanup, drain);
+    }
 
     private async ValueTask<SecretOutcome<ManagementOperation>> StartPendingPurge(FixtureSelector selector,
         VaultAdministration client, ManagementScope originalScope, ManagementMutation operation, E.Input input,
@@ -851,12 +3424,30 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
             session.Pending.Callers.Enqueue(caller);
             session.Client = client; session.ActualDeletedVaultScope = (DeletedVaultScope)originalScope; session.Receipt = receipt;
             session.Binding = new(selector, session.Plan!.LeaseId, originalScope, operation, scope.Location, "2026-02-01");
-            session.Capture = capture.Arm(session.Binding);
+            session.Capture = session.Pending.DeniedProfile is not null ? capture.ArmStatusDeniedPurge(session.Binding) : capture.Arm(session.Binding);
             session.Pending.StartedUtc = DateTimeOffset.UtcNow;
             session.Pending.StartedTimestamp = TimeProvider.System.GetTimestamp();
             session.Pending.ExpiresAt = input.Arm.Administrative.ExpiresAt;
             session.Pending.OriginalCaller = caller;
-            session.Pending.Clock = CancellationPending(session)
+            session.Pending.Clock = session.Pending.DeniedProfile is not null ? null : session.Pending.CanceledCancellationProfile is not null
+                ? capture.EnrollStatusCanceledPurgeCancellation(session.Capture, session.Binding, client,
+                    session.ActualDeletedVaultScope, receipt, session.Pending.ExpiresAt, pendingClockBounds!, limits.Timeout, caller)
+                : session.Pending.CanceledIndependentProfile is not null
+                ? capture.EnrollStatusCanceledPurgeIndependent(session.Capture, session.Binding, client,
+                    session.ActualDeletedVaultScope, receipt, session.Pending.ExpiresAt, pendingClockBounds!, limits.Timeout, caller)
+                : session.Pending.CanceledProfile is not null
+                ? capture.EnrollStatusCanceledPurge(session.Capture, session.Binding, client,
+                    session.ActualDeletedVaultScope, receipt, session.Pending.ExpiresAt, pendingClockBounds!, limits.Timeout, caller)
+                : session.Pending.FailedCancellationProfile is not null
+                ? capture.EnrollStatusFailedPurgeCancellation(session.Capture, session.Binding, client,
+                    session.ActualDeletedVaultScope, receipt, session.Pending.ExpiresAt, pendingClockBounds!, limits.Timeout, caller)
+            : session.Pending.FailedIndependentProfile is not null
+                ? capture.EnrollStatusFailedPurgeIndependent(session.Capture, session.Binding, client,
+                    session.ActualDeletedVaultScope, receipt, session.Pending.ExpiresAt, pendingClockBounds!, limits.Timeout, caller)
+                : session.Pending.FailedProfile is not null
+                ? capture.EnrollStatusFailedPurge(session.Capture, session.Binding, client,
+                    session.ActualDeletedVaultScope, receipt, session.Pending.ExpiresAt, pendingClockBounds!, limits.Timeout, caller)
+                : CancellationPending(session)
                 ? capture.EnrollStatusPendingPurgeCancellation(session.Capture, session.Binding, client,
                     session.ActualDeletedVaultScope, receipt, session.Pending.ExpiresAt, pendingClockBounds!, limits.Timeout, caller)
                 : IndependentPending(session)
@@ -869,22 +3460,59 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
         try
         {
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(caller, lifetime.Token,
-                session.Stop.Token, session.Pending.Clock.Token);
+                session.Stop.Token, session.Pending.Clock?.Token ?? default);
             CheckPendingClock(session);
             var before = provisioner.Journal.Read(owner, selector);
             session.Dispatch = Guid.NewGuid();
             var pair = session.Pending.Baseline!;
-            var candidate = RegisterPending(PendingFact(session, before,
-                RoleFixtureJournal.StatusPendingPurgeStage.OriginalAdmitted, false, linked.Token,
-                [pair.Active.Task, pair.Deleted.Task], [pair.Active.Proof, pair.Deleted.Proof]));
-            if (CancellationPending(session)) provisioner.BindStatusPendingPurgeCancellationLifetime(session.Plan!, () => CheckPendingClock(session));
+            var candidate = RegisterPending(session.Pending.CanceledCancellationProfile is not null
+                ? CanceledCancellationFact(session, before, RoleFixtureJournal.StatusCanceledPurgeStage.OriginalAdmitted, false, linked.Token,
+                    [pair.Active.Task, pair.Deleted.Task], [pair.Active.Proof, pair.Deleted.Proof])
+                : session.Pending.CanceledIndependentProfile is not null
+                ? CanceledIndependentFact(session, before, RoleFixtureJournal.StatusCanceledPurgeStage.OriginalAdmitted, false, linked.Token,
+                    [pair.Active.Task, pair.Deleted.Task], [pair.Active.Proof, pair.Deleted.Proof])
+                : session.Pending.CanceledProfile is not null
+                ? CanceledFact(session, before, RoleFixtureJournal.StatusCanceledPurgeStage.OriginalAdmitted, false, linked.Token,
+                    [pair.Active.Task, pair.Deleted.Task], [pair.Active.Proof, pair.Deleted.Proof])
+                : PendingFact(session, before,
+                    RoleFixtureJournal.StatusPendingPurgeStage.OriginalAdmitted, false, linked.Token,
+                    [pair.Active.Task, pair.Deleted.Task], [pair.Active.Proof, pair.Deleted.Proof]));
+            if (session.Pending.DeniedProfile is not null) provisioner.BindStatusDeniedPurgeLifetime(session.Plan!, () => CheckPendingClock(session));
+            else if (session.Pending.CanceledCancellationProfile is not null) provisioner.BindStatusCanceledPurgeCancellationLifetime(session.Plan!, () => CheckPendingClock(session));
+            else if (session.Pending.CanceledIndependentProfile is not null) provisioner.BindStatusCanceledPurgeIndependentLifetime(session.Plan!, () => CheckPendingClock(session));
+            else if (session.Pending.CanceledProfile is not null) provisioner.BindStatusCanceledPurgeLifetime(session.Plan!, () => CheckPendingClock(session));
+            else if (session.Pending.FailedCancellationProfile is not null) provisioner.BindStatusFailedPurgeCancellationLifetime(session.Plan!, () => CheckPendingClock(session));
+            else if (session.Pending.FailedIndependentProfile is not null) provisioner.BindStatusFailedPurgeIndependentLifetime(session.Plan!, () => CheckPendingClock(session));
+            else if (session.Pending.FailedProfile is not null) provisioner.BindStatusFailedPurgeLifetime(session.Plan!, () => CheckPendingClock(session));
+            else if (CancellationPending(session)) provisioner.BindStatusPendingPurgeCancellationLifetime(session.Plan!, () => CheckPendingClock(session));
             else if (IndependentPending(session)) provisioner.BindStatusPendingPurgeIndependentLifetime(session.Plan!, () => CheckPendingClock(session));
             else provisioner.BindStatusPendingPurgeLifetime(session.Plan!, () => CheckPendingClock(session));
             session.Pending.Persistence = candidate;
             var admitted = RetryPendingPersistence(session);
             CheckPendingClock(session);
             session.StartedAt = time.GetUtcNow();
-            var result = await (CancellationPending(session)
+            var result = await (session.Pending.DeniedProfile is not null
+                ? capture.StartStatusDeniedPurgeAsync(session.Capture!, selector, client, originalScope,
+                    input, receipt, linked.Token, task => session.StartTask = task)
+                : session.Pending.FailedCancellationProfile is not null
+                ? capture.StartStatusFailedPurgeCancellationAsync(session.Capture!, selector, client, originalScope,
+                    input, receipt, linked.Token, task => session.StartTask = task)
+                : session.Pending.FailedIndependentProfile is not null
+                ? capture.StartStatusFailedPurgeIndependentAsync(session.Capture!, selector, client, originalScope,
+                    input, receipt, linked.Token, task => session.StartTask = task)
+                : session.Pending.CanceledCancellationProfile is not null
+                ? capture.StartStatusCanceledPurgeCancellationAsync(session.Capture!, selector, client, originalScope,
+                    input, receipt, linked.Token, task => session.StartTask = task)
+                : session.Pending.CanceledIndependentProfile is not null
+                ? capture.StartStatusCanceledPurgeIndependentAsync(session.Capture!, selector, client, originalScope,
+                    input, receipt, linked.Token, task => session.StartTask = task)
+                : session.Pending.CanceledProfile is not null
+                ? capture.StartStatusCanceledPurgeAsync(session.Capture!, selector, client, originalScope,
+                    input, receipt, linked.Token, task => session.StartTask = task)
+                : session.Pending.FailedProfile is not null
+                ? capture.StartStatusFailedPurgeAsync(session.Capture!, selector, client, originalScope,
+                    input, receipt, linked.Token, task => session.StartTask = task)
+                : CancellationPending(session)
                 ? capture.StartStatusPendingPurgeCancellationAsync(session.Capture!, selector, client, originalScope,
                     input, receipt, linked.Token, task => session.StartTask = task)
                 : IndependentPending(session)
@@ -897,8 +3525,14 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
             var proof = PendingStartProof(session);
             CheckPendingClock(session);
             before = admitted;
-            var drain = RegisterPending(PendingFact(session, before,
-                RoleFixtureJournal.StatusPendingPurgeStage.OriginalDrained, true, linked.Token, [session.StartTask!], [proof]));
+            var drain = RegisterPending(session.Pending.CanceledCancellationProfile is not null
+                ? CanceledCancellationFact(session, before, RoleFixtureJournal.StatusCanceledPurgeStage.OriginalDrained, true, linked.Token, [session.StartTask!], [proof])
+                : session.Pending.CanceledIndependentProfile is not null
+                ? CanceledIndependentFact(session, before, RoleFixtureJournal.StatusCanceledPurgeStage.OriginalDrained, true, linked.Token, [session.StartTask!], [proof])
+                : session.Pending.CanceledProfile is not null
+                ? CanceledFact(session, before, RoleFixtureJournal.StatusCanceledPurgeStage.OriginalDrained, true, linked.Token, [session.StartTask!], [proof])
+                : PendingFact(session, before,
+                    RoleFixtureJournal.StatusPendingPurgeStage.OriginalDrained, true, linked.Token, [session.StartTask!], [proof]));
             session.Pending.Persistence = drain;
             RetryPendingPersistence(session);
             session.StartSucceeded = true;
@@ -927,12 +3561,14 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
             if (cancellation)
             {
                 bool valid = !p.Invalid && session.Active == 0 && !session.StatusClaimed &&
-                    (canceledCall ? caller.IsCancellationRequested : p.CanceledDrained && p.CanceledProof is not null &&
+                    (canceledCall ? caller.IsCancellationRequested : p.CanceledDrained && (p.CanceledCancellationProfile is not null ? p.CanceledCancellationProof is not null : p.FailedCancellationProfile is not null ? p.FailedCanceledProof is not null : p.CanceledProof is not null) &&
                         p.SelectedAdmission is not null && caller == p.OriginalCaller && !caller.IsCancellationRequested);
                 if (!valid)
                 {
                     p.Invalid = true;
-                    capture.RevokeStatusPendingPurgeCancellationSelected(session.Capture!);
+                    if (p.CanceledCancellationProfile is not null) capture.RevokeStatusCanceledPurgeCancellationSelected(session.Capture!);
+                    else if (p.FailedCancellationProfile is not null) capture.RevokeStatusFailedPurgeCancellationSelected(session.Capture!);
+                    else capture.RevokeStatusPendingPurgeCancellationSelected(session.Capture!);
                     throw Failure();
                 }
                 if (canceledCall)
@@ -959,7 +3595,7 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
             var p = session.Pending!;
             // The deliberately canceled operand is not a positive lifetime token.
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(canceledCall ? p.OriginalCaller : caller,
-                lifetime.Token, session.Stop.Token, p.Clock!.Token);
+                lifetime.Token, session.Stop.Token, p.Clock?.Token ?? default);
             CheckPendingClock(session);
             var start = PendingStartProof(session);
             var before = provisioner.Journal.Read(owner, selector);
@@ -969,9 +3605,17 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
             {
                 Require(p.SelectedAdmission is not null && RoleFixtureJournal.SameStatusPendingPurgeSnapshot(p.SelectedAdmission, before) &&
                     p.CanceledDrained && p.CanceledOperand.IsCancellationRequested && p.CanceledTask is { IsCanceled: true } &&
-                    p.CanceledProof is not null && capture.OwnsStatusPendingPurgeCancellationCanceled(p.CanceledProof,
-                        session.Capture!, session.Binding!, session.Client!, session.ActualDeletedVaultScope!, session.Receipt!,
-                        session.StartTask!, handle, p.CanceledTask));
+                    (p.CanceledCancellationProfile is not null
+                        ? p.CanceledCancellationProof is not null && capture.OwnsStatusCanceledPurgeCancellationCanceled(p.CanceledCancellationProof,
+                            session.Capture!, session.Binding!, session.Client!, session.ActualDeletedVaultScope!, session.Receipt!,
+                            session.StartTask!, handle, p.CanceledTask)
+                    : p.FailedCancellationProfile is not null
+                        ? p.FailedCanceledProof is not null && capture.OwnsStatusFailedPurgeCancellationCanceled(p.FailedCanceledProof,
+                            session.Capture!, session.Binding!, session.Client!, session.ActualDeletedVaultScope!, session.Receipt!,
+                            session.StartTask!, handle, p.CanceledTask)
+                        : p.CanceledProof is not null && capture.OwnsStatusPendingPurgeCancellationCanceled(p.CanceledProof,
+                            session.Capture!, session.Binding!, session.Client!, session.ActualDeletedVaultScope!, session.Receipt!,
+                            session.StartTask!, handle, p.CanceledTask)));
                 admitted = p.SelectedAdmission;
                 lock (gate)
                 {
@@ -981,10 +3625,22 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
             }
             else
             {
-                var admission = RegisterPending(PendingFact(session, before,
-                    RoleFixtureJournal.StatusPendingPurgeStage.SelectedAdmitted, false, linked.Token,
-                    [session.StartTask!, p.StatusRead!, pair.Active.Task, pair.Deleted.Task],
-                    [start, pair.Active.Proof, pair.Deleted.Proof, p.StatusWitness!]));
+                var admission = RegisterPending(p.CanceledCancellationProfile is not null
+                    ? CanceledCancellationFact(session, before, RoleFixtureJournal.StatusCanceledPurgeStage.SelectedAdmitted, false, linked.Token,
+                        [session.StartTask!, p.StatusRead!, pair.Active.Task, pair.Deleted.Task],
+                        [start, pair.Active.Proof, pair.Deleted.Proof, p.StatusWitness!])
+                    : p.CanceledIndependentProfile is not null
+                    ? CanceledIndependentFact(session, before, RoleFixtureJournal.StatusCanceledPurgeStage.SelectedAdmitted, false, linked.Token,
+                        [session.StartTask!, p.StatusRead!, pair.Active.Task, pair.Deleted.Task],
+                        [start, pair.Active.Proof, pair.Deleted.Proof, p.StatusWitness!])
+                : p.CanceledProfile is not null
+                    ? CanceledFact(session, before, RoleFixtureJournal.StatusCanceledPurgeStage.SelectedAdmitted, false, linked.Token,
+                        [session.StartTask!, p.StatusRead!, pair.Active.Task, pair.Deleted.Task],
+                        [start, pair.Active.Proof, pair.Deleted.Proof, p.StatusWitness!])
+                    : PendingFact(session, before,
+                        RoleFixtureJournal.StatusPendingPurgeStage.SelectedAdmitted, false, linked.Token,
+                        [session.StartTask!, p.StatusRead!, pair.Active.Task, pair.Deleted.Task],
+                        [start, pair.Active.Proof, pair.Deleted.Proof, p.StatusWitness!]));
                 p.Persistence = admission;
                 admitted = RetryPendingPersistence(session);
                 if (canceledCall) p.SelectedAdmission = RoleFixtureJournal.CopyStatusPendingPurgeSnapshot(admitted);
@@ -993,40 +3649,95 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
             {
                 try
                 {
-                    await capture.CheckStatusPendingPurgeCancellationCanceledAsync(session.Capture!, selector, handle,
-                        caller, task => p.CanceledTask = task).ConfigureAwait(false);
+                    await (p.CanceledCancellationProfile is not null
+                        ? capture.CheckStatusCanceledPurgeCancellationCanceledAsync(session.Capture!, selector, handle,
+                            caller, task => p.CanceledTask = task)
+                    : p.FailedCancellationProfile is not null
+                        ? capture.CheckStatusFailedPurgeCancellationCanceledAsync(session.Capture!, selector, handle,
+                            caller, task => p.CanceledTask = task)
+                        : capture.CheckStatusPendingPurgeCancellationCanceledAsync(session.Capture!, selector, handle,
+                            caller, task => p.CanceledTask = task)).ConfigureAwait(false);
                     throw Failure();
                 }
                 catch (OperationCanceledException)
                 {
                     Require(p.CanceledTask is { IsCanceled: true } && p.CanceledOperand.IsCancellationRequested);
-                    Require(capture.TryGetStatusPendingPurgeCancellationCanceled(session.Capture!, session.Binding!, session.Client!,
-                        session.ActualDeletedVaultScope!, session.Receipt!, session.StartTask!, handle, p.CanceledTask, out var canceled));
+                    if (p.CanceledCancellationProfile is not null)
+                    {
+                        Require(capture.TryGetStatusCanceledPurgeCancellationCanceled(session.Capture!, session.Binding!, session.Client!,
+                            session.ActualDeletedVaultScope!, session.Receipt!, session.StartTask!, handle, p.CanceledTask, out var canceled));
+                        p.CanceledCancellationProof = canceled;
+                    }
+                    else if (p.FailedCancellationProfile is not null)
+                    {
+                        Require(capture.TryGetStatusFailedPurgeCancellationCanceled(session.Capture!, session.Binding!, session.Client!,
+                            session.ActualDeletedVaultScope!, session.Receipt!, session.StartTask!, handle, p.CanceledTask, out var canceled));
+                        p.FailedCanceledProof = canceled;
+                    }
+                    else
+                    {
+                        Require(capture.TryGetStatusPendingPurgeCancellationCanceled(session.Capture!, session.Binding!, session.Client!,
+                            session.ActualDeletedVaultScope!, session.Receipt!, session.StartTask!, handle, p.CanceledTask, out var canceled));
+                        p.CanceledProof = canceled;
+                    }
                     CheckPendingClock(session);
                     Require(!session.Closed && !linked.IsCancellationRequested);
-                    p.CanceledProof = canceled;
                     // C owns the physical task, hook and finalizer drain behind CX.
                     p.CanceledDrained = true;
                     preservePair = true;
                     throw;
                 }
             }
-            var result = await (cancellation
+            var result = await (p.DeniedProfile is not null
+                ? capture.CheckStatusDeniedPurgeAsync(session.Capture!, selector, handle, linked.Token, task => session.StatusTask = task)
+                : p.FailedCancellationProfile is not null
+                ? capture.CheckStatusFailedPurgeCancellationAsync(session.Capture!, selector, handle, linked.Token, task => session.StatusTask = task)
+                : p.FailedIndependentProfile is not null
+                ? capture.CheckStatusFailedPurgeIndependentAsync(session.Capture!, selector, handle, linked.Token, task => session.StatusTask = task)
+                : p.CanceledCancellationProfile is not null
+                ? capture.CheckStatusCanceledPurgeCancellationAsync(session.Capture!, selector, handle, linked.Token, task => session.StatusTask = task)
+                : p.CanceledIndependentProfile is not null
+                ? capture.CheckStatusCanceledPurgeIndependentAsync(session.Capture!, selector, handle, linked.Token, task => session.StatusTask = task)
+                : p.CanceledProfile is not null
+                ? capture.CheckStatusCanceledPurgeAsync(session.Capture!, selector, handle, linked.Token, task => session.StatusTask = task)
+                : p.FailedProfile is not null
+                ? capture.CheckStatusFailedPurgeAsync(session.Capture!, selector, handle, linked.Token, task => session.StatusTask = task)
+                : cancellation
                 ? capture.CheckStatusPendingPurgeCancellationAsync(session.Capture!, selector, handle, linked.Token, task => session.StatusTask = task)
                 : IndependentPending(session)
                 ? capture.CheckStatusPendingPurgeIndependentAsync(session.Capture!, selector, handle, linked.Token, task => session.StatusTask = task)
                 : capture.CheckStatusPendingPurgeAsync(session.Capture!, selector, handle, linked.Token, task => session.StatusTask = task)).ConfigureAwait(false);
-            Require(result == SecretStatus.Pending);
+            Require(result == (p.DeniedProfile is not null ? SecretStatus.Denied : p.CanceledCancellationProfile is null && p.CanceledIndependentProfile is null && p.CanceledProfile is null && p.FailedProfile is null && p.FailedIndependentProfile is null && p.FailedCancellationProfile is null ? SecretStatus.Pending : SecretStatus.Unknown));
             var proof = PendingSelectedProof(session);
             CheckPendingClock(session);
-            var observation = RegisterPending(PendingFact(session, admitted,
-                RoleFixtureJournal.StatusPendingPurgeStage.PendingObserved, true, linked.Token,
-                cancellation
+            var observation = RegisterPending(p.CanceledCancellationProfile is not null
+                ? CanceledCancellationFact(session, admitted, RoleFixtureJournal.StatusCanceledPurgeStage.TerminalCanceled, true, linked.Token,
+                    [session.StartTask!, p.CanceledTask!, session.StatusTask!, p.StatusRead!, pair.Active.Task, pair.Deleted.Task],
+                    [start, p.CanceledCancellationProof!, proof, pair.Active.Proof, pair.Deleted.Proof, p.StatusWitness!])
+                : p.CanceledIndependentProfile is not null
+                ? CanceledIndependentFact(session, admitted, RoleFixtureJournal.StatusCanceledPurgeStage.TerminalCanceled, true, linked.Token,
+                    [session.StartTask!, session.StatusTask!, p.StatusRead!, pair.Active.Task, pair.Deleted.Task],
+                    [start, proof, pair.Active.Proof, pair.Deleted.Proof, p.StatusWitness!])
+                : p.CanceledProfile is not null
+                ? CanceledFact(session, admitted, RoleFixtureJournal.StatusCanceledPurgeStage.TerminalCanceled, true, linked.Token,
+                    [session.StartTask!, session.StatusTask!, p.StatusRead!, pair.Active.Task, pair.Deleted.Task],
+                    [start, proof, pair.Active.Proof, pair.Deleted.Proof, p.StatusWitness!])
+                : PendingFact(session, admitted,
+                    RoleFixtureJournal.StatusPendingPurgeStage.PendingObserved, true, linked.Token,
+                p.FailedCancellationProfile is not null
+                    ? [session.StartTask!, p.CanceledTask!, session.StatusTask!, p.StatusRead!, pair.Active.Task, pair.Deleted.Task]
+                    : p.DeniedProfile is not null || p.FailedProfile is not null || p.FailedIndependentProfile is not null
+                    ? [session.StartTask!, session.StatusTask!, p.StatusRead!, pair.Active.Task, pair.Deleted.Task]
+                    : cancellation
                     ? [session.StartTask!, p.CanceledTask!, session.StatusTask!, p.StatusRead!, pair.Active.Task, pair.Deleted.Task]
                     : IndependentPending(session)
                     ? [session.StartTask!, session.StatusTask!, p.StatusRead!, pair.Active.Task, pair.Deleted.Task]
                     : [session.StartTask!, session.StatusTask!],
-                cancellation
+                p.FailedCancellationProfile is not null
+                    ? [start, p.FailedCanceledProof!, proof, pair.Active.Proof, pair.Deleted.Proof, p.StatusWitness!]
+                    : p.DeniedProfile is not null || p.FailedProfile is not null || p.FailedIndependentProfile is not null
+                    ? [start, proof, pair.Active.Proof, pair.Deleted.Proof, p.StatusWitness!]
+                    : cancellation
                     ? [start, p.CanceledProof!, proof, pair.Active.Proof, pair.Deleted.Proof, p.StatusWitness!]
                     : IndependentPending(session)
                     ? [start, proof, pair.Active.Proof, pair.Deleted.Proof, p.StatusWitness!]
@@ -1042,7 +3753,9 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
             if (cancellation && !preservePair)
             {
                 session.Pending!.Invalid = true;
-                capture.RevokeStatusPendingPurgeCancellationSelected(session.Capture!);
+                if (session.Pending.CanceledCancellationProfile is not null) capture.RevokeStatusCanceledPurgeCancellationSelected(session.Capture!);
+                else if (session.Pending.FailedCancellationProfile is not null) capture.RevokeStatusFailedPurgeCancellationSelected(session.Capture!);
+                else capture.RevokeStatusPendingPurgeCancellationSelected(session.Capture!);
             }
             throw;
         }
@@ -1053,6 +3766,43 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
         }
     }
 
+    internal RoleFixtureJournal.Snapshot RetryStatusFailedPurgeCancellationPersistence(FixtureSelector selector)
+    {
+        Require(failedCancellationProfile is not null && VaultFixtureProvisioner.StatusFailedPurgeCancellationSelector(selector));
+        return RetryPendingSelector(selector);
+    }
+    internal RoleFixtureJournal.Snapshot RetryStatusFailedPurgeIndependentPersistence(FixtureSelector selector)
+    {
+        Require(failedIndependentProfile is not null && VaultFixtureProvisioner.StatusFailedPurgeIndependentSelector(selector));
+        return RetryPendingSelector(selector);
+    }
+    internal RoleFixtureJournal.Snapshot RetryStatusCanceledPurgeCancellationPersistence(FixtureSelector selector)
+    {
+        Require(canceledCancellationProfile is not null && VaultFixtureProvisioner.StatusCanceledPurgeCancellationSelector(selector));
+        return RetryPendingSelector(selector);
+    }
+    internal RoleFixtureJournal.Snapshot RetryStatusCanceledPurgeIndependentPersistence(FixtureSelector selector)
+    {
+        Require(canceledIndependentProfile is not null && VaultFixtureProvisioner.StatusCanceledPurgeIndependentSelector(selector));
+        return RetryPendingSelector(selector);
+    }
+    internal RoleFixtureJournal.Snapshot RetryStatusCanceledPurgePersistence(FixtureSelector selector)
+    {
+        Require(canceledProfile is not null && VaultFixtureProvisioner.StatusCanceledPurgeSelector(selector));
+        return RetryPendingSelector(selector);
+    }
+    internal RoleFixtureJournal.Snapshot RetryStatusDeniedPurgePersistence(FixtureSelector selector)
+    {
+        Require(deniedProfile is not null && VaultFixtureProvisioner.StatusDeniedPurgeSelector(selector) &&
+            selector.Variant == deniedProfile.Variant);
+        return RetryPendingSelector(selector);
+    }
+
+    internal RoleFixtureJournal.Snapshot RetryStatusFailedPurgePersistence(FixtureSelector selector)
+    {
+        Require(failedProfile is not null && VaultFixtureProvisioner.StatusFailedPurgeSelector(selector));
+        return RetryPendingSelector(selector);
+    }
     internal RoleFixtureJournal.Snapshot RetryStatusPendingPurgePersistence(FixtureSelector selector)
     {
         Require(statusPendingPurgeProfile && VaultFixtureProvisioner.StatusPendingPurgeSelector(selector));
@@ -1084,11 +3834,32 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
             if (session.Plan is null)
             {
                 CheckPendingClock(session);
-                return CancellationPending(session) ? provisioner.RetryStatusPendingPurgeCancellationPreparation(owner, selector) :
+                return session.Pending!.FailedCancellationProfile is not null ? provisioner.RetryStatusFailedPurgeCancellationPreparation(owner, selector) :
+                    session.Pending!.FailedIndependentProfile is not null ? provisioner.RetryStatusFailedPurgeIndependentPreparation(owner, selector) :
+                    session.Pending!.CanceledCancellationProfile is not null ? provisioner.RetryStatusCanceledPurgeCancellationPreparation(owner, selector) :
+                    session.Pending!.CanceledIndependentProfile is not null ? provisioner.RetryStatusCanceledPurgeIndependentPreparation(owner, selector) :
+                    session.Pending!.CanceledProfile is not null ? provisioner.RetryStatusCanceledPurgePreparation(owner, selector) :
+                    session.Pending!.DeniedProfile is not null ? provisioner.RetryStatusDeniedPurgePreparation(owner, selector) :
+                    session.Pending!.FailedProfile is not null ? provisioner.RetryStatusFailedPurgePreparation(owner, selector) :
+                    CancellationPending(session) ? provisioner.RetryStatusPendingPurgeCancellationPreparation(owner, selector) :
                     IndependentPending(session) ? provisioner.RetryStatusPendingPurgeIndependentPreparation(owner, selector) :
                     provisioner.RetryStatusPendingPurgePreparation(owner, selector);
             }
-            bool fixturePersistence = CancellationPending(session)
+            bool fixturePersistence = session.Pending!.DeniedProfile is not null
+                ? provisioner.HasStatusDeniedPurgePersistence(session.Plan)
+                : session.Pending!.FailedCancellationProfile is not null
+                ? provisioner.HasStatusFailedPurgeCancellationPersistence(session.Plan)
+                : session.Pending!.FailedIndependentProfile is not null
+                ? provisioner.HasStatusFailedPurgeIndependentPersistence(session.Plan)
+                : session.Pending!.CanceledCancellationProfile is not null
+                ? provisioner.HasStatusCanceledPurgeCancellationPersistence(session.Plan)
+                : session.Pending!.CanceledIndependentProfile is not null
+                ? provisioner.HasStatusCanceledPurgeIndependentPersistence(session.Plan)
+                : session.Pending!.CanceledProfile is not null
+                ? provisioner.HasStatusCanceledPurgePersistence(session.Plan)
+                : session.Pending!.FailedProfile is not null
+                ? provisioner.HasStatusFailedPurgePersistence(session.Plan)
+                : CancellationPending(session)
                 ? provisioner.HasStatusPendingPurgeCancellationPersistence(session.Plan)
                 : IndependentPending(session)
                 ? provisioner.HasStatusPendingPurgeIndependentPersistence(session.Plan)
@@ -1096,7 +3867,14 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
             if (fixturePersistence)
             {
                 CheckPendingClock(session);
-                var fixture = CancellationPending(session) ? provisioner.RetryStatusPendingPurgeCancellationPersistence(session.Plan) :
+                var fixture = session.Pending!.FailedCancellationProfile is not null ? provisioner.RetryStatusFailedPurgeCancellationPersistence(session.Plan) :
+                    session.Pending!.FailedIndependentProfile is not null ? provisioner.RetryStatusFailedPurgeIndependentPersistence(session.Plan) :
+                    session.Pending!.CanceledCancellationProfile is not null ? provisioner.RetryStatusCanceledPurgeCancellationPersistence(session.Plan) :
+                    session.Pending!.CanceledIndependentProfile is not null ? provisioner.RetryStatusCanceledPurgeIndependentPersistence(session.Plan) :
+                    session.Pending!.CanceledProfile is not null ? provisioner.RetryStatusCanceledPurgePersistence(session.Plan) :
+                    session.Pending!.DeniedProfile is not null ? provisioner.RetryStatusDeniedPurgePersistence(session.Plan) :
+                    session.Pending!.FailedProfile is not null ? provisioner.RetryStatusFailedPurgePersistence(session.Plan) :
+                    CancellationPending(session) ? provisioner.RetryStatusPendingPurgeCancellationPersistence(session.Plan) :
                     IndependentPending(session) ? provisioner.RetryStatusPendingPurgeIndependentPersistence(session.Plan) :
                     provisioner.RetryStatusPendingPurgePersistence(session.Plan);
                 CheckPendingClock(session);
@@ -1124,6 +3902,41 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
         var p = session.Pending!;
         PendingFacts? facts = p.Persistence switch
         {
+            StatusFailedPurgeCancellationAdmission value => failedCancellationAdmissions.GetValueOrDefault(value),
+            StatusFailedPurgeIndependentAdmission value => failedIndependentAdmissions.GetValueOrDefault(value),
+            StatusFailedPurgeCancellationStartDrain value => failedCancellationStartDrains.GetValueOrDefault(value),
+            StatusFailedPurgeIndependentStartDrain value => failedIndependentStartDrains.GetValueOrDefault(value),
+            StatusFailedPurgeCancellationReadAdmission value => failedCancellationReadAdmissions.GetValueOrDefault(value),
+            StatusFailedPurgeIndependentReadAdmission value => failedIndependentReadAdmissions.GetValueOrDefault(value),
+            StatusFailedPurgeCancellationTerminalFailure value => failedCancellationTerminalFailures.GetValueOrDefault(value),
+            StatusFailedPurgeIndependentTerminalFailure value => failedIndependentTerminalFailures.GetValueOrDefault(value),
+            StatusFailedPurgeCancellationInvocationDrain value => failedCancellationInvocationDrains.GetValueOrDefault(value),
+            StatusFailedPurgeIndependentInvocationDrain value => failedIndependentInvocationDrains.GetValueOrDefault(value),
+            StatusCanceledPurgeCancellationAdmission value => canceledCancellationAdmissions.GetValueOrDefault(value),
+            StatusCanceledPurgeIndependentAdmission value => canceledIndependentAdmissions.GetValueOrDefault(value),
+            StatusCanceledPurgeAdmission value => canceledAdmissions.GetValueOrDefault(value),
+            StatusCanceledPurgeCancellationStartDrain value => canceledCancellationStartDrains.GetValueOrDefault(value),
+            StatusCanceledPurgeIndependentStartDrain value => canceledIndependentStartDrains.GetValueOrDefault(value),
+            StatusCanceledPurgeStartDrain value => canceledStartDrains.GetValueOrDefault(value),
+            StatusCanceledPurgeCancellationReadAdmission value => canceledCancellationReadAdmissions.GetValueOrDefault(value),
+            StatusCanceledPurgeIndependentReadAdmission value => canceledIndependentReadAdmissions.GetValueOrDefault(value),
+            StatusCanceledPurgeReadAdmission value => canceledReadAdmissions.GetValueOrDefault(value),
+            StatusCanceledPurgeCancellationTerminalCancellation value => canceledCancellationTerminalCancellations.GetValueOrDefault(value),
+            StatusCanceledPurgeIndependentTerminalCancellation value => canceledIndependentTerminalCancellations.GetValueOrDefault(value),
+            StatusCanceledPurgeTerminalCancellation value => canceledTerminalCancellations.GetValueOrDefault(value),
+            StatusCanceledPurgeCancellationInvocationDrain value => canceledCancellationInvocationDrains.GetValueOrDefault(value),
+            StatusCanceledPurgeIndependentInvocationDrain value => canceledIndependentInvocationDrains.GetValueOrDefault(value),
+            StatusCanceledPurgeInvocationDrain value => canceledInvocationDrains.GetValueOrDefault(value),
+            StatusDeniedPurgeAdmission value => deniedAdmissions.GetValueOrDefault(value),
+            StatusFailedPurgeAdmission value => failedAdmissions.GetValueOrDefault(value),
+            StatusDeniedPurgeStartDrain value => deniedStartDrains.GetValueOrDefault(value),
+            StatusFailedPurgeStartDrain value => failedStartDrains.GetValueOrDefault(value),
+            StatusDeniedPurgeReadAdmission value => deniedReadAdmissions.GetValueOrDefault(value),
+            StatusFailedPurgeReadAdmission value => failedReadAdmissions.GetValueOrDefault(value),
+            StatusDeniedPurgeObservation value => deniedObservations.GetValueOrDefault(value),
+            StatusFailedPurgeTerminalFailure value => failedTerminalFailures.GetValueOrDefault(value),
+            StatusDeniedPurgeInvocationDrain value => deniedInvocationDrains.GetValueOrDefault(value),
+            StatusFailedPurgeInvocationDrain value => failedInvocationDrains.GetValueOrDefault(value),
             StatusPendingPurgeIndependentAdmission value => pendingIndependentAdmissions.GetValueOrDefault(value),
             StatusPendingPurgeCancellationAdmission value => pendingCancellationAdmissions.GetValueOrDefault(value),
             StatusPendingPurgeIndependentStartDrain value => pendingIndependentStartDrains.GetValueOrDefault(value),
@@ -1151,6 +3964,56 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
         {
             bool owned = facts.Proofs.All(proof => proof switch
             {
+                C.StatusCanceledPurgeCancellationStartProof start => p.CanceledCancellationProfile is not null && capture.OwnsStatusCanceledPurgeCancellationStart(start,
+                    session.Capture!, session.Binding!, session.Client!, session.ActualDeletedVaultScope!, session.Receipt!, session.StartTask!, session.Handle!),
+                C.StatusCanceledPurgeCancellationTerminalCancellationProof failed => p.CanceledCancellationProfile is not null && capture.OwnsStatusCanceledPurgeCancellationTerminalCancellation(failed,
+                    session.Capture!, session.Binding!, session.Client!, session.ActualDeletedVaultScope!, session.Receipt!, session.StartTask!, session.Handle!, p.CanceledTask!, session.StatusTask!),
+                R.StatusCanceledPurgeCancellationReadProof resource => p.CanceledCancellationProfile is not null && new[] { p.Baseline, p.Selected }.Any(pair => pair is not null &&
+                    (ReferenceEquals(pair.Active.Proof, resource) || ReferenceEquals(pair.Deleted.Proof, resource)) && OwnsPendingPair(pair)),
+                C.StatusCanceledPurgeCancellationCanceledProof canceled => p.CanceledCancellationProfile is not null &&
+                    ReferenceEquals(canceled, p.CanceledCancellationProof) && p.CanceledDrained && p.CanceledOperand.IsCancellationRequested &&
+                    p.CanceledTask is { IsCanceled: true } && capture.OwnsStatusCanceledPurgeCancellationCanceled(canceled, session.Capture!,
+                        session.Binding!, session.Client!, session.ActualDeletedVaultScope!, session.Receipt!, session.StartTask!, session.Handle!, p.CanceledTask),
+                C.StatusFailedPurgeCancellationStartProof start => p.FailedCancellationProfile is not null && capture.OwnsStatusFailedPurgeCancellationStart(start,
+                    session.Capture!, session.Binding!, session.Client!, session.ActualDeletedVaultScope!, session.Receipt!, session.StartTask!, session.Handle!),
+                C.StatusFailedPurgeCancellationTerminalFailureProof failed => p.FailedCancellationProfile is not null && capture.OwnsStatusFailedPurgeCancellationTerminalFailure(failed,
+                    session.Capture!, session.Binding!, session.Client!, session.ActualDeletedVaultScope!, session.Receipt!, session.StartTask!, session.Handle!, p.CanceledTask!, session.StatusTask!),
+                R.StatusFailedPurgeCancellationReadProof resource => p.FailedCancellationProfile is not null && new[] { p.Baseline, p.Selected }.Any(pair => pair is not null &&
+                    (ReferenceEquals(pair.Active.Proof, resource) || ReferenceEquals(pair.Deleted.Proof, resource)) && OwnsPendingPair(pair)),
+                C.StatusFailedPurgeCancellationCanceledProof canceled => p.FailedCancellationProfile is not null &&
+                    ReferenceEquals(canceled, p.FailedCanceledProof) && p.CanceledDrained && p.CanceledOperand.IsCancellationRequested &&
+                    p.CanceledTask is { IsCanceled: true } && capture.OwnsStatusFailedPurgeCancellationCanceled(canceled, session.Capture!,
+                        session.Binding!, session.Client!, session.ActualDeletedVaultScope!, session.Receipt!, session.StartTask!, session.Handle!, p.CanceledTask),
+                C.StatusFailedPurgeIndependentStartProof start => p.FailedIndependentProfile is not null && capture.OwnsStatusFailedPurgeIndependentStart(start,
+                    session.Capture!, session.Binding!, session.Client!, session.ActualDeletedVaultScope!, session.Receipt!, session.StartTask!, session.Handle!),
+                C.StatusFailedPurgeIndependentTerminalFailureProof failed => p.FailedIndependentProfile is not null && capture.OwnsStatusFailedPurgeIndependentTerminalFailure(failed,
+                    session.Capture!, session.Binding!, session.Client!, session.ActualDeletedVaultScope!, session.Receipt!, session.StartTask!, session.Handle!, session.StatusTask!),
+                R.StatusFailedPurgeIndependentReadProof resource => p.FailedIndependentProfile is not null && new[] { p.Baseline, p.Selected }.Any(pair => pair is not null &&
+                    (ReferenceEquals(pair.Active.Proof, resource) || ReferenceEquals(pair.Deleted.Proof, resource)) && OwnsPendingPair(pair)),
+                C.StatusCanceledPurgeIndependentStartProof start => p.CanceledIndependentProfile is not null && capture.OwnsStatusCanceledPurgeIndependentStart(start,
+                    session.Capture!, session.Binding!, session.Client!, session.ActualDeletedVaultScope!, session.Receipt!, session.StartTask!, session.Handle!),
+                C.StatusCanceledPurgeStartProof start => p.CanceledProfile is not null && capture.OwnsStatusCanceledPurgeStart(start,
+                    session.Capture!, session.Binding!, session.Client!, session.ActualDeletedVaultScope!, session.Receipt!, session.StartTask!, session.Handle!),
+                C.StatusCanceledPurgeIndependentTerminalCancellationProof canceled => p.CanceledIndependentProfile is not null && capture.OwnsStatusCanceledPurgeIndependentTerminalCancellation(canceled,
+                    session.Capture!, session.Binding!, session.Client!, session.ActualDeletedVaultScope!, session.Receipt!, session.StartTask!, session.Handle!, session.StatusTask!),
+                C.StatusCanceledPurgeTerminalCancellationProof canceled => p.CanceledProfile is not null && capture.OwnsStatusCanceledPurgeTerminalCancellation(canceled,
+                    session.Capture!, session.Binding!, session.Client!, session.ActualDeletedVaultScope!, session.Receipt!, session.StartTask!, session.Handle!, session.StatusTask!),
+                R.StatusCanceledPurgeIndependentReadProof resource => p.CanceledIndependentProfile is not null && new[] { p.Baseline, p.Selected }.Any(pair => pair is not null &&
+                    (ReferenceEquals(pair.Active.Proof, resource) || ReferenceEquals(pair.Deleted.Proof, resource)) && OwnsPendingPair(pair)),
+                R.StatusCanceledPurgeReadProof resource => p.CanceledProfile is not null && new[] { p.Baseline, p.Selected }.Any(pair => pair is not null &&
+                    (ReferenceEquals(pair.Active.Proof, resource) || ReferenceEquals(pair.Deleted.Proof, resource)) && OwnsPendingPair(pair)),
+                C.StatusDeniedPurgeStartProof start => p.DeniedProfile is not null && capture.OwnsStatusDeniedPurgeStart(start,
+                    session.Capture!, session.Binding!, session.Client!, session.ActualDeletedVaultScope!, session.Receipt!, session.StartTask!, session.Handle!),
+                C.StatusDeniedPurgeDeniedProof denied => p.DeniedProfile is not null && capture.OwnsStatusDeniedPurgeDenied(denied,
+                    session.Capture!, session.Binding!, session.Client!, session.ActualDeletedVaultScope!, session.Receipt!, session.StartTask!, session.Handle!, session.StatusTask!),
+                R.StatusDeniedPurgeReadProof resource => p.DeniedProfile is not null && new[] { p.Baseline, p.Selected }.Any(pair => pair is not null &&
+                    (ReferenceEquals(pair.Active.Proof, resource) || ReferenceEquals(pair.Deleted.Proof, resource)) && OwnsPendingPair(pair)),
+                C.StatusFailedPurgeStartProof start => p.FailedProfile is not null && capture.OwnsStatusFailedPurgeStart(start,
+                    session.Capture!, session.Binding!, session.Client!, session.ActualDeletedVaultScope!, session.Receipt!, session.StartTask!, session.Handle!),
+                C.StatusFailedPurgeTerminalFailureProof failed => p.FailedProfile is not null && capture.OwnsStatusFailedPurgeTerminalFailure(failed,
+                    session.Capture!, session.Binding!, session.Client!, session.ActualDeletedVaultScope!, session.Receipt!, session.StartTask!, session.Handle!, session.StatusTask!),
+                R.StatusFailedPurgeReadProof resource => p.FailedProfile is not null && new[] { p.Baseline, p.Selected }.Any(pair => pair is not null &&
+                    (ReferenceEquals(pair.Active.Proof, resource) || ReferenceEquals(pair.Deleted.Proof, resource)) && OwnsPendingPair(pair)),
                 C.StatusPendingPurgeIndependentStartProof start => IndependentPending(session) && capture.OwnsStatusPendingPurgeIndependentStart(start, session.Capture!,
                     session.Binding!, session.Client!, session.ActualDeletedVaultScope!, session.Receipt!, session.StartTask!, session.Handle!),
                 C.StatusPendingPurgeIndependentSelectedProof selected => IndependentPending(session) && capture.OwnsStatusPendingPurgeIndependentSelected(selected, session.Capture!,
@@ -1185,8 +4048,10 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
                     ReferenceEquals(status.Window.Target, status.Target) && ReferenceEquals(status.Window.Binding, status.Binding) &&
                     ReferenceEquals(status.Transport, p.StatusTransport) && status.Transport.Valid && !status.Token.IsCancellationRequested &&
                     status.Task is { IsCompletedSuccessfully: true } && status.Task.Result is
-                        { HttpStatus: 200, ResponseComplete: true, Terminal: false, Status: SecretStatus.Pending,
-                            OperationState: NativeProvisioningState.Pending } measurement &&
+                        { HttpStatus: 200, ResponseComplete: true } measurement && measurement.Failure == S.Failure.None &&
+                    measurement.Terminal == (p.DeniedProfile is not null || (p.CanceledCancellationProfile is not null || p.CanceledIndependentProfile is not null || p.CanceledProfile is not null) || p.FailedProfile is not null || p.FailedIndependentProfile is not null || p.FailedCancellationProfile is not null) &&
+                    measurement.Status == (p.DeniedProfile is not null ? SecretStatus.Success : p.CanceledCancellationProfile is null && p.CanceledIndependentProfile is null && p.CanceledProfile is null && p.FailedProfile is null && p.FailedIndependentProfile is null && p.FailedCancellationProfile is null ? SecretStatus.Pending : SecretStatus.Unknown) &&
+                    measurement.OperationState == (p.DeniedProfile is not null ? NativeProvisioningState.Succeeded : (p.CanceledCancellationProfile is not null || p.CanceledIndependentProfile is not null || p.CanceledProfile is not null) ? NativeProvisioningState.Canceled : p.FailedProfile is null && p.FailedIndependentProfile is null && p.FailedCancellationProfile is null ? NativeProvisioningState.Pending : NativeProvisioningState.Failed) &&
                     ReferenceEquals(measurement.Binding, status.Binding) && measurement.WindowId == status.Window.Id &&
                     measurement.StartDispatch == status.Target.StartDispatch && measurement.TargetSha256 == status.Target.TargetSha256 &&
                     measurement.StartResponseSha256 == status.Target.StartResponseSha256,
@@ -1200,6 +4065,41 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
         var lease = session.Plan!.LeaseId;
         var result = p.Persistence switch
         {
+            StatusFailedPurgeCancellationAdmission value => j.BeginStatusFailedPurgeCancellationInvocation(owner, selector, lease, value),
+            StatusFailedPurgeIndependentAdmission value => j.BeginStatusFailedPurgeIndependentInvocation(owner, selector, lease, value),
+            StatusFailedPurgeCancellationStartDrain value => j.EndStatusFailedPurgeCancellationStart(owner, selector, lease, session.Dispatch, value),
+            StatusFailedPurgeIndependentStartDrain value => j.EndStatusFailedPurgeIndependentStart(owner, selector, lease, session.Dispatch, value),
+            StatusFailedPurgeCancellationReadAdmission value => j.AdmitStatusFailedPurgeCancellationRead(owner, selector, lease, session.Dispatch, value),
+            StatusFailedPurgeIndependentReadAdmission value => j.AdmitStatusFailedPurgeIndependentRead(owner, selector, lease, session.Dispatch, value),
+            StatusFailedPurgeCancellationTerminalFailure value => j.CompleteStatusFailedPurgeCancellationRead(owner, selector, lease, session.Dispatch, value),
+            StatusFailedPurgeIndependentTerminalFailure value => j.CompleteStatusFailedPurgeIndependentRead(owner, selector, lease, session.Dispatch, value),
+            StatusFailedPurgeCancellationInvocationDrain value => j.EndStatusFailedPurgeCancellationInvocation(owner, selector, lease, session.Dispatch, value),
+            StatusFailedPurgeIndependentInvocationDrain value => j.EndStatusFailedPurgeIndependentInvocation(owner, selector, lease, session.Dispatch, value),
+            StatusCanceledPurgeCancellationAdmission value => j.BeginStatusCanceledPurgeCancellationInvocation(owner, selector, lease, value),
+            StatusCanceledPurgeIndependentAdmission value => j.BeginStatusCanceledPurgeIndependentInvocation(owner, selector, lease, value),
+            StatusCanceledPurgeAdmission value => j.BeginStatusCanceledPurgeInvocation(owner, selector, lease, value),
+            StatusCanceledPurgeCancellationStartDrain value => j.EndStatusCanceledPurgeCancellationStart(owner, selector, lease, session.Dispatch, value),
+            StatusCanceledPurgeIndependentStartDrain value => j.EndStatusCanceledPurgeIndependentStart(owner, selector, lease, session.Dispatch, value),
+            StatusCanceledPurgeStartDrain value => j.EndStatusCanceledPurgeStart(owner, selector, lease, session.Dispatch, value),
+            StatusCanceledPurgeCancellationReadAdmission value => j.AdmitStatusCanceledPurgeCancellationRead(owner, selector, lease, session.Dispatch, value),
+            StatusCanceledPurgeIndependentReadAdmission value => j.AdmitStatusCanceledPurgeIndependentRead(owner, selector, lease, session.Dispatch, value),
+            StatusCanceledPurgeReadAdmission value => j.AdmitStatusCanceledPurgeRead(owner, selector, lease, session.Dispatch, value),
+            StatusCanceledPurgeCancellationTerminalCancellation value => j.CompleteStatusCanceledPurgeCancellationRead(owner, selector, lease, session.Dispatch, value),
+            StatusCanceledPurgeIndependentTerminalCancellation value => j.CompleteStatusCanceledPurgeIndependentRead(owner, selector, lease, session.Dispatch, value),
+            StatusCanceledPurgeTerminalCancellation value => j.CompleteStatusCanceledPurgeRead(owner, selector, lease, session.Dispatch, value),
+            StatusCanceledPurgeCancellationInvocationDrain value => j.EndStatusCanceledPurgeCancellationInvocation(owner, selector, lease, session.Dispatch, value),
+            StatusCanceledPurgeIndependentInvocationDrain value => j.EndStatusCanceledPurgeIndependentInvocation(owner, selector, lease, session.Dispatch, value),
+            StatusCanceledPurgeInvocationDrain value => j.EndStatusCanceledPurgeInvocation(owner, selector, lease, session.Dispatch, value),
+            StatusDeniedPurgeAdmission value => j.BeginStatusDeniedPurgeInvocation(owner, selector, lease, value),
+            StatusFailedPurgeAdmission value => j.BeginStatusFailedPurgeInvocation(owner, selector, lease, value),
+            StatusDeniedPurgeStartDrain value => j.EndStatusDeniedPurgeStart(owner, selector, lease, session.Dispatch, value),
+            StatusFailedPurgeStartDrain value => j.EndStatusFailedPurgeStart(owner, selector, lease, session.Dispatch, value),
+            StatusDeniedPurgeReadAdmission value => j.AdmitStatusDeniedPurgeRead(owner, selector, lease, session.Dispatch, value),
+            StatusFailedPurgeReadAdmission value => j.AdmitStatusFailedPurgeRead(owner, selector, lease, session.Dispatch, value),
+            StatusDeniedPurgeObservation value => j.CompleteStatusDeniedPurgeRead(owner, selector, lease, session.Dispatch, value),
+            StatusFailedPurgeTerminalFailure value => j.CompleteStatusFailedPurgeRead(owner, selector, lease, session.Dispatch, value),
+            StatusDeniedPurgeInvocationDrain value => j.EndStatusDeniedPurgeInvocation(owner, selector, lease, session.Dispatch, value),
+            StatusFailedPurgeInvocationDrain value => j.EndStatusFailedPurgeInvocation(owner, selector, lease, session.Dispatch, value),
             StatusPendingPurgeIndependentAdmission value => j.BeginStatusPendingPurgeIndependentInvocation(owner, selector, lease, value),
             StatusPendingPurgeCancellationAdmission value => j.BeginStatusPendingPurgeCancellationInvocation(owner, selector, lease, value),
             StatusPendingPurgeIndependentStartDrain value => j.EndStatusPendingPurgeIndependentStart(owner, selector, lease, session.Dispatch, value),
@@ -1221,7 +4121,14 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
             StatusPendingPurgeCleanupAdmission value => j.AdmitStatusPendingPurgeCleanupRead(owner, selector, lease, session.Dispatch, value),
             StatusPendingPurgeCleanupCompletion value => j.CompleteStatusPendingPurgeCleanupRead(owner, selector, lease, session.Dispatch, value),
             StatusPendingPurgeInvocationDrain value => j.EndStatusPendingPurgeInvocation(owner, selector, lease, session.Dispatch, value),
-            null => CancellationPending(session) ? provisioner.RetryStatusPendingPurgeCancellationPersistence(session.Plan) :
+            null => p.DeniedProfile is not null ? provisioner.RetryStatusDeniedPurgePersistence(session.Plan) :
+                p.FailedCancellationProfile is not null ? provisioner.RetryStatusFailedPurgeCancellationPersistence(session.Plan) :
+                p.FailedIndependentProfile is not null ? provisioner.RetryStatusFailedPurgeIndependentPersistence(session.Plan) :
+                    p.CanceledCancellationProfile is not null ? provisioner.RetryStatusCanceledPurgeCancellationPersistence(session.Plan) :
+                    p.CanceledIndependentProfile is not null ? provisioner.RetryStatusCanceledPurgeIndependentPersistence(session.Plan) :
+                    p.CanceledProfile is not null ? provisioner.RetryStatusCanceledPurgePersistence(session.Plan) :
+                    p.FailedProfile is not null ? provisioner.RetryStatusFailedPurgePersistence(session.Plan) :
+                CancellationPending(session) ? provisioner.RetryStatusPendingPurgeCancellationPersistence(session.Plan) :
                 IndependentPending(session) ? provisioner.RetryStatusPendingPurgeIndependentPersistence(session.Plan) :
                 provisioner.RetryStatusPendingPurgePersistence(session.Plan),
             _ => throw Failure()
@@ -1229,9 +4136,9 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
         CheckPendingClock(session);
         // A real Flush of the exact retained positive image restores only its
         // local completion flag; it never replays the native operation.
-        if (p.Persistence is StatusPendingPurgeStartDrain or StatusPendingPurgeIndependentStartDrain or StatusPendingPurgeCancellationStartDrain)
+        if (p.Persistence is StatusDeniedPurgeStartDrain or StatusCanceledPurgeCancellationStartDrain or StatusCanceledPurgeIndependentStartDrain or StatusCanceledPurgeStartDrain or StatusFailedPurgeCancellationStartDrain or StatusFailedPurgeIndependentStartDrain or StatusFailedPurgeStartDrain or StatusPendingPurgeStartDrain or StatusPendingPurgeIndependentStartDrain or StatusPendingPurgeCancellationStartDrain)
             session.StartSucceeded = true;
-        if (p.Persistence is StatusPendingPurgeObservation or StatusPendingPurgeIndependentObservation or StatusPendingPurgeCancellationObservation)
+        if (p.Persistence is StatusDeniedPurgeObservation or StatusCanceledPurgeCancellationTerminalCancellation or StatusCanceledPurgeIndependentTerminalCancellation or StatusCanceledPurgeTerminalCancellation or StatusFailedPurgeCancellationTerminalFailure or StatusFailedPurgeIndependentTerminalFailure or StatusFailedPurgeTerminalFailure or StatusPendingPurgeObservation or StatusPendingPurgeIndependentObservation or StatusPendingPurgeCancellationObservation)
             session.StatusSucceeded = true;
         p.LastPersistence = p.Persistence;
         p.Persistence = null;
@@ -1248,6 +4155,90 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
             task ??= p.CanceledTask ?? session.StartTask;
         if (task is not { IsCompleted: true }) return;
         var before = provisioner.Journal.Read(owner, session.Selector);
+        if (p.FailedCancellationProfile is not null)
+        {
+            if (before.Resources[2].InvocationTerminated || before.PurgeDeletedVault!.FailedStage is not
+                (RoleFixtureJournal.StatusFailedPurgeStage.OriginalAdmitted or RoleFixtureJournal.StatusFailedPurgeStage.SelectedAdmitted)) return;
+            var failed = (StatusFailedPurgeCancellationInvocationDrain)RegisterPending(PendingFact(session, before,
+                (RoleFixtureJournal.StatusPendingPurgeStage)(int)before.PurgeDeletedVault.FailedStage,
+                true, default, [task], [], cleanup: session.Closed, drain: true));
+            p.Persistence = failed;
+            provisioner.Journal.EndStatusFailedPurgeCancellationInvocation(owner, session.Selector, session.Plan!.LeaseId, session.Dispatch, failed);
+            p.Persistence = null;
+            return;
+        }
+        if (p.FailedIndependentProfile is not null)
+        {
+            if (before.Resources[2].InvocationTerminated || before.PurgeDeletedVault!.FailedStage is not
+                (RoleFixtureJournal.StatusFailedPurgeStage.OriginalAdmitted or RoleFixtureJournal.StatusFailedPurgeStage.SelectedAdmitted)) return;
+            var failed = (StatusFailedPurgeIndependentInvocationDrain)RegisterPending(PendingFact(session, before,
+                (RoleFixtureJournal.StatusPendingPurgeStage)(int)before.PurgeDeletedVault.FailedStage,
+                true, default, [task], [], cleanup: session.Closed, drain: true));
+            p.Persistence = failed;
+            provisioner.Journal.EndStatusFailedPurgeIndependentInvocation(owner, session.Selector, session.Plan!.LeaseId, session.Dispatch, failed);
+            p.Persistence = null;
+            return;
+        }
+        if (p.CanceledCancellationProfile is not null)
+        {
+            if (before.Resources[2].InvocationTerminated || before.PurgeDeletedVault!.CanceledStage is not
+                (RoleFixtureJournal.StatusCanceledPurgeStage.OriginalAdmitted or RoleFixtureJournal.StatusCanceledPurgeStage.SelectedAdmitted)) return;
+            var canceled = (StatusCanceledPurgeCancellationInvocationDrain)RegisterPending(CanceledCancellationFact(session, before,
+                before.PurgeDeletedVault.CanceledStage,
+                true, default, [task], [], cleanup: session.Closed, drain: true));
+            p.Persistence = canceled;
+            provisioner.Journal.EndStatusCanceledPurgeCancellationInvocation(owner, session.Selector, session.Plan!.LeaseId, session.Dispatch, canceled);
+            p.Persistence = null;
+            return;
+        }
+        if (p.CanceledIndependentProfile is not null)
+        {
+            if (before.Resources[2].InvocationTerminated || before.PurgeDeletedVault!.CanceledStage is not
+                (RoleFixtureJournal.StatusCanceledPurgeStage.OriginalAdmitted or RoleFixtureJournal.StatusCanceledPurgeStage.SelectedAdmitted)) return;
+            var canceled = (StatusCanceledPurgeIndependentInvocationDrain)RegisterPending(CanceledIndependentFact(session, before,
+                before.PurgeDeletedVault.CanceledStage,
+                true, default, [task], [], cleanup: session.Closed, drain: true));
+            p.Persistence = canceled;
+            provisioner.Journal.EndStatusCanceledPurgeIndependentInvocation(owner, session.Selector, session.Plan!.LeaseId, session.Dispatch, canceled);
+            p.Persistence = null;
+            return;
+        }
+        if (p.CanceledProfile is not null)
+        {
+            if (before.Resources[2].InvocationTerminated || before.PurgeDeletedVault!.CanceledStage is not
+                (RoleFixtureJournal.StatusCanceledPurgeStage.OriginalAdmitted or RoleFixtureJournal.StatusCanceledPurgeStage.SelectedAdmitted)) return;
+            var canceled = (StatusCanceledPurgeInvocationDrain)RegisterPending(CanceledFact(session, before,
+                before.PurgeDeletedVault.CanceledStage,
+                true, default, [task], [], cleanup: session.Closed, drain: true));
+            p.Persistence = canceled;
+            provisioner.Journal.EndStatusCanceledPurgeInvocation(owner, session.Selector, session.Plan!.LeaseId, session.Dispatch, canceled);
+            p.Persistence = null;
+            return;
+        }
+        if (p.DeniedProfile is not null)
+        {
+            if (before.Resources[2].InvocationTerminated || before.PurgeDeletedVault!.DeniedStage is not
+                (RoleFixtureJournal.StatusDeniedPurgeStage.OriginalAdmitted or RoleFixtureJournal.StatusDeniedPurgeStage.SelectedAdmitted)) return;
+            var denied = (StatusDeniedPurgeInvocationDrain)RegisterPending(PendingFact(session, before,
+                (RoleFixtureJournal.StatusPendingPurgeStage)(int)before.PurgeDeletedVault.DeniedStage,
+                true, default, [task], [], cleanup: session.Closed, drain: true));
+            p.Persistence = denied;
+            provisioner.Journal.EndStatusDeniedPurgeInvocation(owner, session.Selector, session.Plan!.LeaseId, session.Dispatch, denied);
+            p.Persistence = null;
+            return;
+        }
+        if (p.FailedProfile is not null)
+        {
+            if (before.Resources[2].InvocationTerminated || before.PurgeDeletedVault!.FailedStage is not
+                (RoleFixtureJournal.StatusFailedPurgeStage.OriginalAdmitted or RoleFixtureJournal.StatusFailedPurgeStage.SelectedAdmitted)) return;
+            var failed = (StatusFailedPurgeInvocationDrain)RegisterPending(PendingFact(session, before,
+                (RoleFixtureJournal.StatusPendingPurgeStage)(int)before.PurgeDeletedVault.FailedStage,
+                true, default, [task], [], cleanup: session.Closed, drain: true));
+            p.Persistence = failed;
+            provisioner.Journal.EndStatusFailedPurgeInvocation(owner, session.Selector, session.Plan!.LeaseId, session.Dispatch, failed);
+            p.Persistence = null;
+            return;
+        }
         if (before.Resources[2].InvocationTerminated || before.PurgeDeletedVault!.PendingStage is not
             (RoleFixtureJournal.StatusPendingPurgeStage.OriginalAdmitted or RoleFixtureJournal.StatusPendingPurgeStage.SelectedAdmitted or
                 RoleFixtureJournal.StatusPendingPurgeStage.CleanupAdmitted)) return;
@@ -1261,6 +4252,790 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
         else provisioner.Journal.EndStatusPendingPurgeInvocation(owner, session.Selector, session.Plan!.LeaseId, session.Dispatch,
             (StatusPendingPurgeInvocationDrain)drain);
         p.Persistence = null;
+    }
+
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<StatusFailedPurgeCancellationCleanupAuthorization,
+        (Session Session, RoleFixtureJournal.Snapshot Closed)> failedCancellationCleanupAuthorizations = new(ReferenceEqualityComparer.Instance);
+    internal sealed class StatusFailedPurgeCancellationCleanupAuthorization(ManagementOperationFixtureObserverService source)
+    {
+        internal bool Validate(VaultFixtureProvisioner provisioner, VaultFixtureProvisioner.Plan plan,
+            RoleFixtureJournal journal, RoleFixtureJournal.Snapshot closedState)
+        {
+            if (!source.failedCancellationCleanupAuthorizations.TryGetValue(this, out var fact)) return false;
+            var p = fact.Session.Pending!;
+            return ReferenceEquals(source.provisioner, provisioner) && ReferenceEquals(journal, provisioner.Journal) &&
+                ReferenceEquals(fact.Session.Plan, plan) && ReferenceEquals(p.FailedCancellationProfile, source.failedCancellationProfile) &&
+                source.failedCancellationProfile is not null && !source.statusPendingPurgeCleanup && !source.disposed && !p.Invalid &&
+                fact.Session.Closed && p.SelectedRevoked && fact.Session.StatusSucceeded &&
+                p.Clock is not null && !p.Clock.Token.IsCancellationRequested && p.Callers.All(t => !t.IsCancellationRequested) &&
+                fact.Closed.PurgeDeletedVault is { FailedStage: RoleFixtureJournal.StatusFailedPurgeStage.TerminalFailed } &&
+                fact.Closed.Closing && fact.Closed.Idle && RoleFixtureJournal.SameStatusPendingPurgeSnapshot(fact.Closed, closedState);
+        }
+        public override string ToString() => "[StatusFailedPurgeCancellationCleanupAuthorization]";
+    }
+    private async Task<HttpResponseMessage> ReleaseFailedCancellationPurge(FixtureSelector selector, CancellationToken token, CancellationToken caller)
+    {
+        ValidateSelector(selector);
+        Session session;
+        lock (gate)
+        {
+            if (!sessions.TryGetValue(selector.Nonce, out session!))
+            {
+                Require(!disposed && sessions.Count < 32);
+                session = new(selector with { }) { Pending = new(null, null, null, null, failedCancellationProfile) };
+                sessions.Add(selector.Nonce, session);
+            }
+            Require(session.Selector == selector && !session.Releasing);
+            session.Releasing = true;
+        }
+        var p = session.Pending!;
+        p.Callers.Enqueue(caller);
+        try
+        {
+            // A readable failure postimage is not durable until its exact Flush retry.
+            if (session.Active == 0 && p.Persistence is StatusFailedPurgeCancellationTerminalFailure && !session.Closed)
+                RetryPendingPersistence(session);
+            if (session.Plan is not null && provisioner.HasStatusFailedPurgeCancellationPersistence(session.Plan))
+            {
+                CheckPendingClock(session);
+                var persisted = provisioner.RetryStatusFailedPurgeCancellationPersistence(session.Plan);
+                CheckPendingClock(session);
+                p.LastPersistence = null;
+                Require(!provisioner.HasStatusFailedPurgeCancellationPersistence(session.Plan));
+                if (persisted.Released)
+                    return Reply(ReleaseMeasurement(session, persisted));
+            }
+            var snapshot = provisioner.CloseSelectedRoot(owner, selector);
+            session.Closed = true;
+            p.NeverSelectedClosed = snapshot.PurgeDeletedVault is
+                { FailedStage: RoleFixtureJournal.StatusFailedPurgeStage.Prepared, InvocationDispatch: var dispatch } && dispatch == Guid.Empty;
+            p.SelectedRevoked = true;
+            if (session.Capture is not null && p.Clock is not null) capture.RevokeStatusFailedPurgeCancellationSelected(session.Capture);
+            session.Stop.Cancel();
+            lock (gate) if (session.Active == 0) session.PrivateDrained.TrySetResult();
+            await session.PrivateDrained.Task.ConfigureAwait(false);
+            if (p.Persistence is not null)
+            {
+                // Close revokes an uncompleted selected candidate; only actual drain may follow.
+                p.Persistence = null;
+                p.LastPersistence = null;
+                DrainPendingInvocation(session);
+            }
+            snapshot = provisioner.Journal.Read(owner, selector);
+            if (snapshot.Resources.Length == 0) return Reply(ReleaseMeasurement(session, snapshot));
+            session.Plan ??= provisioner.OpenCleanupPlan(owner, selector);
+            if (!snapshot.Idle) return Reply(ReleaseMeasurement(session, snapshot, 1));
+            using var linked = p.Clock is null || p.EpochCompleted || p.NeverSelectedClosed
+                ? CancellationTokenSource.CreateLinkedTokenSource(token, lifetime.Token)
+                : CancellationTokenSource.CreateLinkedTokenSource(token, lifetime.Token, p.Clock.Token);
+            CheckPendingClock(session);
+            VaultFixtureProvisioner.Result released;
+            if (snapshot.PurgeDeletedVault!.FailedStage == RoleFixtureJournal.StatusFailedPurgeStage.TerminalFailed)
+            {
+                if (statusPendingPurgeCleanup || !session.StatusSucceeded || p.Invalid || session.Capture is null || p.Clock is null)
+                    return Reply(ReleaseMeasurement(session, snapshot, 1));
+                if (p.FailedCancellationCleanup is null)
+                {
+                    _ = PendingSelectedProof(session);
+                    CheckPendingClock(session);
+                    p.FailedCancellationClosedImage = RoleFixtureJournal.CopyStatusPendingPurgeSnapshot(snapshot);
+                    var authorization = new StatusFailedPurgeCancellationCleanupAuthorization(this);
+                    Require(failedCancellationCleanupAuthorizations.TryAdd(authorization, (session, p.FailedCancellationClosedImage)));
+                    p.FailedCancellationCleanup = authorization;
+                }
+                released = await provisioner.ReleaseStatusFailedPurgeCancellationAsync(session.Plan, p.FailedCancellationCleanup,
+                    linked.Token, caller).ConfigureAwait(false);
+            }
+            else
+                released = await provisioner.ReleaseAsync(owner, selector, purge: true, cancellationToken: linked.Token,
+                    originalCallerToken: caller).ConfigureAwait(false);
+            CheckPendingClock(session);
+            bool complete = released.State == VaultFixtureProvisioner.State.Released && !provisioner.HasStatusFailedPurgeCancellationPersistence(session.Plan);
+            return Reply(ReleaseMeasurement(session, released.Journal, complete ? 0 : 1));
+        }
+        finally
+        {
+            try
+            {
+                if (session.Capture is not null && p.Persistence is null && !p.EpochCompleted &&
+                    session.Plan is not null && !provisioner.HasStatusFailedPurgeCancellationPersistence(session.Plan) &&
+                    provisioner.Journal.Read(owner, selector).Released)
+                {
+                    await capture.SealAsync(session.Capture).ConfigureAwait(false);
+                    if (provisioner.Journal.Read(owner, selector).Released)
+                    {
+                        CheckPendingClock(session, sealedDrain: true);
+                        p.EpochCompleted = true;
+                    }
+                }
+            }
+            finally { lock (gate) session.Releasing = false; }
+        }
+    }
+
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<StatusCanceledPurgeCancellationCleanupAuthorization,
+        (Session Session, RoleFixtureJournal.Snapshot Closed)> canceledCancellationCleanupAuthorizations = new(ReferenceEqualityComparer.Instance);
+    internal sealed class StatusCanceledPurgeCancellationCleanupAuthorization(ManagementOperationFixtureObserverService source)
+    {
+        internal bool Validate(VaultFixtureProvisioner provisioner, VaultFixtureProvisioner.Plan plan,
+            RoleFixtureJournal journal, RoleFixtureJournal.Snapshot closedState)
+        {
+            if (!source.canceledCancellationCleanupAuthorizations.TryGetValue(this, out var fact)) return false;
+            var p = fact.Session.Pending!;
+            return ReferenceEquals(source.provisioner, provisioner) && ReferenceEquals(journal, provisioner.Journal) &&
+                ReferenceEquals(fact.Session.Plan, plan) && ReferenceEquals(p.CanceledCancellationProfile, source.canceledCancellationProfile) &&
+                source.canceledCancellationProfile is not null && !source.statusPendingPurgeCleanup && !source.disposed && !p.Invalid &&
+                fact.Session.Closed && p.SelectedRevoked && fact.Session.StatusSucceeded &&
+                p.Clock is not null && !p.Clock.Token.IsCancellationRequested && p.Callers.All(t => !t.IsCancellationRequested) &&
+                fact.Closed.PurgeDeletedVault is { CanceledStage: RoleFixtureJournal.StatusCanceledPurgeStage.TerminalCanceled } &&
+                fact.Closed.Closing && fact.Closed.Idle && RoleFixtureJournal.SameStatusPendingPurgeSnapshot(fact.Closed, closedState);
+        }
+        public override string ToString() => "[StatusCanceledPurgeCancellationCleanupAuthorization]";
+    }
+    private async Task<HttpResponseMessage> ReleaseCanceledCancellationPurge(FixtureSelector selector, CancellationToken token, CancellationToken caller)
+    {
+        ValidateSelector(selector);
+        Session session;
+        lock (gate)
+        {
+            if (!sessions.TryGetValue(selector.Nonce, out session!))
+            {
+                Require(!disposed && sessions.Count < 32);
+                session = new(selector with { }) { Pending = new(null, null, canceledCancellationProfile: canceledCancellationProfile) };
+                sessions.Add(selector.Nonce, session);
+            }
+            Require(session.Selector == selector && !session.Releasing);
+            session.Releasing = true;
+        }
+        var p = session.Pending!;
+        p.Callers.Enqueue(caller);
+        bool durableReleased = false;
+        try
+        {
+            // A readable failure postimage is not durable until its exact Flush retry.
+            if (session.Active == 0 && p.Persistence is StatusCanceledPurgeCancellationTerminalCancellation && !session.Closed)
+                RetryPendingPersistence(session);
+            if (session.Plan is not null && provisioner.HasStatusCanceledPurgeCancellationPersistence(session.Plan))
+            {
+                CheckPendingClock(session);
+                var persisted = provisioner.RetryStatusCanceledPurgeCancellationPersistence(session.Plan);
+                CheckPendingClock(session);
+                p.LastPersistence = null;
+                if (persisted.Released && !provisioner.HasStatusCanceledPurgeCancellationPersistence(session.Plan))
+                {
+                    durableReleased = true;
+                    return Reply(ReleaseMeasurement(session, persisted));
+                }
+            }
+            var snapshot = provisioner.CloseSelectedRoot(owner, selector);
+            session.Closed = true;
+            p.NeverSelectedClosed = snapshot.PurgeDeletedVault is
+                { CanceledStage: RoleFixtureJournal.StatusCanceledPurgeStage.Prepared, InvocationDispatch: var dispatch } && dispatch == Guid.Empty;
+            p.SelectedRevoked = true;
+            if (session.Capture is not null && p.Clock is not null) capture.RevokeStatusCanceledPurgeCancellationSelected(session.Capture);
+            session.Stop.Cancel();
+            lock (gate) if (session.Active == 0) session.PrivateDrained.TrySetResult();
+            await session.PrivateDrained.Task.ConfigureAwait(false);
+            if (p.Persistence is not null)
+            {
+                // Close revokes an uncompleted selected candidate; only actual drain may follow.
+                p.Persistence = null;
+                p.LastPersistence = null;
+                DrainPendingInvocation(session);
+            }
+            snapshot = provisioner.Journal.Read(owner, selector);
+            if (snapshot.Resources.Length == 0) return Reply(ReleaseMeasurement(session, snapshot));
+            session.Plan ??= provisioner.OpenCleanupPlan(owner, selector);
+            if (!snapshot.Idle) return Reply(ReleaseMeasurement(session, snapshot, 1));
+            using var linked = p.Clock is null || p.EpochCompleted || p.NeverSelectedClosed
+                ? CancellationTokenSource.CreateLinkedTokenSource(token, lifetime.Token)
+                : CancellationTokenSource.CreateLinkedTokenSource(token, lifetime.Token, p.Clock.Token);
+            CheckPendingClock(session);
+            VaultFixtureProvisioner.Result released;
+            if (snapshot.PurgeDeletedVault!.CanceledStage == RoleFixtureJournal.StatusCanceledPurgeStage.TerminalCanceled)
+            {
+                if (statusPendingPurgeCleanup || !session.StatusSucceeded || p.Invalid || session.Capture is null || p.Clock is null)
+                    return Reply(ReleaseMeasurement(session, snapshot, 1));
+                if (p.CanceledCancellationCleanup is null)
+                {
+                    _ = PendingSelectedProof(session);
+                    CheckPendingClock(session);
+                    p.CanceledCancellationClosedImage = RoleFixtureJournal.CopyStatusPendingPurgeSnapshot(snapshot);
+                    var authorization = new StatusCanceledPurgeCancellationCleanupAuthorization(this);
+                    Require(canceledCancellationCleanupAuthorizations.TryAdd(authorization, (session, p.CanceledCancellationClosedImage)));
+                    p.CanceledCancellationCleanup = authorization;
+                }
+                released = await provisioner.ReleaseStatusCanceledPurgeCancellationAsync(session.Plan, p.CanceledCancellationCleanup,
+                    linked.Token, caller).ConfigureAwait(false);
+            }
+            else
+                released = await provisioner.ReleaseAsync(owner, selector, purge: true, cancellationToken: linked.Token,
+                    originalCallerToken: caller).ConfigureAwait(false);
+            CheckPendingClock(session);
+            bool complete = released.State == VaultFixtureProvisioner.State.Released && !provisioner.HasStatusCanceledPurgeCancellationPersistence(session.Plan);
+            durableReleased = complete;
+            return Reply(ReleaseMeasurement(session, released.Journal, complete ? 0 : 1));
+        }
+        finally
+        {
+            try
+            {
+                if (durableReleased && session.Capture is not null && p.Persistence is null && !p.EpochCompleted &&
+                    session.Plan is not null && !provisioner.HasStatusCanceledPurgeCancellationPersistence(session.Plan))
+                {
+                    await capture.SealAsync(session.Capture).ConfigureAwait(false);
+                    CheckPendingClock(session, sealedDrain: true);
+                    p.EpochCompleted = true;
+                }
+            }
+            finally { lock (gate) session.Releasing = false; }
+        }
+    }
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<StatusCanceledPurgeIndependentCleanupAuthorization,
+        (Session Session, RoleFixtureJournal.Snapshot Closed)> canceledIndependentCleanupAuthorizations = new(ReferenceEqualityComparer.Instance);
+    internal sealed class StatusCanceledPurgeIndependentCleanupAuthorization(ManagementOperationFixtureObserverService source)
+    {
+        internal bool Validate(VaultFixtureProvisioner provisioner, VaultFixtureProvisioner.Plan plan,
+            RoleFixtureJournal journal, RoleFixtureJournal.Snapshot closedState)
+        {
+            if (!source.canceledIndependentCleanupAuthorizations.TryGetValue(this, out var fact)) return false;
+            var p = fact.Session.Pending!;
+            return ReferenceEquals(source.provisioner, provisioner) && ReferenceEquals(journal, provisioner.Journal) &&
+                ReferenceEquals(fact.Session.Plan, plan) && ReferenceEquals(p.CanceledIndependentProfile, source.canceledIndependentProfile) &&
+                source.canceledIndependentProfile is not null && !source.statusPendingPurgeCleanup && !source.disposed && !p.Invalid &&
+                fact.Session.Closed && p.SelectedRevoked && fact.Session.StatusSucceeded &&
+                p.Clock is not null && !p.Clock.Token.IsCancellationRequested && p.Callers.All(t => !t.IsCancellationRequested) &&
+                fact.Closed.PurgeDeletedVault is { CanceledStage: RoleFixtureJournal.StatusCanceledPurgeStage.TerminalCanceled } &&
+                fact.Closed.Closing && fact.Closed.Idle && RoleFixtureJournal.SameStatusPendingPurgeSnapshot(fact.Closed, closedState);
+        }
+        public override string ToString() => "[StatusCanceledPurgeIndependentCleanupAuthorization]";
+    }
+    private async Task<HttpResponseMessage> ReleaseCanceledIndependentPurge(FixtureSelector selector, CancellationToken token, CancellationToken caller)
+    {
+        ValidateSelector(selector);
+        Session session;
+        lock (gate)
+        {
+            if (!sessions.TryGetValue(selector.Nonce, out session!))
+            {
+                Require(!disposed && sessions.Count < 32);
+                session = new(selector with { }) { Pending = new(null, null, canceledIndependentProfile: canceledIndependentProfile) };
+                sessions.Add(selector.Nonce, session);
+            }
+            Require(session.Selector == selector && !session.Releasing);
+            session.Releasing = true;
+        }
+        var p = session.Pending!;
+        p.Callers.Enqueue(caller);
+        bool durableReleased = false;
+        try
+        {
+            // A readable failure postimage is not durable until its exact Flush retry.
+            if (session.Active == 0 && p.Persistence is StatusCanceledPurgeIndependentTerminalCancellation && !session.Closed)
+                RetryPendingPersistence(session);
+            if (session.Plan is not null && provisioner.HasStatusCanceledPurgeIndependentPersistence(session.Plan))
+            {
+                CheckPendingClock(session);
+                var persisted = provisioner.RetryStatusCanceledPurgeIndependentPersistence(session.Plan);
+                CheckPendingClock(session);
+                p.LastPersistence = null;
+                if (persisted.Released && !provisioner.HasStatusCanceledPurgeIndependentPersistence(session.Plan))
+                {
+                    durableReleased = true;
+                    return Reply(ReleaseMeasurement(session, persisted));
+                }
+            }
+            var snapshot = provisioner.CloseSelectedRoot(owner, selector);
+            session.Closed = true;
+            p.NeverSelectedClosed = snapshot.PurgeDeletedVault is
+                { CanceledStage: RoleFixtureJournal.StatusCanceledPurgeStage.Prepared, InvocationDispatch: var dispatch } && dispatch == Guid.Empty;
+            p.SelectedRevoked = true;
+            if (session.Capture is not null && p.Clock is not null) capture.RevokeStatusCanceledPurgeIndependentSelected(session.Capture);
+            session.Stop.Cancel();
+            lock (gate) if (session.Active == 0) session.PrivateDrained.TrySetResult();
+            await session.PrivateDrained.Task.ConfigureAwait(false);
+            if (p.Persistence is not null)
+            {
+                // Close revokes an uncompleted selected candidate; only actual drain may follow.
+                p.Persistence = null;
+                p.LastPersistence = null;
+                DrainPendingInvocation(session);
+            }
+            snapshot = provisioner.Journal.Read(owner, selector);
+            if (snapshot.Resources.Length == 0) return Reply(ReleaseMeasurement(session, snapshot));
+            session.Plan ??= provisioner.OpenCleanupPlan(owner, selector);
+            if (!snapshot.Idle) return Reply(ReleaseMeasurement(session, snapshot, 1));
+            using var linked = p.Clock is null || p.EpochCompleted || p.NeverSelectedClosed
+                ? CancellationTokenSource.CreateLinkedTokenSource(token, lifetime.Token)
+                : CancellationTokenSource.CreateLinkedTokenSource(token, lifetime.Token, p.Clock.Token);
+            CheckPendingClock(session);
+            VaultFixtureProvisioner.Result released;
+            if (snapshot.PurgeDeletedVault!.CanceledStage == RoleFixtureJournal.StatusCanceledPurgeStage.TerminalCanceled)
+            {
+                if (statusPendingPurgeCleanup || !session.StatusSucceeded || p.Invalid || session.Capture is null || p.Clock is null)
+                    return Reply(ReleaseMeasurement(session, snapshot, 1));
+                if (p.CanceledIndependentCleanup is null)
+                {
+                    _ = PendingSelectedProof(session);
+                    CheckPendingClock(session);
+                    p.CanceledIndependentClosedImage = RoleFixtureJournal.CopyStatusPendingPurgeSnapshot(snapshot);
+                    var authorization = new StatusCanceledPurgeIndependentCleanupAuthorization(this);
+                    Require(canceledIndependentCleanupAuthorizations.TryAdd(authorization, (session, p.CanceledIndependentClosedImage)));
+                    p.CanceledIndependentCleanup = authorization;
+                }
+                released = await provisioner.ReleaseStatusCanceledPurgeIndependentAsync(session.Plan, p.CanceledIndependentCleanup,
+                    linked.Token, caller).ConfigureAwait(false);
+            }
+            else
+                released = await provisioner.ReleaseAsync(owner, selector, purge: true, cancellationToken: linked.Token,
+                    originalCallerToken: caller).ConfigureAwait(false);
+            CheckPendingClock(session);
+            bool complete = released.State == VaultFixtureProvisioner.State.Released && !provisioner.HasStatusCanceledPurgeIndependentPersistence(session.Plan);
+            durableReleased = complete;
+            return Reply(ReleaseMeasurement(session, released.Journal, complete ? 0 : 1));
+        }
+        finally
+        {
+            try
+            {
+                if (durableReleased && session.Capture is not null && p.Persistence is null && !p.EpochCompleted &&
+                    session.Plan is not null && !provisioner.HasStatusCanceledPurgeIndependentPersistence(session.Plan))
+                {
+                    await capture.SealAsync(session.Capture).ConfigureAwait(false);
+                    CheckPendingClock(session, sealedDrain: true);
+                    p.EpochCompleted = true;
+                }
+            }
+            finally { lock (gate) session.Releasing = false; }
+        }
+    }
+
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<StatusCanceledPurgeCleanupAuthorization,
+        (Session Session, RoleFixtureJournal.Snapshot Closed)> canceledCleanupAuthorizations = new(ReferenceEqualityComparer.Instance);
+    internal sealed class StatusCanceledPurgeCleanupAuthorization(ManagementOperationFixtureObserverService source)
+    {
+        internal bool Validate(VaultFixtureProvisioner provisioner, VaultFixtureProvisioner.Plan plan,
+            RoleFixtureJournal journal, RoleFixtureJournal.Snapshot closedState)
+        {
+            if (!source.canceledCleanupAuthorizations.TryGetValue(this, out var fact)) return false;
+            var p = fact.Session.Pending!;
+            return ReferenceEquals(source.provisioner, provisioner) && ReferenceEquals(journal, provisioner.Journal) &&
+                ReferenceEquals(fact.Session.Plan, plan) && ReferenceEquals(p.CanceledProfile, source.canceledProfile) &&
+                source.canceledProfile is not null && !source.statusPendingPurgeCleanup && !source.disposed && !p.Invalid &&
+                fact.Session.Closed && p.SelectedRevoked && fact.Session.StatusSucceeded &&
+                p.Clock is not null && !p.Clock.Token.IsCancellationRequested && p.Callers.All(t => !t.IsCancellationRequested) &&
+                fact.Closed.PurgeDeletedVault is { CanceledStage: RoleFixtureJournal.StatusCanceledPurgeStage.TerminalCanceled } &&
+                fact.Closed.Closing && fact.Closed.Idle && RoleFixtureJournal.SameStatusPendingPurgeSnapshot(fact.Closed, closedState);
+        }
+        public override string ToString() => "[StatusCanceledPurgeCleanupAuthorization]";
+    }
+    private async Task<HttpResponseMessage> ReleaseCanceledPurge(FixtureSelector selector, CancellationToken token, CancellationToken caller)
+    {
+        ValidateSelector(selector);
+        Session session;
+        lock (gate)
+        {
+            if (!sessions.TryGetValue(selector.Nonce, out session!))
+            {
+                Require(!disposed && sessions.Count < 32);
+                session = new(selector with { }) { Pending = new(null, null, canceledProfile: canceledProfile) };
+                sessions.Add(selector.Nonce, session);
+            }
+            Require(session.Selector == selector && !session.Releasing);
+            session.Releasing = true;
+        }
+        var p = session.Pending!;
+        p.Callers.Enqueue(caller);
+        bool durableReleased = false;
+        try
+        {
+            // A readable failure postimage is not durable until its exact Flush retry.
+            if (session.Active == 0 && p.Persistence is StatusCanceledPurgeTerminalCancellation && !session.Closed)
+                RetryPendingPersistence(session);
+            if (session.Plan is not null && provisioner.HasStatusCanceledPurgePersistence(session.Plan))
+            {
+                CheckPendingClock(session);
+                var persisted = provisioner.RetryStatusCanceledPurgePersistence(session.Plan);
+                CheckPendingClock(session);
+                p.LastPersistence = null;
+                if (persisted.Released && !provisioner.HasStatusCanceledPurgePersistence(session.Plan))
+                {
+                    durableReleased = true;
+                    return Reply(ReleaseMeasurement(session, persisted));
+                }
+            }
+            var snapshot = provisioner.CloseSelectedRoot(owner, selector);
+            session.Closed = true;
+            p.NeverSelectedClosed = snapshot.PurgeDeletedVault is
+                { CanceledStage: RoleFixtureJournal.StatusCanceledPurgeStage.Prepared, InvocationDispatch: var dispatch } && dispatch == Guid.Empty;
+            p.SelectedRevoked = true;
+            if (session.Capture is not null && p.Clock is not null) capture.RevokeStatusCanceledPurgeSelected(session.Capture);
+            session.Stop.Cancel();
+            lock (gate) if (session.Active == 0) session.PrivateDrained.TrySetResult();
+            await session.PrivateDrained.Task.ConfigureAwait(false);
+            if (p.Persistence is not null)
+            {
+                // Close revokes an uncompleted selected candidate; only actual drain may follow.
+                p.Persistence = null;
+                p.LastPersistence = null;
+                DrainPendingInvocation(session);
+            }
+            snapshot = provisioner.Journal.Read(owner, selector);
+            if (snapshot.Resources.Length == 0) return Reply(ReleaseMeasurement(session, snapshot));
+            session.Plan ??= provisioner.OpenCleanupPlan(owner, selector);
+            if (!snapshot.Idle) return Reply(ReleaseMeasurement(session, snapshot, 1));
+            using var linked = p.Clock is null || p.EpochCompleted || p.NeverSelectedClosed
+                ? CancellationTokenSource.CreateLinkedTokenSource(token, lifetime.Token)
+                : CancellationTokenSource.CreateLinkedTokenSource(token, lifetime.Token, p.Clock.Token);
+            CheckPendingClock(session);
+            VaultFixtureProvisioner.Result released;
+            if (snapshot.PurgeDeletedVault!.CanceledStage == RoleFixtureJournal.StatusCanceledPurgeStage.TerminalCanceled)
+            {
+                if (statusPendingPurgeCleanup || !session.StatusSucceeded || p.Invalid || session.Capture is null || p.Clock is null)
+                    return Reply(ReleaseMeasurement(session, snapshot, 1));
+                if (p.CanceledCleanup is null)
+                {
+                    _ = PendingSelectedProof(session);
+                    CheckPendingClock(session);
+                    p.CanceledClosedImage = RoleFixtureJournal.CopyStatusPendingPurgeSnapshot(snapshot);
+                    var authorization = new StatusCanceledPurgeCleanupAuthorization(this);
+                    Require(canceledCleanupAuthorizations.TryAdd(authorization, (session, p.CanceledClosedImage)));
+                    p.CanceledCleanup = authorization;
+                }
+                released = await provisioner.ReleaseStatusCanceledPurgeAsync(session.Plan, p.CanceledCleanup,
+                    linked.Token, caller).ConfigureAwait(false);
+            }
+            else
+                released = await provisioner.ReleaseAsync(owner, selector, purge: true, cancellationToken: linked.Token,
+                    originalCallerToken: caller).ConfigureAwait(false);
+            CheckPendingClock(session);
+            bool complete = released.State == VaultFixtureProvisioner.State.Released && !provisioner.HasStatusCanceledPurgePersistence(session.Plan);
+            durableReleased = complete;
+            return Reply(ReleaseMeasurement(session, released.Journal, complete ? 0 : 1));
+        }
+        finally
+        {
+            try
+            {
+                if (durableReleased && session.Capture is not null && p.Persistence is null && !p.EpochCompleted &&
+                    session.Plan is not null && !provisioner.HasStatusCanceledPurgePersistence(session.Plan))
+                {
+                    await capture.SealAsync(session.Capture).ConfigureAwait(false);
+                    CheckPendingClock(session, sealedDrain: true);
+                    p.EpochCompleted = true;
+                }
+            }
+            finally { lock (gate) session.Releasing = false; }
+        }
+    }
+
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<StatusFailedPurgeIndependentCleanupAuthorization,
+        (Session Session, RoleFixtureJournal.Snapshot Closed)> failedIndependentCleanupAuthorizations = new(ReferenceEqualityComparer.Instance);
+    internal sealed class StatusFailedPurgeIndependentCleanupAuthorization(ManagementOperationFixtureObserverService source)
+    {
+        internal bool Validate(VaultFixtureProvisioner provisioner, VaultFixtureProvisioner.Plan plan,
+            RoleFixtureJournal journal, RoleFixtureJournal.Snapshot closedState)
+        {
+            if (!source.failedIndependentCleanupAuthorizations.TryGetValue(this, out var fact)) return false;
+            var p = fact.Session.Pending!;
+            return ReferenceEquals(source.provisioner, provisioner) && ReferenceEquals(journal, provisioner.Journal) &&
+                ReferenceEquals(fact.Session.Plan, plan) && ReferenceEquals(p.FailedIndependentProfile, source.failedIndependentProfile) &&
+                source.failedIndependentProfile is not null && !source.statusPendingPurgeCleanup && !source.disposed && !p.Invalid &&
+                fact.Session.Closed && p.SelectedRevoked && fact.Session.StatusSucceeded &&
+                p.Clock is not null && !p.Clock.Token.IsCancellationRequested && p.Callers.All(t => !t.IsCancellationRequested) &&
+                fact.Closed.PurgeDeletedVault is { FailedStage: RoleFixtureJournal.StatusFailedPurgeStage.TerminalFailed } &&
+                fact.Closed.Closing && fact.Closed.Idle && RoleFixtureJournal.SameStatusPendingPurgeSnapshot(fact.Closed, closedState);
+        }
+        public override string ToString() => "[StatusFailedPurgeIndependentCleanupAuthorization]";
+    }
+    private async Task<HttpResponseMessage> ReleaseFailedIndependentPurge(FixtureSelector selector, CancellationToken token, CancellationToken caller)
+    {
+        ValidateSelector(selector);
+        Session session;
+        lock (gate)
+        {
+            if (!sessions.TryGetValue(selector.Nonce, out session!))
+            {
+                Require(!disposed && sessions.Count < 32);
+                session = new(selector with { }) { Pending = new(null, null, null, failedIndependentProfile) };
+                sessions.Add(selector.Nonce, session);
+            }
+            Require(session.Selector == selector && !session.Releasing);
+            session.Releasing = true;
+        }
+        var p = session.Pending!;
+        p.Callers.Enqueue(caller);
+        try
+        {
+            // A readable failure postimage is not durable until its exact Flush retry.
+            if (session.Active == 0 && p.Persistence is StatusFailedPurgeIndependentTerminalFailure && !session.Closed)
+                RetryPendingPersistence(session);
+            if (session.Plan is not null && provisioner.HasStatusFailedPurgeIndependentPersistence(session.Plan))
+            {
+                CheckPendingClock(session);
+                var persisted = provisioner.RetryStatusFailedPurgeIndependentPersistence(session.Plan);
+                CheckPendingClock(session);
+                p.LastPersistence = null;
+                if (persisted.Released && !provisioner.HasStatusFailedPurgeIndependentPersistence(session.Plan))
+                    return Reply(ReleaseMeasurement(session, persisted));
+            }
+            var snapshot = provisioner.CloseSelectedRoot(owner, selector);
+            session.Closed = true;
+            p.NeverSelectedClosed = snapshot.PurgeDeletedVault is
+                { FailedStage: RoleFixtureJournal.StatusFailedPurgeStage.Prepared, InvocationDispatch: var dispatch } && dispatch == Guid.Empty;
+            p.SelectedRevoked = true;
+            if (session.Capture is not null && p.Clock is not null) capture.RevokeStatusFailedPurgeIndependentSelected(session.Capture);
+            session.Stop.Cancel();
+            lock (gate) if (session.Active == 0) session.PrivateDrained.TrySetResult();
+            await session.PrivateDrained.Task.ConfigureAwait(false);
+            if (p.Persistence is not null)
+            {
+                // Close revokes an uncompleted selected candidate; only actual drain may follow.
+                p.Persistence = null;
+                p.LastPersistence = null;
+                DrainPendingInvocation(session);
+            }
+            snapshot = provisioner.Journal.Read(owner, selector);
+            if (snapshot.Resources.Length == 0) return Reply(ReleaseMeasurement(session, snapshot));
+            session.Plan ??= provisioner.OpenCleanupPlan(owner, selector);
+            if (!snapshot.Idle) return Reply(ReleaseMeasurement(session, snapshot, 1));
+            using var linked = p.Clock is null || p.EpochCompleted || p.NeverSelectedClosed
+                ? CancellationTokenSource.CreateLinkedTokenSource(token, lifetime.Token)
+                : CancellationTokenSource.CreateLinkedTokenSource(token, lifetime.Token, p.Clock.Token);
+            CheckPendingClock(session);
+            VaultFixtureProvisioner.Result released;
+            if (snapshot.PurgeDeletedVault!.FailedStage == RoleFixtureJournal.StatusFailedPurgeStage.TerminalFailed)
+            {
+                if (statusPendingPurgeCleanup || !session.StatusSucceeded || p.Invalid || session.Capture is null || p.Clock is null)
+                    return Reply(ReleaseMeasurement(session, snapshot, 1));
+                if (p.FailedIndependentCleanup is null)
+                {
+                    _ = PendingSelectedProof(session);
+                    CheckPendingClock(session);
+                    p.FailedIndependentClosedImage = RoleFixtureJournal.CopyStatusPendingPurgeSnapshot(snapshot);
+                    var authorization = new StatusFailedPurgeIndependentCleanupAuthorization(this);
+                    Require(failedIndependentCleanupAuthorizations.TryAdd(authorization, (session, p.FailedIndependentClosedImage)));
+                    p.FailedIndependentCleanup = authorization;
+                }
+                released = await provisioner.ReleaseStatusFailedPurgeIndependentAsync(session.Plan, p.FailedIndependentCleanup,
+                    linked.Token, caller).ConfigureAwait(false);
+            }
+            else
+                released = await provisioner.ReleaseAsync(owner, selector, purge: true, cancellationToken: linked.Token,
+                    originalCallerToken: caller).ConfigureAwait(false);
+            CheckPendingClock(session);
+            bool complete = released.State == VaultFixtureProvisioner.State.Released && !provisioner.HasStatusFailedPurgeIndependentPersistence(session.Plan);
+            return Reply(ReleaseMeasurement(session, released.Journal, complete ? 0 : 1));
+        }
+        finally
+        {
+            try
+            {
+                if (session.Capture is not null && p.Persistence is null && !p.EpochCompleted &&
+                    (session.Plan is null || !provisioner.HasStatusFailedPurgeIndependentPersistence(session.Plan)))
+                {
+                    await capture.SealAsync(session.Capture).ConfigureAwait(false);
+                    if (provisioner.Journal.Read(owner, selector).Released)
+                    {
+                        CheckPendingClock(session, sealedDrain: true);
+                        p.EpochCompleted = true;
+                    }
+                }
+            }
+            finally { lock (gate) session.Releasing = false; }
+        }
+    }
+
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<StatusFailedPurgeCleanupAuthorization,
+        (Session Session, RoleFixtureJournal.Snapshot Closed)> failedCleanupAuthorizations = new(ReferenceEqualityComparer.Instance);
+    internal sealed class StatusFailedPurgeCleanupAuthorization(ManagementOperationFixtureObserverService source)
+    {
+        internal bool Validate(VaultFixtureProvisioner provisioner, VaultFixtureProvisioner.Plan plan,
+            RoleFixtureJournal journal, RoleFixtureJournal.Snapshot closedState)
+        {
+            if (!source.failedCleanupAuthorizations.TryGetValue(this, out var fact)) return false;
+            var p = fact.Session.Pending!;
+            return ReferenceEquals(source.provisioner, provisioner) && ReferenceEquals(journal, provisioner.Journal) &&
+                ReferenceEquals(fact.Session.Plan, plan) && ReferenceEquals(p.FailedProfile, source.failedProfile) &&
+                source.failedProfile is not null && !source.statusPendingPurgeCleanup && !source.disposed && !p.Invalid &&
+                fact.Session.Closed && p.SelectedRevoked && fact.Session.StatusSucceeded &&
+                p.Clock is not null && !p.Clock.Token.IsCancellationRequested && p.Callers.All(t => !t.IsCancellationRequested) &&
+                fact.Closed.PurgeDeletedVault is { FailedStage: RoleFixtureJournal.StatusFailedPurgeStage.TerminalFailed } &&
+                fact.Closed.Closing && fact.Closed.Idle && RoleFixtureJournal.SameStatusPendingPurgeSnapshot(fact.Closed, closedState);
+        }
+        public override string ToString() => "[StatusFailedPurgeCleanupAuthorization]";
+    }
+    private async Task<HttpResponseMessage> ReleaseDeniedPurge(FixtureSelector selector, CancellationToken token, CancellationToken caller)
+    {
+        ValidateSelector(selector);
+        Session session;
+        lock (gate)
+        {
+            if (!sessions.TryGetValue(selector.Nonce, out session!))
+            {
+                Require(!disposed && sessions.Count < 32);
+                session = new(selector with { }) { Pending = new(null, null, deniedProfile: deniedProfile) };
+                sessions.Add(selector.Nonce, session);
+            }
+            Require(session.Selector == selector && !session.Releasing);
+            session.Releasing = true;
+        }
+        var p = session.Pending!;
+        p.Callers.Enqueue(caller);
+        bool durableReleased = false;
+        try
+        {
+            // Finish the retained observation's exact image before Close changes it.
+            // This flush admits no SDK call or fresh resource read.
+            if (session.Active == 0 && p.Persistence is StatusDeniedPurgeObservation && !session.Closed)
+                RetryPendingPersistence(session);
+            var snapshot = provisioner.CloseSelectedRoot(owner, selector);
+            session.Closed = true;
+            p.NeverSelectedClosed = snapshot.PurgeDeletedVault is
+                { DeniedStage: RoleFixtureJournal.StatusDeniedPurgeStage.Prepared, InvocationDispatch: var dispatch } && dispatch == Guid.Empty;
+            p.SelectedRevoked = true;
+            if (session.Capture is not null) capture.RevokeStatusDeniedPurgeSelected(session.Capture);
+            session.Stop.Cancel();
+            lock (gate) if (session.Active == 0) session.PrivateDrained.TrySetResult();
+            await session.PrivateDrained.Task.ConfigureAwait(false);
+            if (p.Persistence is not null)
+                return Reply(ReleaseMeasurement(session, provisioner.Journal.Read(owner, selector), 1));
+            DrainPendingInvocation(session);
+            snapshot = provisioner.Journal.Read(owner, selector);
+            if (snapshot.Resources.Length == 0) return Reply(ReleaseMeasurement(session, snapshot));
+            session.Plan ??= provisioner.OpenCleanupPlan(owner, selector);
+            CheckPendingClock(session);
+            // Finish P's retained whole image before any fresh final read.
+            if (provisioner.HasStatusDeniedPurgePersistence(session.Plan))
+            {
+                var persisted = provisioner.RetryStatusDeniedPurgePersistence(session.Plan);
+                CheckPendingClock(session);
+                if (persisted.Released && !provisioner.HasStatusDeniedPurgePersistence(session.Plan))
+                {
+                    durableReleased = true;
+                    return Reply(ReleaseMeasurement(session, persisted));
+                }
+            }
+            if (!snapshot.Idle) return Reply(ReleaseMeasurement(session, snapshot, 1));
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, lifetime.Token);
+            var released = await provisioner.ReleaseAsync(owner, selector, purge: true, cancellationToken: linked.Token,
+                originalCallerToken: caller).ConfigureAwait(false);
+            CheckPendingClock(session);
+            durableReleased = released.State == VaultFixtureProvisioner.State.Released &&
+                !provisioner.HasStatusDeniedPurgePersistence(session.Plan);
+            return Reply(ReleaseMeasurement(session, released.Journal, durableReleased ? 0 : 1));
+        }
+        finally
+        {
+            try
+            {
+                if (durableReleased && session.Capture is not null && p.Persistence is null && !p.EpochCompleted)
+                {
+                    await capture.SealAsync(session.Capture).ConfigureAwait(false);
+                    CheckPendingClock(session, sealedDrain: true);
+                    p.EpochCompleted = true;
+                }
+            }
+            finally { lock (gate) session.Releasing = false; }
+        }
+    }
+
+    private async Task<HttpResponseMessage> ReleaseFailedPurge(FixtureSelector selector, CancellationToken token, CancellationToken caller)
+    {
+        ValidateSelector(selector);
+        Session session;
+        lock (gate)
+        {
+            if (!sessions.TryGetValue(selector.Nonce, out session!))
+            {
+                Require(!disposed && sessions.Count < 32);
+                session = new(selector with { }) { Pending = new(null, null, failedProfile) };
+                sessions.Add(selector.Nonce, session);
+            }
+            Require(session.Selector == selector && !session.Releasing);
+            session.Releasing = true;
+        }
+        var p = session.Pending!;
+        p.Callers.Enqueue(caller);
+        try
+        {
+            // A readable failure postimage is not durable until its exact Flush retry.
+            if (session.Active == 0 && p.Persistence is StatusFailedPurgeTerminalFailure && !session.Closed)
+                RetryPendingPersistence(session);
+            if (session.Plan is not null && provisioner.HasStatusFailedPurgePersistence(session.Plan))
+            {
+                CheckPendingClock(session);
+                var persisted = provisioner.RetryStatusFailedPurgePersistence(session.Plan);
+                CheckPendingClock(session);
+                p.LastPersistence = null;
+                if (persisted.Released && !provisioner.HasStatusFailedPurgePersistence(session.Plan))
+                    return Reply(ReleaseMeasurement(session, persisted));
+            }
+            var snapshot = provisioner.CloseSelectedRoot(owner, selector);
+            session.Closed = true;
+            p.NeverSelectedClosed = snapshot.PurgeDeletedVault is
+                { FailedStage: RoleFixtureJournal.StatusFailedPurgeStage.Prepared, InvocationDispatch: var dispatch } && dispatch == Guid.Empty;
+            p.SelectedRevoked = true;
+            if (session.Capture is not null && p.Clock is not null) capture.RevokeStatusFailedPurgeSelected(session.Capture);
+            session.Stop.Cancel();
+            lock (gate) if (session.Active == 0) session.PrivateDrained.TrySetResult();
+            await session.PrivateDrained.Task.ConfigureAwait(false);
+            if (p.Persistence is not null)
+            {
+                // Close revokes an uncompleted selected candidate; only actual drain may follow.
+                p.Persistence = null;
+                p.LastPersistence = null;
+                DrainPendingInvocation(session);
+            }
+            snapshot = provisioner.Journal.Read(owner, selector);
+            if (snapshot.Resources.Length == 0) return Reply(ReleaseMeasurement(session, snapshot));
+            session.Plan ??= provisioner.OpenCleanupPlan(owner, selector);
+            if (!snapshot.Idle) return Reply(ReleaseMeasurement(session, snapshot, 1));
+            using var linked = p.Clock is null || p.EpochCompleted || p.NeverSelectedClosed
+                ? CancellationTokenSource.CreateLinkedTokenSource(token, lifetime.Token)
+                : CancellationTokenSource.CreateLinkedTokenSource(token, lifetime.Token, p.Clock.Token);
+            CheckPendingClock(session);
+            VaultFixtureProvisioner.Result released;
+            if (snapshot.PurgeDeletedVault!.FailedStage == RoleFixtureJournal.StatusFailedPurgeStage.TerminalFailed)
+            {
+                if (statusPendingPurgeCleanup || !session.StatusSucceeded || p.Invalid || session.Capture is null || p.Clock is null)
+                    return Reply(ReleaseMeasurement(session, snapshot, 1));
+                if (p.FailedCleanup is null)
+                {
+                    _ = PendingSelectedProof(session);
+                    CheckPendingClock(session);
+                    p.FailedClosedImage = RoleFixtureJournal.CopyStatusPendingPurgeSnapshot(snapshot);
+                    var authorization = new StatusFailedPurgeCleanupAuthorization(this);
+                    Require(failedCleanupAuthorizations.TryAdd(authorization, (session, p.FailedClosedImage)));
+                    p.FailedCleanup = authorization;
+                }
+                released = await provisioner.ReleaseStatusFailedPurgeAsync(session.Plan, p.FailedCleanup,
+                    linked.Token, caller).ConfigureAwait(false);
+            }
+            else
+                released = await provisioner.ReleaseAsync(owner, selector, purge: true, cancellationToken: linked.Token,
+                    originalCallerToken: caller).ConfigureAwait(false);
+            CheckPendingClock(session);
+            bool complete = released.State == VaultFixtureProvisioner.State.Released && !provisioner.HasStatusFailedPurgePersistence(session.Plan);
+            return Reply(ReleaseMeasurement(session, released.Journal, complete ? 0 : 1));
+        }
+        finally
+        {
+            try
+            {
+                if (session.Capture is not null && p.Persistence is null && !p.EpochCompleted &&
+                    (session.Plan is null || !provisioner.HasStatusFailedPurgePersistence(session.Plan)))
+                {
+                    await capture.SealAsync(session.Capture).ConfigureAwait(false);
+                    if (provisioner.Journal.Read(owner, selector).Released)
+                    {
+                        CheckPendingClock(session, sealedDrain: true);
+                        p.EpochCompleted = true;
+                    }
+                }
+            }
+            finally { lock (gate) session.Releasing = false; }
+        }
     }
 
     private async Task<HttpResponseMessage> ReleasePendingPurge(FixtureSelector selector, CancellationToken token, CancellationToken caller)
@@ -1990,6 +5765,8 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
     private readonly C? nativeCapture;
     private C capture => nativeCapture ?? throw Failure();
     private readonly S? statusCollector;
+    private readonly S.Authority? unknownStatusReader;
+    private readonly S.Limits? unknownStatusLimits;
     private S statuses => statusCollector ?? throw Failure();
     private readonly R? beforeCollector, afterCollector;
     private readonly R? statusCounterpartBeforeCollector, statusCounterpartAfterCollector;
@@ -2364,6 +6141,710 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
         finally { Leave(session); }
     }
 
+    private bool statusUnknownNotificationUpdateCancellationProfile, statusUnknownNotificationUpdateCancellationCleanup;
+    private VaultAdministrationEffects.Configuration? statusUnknownNotificationUpdateCancellationConfiguration;
+    private enum UnknownNotificationUpdateCancellationStage { Begin, StartDrain, Read, Complete, RemoteComplete }
+    private sealed record UnknownNotificationUpdateCancellationFacts(RoleFixtureJournal.Snapshot Preimage,
+        RoleFixtureJournal.Snapshot Postimage, string ResourceId, Guid Dispatch, UnknownNotificationUpdateCancellationStage Stage,
+        CancellationToken[] Tokens, Task[] Tasks, Session Session, StatusUnknownNotificationUpdateCancellationWriterExclusion Exclusion,
+        C.StatusUnknownNotificationUpdateCancellationCompletionProof? Completion, Task? CanceledTask, Task? CheckTask)
+    {
+        public override string ToString() => "[UnknownNotificationUpdateCancellationFacts]";
+    }
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<object, UnknownNotificationUpdateCancellationFacts>
+        unknownNotificationUpdateCancellationFacts = new(ReferenceEqualityComparer.Instance);
+
+    internal sealed class StatusUnknownNotificationUpdateCancellationAdmission(ManagementOperationFixtureObserverService source)
+    {
+        internal string ResourceId => source.unknownNotificationUpdateCancellationFacts.TryGetValue(this, out var f) ? f.ResourceId : "";
+        internal Guid Dispatch => source.unknownNotificationUpdateCancellationFacts.TryGetValue(this, out var f) ? f.Dispatch : Guid.Empty;
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.ValidateUnknownNotificationUpdateCancellation(this, journal, state, UnknownNotificationUpdateCancellationStage.Begin);
+        public override string ToString() => "[StatusUnknownNotificationUpdateCancellationAdmission]";
+    }
+    internal sealed class StatusUnknownNotificationUpdateCancellationStartDrain(ManagementOperationFixtureObserverService source)
+    {
+        internal Guid Dispatch => source.unknownNotificationUpdateCancellationFacts.TryGetValue(this, out var f) ? f.Dispatch : Guid.Empty;
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.ValidateUnknownNotificationUpdateCancellation(this, journal, state, UnknownNotificationUpdateCancellationStage.StartDrain);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.ValidateUnknownNotificationUpdateCancellation(this, journal, state, UnknownNotificationUpdateCancellationStage.StartDrain, true);
+        public override string ToString() => "[StatusUnknownNotificationUpdateCancellationStartDrain]";
+    }
+    internal sealed class StatusUnknownNotificationUpdateCancellationReadAdmission(ManagementOperationFixtureObserverService source)
+    {
+        internal Guid Dispatch => source.unknownNotificationUpdateCancellationFacts.TryGetValue(this, out var f) ? f.Dispatch : Guid.Empty;
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.ValidateUnknownNotificationUpdateCancellation(this, journal, state, UnknownNotificationUpdateCancellationStage.Read);
+        public override string ToString() => "[StatusUnknownNotificationUpdateCancellationReadAdmission]";
+    }
+    internal sealed class StatusUnknownNotificationUpdateCancellationObservation(ManagementOperationFixtureObserverService source)
+    {
+        internal Guid Dispatch => source.unknownNotificationUpdateCancellationFacts.TryGetValue(this, out var f) ? f.Dispatch : Guid.Empty;
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.ValidateUnknownNotificationUpdateCancellation(this, journal, state, UnknownNotificationUpdateCancellationStage.Complete);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.ValidateUnknownNotificationUpdateCancellation(this, journal, state, UnknownNotificationUpdateCancellationStage.Complete, true);
+        public override string ToString() => "[StatusUnknownNotificationUpdateCancellationObservation]";
+    }
+    private bool ValidateUnknownNotificationUpdateCancellation(object capability, RoleFixtureJournal journal,
+        RoleFixtureJournal.Snapshot state, UnknownNotificationUpdateCancellationStage stage, bool postimage = false) =>
+        ReferenceEquals(journal, provisioner.Journal) && unknownNotificationUpdateCancellationFacts.TryGetValue(capability, out var f) &&
+        f.Stage == stage && state.Closing == (stage == UnknownNotificationUpdateCancellationStage.RemoteComplete) &&
+        !f.Session.UnknownNotificationUpdateCancellationInvalid && ReferenceEquals(f.Session.UnknownNotificationUpdateCancellationExclusion, f.Exclusion) &&
+        !f.Exclusion.ContinuityToken.IsCancellationRequested && !disposed && f.Tokens.All(t => !t.IsCancellationRequested) &&
+        f.Tasks.All(t => t.IsCompletedSuccessfully) &&
+        (stage is not (UnknownNotificationUpdateCancellationStage.Complete or UnknownNotificationUpdateCancellationStage.RemoteComplete) ||
+            f.Completion is not null && ReferenceEquals(f.Completion, f.Session.UnknownNotificationUpdateCancellationNativeCompletion) &&
+            ReferenceEquals(f.Completion.Start, f.Session.UnknownNotificationUpdateCancellationObservedConfiguration?.Start) &&
+            ReferenceEquals(f.Completion.Canceled, f.Session.UnknownNotificationUpdateCancellationCanceled) &&
+            f.CanceledTask is { IsCanceled: true } && ReferenceEquals(f.CanceledTask, f.Completion.Canceled.CanceledTask) &&
+            ReferenceEquals(f.CanceledTask, f.Session.UnknownNotificationUpdateCancellationCanceledTask) &&
+            f.CheckTask is { IsCompletedSuccessfully: true } && ReferenceEquals(f.CheckTask, f.Session.StatusTask) &&
+            !ReferenceEquals(f.CheckTask, f.CanceledTask) && f.Tasks.Contains(f.CheckTask) && !f.Tasks.Contains(f.CanceledTask)) &&
+        RoleFixtureJournal.SameStatusUnknownNotificationUpdateCancellationSnapshot(
+            postimage ? f.Postimage : f.Preimage, state);
+
+    private static RoleFixtureJournal.Snapshot FreezeUnknownNotificationUpdateCancellation(RoleFixtureJournal.Snapshot state) =>
+        state with { Selector = state.Selector with { }, Resources = state.Resources.Select(r => r with { }).ToArray() };
+
+    private void IssueUnknownNotificationUpdateCancellation(Session session, object capability, UnknownNotificationUpdateCancellationStage stage,
+        RoleFixtureJournal.Snapshot state, params Task[] tasks)
+    {
+        Require(!disposed && (!session.Closed || stage == UnknownNotificationUpdateCancellationStage.RemoteComplete) && UnknownNotificationUpdateCancellationLive(session) &&
+            session.UnknownNotificationUpdateCancellationTokens.All(t => !t.IsCancellationRequested));
+        var preimage = FreezeUnknownNotificationUpdateCancellation(state);
+        string id = session.NotificationPlan!.ResourceId;
+        var postimage = preimage with
+        {
+            Revision = preimage.Revision + 1,
+            Resources = preimage.Resources.Select(r => r.Id == id ? r with
+            {
+                SelectedAttempted = true,
+                InvocationTerminated = stage is UnknownNotificationUpdateCancellationStage.StartDrain or UnknownNotificationUpdateCancellationStage.Complete or UnknownNotificationUpdateCancellationStage.RemoteComplete,
+                ActiveDispatch = stage == UnknownNotificationUpdateCancellationStage.RemoteComplete ? Guid.Empty : session.Dispatch
+            } : r).ToArray()
+        };
+        Require(unknownNotificationUpdateCancellationFacts.TryAdd(capability, new(preimage, postimage, id, session.Dispatch, stage,
+            session.UnknownNotificationUpdateCancellationTokens.ToArray(), tasks.ToArray(), session, session.UnknownNotificationUpdateCancellationExclusion!,
+            session.UnknownNotificationUpdateCancellationNativeCompletion, session.UnknownNotificationUpdateCancellationCanceledTask, session.StatusTask)));
+        session.UnknownNotificationUpdateCancellationCapabilities.Add(capability);
+    }
+    private void RevokeUnknownNotificationUpdateCancellation(Session session)
+    {
+        session.UnknownNotificationUpdateCancellationInvalid = true;
+        foreach (var capability in session.UnknownNotificationUpdateCancellationCapabilities)
+            unknownNotificationUpdateCancellationFacts.TryRemove(capability, out _);
+    }
+
+    private sealed record StatusUnknownNotificationUpdateCancellationReadSlot(NotificationFixtureProvisioner Source,
+        NotificationFixtureProvisioner.Plan Child, VaultFixtureProvisioner.Plan Parent, C.Binding Binding,
+        Guid Subscription, DateTimeOffset ArmedAt, bool Baseline, Guid Nonce)
+    {
+        public override string ToString() => "[StatusUnknownNotificationUpdateCancellationReadSlot]";
+    }
+    private sealed record StatusUnknownNotificationUpdateCancellationBaseline(StatusUnknownNotificationUpdateCancellationReadSlot Slot,
+        Task<NotificationFixtureProvisioner.Result> Task, NotificationFixtureProvisioner.StatusUnknownNotificationUpdateCancellationReadProof Proof,
+        IReadOnlyList<RoleFixtureJournal.Resource> Rows, NotificationConfiguration Configuration, DateTimeOffset FinishedAt)
+    {
+        public override string ToString() => "[StatusUnknownNotificationUpdateCancellationBaseline]";
+    }
+    private sealed record StatusUnknownNotificationUpdateCancellationObservedConfiguration(StatusUnknownNotificationUpdateCancellationBaseline Baseline,
+        StatusUnknownNotificationUpdateCancellationReadSlot Slot, Task<NotificationFixtureProvisioner.Result> Task,
+        NotificationFixtureProvisioner.StatusUnknownNotificationUpdateCancellationReadProof Proof, NotificationConfiguration Configuration,
+        C.StatusUnknownNotificationUpdateCancellationStartProof Start, C.StatusTarget Target, S.Window StatusWindow,
+        Task<S.Measurement> StatusTask, DateTimeOffset FinishedAt)
+    {
+        public override string ToString() => "[StatusUnknownNotificationUpdateCancellationObservedConfiguration]";
+    }
+
+    internal static ManagementOperationFixtureObserverService ForStatusUnknownNotificationUpdateCancellation(Uri origin, string owner,
+        string observerIdentity, SecretMaterial capability, VaultFixtureProvisioner.HostScope scope,
+        VaultFixtureProvisioner provisioner, S.Authority statusReader, R.Authority resourceReader,
+        HttpPipelineTransport selectedBackend, S.Limits statusLimits, R.Limits resourceLimits, Limits limits,
+        TimeProvider time, NotificationSource notificationSource, StatusUnknownNotificationUpdateCancellationWriterExclusion writerExclusion)
+    {
+        Require(notificationSource is { HttpsWebhookReady: true, Baseline: not null, ExclusiveCreation: null } &&
+            writerExclusion is { NamespaceEpoch: var epoch, ContinuousWriterExclusion: true, NoOlderInflightInvocations: true,
+                NoNameReuse: true, SelectedNeverPreviouslyApplied: true } && epoch != Guid.Empty &&
+            !writerExclusion.ContinuityToken.IsCancellationRequested);
+        var configuration = provisioner.StatusUnknownNotificationUpdateCancellationConfiguration(scope, statusReader, resourceReader, selectedBackend);
+        return new(origin, owner, observerIdentity, capability, scope, provisioner, statusReader, resourceReader,
+            selectedBackend, statusLimits, resourceLimits, limits, time, notificationSource)
+        { statusUnknownNotificationUpdateCancellationProfile = true, statusUnknownNotificationUpdateCancellationConfiguration = configuration,
+            unknownNotificationUpdateCancellationExclusion = writerExclusion };
+    }
+    internal static ManagementOperationFixtureObserverService ForStatusUnknownNotificationUpdateCancellationCleanup(Uri origin, string owner,
+        string observerIdentity, SecretMaterial capability, VaultFixtureProvisioner.HostScope scope,
+        VaultFixtureProvisioner provisioner, NotificationSource notificationSource, Limits limits, TimeProvider? time = null) =>
+        new(origin, owner, observerIdentity, capability, scope, provisioner, notificationSource, limits, time, unknownNotificationUpdateCancellation: true);
+
+    internal sealed class StatusUnknownNotificationUpdateCancellationWriterExclusion(Guid namespaceEpoch, bool continuousWriterExclusion,
+        bool noOlderInflightInvocations, bool noNameReuse, bool selectedNeverPreviouslyApplied, CancellationToken continuityToken)
+    {
+        internal Guid NamespaceEpoch { get; } = namespaceEpoch;
+        internal bool ContinuousWriterExclusion { get; } = continuousWriterExclusion;
+        internal bool NoOlderInflightInvocations { get; } = noOlderInflightInvocations;
+        internal bool NoNameReuse { get; } = noNameReuse;
+        internal bool SelectedNeverPreviouslyApplied { get; } = selectedNeverPreviouslyApplied;
+        internal CancellationToken ContinuityToken { get; } = continuityToken;
+        public override string ToString() => "[StatusUnknownNotificationUpdateCancellationWriterExclusion]";
+    }
+    private StatusUnknownNotificationUpdateCancellationWriterExclusion? unknownNotificationUpdateCancellationExclusion;
+    private bool UnknownNotificationUpdateCancellationLive(Session session)
+    {
+        var declaration = session.UnknownNotificationUpdateCancellationExclusion;
+        if (session.UnknownNotificationUpdateCancellationInvalid || declaration is null ||
+            !ReferenceEquals(declaration, unknownNotificationUpdateCancellationExclusion) || declaration.NamespaceEpoch == Guid.Empty ||
+            !declaration.ContinuousWriterExclusion || !declaration.NoOlderInflightInvocations || !declaration.NoNameReuse ||
+            !declaration.SelectedNeverPreviouslyApplied || declaration.ContinuityToken.IsCancellationRequested ||
+            session.UnknownNotificationUpdateCancellationTokens.Any(t => t.IsCancellationRequested))
+        {
+            RevokeUnknownNotificationUpdateCancellation(session);
+            return false;
+        }
+        return true;
+    }
+    internal sealed class StatusUnknownNotificationUpdateCancellationCompletion(ManagementOperationFixtureObserverService source)
+    {
+        internal Guid Dispatch => source.unknownNotificationUpdateCancellationFacts.TryGetValue(this, out var f) ? f.Dispatch : Guid.Empty;
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.ValidateUnknownNotificationUpdateCancellation(this, journal, state, UnknownNotificationUpdateCancellationStage.RemoteComplete);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.ValidateUnknownNotificationUpdateCancellation(this, journal, state, UnknownNotificationUpdateCancellationStage.RemoteComplete, true);
+        internal RoleFixtureJournal.Snapshot Postimage => FreezeUnknownNotificationUpdateCancellation(source.unknownNotificationUpdateCancellationFacts[this].Postimage);
+        public override string ToString() => "[StatusUnknownNotificationUpdateCancellationCompletion]";
+    }
+    private bool statusUnknownNotificationUpdateIndependentProfile, statusUnknownNotificationUpdateIndependentCleanup;
+    private VaultAdministrationEffects.Configuration? statusUnknownNotificationUpdateIndependentConfiguration;
+    private enum UnknownNotificationUpdateIndependentStage { Begin, StartDrain, Read, Complete, RemoteComplete }
+    private sealed record UnknownNotificationUpdateIndependentFacts(RoleFixtureJournal.Snapshot Preimage,
+        RoleFixtureJournal.Snapshot Postimage, string ResourceId, Guid Dispatch, UnknownNotificationUpdateIndependentStage Stage,
+        CancellationToken[] Tokens, Task[] Tasks, Session Session, StatusUnknownNotificationUpdateIndependentWriterExclusion Exclusion)
+    {
+        public override string ToString() => "[UnknownNotificationUpdateIndependentFacts]";
+    }
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<object, UnknownNotificationUpdateIndependentFacts>
+        unknownNotificationUpdateIndependentFacts = new(ReferenceEqualityComparer.Instance);
+
+    internal sealed class StatusUnknownNotificationUpdateIndependentAdmission(ManagementOperationFixtureObserverService source)
+    {
+        internal string ResourceId => source.unknownNotificationUpdateIndependentFacts.TryGetValue(this, out var f) ? f.ResourceId : "";
+        internal Guid Dispatch => source.unknownNotificationUpdateIndependentFacts.TryGetValue(this, out var f) ? f.Dispatch : Guid.Empty;
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.ValidateUnknownNotificationUpdateIndependent(this, journal, state, UnknownNotificationUpdateIndependentStage.Begin);
+        public override string ToString() => "[StatusUnknownNotificationUpdateIndependentAdmission]";
+    }
+    internal sealed class StatusUnknownNotificationUpdateIndependentStartDrain(ManagementOperationFixtureObserverService source)
+    {
+        internal Guid Dispatch => source.unknownNotificationUpdateIndependentFacts.TryGetValue(this, out var f) ? f.Dispatch : Guid.Empty;
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.ValidateUnknownNotificationUpdateIndependent(this, journal, state, UnknownNotificationUpdateIndependentStage.StartDrain);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.ValidateUnknownNotificationUpdateIndependent(this, journal, state, UnknownNotificationUpdateIndependentStage.StartDrain, true);
+        public override string ToString() => "[StatusUnknownNotificationUpdateIndependentStartDrain]";
+    }
+    internal sealed class StatusUnknownNotificationUpdateIndependentReadAdmission(ManagementOperationFixtureObserverService source)
+    {
+        internal Guid Dispatch => source.unknownNotificationUpdateIndependentFacts.TryGetValue(this, out var f) ? f.Dispatch : Guid.Empty;
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.ValidateUnknownNotificationUpdateIndependent(this, journal, state, UnknownNotificationUpdateIndependentStage.Read);
+        public override string ToString() => "[StatusUnknownNotificationUpdateIndependentReadAdmission]";
+    }
+    internal sealed class StatusUnknownNotificationUpdateIndependentObservation(ManagementOperationFixtureObserverService source)
+    {
+        internal Guid Dispatch => source.unknownNotificationUpdateIndependentFacts.TryGetValue(this, out var f) ? f.Dispatch : Guid.Empty;
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.ValidateUnknownNotificationUpdateIndependent(this, journal, state, UnknownNotificationUpdateIndependentStage.Complete);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.ValidateUnknownNotificationUpdateIndependent(this, journal, state, UnknownNotificationUpdateIndependentStage.Complete, true);
+        public override string ToString() => "[StatusUnknownNotificationUpdateIndependentObservation]";
+    }
+    private bool ValidateUnknownNotificationUpdateIndependent(object capability, RoleFixtureJournal journal,
+        RoleFixtureJournal.Snapshot state, UnknownNotificationUpdateIndependentStage stage, bool postimage = false) =>
+        ReferenceEquals(journal, provisioner.Journal) && unknownNotificationUpdateIndependentFacts.TryGetValue(capability, out var f) &&
+        f.Stage == stage && state.Closing == (stage == UnknownNotificationUpdateIndependentStage.RemoteComplete) &&
+        !f.Session.UnknownNotificationUpdateIndependentInvalid && ReferenceEquals(f.Session.UnknownNotificationUpdateIndependentExclusion, f.Exclusion) &&
+        !f.Exclusion.ContinuityToken.IsCancellationRequested && !disposed && f.Tokens.All(t => !t.IsCancellationRequested) &&
+        f.Tasks.All(t => t.IsCompletedSuccessfully) && RoleFixtureJournal.SameStatusUnknownNotificationUpdateIndependentSnapshot(
+            postimage ? f.Postimage : f.Preimage, state);
+
+    private static RoleFixtureJournal.Snapshot FreezeUnknownNotificationUpdateIndependent(RoleFixtureJournal.Snapshot state) =>
+        state with { Selector = state.Selector with { }, Resources = state.Resources.Select(r => r with { }).ToArray() };
+
+    private void IssueUnknownNotificationUpdateIndependent(Session session, object capability, UnknownNotificationUpdateIndependentStage stage,
+        RoleFixtureJournal.Snapshot state, params Task[] tasks)
+    {
+        Require(!disposed && (!session.Closed || stage == UnknownNotificationUpdateIndependentStage.RemoteComplete) && UnknownNotificationUpdateIndependentLive(session) &&
+            session.UnknownNotificationUpdateIndependentTokens.All(t => !t.IsCancellationRequested));
+        var preimage = FreezeUnknownNotificationUpdateIndependent(state);
+        string id = session.NotificationPlan!.ResourceId;
+        var postimage = preimage with
+        {
+            Revision = preimage.Revision + 1,
+            Resources = preimage.Resources.Select(r => r.Id == id ? r with
+            {
+                SelectedAttempted = true,
+                InvocationTerminated = stage is UnknownNotificationUpdateIndependentStage.StartDrain or UnknownNotificationUpdateIndependentStage.Complete or UnknownNotificationUpdateIndependentStage.RemoteComplete,
+                ActiveDispatch = stage == UnknownNotificationUpdateIndependentStage.RemoteComplete ? Guid.Empty : session.Dispatch
+            } : r).ToArray()
+        };
+        Require(unknownNotificationUpdateIndependentFacts.TryAdd(capability, new(preimage, postimage, id, session.Dispatch, stage,
+            session.UnknownNotificationUpdateIndependentTokens.ToArray(), tasks.ToArray(), session, session.UnknownNotificationUpdateIndependentExclusion!)));
+        session.UnknownNotificationUpdateIndependentCapabilities.Add(capability);
+    }
+    private void RevokeUnknownNotificationUpdateIndependent(Session session)
+    {
+        session.UnknownNotificationUpdateIndependentInvalid = true;
+        foreach (var capability in session.UnknownNotificationUpdateIndependentCapabilities)
+            unknownNotificationUpdateIndependentFacts.TryRemove(capability, out _);
+    }
+
+    private sealed record StatusUnknownNotificationUpdateIndependentReadSlot(NotificationFixtureProvisioner Source,
+        NotificationFixtureProvisioner.Plan Child, VaultFixtureProvisioner.Plan Parent, C.Binding Binding,
+        Guid Subscription, DateTimeOffset ArmedAt, bool Baseline, Guid Nonce)
+    {
+        public override string ToString() => "[StatusUnknownNotificationUpdateIndependentReadSlot]";
+    }
+    private sealed record StatusUnknownNotificationUpdateIndependentBaseline(StatusUnknownNotificationUpdateIndependentReadSlot Slot,
+        Task<NotificationFixtureProvisioner.Result> Task, NotificationFixtureProvisioner.StatusUnknownNotificationUpdateIndependentReadProof Proof,
+        IReadOnlyList<RoleFixtureJournal.Resource> Rows, NotificationConfiguration Configuration, DateTimeOffset FinishedAt)
+    {
+        public override string ToString() => "[StatusUnknownNotificationUpdateIndependentBaseline]";
+    }
+    private sealed record StatusUnknownNotificationUpdateIndependentObservedConfiguration(StatusUnknownNotificationUpdateIndependentBaseline Baseline,
+        StatusUnknownNotificationUpdateIndependentReadSlot Slot, Task<NotificationFixtureProvisioner.Result> Task,
+        NotificationFixtureProvisioner.StatusUnknownNotificationUpdateIndependentReadProof Proof, NotificationConfiguration Configuration,
+        C.StatusUnknownNotificationUpdateIndependentStartProof Start, C.StatusTarget Target, S.Window StatusWindow,
+        Task<S.Measurement> StatusTask, DateTimeOffset FinishedAt)
+    {
+        public override string ToString() => "[StatusUnknownNotificationUpdateIndependentObservedConfiguration]";
+    }
+
+    internal static ManagementOperationFixtureObserverService ForStatusUnknownNotificationUpdateIndependent(Uri origin, string owner,
+        string observerIdentity, SecretMaterial capability, VaultFixtureProvisioner.HostScope scope,
+        VaultFixtureProvisioner provisioner, S.Authority statusReader, R.Authority resourceReader,
+        HttpPipelineTransport selectedBackend, S.Limits statusLimits, R.Limits resourceLimits, Limits limits,
+        TimeProvider time, NotificationSource notificationSource, StatusUnknownNotificationUpdateIndependentWriterExclusion writerExclusion)
+    {
+        Require(notificationSource is { HttpsWebhookReady: true, Baseline: not null, ExclusiveCreation: null } &&
+            writerExclusion is { NamespaceEpoch: var epoch, ContinuousWriterExclusion: true, NoOlderInflightInvocations: true,
+                NoNameReuse: true, SelectedNeverPreviouslyApplied: true } && epoch != Guid.Empty &&
+            !writerExclusion.ContinuityToken.IsCancellationRequested);
+        var configuration = provisioner.StatusUnknownNotificationUpdateIndependentConfiguration(scope, statusReader, resourceReader, selectedBackend);
+        return new(origin, owner, observerIdentity, capability, scope, provisioner, statusReader, resourceReader,
+            selectedBackend, statusLimits, resourceLimits, limits, time, notificationSource)
+        { statusUnknownNotificationUpdateIndependentProfile = true, statusUnknownNotificationUpdateIndependentConfiguration = configuration,
+            unknownNotificationUpdateIndependentExclusion = writerExclusion };
+    }
+    internal static ManagementOperationFixtureObserverService ForStatusUnknownNotificationUpdateIndependentCleanup(Uri origin, string owner,
+        string observerIdentity, SecretMaterial capability, VaultFixtureProvisioner.HostScope scope,
+        VaultFixtureProvisioner provisioner, NotificationSource notificationSource, Limits limits, TimeProvider? time = null) =>
+        new(origin, owner, observerIdentity, capability, scope, provisioner, notificationSource, limits, time, unknownNotificationUpdateIndependent: true);
+
+    internal sealed class StatusUnknownNotificationUpdateIndependentWriterExclusion(Guid namespaceEpoch, bool continuousWriterExclusion,
+        bool noOlderInflightInvocations, bool noNameReuse, bool selectedNeverPreviouslyApplied, CancellationToken continuityToken)
+    {
+        internal Guid NamespaceEpoch { get; } = namespaceEpoch;
+        internal bool ContinuousWriterExclusion { get; } = continuousWriterExclusion;
+        internal bool NoOlderInflightInvocations { get; } = noOlderInflightInvocations;
+        internal bool NoNameReuse { get; } = noNameReuse;
+        internal bool SelectedNeverPreviouslyApplied { get; } = selectedNeverPreviouslyApplied;
+        internal CancellationToken ContinuityToken { get; } = continuityToken;
+        public override string ToString() => "[StatusUnknownNotificationUpdateIndependentWriterExclusion]";
+    }
+    private StatusUnknownNotificationUpdateIndependentWriterExclusion? unknownNotificationUpdateIndependentExclusion;
+    private bool UnknownNotificationUpdateIndependentLive(Session session)
+    {
+        var declaration = session.UnknownNotificationUpdateIndependentExclusion;
+        if (session.UnknownNotificationUpdateIndependentInvalid || declaration is null ||
+            !ReferenceEquals(declaration, unknownNotificationUpdateIndependentExclusion) || declaration.NamespaceEpoch == Guid.Empty ||
+            !declaration.ContinuousWriterExclusion || !declaration.NoOlderInflightInvocations || !declaration.NoNameReuse ||
+            !declaration.SelectedNeverPreviouslyApplied || declaration.ContinuityToken.IsCancellationRequested ||
+            session.UnknownNotificationUpdateIndependentTokens.Any(t => t.IsCancellationRequested))
+        {
+            RevokeUnknownNotificationUpdateIndependent(session);
+            return false;
+        }
+        return true;
+    }
+    internal sealed class StatusUnknownNotificationUpdateIndependentCompletion(ManagementOperationFixtureObserverService source)
+    {
+        internal Guid Dispatch => source.unknownNotificationUpdateIndependentFacts.TryGetValue(this, out var f) ? f.Dispatch : Guid.Empty;
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.ValidateUnknownNotificationUpdateIndependent(this, journal, state, UnknownNotificationUpdateIndependentStage.RemoteComplete);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.ValidateUnknownNotificationUpdateIndependent(this, journal, state, UnknownNotificationUpdateIndependentStage.RemoteComplete, true);
+        internal RoleFixtureJournal.Snapshot Postimage => FreezeUnknownNotificationUpdateIndependent(source.unknownNotificationUpdateIndependentFacts[this].Postimage);
+        public override string ToString() => "[StatusUnknownNotificationUpdateIndependentCompletion]";
+    }
+
+    private bool statusUnknownNotificationUpdateProfile, statusUnknownNotificationUpdateCleanup;
+    private VaultAdministrationEffects.Configuration? statusUnknownNotificationUpdateConfiguration;
+    private enum UnknownNotificationUpdateStage { Begin, StartDrain, Read, Complete, RemoteComplete }
+    private sealed record UnknownNotificationUpdateFacts(RoleFixtureJournal.Snapshot Preimage,
+        RoleFixtureJournal.Snapshot Postimage, string ResourceId, Guid Dispatch, UnknownNotificationUpdateStage Stage,
+        CancellationToken[] Tokens, Task[] Tasks, Session Session, StatusUnknownNotificationUpdateWriterExclusion Exclusion)
+    {
+        public override string ToString() => "[UnknownNotificationUpdateFacts]";
+    }
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<object, UnknownNotificationUpdateFacts>
+        unknownNotificationUpdateFacts = new(ReferenceEqualityComparer.Instance);
+
+    internal sealed class StatusUnknownNotificationUpdateAdmission(ManagementOperationFixtureObserverService source)
+    {
+        internal string ResourceId => source.unknownNotificationUpdateFacts.TryGetValue(this, out var f) ? f.ResourceId : "";
+        internal Guid Dispatch => source.unknownNotificationUpdateFacts.TryGetValue(this, out var f) ? f.Dispatch : Guid.Empty;
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.ValidateUnknownNotificationUpdate(this, journal, state, UnknownNotificationUpdateStage.Begin);
+        public override string ToString() => "[StatusUnknownNotificationUpdateAdmission]";
+    }
+    internal sealed class StatusUnknownNotificationUpdateStartDrain(ManagementOperationFixtureObserverService source)
+    {
+        internal Guid Dispatch => source.unknownNotificationUpdateFacts.TryGetValue(this, out var f) ? f.Dispatch : Guid.Empty;
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.ValidateUnknownNotificationUpdate(this, journal, state, UnknownNotificationUpdateStage.StartDrain);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.ValidateUnknownNotificationUpdate(this, journal, state, UnknownNotificationUpdateStage.StartDrain, true);
+        public override string ToString() => "[StatusUnknownNotificationUpdateStartDrain]";
+    }
+    internal sealed class StatusUnknownNotificationUpdateReadAdmission(ManagementOperationFixtureObserverService source)
+    {
+        internal Guid Dispatch => source.unknownNotificationUpdateFacts.TryGetValue(this, out var f) ? f.Dispatch : Guid.Empty;
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.ValidateUnknownNotificationUpdate(this, journal, state, UnknownNotificationUpdateStage.Read);
+        public override string ToString() => "[StatusUnknownNotificationUpdateReadAdmission]";
+    }
+    internal sealed class StatusUnknownNotificationUpdateObservation(ManagementOperationFixtureObserverService source)
+    {
+        internal Guid Dispatch => source.unknownNotificationUpdateFacts.TryGetValue(this, out var f) ? f.Dispatch : Guid.Empty;
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.ValidateUnknownNotificationUpdate(this, journal, state, UnknownNotificationUpdateStage.Complete);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.ValidateUnknownNotificationUpdate(this, journal, state, UnknownNotificationUpdateStage.Complete, true);
+        public override string ToString() => "[StatusUnknownNotificationUpdateObservation]";
+    }
+    private bool ValidateUnknownNotificationUpdate(object capability, RoleFixtureJournal journal,
+        RoleFixtureJournal.Snapshot state, UnknownNotificationUpdateStage stage, bool postimage = false) =>
+        ReferenceEquals(journal, provisioner.Journal) && unknownNotificationUpdateFacts.TryGetValue(capability, out var f) &&
+        f.Stage == stage && state.Closing == (stage == UnknownNotificationUpdateStage.RemoteComplete) &&
+        !f.Session.UnknownNotificationUpdateInvalid && ReferenceEquals(f.Session.UnknownNotificationUpdateExclusion, f.Exclusion) &&
+        !f.Exclusion.ContinuityToken.IsCancellationRequested && !disposed && f.Tokens.All(t => !t.IsCancellationRequested) &&
+        f.Tasks.All(t => t.IsCompletedSuccessfully) && RoleFixtureJournal.SameStatusUnknownNotificationUpdateSnapshot(
+            postimage ? f.Postimage : f.Preimage, state);
+
+    private static RoleFixtureJournal.Snapshot FreezeUnknownNotificationUpdate(RoleFixtureJournal.Snapshot state) =>
+        state with { Selector = state.Selector with { }, Resources = state.Resources.Select(r => r with { }).ToArray() };
+
+    private void IssueUnknownNotificationUpdate(Session session, object capability, UnknownNotificationUpdateStage stage,
+        RoleFixtureJournal.Snapshot state, params Task[] tasks)
+    {
+        Require(!disposed && (!session.Closed || stage == UnknownNotificationUpdateStage.RemoteComplete) && UnknownNotificationUpdateLive(session) &&
+            session.UnknownNotificationUpdateTokens.All(t => !t.IsCancellationRequested));
+        var preimage = FreezeUnknownNotificationUpdate(state);
+        string id = session.NotificationPlan!.ResourceId;
+        var postimage = preimage with
+        {
+            Revision = preimage.Revision + 1,
+            Resources = preimage.Resources.Select(r => r.Id == id ? r with
+            {
+                SelectedAttempted = true,
+                InvocationTerminated = stage is UnknownNotificationUpdateStage.StartDrain or UnknownNotificationUpdateStage.Complete or UnknownNotificationUpdateStage.RemoteComplete,
+                ActiveDispatch = stage == UnknownNotificationUpdateStage.RemoteComplete ? Guid.Empty : session.Dispatch
+            } : r).ToArray()
+        };
+        Require(unknownNotificationUpdateFacts.TryAdd(capability, new(preimage, postimage, id, session.Dispatch, stage,
+            session.UnknownNotificationUpdateTokens.ToArray(), tasks.ToArray(), session, session.UnknownNotificationUpdateExclusion!)));
+        session.UnknownNotificationUpdateCapabilities.Add(capability);
+    }
+    private void RevokeUnknownNotificationUpdate(Session session)
+    {
+        session.UnknownNotificationUpdateInvalid = true;
+        foreach (var capability in session.UnknownNotificationUpdateCapabilities)
+            unknownNotificationUpdateFacts.TryRemove(capability, out _);
+    }
+
+    private sealed record StatusUnknownNotificationUpdateReadSlot(NotificationFixtureProvisioner Source,
+        NotificationFixtureProvisioner.Plan Child, VaultFixtureProvisioner.Plan Parent, C.Binding Binding,
+        Guid Subscription, DateTimeOffset ArmedAt, bool Baseline, Guid Nonce)
+    {
+        public override string ToString() => "[StatusUnknownNotificationUpdateReadSlot]";
+    }
+    private sealed record StatusUnknownNotificationUpdateBaseline(StatusUnknownNotificationUpdateReadSlot Slot,
+        Task<NotificationFixtureProvisioner.Result> Task, NotificationFixtureProvisioner.StatusUnknownNotificationUpdateReadProof Proof,
+        IReadOnlyList<RoleFixtureJournal.Resource> Rows, NotificationConfiguration Configuration, DateTimeOffset FinishedAt)
+    {
+        public override string ToString() => "[StatusUnknownNotificationUpdateBaseline]";
+    }
+    private sealed record StatusUnknownNotificationUpdateObservedConfiguration(StatusUnknownNotificationUpdateBaseline Baseline,
+        StatusUnknownNotificationUpdateReadSlot Slot, Task<NotificationFixtureProvisioner.Result> Task,
+        NotificationFixtureProvisioner.StatusUnknownNotificationUpdateReadProof Proof, NotificationConfiguration Configuration,
+        C.StatusUnknownNotificationUpdateStartProof Start, C.StatusTarget Target, S.Window StatusWindow,
+        Task<S.Measurement> StatusTask, DateTimeOffset FinishedAt)
+    {
+        public override string ToString() => "[StatusUnknownNotificationUpdateObservedConfiguration]";
+    }
+
+    internal static ManagementOperationFixtureObserverService ForStatusUnknownNotificationUpdate(Uri origin, string owner,
+        string observerIdentity, SecretMaterial capability, VaultFixtureProvisioner.HostScope scope,
+        VaultFixtureProvisioner provisioner, S.Authority statusReader, R.Authority resourceReader,
+        HttpPipelineTransport selectedBackend, S.Limits statusLimits, R.Limits resourceLimits, Limits limits,
+        TimeProvider time, NotificationSource notificationSource, StatusUnknownNotificationUpdateWriterExclusion writerExclusion)
+    {
+        Require(notificationSource is { HttpsWebhookReady: true, Baseline: not null, ExclusiveCreation: null } &&
+            writerExclusion is { NamespaceEpoch: var epoch, ContinuousWriterExclusion: true, NoOlderInflightInvocations: true,
+                NoNameReuse: true, SelectedNeverPreviouslyApplied: true } && epoch != Guid.Empty &&
+            !writerExclusion.ContinuityToken.IsCancellationRequested);
+        var configuration = provisioner.StatusUnknownNotificationUpdateConfiguration(scope, statusReader, resourceReader, selectedBackend);
+        return new(origin, owner, observerIdentity, capability, scope, provisioner, statusReader, resourceReader,
+            selectedBackend, statusLimits, resourceLimits, limits, time, notificationSource)
+        { statusUnknownNotificationUpdateProfile = true, statusUnknownNotificationUpdateConfiguration = configuration,
+            unknownNotificationUpdateExclusion = writerExclusion };
+    }
+    internal static ManagementOperationFixtureObserverService ForStatusUnknownNotificationUpdateCleanup(Uri origin, string owner,
+        string observerIdentity, SecretMaterial capability, VaultFixtureProvisioner.HostScope scope,
+        VaultFixtureProvisioner provisioner, NotificationSource notificationSource, Limits limits, TimeProvider? time = null) =>
+        new(origin, owner, observerIdentity, capability, scope, provisioner, notificationSource, limits, time, unknownNotificationUpdate: true);
+
+    internal sealed class StatusUnknownNotificationUpdateWriterExclusion(Guid namespaceEpoch, bool continuousWriterExclusion,
+        bool noOlderInflightInvocations, bool noNameReuse, bool selectedNeverPreviouslyApplied, CancellationToken continuityToken)
+    {
+        internal Guid NamespaceEpoch { get; } = namespaceEpoch;
+        internal bool ContinuousWriterExclusion { get; } = continuousWriterExclusion;
+        internal bool NoOlderInflightInvocations { get; } = noOlderInflightInvocations;
+        internal bool NoNameReuse { get; } = noNameReuse;
+        internal bool SelectedNeverPreviouslyApplied { get; } = selectedNeverPreviouslyApplied;
+        internal CancellationToken ContinuityToken { get; } = continuityToken;
+        public override string ToString() => "[StatusUnknownNotificationUpdateWriterExclusion]";
+    }
+    private StatusUnknownNotificationUpdateWriterExclusion? unknownNotificationUpdateExclusion;
+    private bool UnknownNotificationUpdateLive(Session session)
+    {
+        var declaration = session.UnknownNotificationUpdateExclusion;
+        if (session.UnknownNotificationUpdateInvalid || declaration is null ||
+            !ReferenceEquals(declaration, unknownNotificationUpdateExclusion) || declaration.NamespaceEpoch == Guid.Empty ||
+            !declaration.ContinuousWriterExclusion || !declaration.NoOlderInflightInvocations || !declaration.NoNameReuse ||
+            !declaration.SelectedNeverPreviouslyApplied || declaration.ContinuityToken.IsCancellationRequested ||
+            session.UnknownNotificationUpdateTokens.Any(t => t.IsCancellationRequested))
+        {
+            RevokeUnknownNotificationUpdate(session);
+            return false;
+        }
+        return true;
+    }
+    internal sealed class StatusUnknownNotificationUpdateCompletion(ManagementOperationFixtureObserverService source)
+    {
+        internal Guid Dispatch => source.unknownNotificationUpdateFacts.TryGetValue(this, out var f) ? f.Dispatch : Guid.Empty;
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.ValidateUnknownNotificationUpdate(this, journal, state, UnknownNotificationUpdateStage.RemoteComplete);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.ValidateUnknownNotificationUpdate(this, journal, state, UnknownNotificationUpdateStage.RemoteComplete, true);
+        internal RoleFixtureJournal.Snapshot Postimage => FreezeUnknownNotificationUpdate(source.unknownNotificationUpdateFacts[this].Postimage);
+        public override string ToString() => "[StatusUnknownNotificationUpdateCompletion]";
+    }
+
+    private bool statusDeniedNotificationUpdateProfile, statusDeniedNotificationUpdateCleanup;
+    private ManagementMutation statusDeniedNotificationOperation { get; init; } = ManagementMutation.UpdateNotification;
+    private bool MatchesStatusDeniedNotificationOperation(FixtureSelector selector) =>
+        statusDeniedNotificationUpdateProfile &&
+        provisioner.StatusDeniedNotificationOperation == statusDeniedNotificationOperation &&
+        provisioner.MatchesStatusDeniedNotificationOperation(selector);
+    private VaultAdministrationEffects.Configuration? statusDeniedNotificationUpdateConfiguration;
+    private sealed record DeniedNotificationUpdateFacts(RoleFixtureJournal.Snapshot Preimage,
+        RoleFixtureJournal.Snapshot Postimage, string ResourceId, Guid Dispatch, UnknownNotificationUpdateStage Stage,
+        CancellationToken[] Tokens, Task[] Tasks, Session Session, StatusDeniedNotificationUpdateWriterExclusion Exclusion)
+    {
+        public override string ToString() => "[DeniedNotificationUpdateFacts]";
+    }
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<object, DeniedNotificationUpdateFacts>
+        deniedNotificationUpdateFacts = new(ReferenceEqualityComparer.Instance);
+
+    internal sealed class StatusDeniedNotificationUpdateAdmission(ManagementOperationFixtureObserverService source)
+    {
+        internal string ResourceId => source.deniedNotificationUpdateFacts.TryGetValue(this, out var f) ? f.ResourceId : "";
+        internal Guid Dispatch => source.deniedNotificationUpdateFacts.TryGetValue(this, out var f) ? f.Dispatch : Guid.Empty;
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.ValidateDeniedNotificationUpdate(this, journal, state, UnknownNotificationUpdateStage.Begin);
+        public override string ToString() => "[StatusDeniedNotificationUpdateAdmission]";
+    }
+    internal sealed class StatusDeniedNotificationUpdateStartDrain(ManagementOperationFixtureObserverService source)
+    {
+        internal Guid Dispatch => source.deniedNotificationUpdateFacts.TryGetValue(this, out var f) ? f.Dispatch : Guid.Empty;
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.ValidateDeniedNotificationUpdate(this, journal, state, UnknownNotificationUpdateStage.StartDrain);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.ValidateDeniedNotificationUpdate(this, journal, state, UnknownNotificationUpdateStage.StartDrain, true);
+        internal RoleFixtureJournal.Snapshot Postimage => FreezeDeniedNotificationUpdate(source.deniedNotificationUpdateFacts[this].Postimage);
+        public override string ToString() => "[StatusDeniedNotificationUpdateStartDrain]";
+    }
+    internal sealed class StatusDeniedNotificationUpdateReadAdmission(ManagementOperationFixtureObserverService source)
+    {
+        internal Guid Dispatch => source.deniedNotificationUpdateFacts.TryGetValue(this, out var f) ? f.Dispatch : Guid.Empty;
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.ValidateDeniedNotificationUpdate(this, journal, state, UnknownNotificationUpdateStage.Read);
+        public override string ToString() => "[StatusDeniedNotificationUpdateReadAdmission]";
+    }
+    internal sealed class StatusDeniedNotificationUpdateObservation(ManagementOperationFixtureObserverService source)
+    {
+        internal Guid Dispatch => source.deniedNotificationUpdateFacts.TryGetValue(this, out var f) ? f.Dispatch : Guid.Empty;
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.ValidateDeniedNotificationUpdate(this, journal, state, UnknownNotificationUpdateStage.Complete);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.ValidateDeniedNotificationUpdate(this, journal, state, UnknownNotificationUpdateStage.Complete, true);
+        internal RoleFixtureJournal.Snapshot Postimage => FreezeDeniedNotificationUpdate(source.deniedNotificationUpdateFacts[this].Postimage);
+        public override string ToString() => "[StatusDeniedNotificationUpdateObservation]";
+    }
+    private bool ValidateDeniedNotificationUpdate(object capability, RoleFixtureJournal journal,
+        RoleFixtureJournal.Snapshot state, UnknownNotificationUpdateStage stage, bool postimage = false) =>
+        ReferenceEquals(journal, provisioner.Journal) && deniedNotificationUpdateFacts.TryGetValue(capability, out var f) &&
+        MatchesStatusDeniedNotificationOperation(state.Selector) && f.Session.Selector == state.Selector &&
+        f.Session.Plan?.Selector == state.Selector && f.Session.Binding?.Selector == state.Selector &&
+        f.Session.Binding.Operation == statusDeniedNotificationOperation &&
+        f.Stage == stage && !state.Closing &&
+        !f.Session.DeniedNotificationUpdateInvalid && ReferenceEquals(f.Session.DeniedNotificationUpdateExclusion, f.Exclusion) &&
+        !f.Exclusion.ContinuityToken.IsCancellationRequested && !disposed && f.Tokens.All(t => !t.IsCancellationRequested) &&
+        f.Tasks.All(t => t.IsCompletedSuccessfully) && RoleFixtureJournal.SameStatusDeniedNotificationUpdateSnapshot(
+            postimage ? f.Postimage : f.Preimage, state);
+
+    private static RoleFixtureJournal.Snapshot FreezeDeniedNotificationUpdate(RoleFixtureJournal.Snapshot state) =>
+        state with { Selector = state.Selector with { }, Resources = state.Resources.Select(r => r with { }).ToArray() };
+
+    private void IssueDeniedNotificationUpdate(Session session, object capability, UnknownNotificationUpdateStage stage,
+        RoleFixtureJournal.Snapshot state, params Task[] tasks)
+    {
+        Require(MatchesStatusDeniedNotificationOperation(state.Selector) && session.Selector == state.Selector &&
+            session.Plan?.Selector == state.Selector && session.Binding?.Selector == state.Selector &&
+            session.Binding.Operation == statusDeniedNotificationOperation &&
+            !disposed && !session.Closed && DeniedNotificationUpdateLive(session) &&
+            session.DeniedNotificationUpdateTokens.All(t => !t.IsCancellationRequested));
+        var preimage = FreezeDeniedNotificationUpdate(state);
+        string id = session.NotificationPlan!.ResourceId;
+        var postimage = preimage with
+        {
+            Revision = preimage.Revision + 1,
+            Resources = preimage.Resources.Select(r => r.Id == id ? r with
+            {
+                SelectedAttempted = true,
+                InvocationTerminated = stage is UnknownNotificationUpdateStage.StartDrain or UnknownNotificationUpdateStage.Complete,
+                ActiveDispatch = stage == UnknownNotificationUpdateStage.Complete ? Guid.Empty : session.Dispatch
+            } : r).ToArray()
+        };
+        Require(deniedNotificationUpdateFacts.TryAdd(capability, new(preimage, postimage, id, session.Dispatch, stage,
+            session.DeniedNotificationUpdateTokens.ToArray(), tasks.ToArray(), session, session.DeniedNotificationUpdateExclusion!)));
+        session.DeniedNotificationUpdateCapabilities.Add(capability);
+    }
+    private void RevokeDeniedNotificationUpdate(Session session)
+    {
+        session.DeniedNotificationUpdateInvalid = true;
+        foreach (var capability in session.DeniedNotificationUpdateCapabilities)
+            deniedNotificationUpdateFacts.TryRemove(capability, out _);
+    }
+
+    private sealed record StatusDeniedNotificationUpdateReadSlot(NotificationFixtureProvisioner Source,
+        NotificationFixtureProvisioner.Plan Child, VaultFixtureProvisioner.Plan Parent, C.Binding Binding,
+        Guid Subscription, DateTimeOffset ArmedAt, bool Baseline, Guid Nonce)
+    {
+        public override string ToString() => "[StatusDeniedNotificationUpdateReadSlot]";
+    }
+    private sealed record StatusDeniedNotificationUpdateBaseline(StatusDeniedNotificationUpdateReadSlot Slot,
+        Task<NotificationFixtureProvisioner.Result> Task, NotificationFixtureProvisioner.StatusDeniedNotificationUpdateReadProof Proof,
+        IReadOnlyList<RoleFixtureJournal.Resource> Rows, NotificationConfiguration Configuration, DateTimeOffset FinishedAt)
+    {
+        public override string ToString() => "[StatusDeniedNotificationUpdateBaseline]";
+    }
+    private sealed record StatusDeniedNotificationUpdateObservedConfiguration(StatusDeniedNotificationUpdateBaseline Baseline,
+        StatusDeniedNotificationUpdateReadSlot Slot, Task<NotificationFixtureProvisioner.Result> Task,
+        NotificationFixtureProvisioner.StatusDeniedNotificationUpdateReadProof Proof, NotificationConfiguration Configuration,
+        C.StatusDeniedNotificationUpdateStartProof Start, C.StatusTarget Target, S.Window StatusWindow,
+        Task<S.Measurement> StatusTask, DateTimeOffset FinishedAt)
+    {
+        public override string ToString() => "[StatusDeniedNotificationUpdateObservedConfiguration]";
+    }
+
+    internal static ManagementOperationFixtureObserverService ForStatusDeniedNotificationUpdate(Uri origin, string owner,
+        string observerIdentity, SecretMaterial capability, VaultFixtureProvisioner.HostScope scope,
+        VaultFixtureProvisioner provisioner, S.Authority statusReader, R.Authority resourceReader,
+        HttpPipelineTransport selectedBackend, S.Limits statusLimits, R.Limits resourceLimits, Limits limits,
+        TimeProvider time, NotificationSource notificationSource, StatusDeniedNotificationUpdateWriterExclusion writerExclusion)
+    {
+        Require(provisioner.StatusDeniedNotificationOperation == ManagementMutation.UpdateNotification);
+        Require(notificationSource is { HttpsWebhookReady: true, Baseline: not null, ExclusiveCreation: null } &&
+            writerExclusion is { NamespaceEpoch: var epoch, ContinuousWriterExclusion: true, NoOlderInflightInvocations: true,
+                NoNameReuse: true, SelectedNeverPreviouslyApplied: true } && epoch != Guid.Empty &&
+            !writerExclusion.ContinuityToken.IsCancellationRequested);
+        var configuration = provisioner.StatusDeniedNotificationUpdateConfiguration(scope, statusReader, resourceReader, selectedBackend);
+        return new(origin, owner, observerIdentity, capability, scope, provisioner, statusReader, resourceReader,
+            selectedBackend, statusLimits, resourceLimits, limits, time, notificationSource)
+        { statusDeniedNotificationUpdateProfile = true, statusDeniedNotificationUpdateConfiguration = configuration,
+            deniedNotificationUpdateExclusion = writerExclusion };
+    }
+    internal static ManagementOperationFixtureObserverService ForStatusDeniedNotificationUpdateCleanup(Uri origin, string owner,
+        string observerIdentity, SecretMaterial capability, VaultFixtureProvisioner.HostScope scope,
+        VaultFixtureProvisioner provisioner, NotificationSource notificationSource, Limits limits, TimeProvider? time = null)
+    {
+        Require(provisioner.StatusDeniedNotificationOperation == ManagementMutation.UpdateNotification);
+        return new(origin, owner, observerIdentity, capability, scope, provisioner, notificationSource, limits, time, deniedNotificationUpdate: true);
+    }
+
+    internal static ManagementOperationFixtureObserverService ForStatusDeniedNotificationPut(Uri origin, string owner,
+        string observerIdentity, SecretMaterial capability, VaultFixtureProvisioner.HostScope scope,
+        VaultFixtureProvisioner provisioner, S.Authority statusReader, R.Authority resourceReader,
+        HttpPipelineTransport selectedBackend, S.Limits statusLimits, R.Limits resourceLimits, Limits limits,
+        TimeProvider time, NotificationSource notificationSource, StatusDeniedNotificationUpdateWriterExclusion writerExclusion)
+    {
+        Require(provisioner.StatusDeniedNotificationOperation == ManagementMutation.CreateOrUpdateNotification);
+        Require(notificationSource is { HttpsWebhookReady: true, Baseline: not null, ExclusiveCreation: null } &&
+            writerExclusion is { NamespaceEpoch: var epoch, ContinuousWriterExclusion: true, NoOlderInflightInvocations: true,
+                NoNameReuse: true, SelectedNeverPreviouslyApplied: true } && epoch != Guid.Empty &&
+            !writerExclusion.ContinuityToken.IsCancellationRequested);
+        var configuration = provisioner.StatusDeniedNotificationUpdateConfiguration(scope, statusReader, resourceReader, selectedBackend);
+        return new(origin, owner, observerIdentity, capability, scope, provisioner, statusReader, resourceReader,
+            selectedBackend, statusLimits, resourceLimits, limits, time, notificationSource)
+        { statusDeniedNotificationUpdateProfile = true, statusDeniedNotificationUpdateConfiguration = configuration,
+            deniedNotificationUpdateExclusion = writerExclusion,
+            statusDeniedNotificationOperation = ManagementMutation.CreateOrUpdateNotification };
+    }
+
+    internal static ManagementOperationFixtureObserverService ForStatusDeniedNotificationPutCleanup(Uri origin, string owner,
+        string observerIdentity, SecretMaterial capability, VaultFixtureProvisioner.HostScope scope,
+        VaultFixtureProvisioner provisioner, NotificationSource notificationSource, Limits limits, TimeProvider? time = null)
+    {
+        Require(provisioner.StatusDeniedNotificationOperation == ManagementMutation.CreateOrUpdateNotification);
+        return new(origin, owner, observerIdentity, capability, scope, provisioner, notificationSource, limits, time, deniedNotificationUpdate: true)
+        { statusDeniedNotificationOperation = ManagementMutation.CreateOrUpdateNotification };
+    }
+
+    internal sealed class StatusDeniedNotificationUpdateWriterExclusion(Guid namespaceEpoch, bool continuousWriterExclusion,
+        bool noOlderInflightInvocations, bool noNameReuse, bool selectedNeverPreviouslyApplied, CancellationToken continuityToken)
+    {
+        internal Guid NamespaceEpoch { get; } = namespaceEpoch;
+        internal bool ContinuousWriterExclusion { get; } = continuousWriterExclusion;
+        internal bool NoOlderInflightInvocations { get; } = noOlderInflightInvocations;
+        internal bool NoNameReuse { get; } = noNameReuse;
+        internal bool SelectedNeverPreviouslyApplied { get; } = selectedNeverPreviouslyApplied;
+        internal CancellationToken ContinuityToken { get; } = continuityToken;
+        public override string ToString() => "[StatusDeniedNotificationUpdateWriterExclusion]";
+    }
+    private StatusDeniedNotificationUpdateWriterExclusion? deniedNotificationUpdateExclusion;
+    private bool DeniedNotificationUpdateLive(Session session)
+    {
+        var declaration = session.DeniedNotificationUpdateExclusion;
+        if (!MatchesStatusDeniedNotificationOperation(session.Selector) ||
+            session.Plan is { } parent && parent.Selector != session.Selector ||
+            session.Binding is { } binding && (binding.Selector != session.Selector ||
+                binding.Operation != statusDeniedNotificationOperation) ||
+            session.DeniedNotificationUpdateInvalid || declaration is null ||
+            !ReferenceEquals(declaration, deniedNotificationUpdateExclusion) || declaration.NamespaceEpoch == Guid.Empty ||
+            !declaration.ContinuousWriterExclusion || !declaration.NoOlderInflightInvocations || !declaration.NoNameReuse ||
+            !declaration.SelectedNeverPreviouslyApplied || declaration.ContinuityToken.IsCancellationRequested ||
+            session.DeniedNotificationUpdateTokens.Any(t => t.IsCancellationRequested))
+        {
+            RevokeDeniedNotificationUpdate(session);
+            return false;
+        }
+        return true;
+    }
+
     private bool statusNotificationUpdateIndependentProfile, statusNotificationUpdateIndependentCleanup;
     private VaultAdministrationEffects.Configuration? statusNotificationUpdateIndependentConfiguration;
     private enum NotificationUpdateIndependentStage { Begin, StartDrain, Read, Complete }
@@ -2608,7 +7089,7 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
 
     private ManagementOperationFixtureObserverService(Uri origin, string owner, string observerIdentity,
         SecretMaterial capability, VaultFixtureProvisioner.HostScope scope, VaultFixtureProvisioner provisioner,
-        NotificationSource notification, Limits limits, TimeProvider? time, bool notificationCreateIndependent = false)
+        NotificationSource notification, Limits limits, TimeProvider? time, bool notificationCreateIndependent = false, bool unknownNotificationUpdate = false, bool deniedNotificationUpdate = false, bool unknownNotificationUpdateIndependent = false, bool unknownNotificationUpdateCancellation = false)
         : this(origin, owner, observerIdentity, capability, scope, provisioner, limits, time)
     {
         Require(notification is
@@ -2620,7 +7101,15 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
             !ReferenceEquals(notification.Setup.Transport, notification.Observer.Transport));
         notificationSource = notification with { Baseline = null };
         profile = Profile.StatusFamily;
-        if (notificationCreateIndependent)
+        if (deniedNotificationUpdate)
+            statusDeniedNotificationUpdateProfile = statusDeniedNotificationUpdateCleanup = true;
+        else if (unknownNotificationUpdateCancellation)
+            statusUnknownNotificationUpdateCancellationProfile = statusUnknownNotificationUpdateCancellationCleanup = true;
+        else if (unknownNotificationUpdateIndependent)
+            statusUnknownNotificationUpdateIndependentProfile = statusUnknownNotificationUpdateIndependentCleanup = true;
+        else if (unknownNotificationUpdate)
+            statusUnknownNotificationUpdateProfile = statusUnknownNotificationUpdateCleanup = true;
+        else if (notificationCreateIndependent)
             statusNotificationCreateIndependentProfile = statusNotificationCreateIndependentCleanup = true;
         else statusNotificationUpdateIndependentProfile = statusNotificationUpdateIndependentCleanup = true;
     }
@@ -3022,6 +7511,86 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
         internal StatusNotificationUpdateObservation? StatusNotificationUpdateObservation;
         internal StatusNotificationCreateBaseline? StatusNotificationCreateBaseline;
         internal StatusNotificationCreateObservation? StatusNotificationCreateObservation;
+        internal StatusUnknownNotificationUpdateCancellationReadSlot? UnknownNotificationUpdateCancellationBefore, UnknownNotificationUpdateCancellationAfter;
+        internal StatusUnknownNotificationUpdateCancellationBaseline? UnknownNotificationUpdateCancellationBaseline;
+        internal StatusUnknownNotificationUpdateCancellationObservedConfiguration? UnknownNotificationUpdateCancellationObservedConfiguration;
+        internal RoleFixtureJournal.Snapshot? UnknownNotificationUpdateCancellationReady, UnknownNotificationUpdateCancellationBegin,
+            UnknownNotificationUpdateCancellationDrained, UnknownNotificationUpdateCancellationRead;
+        internal StatusUnknownNotificationUpdateCancellationStartDrain? UnknownNotificationUpdateCancellationStartDrain;
+        internal StatusUnknownNotificationUpdateCancellationObservation? UnknownNotificationUpdateCancellationObservation;
+        internal readonly List<object> UnknownNotificationUpdateCancellationCapabilities = [];
+        internal readonly List<CancellationToken> UnknownNotificationUpdateCancellationTokens = [];
+        internal bool UnknownNotificationUpdateCancellationInvalid;
+        internal StatusUnknownNotificationUpdateCancellationWriterExclusion? UnknownNotificationUpdateCancellationExclusion;
+        internal CancellationTokenRegistration UnknownNotificationUpdateCancellationContinuity;
+        internal C.StatusUnknownNotificationUpdateCancellationCompletionProof? UnknownNotificationUpdateCancellationNativeCompletion;
+        internal C.StatusUnknownNotificationUpdateCancellationCanceledProof? UnknownNotificationUpdateCancellationCanceled;
+        internal Task? UnknownNotificationUpdateCancellationCanceledTask;
+        internal CancellationToken UnknownNotificationUpdateCancellationCanceledOperand;
+        internal bool UnknownNotificationUpdateCancellationCanceledClaimed, UnknownNotificationUpdateCancellationCheckClaimed;
+        internal RoleFixtureJournal.Snapshot? UnknownNotificationUpdateCancellationObserved;
+        internal StatusUnknownNotificationUpdateCancellationCompletion? UnknownNotificationUpdateCancellationCompletion;
+        internal bool UnknownNotificationUpdateCancellationCompleted;
+        internal bool UnknownNotificationUpdateCancellationParentPending, UnknownNotificationUpdateCancellationChildPending;
+        internal RoleFixtureJournal.Snapshot? UnknownNotificationUpdateCancellationCleanupSnapshot;
+        internal readonly SemaphoreSlim UnknownNotificationUpdateCancellationRelease = new(1, 1);
+        internal StatusUnknownNotificationUpdateIndependentReadSlot? UnknownNotificationUpdateIndependentBefore, UnknownNotificationUpdateIndependentAfter;
+        internal StatusUnknownNotificationUpdateIndependentBaseline? UnknownNotificationUpdateIndependentBaseline;
+        internal StatusUnknownNotificationUpdateIndependentObservedConfiguration? UnknownNotificationUpdateIndependentObservedConfiguration;
+        internal RoleFixtureJournal.Snapshot? UnknownNotificationUpdateIndependentReady, UnknownNotificationUpdateIndependentBegin,
+            UnknownNotificationUpdateIndependentDrained, UnknownNotificationUpdateIndependentRead;
+        internal StatusUnknownNotificationUpdateIndependentStartDrain? UnknownNotificationUpdateIndependentStartDrain;
+        internal StatusUnknownNotificationUpdateIndependentObservation? UnknownNotificationUpdateIndependentObservation;
+        internal readonly List<object> UnknownNotificationUpdateIndependentCapabilities = [];
+        internal readonly List<CancellationToken> UnknownNotificationUpdateIndependentTokens = [];
+        internal bool UnknownNotificationUpdateIndependentInvalid;
+        internal StatusUnknownNotificationUpdateIndependentWriterExclusion? UnknownNotificationUpdateIndependentExclusion;
+        internal CancellationTokenRegistration UnknownNotificationUpdateIndependentContinuity;
+        internal C.StatusUnknownNotificationUpdateIndependentCompletionProof? UnknownNotificationUpdateIndependentNativeCompletion;
+        internal RoleFixtureJournal.Snapshot? UnknownNotificationUpdateIndependentObserved;
+        internal StatusUnknownNotificationUpdateIndependentCompletion? UnknownNotificationUpdateIndependentCompletion;
+        internal bool UnknownNotificationUpdateIndependentCompleted;
+        internal bool UnknownNotificationUpdateIndependentParentPending, UnknownNotificationUpdateIndependentChildPending;
+        internal RoleFixtureJournal.Snapshot? UnknownNotificationUpdateIndependentCleanupSnapshot;
+        internal readonly SemaphoreSlim UnknownNotificationUpdateIndependentRelease = new(1, 1);
+
+        internal StatusUnknownNotificationUpdateReadSlot? UnknownNotificationUpdateBefore, UnknownNotificationUpdateAfter;
+        internal StatusUnknownNotificationUpdateBaseline? UnknownNotificationUpdateBaseline;
+        internal StatusUnknownNotificationUpdateObservedConfiguration? UnknownNotificationUpdateObservedConfiguration;
+        internal RoleFixtureJournal.Snapshot? UnknownNotificationUpdateReady, UnknownNotificationUpdateBegin,
+            UnknownNotificationUpdateDrained, UnknownNotificationUpdateRead;
+        internal StatusUnknownNotificationUpdateStartDrain? UnknownNotificationUpdateStartDrain;
+        internal StatusUnknownNotificationUpdateObservation? UnknownNotificationUpdateObservation;
+        internal readonly List<object> UnknownNotificationUpdateCapabilities = [];
+        internal readonly List<CancellationToken> UnknownNotificationUpdateTokens = [];
+        internal bool UnknownNotificationUpdateInvalid;
+        internal StatusUnknownNotificationUpdateWriterExclusion? UnknownNotificationUpdateExclusion;
+        internal CancellationTokenRegistration UnknownNotificationUpdateContinuity;
+        internal C.StatusUnknownNotificationUpdateCompletionProof? UnknownNotificationUpdateNativeCompletion;
+        internal RoleFixtureJournal.Snapshot? UnknownNotificationUpdateObserved;
+        internal StatusUnknownNotificationUpdateCompletion? UnknownNotificationUpdateCompletion;
+        internal bool UnknownNotificationUpdateCompleted;
+        internal bool UnknownNotificationUpdateParentPending, UnknownNotificationUpdateChildPending;
+        internal RoleFixtureJournal.Snapshot? UnknownNotificationUpdateCleanupSnapshot;
+        internal readonly SemaphoreSlim UnknownNotificationUpdateRelease = new(1, 1);
+        internal StatusDeniedNotificationUpdateReadSlot? DeniedNotificationUpdateBefore, DeniedNotificationUpdateAfter;
+        internal StatusDeniedNotificationUpdateBaseline? DeniedNotificationUpdateBaseline;
+        internal StatusDeniedNotificationUpdateObservedConfiguration? DeniedNotificationUpdateObservedConfiguration;
+        internal RoleFixtureJournal.Snapshot? DeniedNotificationUpdateReady, DeniedNotificationUpdateBegin,
+            DeniedNotificationUpdateDrained, DeniedNotificationUpdateRead;
+        internal StatusDeniedNotificationUpdateStartDrain? DeniedNotificationUpdateStartDrain;
+        internal StatusDeniedNotificationUpdateObservation? DeniedNotificationUpdateObservation;
+        internal readonly List<object> DeniedNotificationUpdateCapabilities = [];
+        internal readonly List<CancellationToken> DeniedNotificationUpdateTokens = [];
+        internal bool DeniedNotificationUpdateInvalid;
+        internal StatusDeniedNotificationUpdateWriterExclusion? DeniedNotificationUpdateExclusion;
+        internal CancellationTokenRegistration DeniedNotificationUpdateContinuity;
+        internal C.StatusDeniedNotificationUpdateDeniedProof? DeniedNotificationUpdateNativeDenied;
+        internal RoleFixtureJournal.Snapshot? DeniedNotificationUpdateObserved;
+        internal bool DeniedNotificationUpdateParentPending, DeniedNotificationUpdateChildPending;
+        internal RoleFixtureJournal.Snapshot? DeniedNotificationUpdateCleanupSnapshot;
+        internal readonly SemaphoreSlim DeniedNotificationUpdateRelease = new(1, 1);
+
         internal StatusNotificationUpdateIndependentReadSlot? NotificationUpdateIndependentBefore, NotificationUpdateIndependentAfter;
         internal StatusNotificationUpdateIndependentBaseline? NotificationUpdateIndependentBaseline;
         internal StatusNotificationUpdateIndependentObservation? NotificationUpdateIndependentObservation;
@@ -3092,6 +7661,8 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
         this.time = time;
         nativeCapture = new(selectedBackend, limits.MaximumReplyBytes);
         statusCollector = new(capture, statusReader, statusLimits, time);
+        unknownStatusReader = statusReader;
+        unknownStatusLimits = statusLimits;
         beforeCollector = new(resourceReader, resourceLimits, time, scope.TenantId);
         afterCollector = new(resourceReader, resourceLimits, time, scope.TenantId);
         statusPrivateReaderSeparated = privateConnectionSource?.EndpointSetup is { } privateSetup &&
@@ -3156,15 +7727,17 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
 
     private ManagementOperationFixtureObserverService(Uri origin, string owner, string observerIdentity,
         SecretMaterial capability, VaultFixtureProvisioner.HostScope scope, VaultFixtureProvisioner provisioner,
-        PrivateConnectionSource endpoint, Limits limits, TimeProvider? time, bool independent, bool independentUpdate = false)
+        PrivateConnectionSource endpoint, Limits limits, TimeProvider? time, bool independent, bool independentUpdate = false,
+        bool deniedPrivateDelete = false)
         : this(origin, owner, observerIdentity, capability, scope, provisioner, limits, time)
     {
-        Require(independent && endpoint is not null && Text(endpoint.BorrowedSubnetId, 2048));
+        Require((independent != deniedPrivateDelete) && endpoint is not null && Text(endpoint.BorrowedSubnetId, 2048));
         _ = new PrivateEndpointFixtureProvisioner(provisioner, endpoint.EndpointSetup, endpoint.EndpointReader,
             endpoint.VaultConnectionReader, endpoint.ResourceLimits, endpoint.InventoryLimits, this.time);
         privateConnectionSource = endpoint;
         profile = Profile.StatusFamily;
-        if (independentUpdate) statusPrivateUpdateIndependentProfile = statusPrivateUpdateIndependentCleanup = true;
+        if (deniedPrivateDelete) statusDeniedPrivateDeleteProfile = statusDeniedPrivateDeleteCleanup = true;
+        else if (independentUpdate) statusPrivateUpdateIndependentProfile = statusPrivateUpdateIndependentCleanup = true;
         else statusPrivateDeleteIndependentProfile = statusPrivateDeleteIndependentCleanup = true;
     }
 
@@ -3247,9 +7820,28 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
             using var deadline = new CancellationTokenSource(limits.Timeout, time);
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, lifetime.Token, deadline.Token);
             using var body = await ReadBody(request, linked.Token).ConfigureAwait(false);
+            if (statusDeniedVaultUpdateProfile)
+            {
+                if (statusDeniedVaultUpdateCleanup && uri.AbsolutePath != "/operation/release") return Error(HttpStatusCode.NotFound);
+                return uri.AbsolutePath switch
+                {
+                    "/operation/prepare" => await PrepareDeniedVaultUpdate(body.RootElement.Deserialize<E.Prepare>(Json) ?? throw Failure(),
+                        linked.Token, cancellationToken).ConfigureAwait(false),
+                    "/operation/arm" => ArmDeniedVaultUpdate(body.RootElement.Deserialize<ObserveLease>(Json) ?? throw Failure(), linked.Token, cancellationToken),
+                    "/operation/observe" => await ObserveDeniedVaultUpdate(body.RootElement.Deserialize<ObserveLease>(Json) ?? throw Failure(),
+                        linked.Token, cancellationToken).ConfigureAwait(false),
+                    "/operation/release" => await ReleaseDeniedVaultUpdate(body.RootElement.Deserialize<FixtureSelector>(Json) ?? throw Failure(),
+                        linked.Token, cancellationToken).ConfigureAwait(false),
+                    _ => Error(HttpStatusCode.NotFound)
+                };
+            }
             if (PendingProfile)
                 return await DispatchPendingPurge(uri.AbsolutePath, body.RootElement, linked.Token, cancellationToken).ConfigureAwait(false);
-            if (statusNotificationUpdateIndependentCleanup || statusNotificationCreateIndependentCleanup)
+            if (statusDeniedPrivateDeleteCleanup)
+                return uri.AbsolutePath == "/operation/release"
+                    ? await Release(body.RootElement.Deserialize<FixtureSelector>(Json) ?? throw Failure(), linked.Token, cancellationToken).ConfigureAwait(false)
+                    : Error(HttpStatusCode.NotFound);
+            if (statusUnknownNotificationUpdateCancellationCleanup || statusUnknownNotificationUpdateIndependentCleanup || statusDeniedNotificationUpdateCleanup || statusUnknownNotificationUpdateCleanup || statusNotificationUpdateIndependentCleanup || statusNotificationCreateIndependentCleanup)
                 return uri.AbsolutePath == "/operation/release"
                     ? await Release(body.RootElement.Deserialize<FixtureSelector>(Json) ?? throw Failure(),
                         linked.Token, cancellationToken).ConfigureAwait(false)
@@ -3291,8 +7883,9 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
             };
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
-        catch (Exception)
+        catch (Exception error)
         {
+            if (statusDeniedVaultUpdateProfile) Console.Error.WriteLine("VAULT_UPDATE_SOURCE_DIAGNOSTIC " + error);
             return Error(HttpStatusCode.ServiceUnavailable);
         }
         finally { Leave(null); }
@@ -3301,10 +7894,37 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
     private async Task<HttpResponseMessage> Prepare(E.Prepare input, CancellationToken token, CancellationToken requestCancellation = default)
     {
         ValidateSelector(input.Selection);
+        if (statusDeniedPrivateDeleteProfile)
+            Require(!statusDeniedPrivateDeleteCleanup && input.Operation == ManagementMutation.DeletePrivateConnection &&
+                deniedPrivateDeleteConfiguration is { } configuration && configuration.Location == input.Location &&
+                configuration.TenantId == input.TenantId && configuration.Sku == input.Sku &&
+                configuration.RetentionDays == input.RetentionDays && deniedPrivateDeleteExclusion is not null &&
+                !deniedPrivateDeleteExclusion.ContinuityToken.IsCancellationRequested);
         if (statusPrivateUpdateIndependentProfile)
             Require(!statusPrivateUpdateIndependentCleanup && input.Operation == ManagementMutation.UpdatePrivateConnection &&
                 statusPrivateUpdateIndependentConfiguration is { } privateParent && privateParent.Location == input.Location &&
                 privateParent.TenantId == input.TenantId && privateParent.Sku == input.Sku && privateParent.RetentionDays == input.RetentionDays);
+        if (statusUnknownNotificationUpdateCancellationProfile)
+            Require(!statusUnknownNotificationUpdateCancellationCleanup && input.Operation == ManagementMutation.UpdateNotification &&
+                statusUnknownNotificationUpdateCancellationConfiguration is { } expectedNotificationParent &&
+                VaultAdministrationEffects.SameConfiguration(expectedNotificationParent,
+                    new(input.Location, input.TenantId, input.Sku, true, false, input.RetentionDays, false, [])));
+        if (statusUnknownNotificationUpdateIndependentProfile)
+            Require(!statusUnknownNotificationUpdateCancellationCleanup && !statusUnknownNotificationUpdateIndependentCleanup && input.Operation == ManagementMutation.UpdateNotification &&
+                statusUnknownNotificationUpdateIndependentConfiguration is { } expectedNotificationParent &&
+                VaultAdministrationEffects.SameConfiguration(expectedNotificationParent,
+                    new(input.Location, input.TenantId, input.Sku, true, false, input.RetentionDays, false, [])));
+
+        if (statusDeniedNotificationUpdateProfile)
+            Require(!statusDeniedNotificationUpdateCleanup && input.Operation == statusDeniedNotificationOperation &&
+                statusDeniedNotificationUpdateConfiguration is { } expectedNotificationParent &&
+                VaultAdministrationEffects.SameConfiguration(expectedNotificationParent,
+                    new(input.Location, input.TenantId, input.Sku, true, false, input.RetentionDays, false, [])));
+        if (statusUnknownNotificationUpdateProfile)
+            Require(!statusUnknownNotificationUpdateCleanup && input.Operation == ManagementMutation.UpdateNotification &&
+                statusUnknownNotificationUpdateConfiguration is { } expectedNotificationParent &&
+                VaultAdministrationEffects.SameConfiguration(expectedNotificationParent,
+                    new(input.Location, input.TenantId, input.Sku, true, false, input.RetentionDays, false, [])));
         if (statusNotificationUpdateIndependentProfile)
             Require(!statusNotificationUpdateIndependentCleanup && input.Operation == ManagementMutation.UpdateNotification &&
                 statusNotificationUpdateIndependentConfiguration is { } expectedNotificationParent &&
@@ -3357,7 +7977,7 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
         if (VaultFixtureProvisioner.StatusPrivateConnectionUpdateCancellationSelector(input.Selection) ||
             VaultFixtureProvisioner.StatusPrivateConnectionDeleteCancellationSelector(input.Selection) ||
             VaultFixtureProvisioner.StatusPrivateConnectionDeleteSelectedSelector(input.Selection) ||
-            statusPrivateDeleteIndependentProfile || statusPrivateUpdateIndependentProfile)
+            statusDeniedPrivateDeleteProfile || statusPrivateDeleteIndependentProfile || statusPrivateUpdateIndependentProfile)
             Require(statusPrivateReaderSeparated);
         if (notification)
         {
@@ -3366,7 +7986,7 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
                 NotificationFixtureProvisioner.StatusNotificationCreateCancellationSelector(input.Selection));
             Require(NotificationConfigurationMatches(notificationSource.Baseline, VaultNotificationEvent.SecretNearExpiry) &&
                 input.WebhookUrl == notificationSource.Baseline.Endpoint.Reveal());
-            if (statusNotificationUpdateIndependentProfile || statusNotificationCreateIndependentProfile ||
+            if (statusUnknownNotificationUpdateCancellationProfile || statusUnknownNotificationUpdateIndependentProfile || statusDeniedNotificationUpdateProfile || statusUnknownNotificationUpdateProfile || statusNotificationUpdateIndependentProfile || statusNotificationCreateIndependentProfile ||
                 NotificationFixtureProvisioner.StatusNotificationDeleteCancellationSelector(input.Selection) ||
                 NotificationFixtureProvisioner.StatusNotificationDeleteIndependentSelector(input.Selection) ||
                 NotificationFixtureProvisioner.StatusNotificationUpdateCancellationSelector(input.Selection) ||
@@ -3399,8 +8019,54 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
                 StatusRecoverConfiguration = recoveryConfiguration,
                 StatusUpdateConfiguration = updateConfiguration
             };
+            if (statusDeniedPrivateDeleteProfile)
+            {
+                Require(deniedPrivateDeleteRuns.TryAdd(session, new(deniedPrivateDeleteExclusion)));
+                TrackDeniedPrivateDelete(session, token, requestCancellation);
+            }
             if (statusPrivateUpdateIndependentProfile)
                 session.PrivateUpdateIndependentTokens.AddRange([token, requestCancellation]);
+            if (statusUnknownNotificationUpdateCancellationProfile)
+            {
+                session.UnknownNotificationUpdateCancellationExclusion = unknownNotificationUpdateCancellationExclusion;
+                session.UnknownNotificationUpdateCancellationTokens.AddRange([token, requestCancellation]);
+                Require(UnknownNotificationUpdateCancellationLive(session));
+                session.UnknownNotificationUpdateCancellationContinuity = unknownNotificationUpdateCancellationExclusion!.ContinuityToken.Register(() =>
+                {
+                    lock (gate) RevokeUnknownNotificationUpdateCancellation(session);
+                });
+            }
+            if (statusUnknownNotificationUpdateIndependentProfile)
+            {
+                session.UnknownNotificationUpdateIndependentExclusion = unknownNotificationUpdateIndependentExclusion;
+                session.UnknownNotificationUpdateIndependentTokens.AddRange([token, requestCancellation]);
+                Require(UnknownNotificationUpdateIndependentLive(session));
+                session.UnknownNotificationUpdateIndependentContinuity = unknownNotificationUpdateIndependentExclusion!.ContinuityToken.Register(() =>
+                {
+                    lock (gate) RevokeUnknownNotificationUpdateIndependent(session);
+                });
+            }
+
+            if (statusDeniedNotificationUpdateProfile)
+            {
+                session.DeniedNotificationUpdateExclusion = deniedNotificationUpdateExclusion;
+                session.DeniedNotificationUpdateTokens.AddRange([token, requestCancellation]);
+                Require(DeniedNotificationUpdateLive(session));
+                session.DeniedNotificationUpdateContinuity = deniedNotificationUpdateExclusion!.ContinuityToken.Register(() =>
+                {
+                    lock (gate) RevokeDeniedNotificationUpdate(session);
+                });
+            }
+            if (statusUnknownNotificationUpdateProfile)
+            {
+                session.UnknownNotificationUpdateExclusion = unknownNotificationUpdateExclusion;
+                session.UnknownNotificationUpdateTokens.AddRange([token, requestCancellation]);
+                Require(UnknownNotificationUpdateLive(session));
+                session.UnknownNotificationUpdateContinuity = unknownNotificationUpdateExclusion!.ContinuityToken.Register(() =>
+                {
+                    lock (gate) RevokeUnknownNotificationUpdate(session);
+                });
+            }
             if (statusNotificationUpdateIndependentProfile)
                 session.NotificationUpdateIndependentTokens.AddRange([token, requestCancellation]);
             if (statusNotificationCreateIndependentProfile)
@@ -3409,7 +8075,17 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
         }
         try
         {
-            using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, session.Stop.Token);
+            using var linked = statusDeniedPrivateDeleteProfile
+                ? CancellationTokenSource.CreateLinkedTokenSource(token, session.Stop.Token, deniedPrivateDeleteExclusion!.ContinuityToken)
+                : statusUnknownNotificationUpdateCancellationProfile
+                ? CancellationTokenSource.CreateLinkedTokenSource(token, session.Stop.Token, session.UnknownNotificationUpdateCancellationExclusion!.ContinuityToken)
+                : statusUnknownNotificationUpdateIndependentProfile
+                ? CancellationTokenSource.CreateLinkedTokenSource(token, session.Stop.Token, session.UnknownNotificationUpdateIndependentExclusion!.ContinuityToken)
+                : statusDeniedNotificationUpdateProfile
+                ? CancellationTokenSource.CreateLinkedTokenSource(token, session.Stop.Token, session.DeniedNotificationUpdateExclusion!.ContinuityToken)
+                : statusUnknownNotificationUpdateProfile
+                ? CancellationTokenSource.CreateLinkedTokenSource(token, session.Stop.Token, session.UnknownNotificationUpdateExclusion!.ContinuityToken)
+                : CancellationTokenSource.CreateLinkedTokenSource(token, session.Stop.Token);
             lock (gate)
             {
                 Require(!session.Closed && !disposed);
@@ -3421,6 +8097,8 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
                     privateEndpoint: privateApproval ? new(privateConnectionSource!.BorrowedSubnetId) : null);
                 Require(session.Plan.VaultId == VaultId(session.Plan.VaultName) &&
                     session.Plan.DeletedId == DeletedId(session.Plan.VaultName));
+                if (statusDeniedPrivateDeleteProfile)
+                    provisioner.BindStatusDeniedPrivateConnectionDeleteLifetime(session.Plan, () => Require(DeniedPrivateDeleteLive(session)));
                 if (notification)
                 {
                     var source = notificationSource!;
@@ -3434,8 +8112,25 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
                         session.Notifications.DeclareAbsentCreation(session.NotificationPlan, declaration);
                 }
             }
+            if (statusUnknownNotificationUpdateCancellationProfile)
+                Require(UnknownNotificationUpdateCancellationLive(session) && session.Plan is { Restored: false } &&
+                    session.NotificationPlan is { Restored: false } originalChild && ReferenceEquals(originalChild.ObjectPlan, session.Plan) &&
+                    originalChild.LeaseId == session.Plan.LeaseId && originalChild.Selector == session.Selector);
+            if (statusUnknownNotificationUpdateIndependentProfile)
+                Require(UnknownNotificationUpdateIndependentLive(session) && session.Plan is { Restored: false } &&
+                    session.NotificationPlan is { Restored: false } originalChild && ReferenceEquals(originalChild.ObjectPlan, session.Plan) &&
+                    originalChild.LeaseId == session.Plan.LeaseId && originalChild.Selector == session.Selector);
+
+            if (statusDeniedNotificationUpdateProfile)
+                Require(DeniedNotificationUpdateLive(session) && session.Plan is { Restored: false } &&
+                    session.NotificationPlan is { Restored: false } originalChild && ReferenceEquals(originalChild.ObjectPlan, session.Plan) &&
+                    originalChild.LeaseId == session.Plan.LeaseId && originalChild.Selector == session.Selector);
+            if (statusUnknownNotificationUpdateProfile)
+                Require(UnknownNotificationUpdateLive(session) && session.Plan is { Restored: false } &&
+                    session.NotificationPlan is { Restored: false } originalChild && ReferenceEquals(originalChild.ObjectPlan, session.Plan) &&
+                    originalChild.LeaseId == session.Plan.LeaseId && originalChild.Selector == session.Selector);
             var prepared = await provisioner.ProvisionAsync(session.Plan, cancellationToken: linked.Token,
-                originalCallerToken: statusPrivateUpdateIndependentProfile || statusNotificationUpdateIndependentProfile || statusNotificationCreateIndependentProfile ? requestCancellation : null).ConfigureAwait(false);
+                originalCallerToken: statusDeniedPrivateDeleteProfile || statusPrivateUpdateIndependentProfile || statusUnknownNotificationUpdateCancellationProfile || statusUnknownNotificationUpdateIndependentProfile || statusDeniedNotificationUpdateProfile || statusUnknownNotificationUpdateProfile || statusNotificationUpdateIndependentProfile || statusNotificationCreateIndependentProfile ? requestCancellation : null).ConfigureAwait(false);
             Require(prepared.State == VaultFixtureProvisioner.State.Ready &&
                 prepared.DeletedVaultPresent == (!notification && !privateApproval && input.Operation is not (ManagementMutation.DeleteVault or ManagementMutation.CreateOrUpdateVault)) &&
                 prepared.VaultPresent == (notification || privateApproval || input.Operation is ManagementMutation.DeleteVault or ManagementMutation.CreateOrUpdateVault));
@@ -3458,6 +8153,23 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
             if (statusPrivateUpdateIndependentProfile)
                 Require(provisioner.OwnsPreparedPlan(session.Plan) && prepared.Configuration is not null &&
                     VaultAdministrationEffects.SameConfiguration(prepared.Configuration, statusPrivateUpdateIndependentConfiguration!));
+            if (statusDeniedPrivateDeleteProfile)
+                Require(DeniedPrivateDeleteLive(session) && provisioner.OwnsPreparedPlan(session.Plan) &&
+                    prepared.Configuration is not null &&
+                    VaultAdministrationEffects.SameConfiguration(prepared.Configuration, deniedPrivateDeleteConfiguration!));
+            if (statusUnknownNotificationUpdateCancellationProfile)
+                Require(provisioner.OwnsPreparedPlan(session.Plan) && prepared.Configuration is not null &&
+                    VaultAdministrationEffects.SameConfiguration(prepared.Configuration, statusUnknownNotificationUpdateCancellationConfiguration!));
+            if (statusUnknownNotificationUpdateIndependentProfile)
+                Require(provisioner.OwnsPreparedPlan(session.Plan) && prepared.Configuration is not null &&
+                    VaultAdministrationEffects.SameConfiguration(prepared.Configuration, statusUnknownNotificationUpdateIndependentConfiguration!));
+
+            if (statusDeniedNotificationUpdateProfile)
+                Require(provisioner.OwnsPreparedPlan(session.Plan) && prepared.Configuration is not null &&
+                    VaultAdministrationEffects.SameConfiguration(prepared.Configuration, statusDeniedNotificationUpdateConfiguration!));
+            if (statusUnknownNotificationUpdateProfile)
+                Require(provisioner.OwnsPreparedPlan(session.Plan) && prepared.Configuration is not null &&
+                    VaultAdministrationEffects.SameConfiguration(prepared.Configuration, statusUnknownNotificationUpdateConfiguration!));
             if (statusNotificationUpdateIndependentProfile)
                 Require(provisioner.OwnsPreparedPlan(session.Plan) && prepared.Configuration is not null &&
                     VaultAdministrationEffects.SameConfiguration(prepared.Configuration, statusNotificationUpdateIndependentConfiguration!));
@@ -3476,7 +8188,7 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
             if (notification)
             {
                 using var child = await session.Notifications!.ProvisionAsync(session.NotificationPlan!, linked.Token,
-                    originalCallerToken: statusNotificationUpdateIndependentProfile || statusNotificationCreateIndependentProfile ? requestCancellation : null).ConfigureAwait(false);
+                    originalCallerToken: statusUnknownNotificationUpdateCancellationProfile || statusUnknownNotificationUpdateIndependentProfile || statusDeniedNotificationUpdateProfile || statusUnknownNotificationUpdateProfile || statusNotificationUpdateIndependentProfile || statusNotificationCreateIndependentProfile ? requestCancellation : null).ConfigureAwait(false);
                 Require(child.State == NotificationFixtureProvisioner.State.Ready &&
                     (notificationSource!.ExclusiveCreation is null
                         ? child.Present == true && child.Configuration is not null &&
@@ -3492,7 +8204,7 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
                     source.VaultConnectionReader, source.ResourceLimits, source.InventoryLimits, time);
                 session.EndpointPlan = session.Endpoints.PlanDeclaredEndpoint(session.Plan);
                 var child = await session.Endpoints.ProvisionAsync(session.EndpointPlan, linked.Token,
-                    statusPrivateUpdateIndependentProfile ? requestCancellation : null).ConfigureAwait(false);
+                    statusDeniedPrivateDeleteProfile || statusPrivateUpdateIndependentProfile ? requestCancellation : null).ConfigureAwait(false);
                 Require(child.State == PrivateEndpointFixtureProvisioner.State.Ready && child.ConnectionId is not null &&
                     session.Endpoints.OwnsBoundPlan(session.EndpointPlan, session.Plan, child.ConnectionId));
                 session.ConnectionId = child.ConnectionId;
@@ -3507,6 +8219,32 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
                     snapshot.Resources.All(r => (privateApproval || !r.Borrowed) && r.ActiveDispatch == Guid.Empty) && snapshot.Idle);
                 if (notification) RequireNotificationJournal(session, snapshot, selected: false);
                 if (statusPrivateUpdateIndependentProfile) session.PrivateUpdateIndependentReady = FreezePrivateUpdateIndependent(snapshot);
+                if (statusDeniedPrivateDeleteProfile)
+                {
+                    Require(DeniedPrivateDeleteLive(session) && RoleFixtureJournal.StatusDeniedPrivateConnectionDeleteRoot(snapshot));
+                    deniedPrivateDeleteRuns[session].Ready = RoleFixtureJournal.CopyStatusDeniedPrivateConnectionDeleteSnapshot(snapshot);
+                }
+                if (statusUnknownNotificationUpdateCancellationProfile)
+                {
+                    Require(UnknownNotificationUpdateCancellationLive(session));
+                    session.UnknownNotificationUpdateCancellationReady = FreezeUnknownNotificationUpdateCancellation(snapshot);
+                }
+                if (statusUnknownNotificationUpdateIndependentProfile)
+                {
+                    Require(UnknownNotificationUpdateIndependentLive(session));
+                    session.UnknownNotificationUpdateIndependentReady = FreezeUnknownNotificationUpdateIndependent(snapshot);
+                }
+
+                if (statusDeniedNotificationUpdateProfile)
+                {
+                    Require(DeniedNotificationUpdateLive(session));
+                    session.DeniedNotificationUpdateReady = FreezeDeniedNotificationUpdate(snapshot);
+                }
+                if (statusUnknownNotificationUpdateProfile)
+                {
+                    Require(UnknownNotificationUpdateLive(session));
+                    session.UnknownNotificationUpdateReady = FreezeUnknownNotificationUpdate(snapshot);
+                }
                 if (statusNotificationUpdateIndependentProfile) session.NotificationUpdateIndependentReady = FreezeNotificationUpdateIndependent(snapshot);
                 if (statusNotificationCreateIndependentProfile) session.NotificationCreateIndependentReady = FreezeNotificationCreateIndependent(snapshot);
                 if (privateApproval) RequirePrivateRoot(session, snapshot);
@@ -3515,7 +8253,8 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
                     snapshot.Resources.Where(r => !r.Borrowed).Select(r => r.Id).Concat(privateApproval
                         ? [session.ConnectionId!, session.Plan.PrivateEndpoint!.ExpectedNicId] : []).ToArray()),
                     session.Plan.VaultName, privateApproval ? session.ConnectionId!.Split('/')[^1] : null,
-                    session.NotificationPlan?.Scope.SubscriptionName, null, input.Operation, NativeProvisioningState.Succeeded);
+                    session.NotificationPlan?.Scope.SubscriptionName, null, input.Operation,
+                    (statusUnknownNotificationUpdateCancellationProfile || statusUnknownNotificationUpdateIndependentProfile || statusUnknownNotificationUpdateProfile) ? NativeProvisioningState.Unknown : NativeProvisioningState.Succeeded);
                 return Reply(session.Lease);
             }
         }
@@ -3528,6 +8267,37 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
         lock (gate)
         {
             session = Find(input.Nonce, input.LeaseId);
+            if (statusDeniedPrivateDeleteProfile)
+            {
+                var run = deniedPrivateDeleteRuns[session];
+                bool valid = DeniedPrivateDeleteLive(session) && session.Active == 0 && !session.ArmClaimed &&
+                    input.Phase == "subscribe-before-trigger" && input.SubscriptionId is null &&
+                    !token.IsCancellationRequested && !originalCallerToken.IsCancellationRequested;
+                if (!valid) run.Invalid = true;
+                Require(valid);
+                TrackDeniedPrivateDelete(session, token, originalCallerToken);
+            }
+            if (statusUnknownNotificationUpdateCancellationProfile)
+            {
+                session.UnknownNotificationUpdateCancellationTokens.AddRange([token, originalCallerToken]);
+                Require(UnknownNotificationUpdateCancellationLive(session));
+            }
+            if (statusUnknownNotificationUpdateIndependentProfile)
+            {
+                session.UnknownNotificationUpdateIndependentTokens.AddRange([token, originalCallerToken]);
+                Require(UnknownNotificationUpdateIndependentLive(session));
+            }
+
+            if (statusDeniedNotificationUpdateProfile)
+            {
+                session.DeniedNotificationUpdateTokens.AddRange([token, originalCallerToken]);
+                Require(DeniedNotificationUpdateLive(session));
+            }
+            if (statusUnknownNotificationUpdateProfile)
+            {
+                session.UnknownNotificationUpdateTokens.AddRange([token, originalCallerToken]);
+                Require(UnknownNotificationUpdateLive(session));
+            }
             if (statusPrivateUpdateIndependentProfile)
             {
                 bool valid = PrivateUpdateIndependentLive(session) && !session.ArmClaimed && input.Phase == "subscribe-before-trigger" &&
@@ -3561,7 +8331,9 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
             // not this equal baseline-only scope.
             var native = statusSucceededDeleteVaultProfile || statusSucceededDeleteVaultIndependentProfile || statusSucceededDeleteVaultCancellationProfile || operation is ManagementMutation.UpdatePrivateConnection or ManagementMutation.DeletePrivateConnection
                 ? null : capture.Arm(binding);
-            var baseline = statusPrivateUpdateIndependentProfile
+            var baseline = statusDeniedPrivateDeleteProfile
+                ? before.ArmStatusDeniedPrivateConnectionDelete(binding, R.StatusDeniedPrivateConnectionDeleteReadPhase.Baseline)
+                : statusPrivateUpdateIndependentProfile
                 ? before.ArmStatusPrivateConnectionUpdateIndependent(binding, R.StatusPrivateConnectionUpdateIndependentReadPhase.Baseline)
                 : statusPrivateDeleteIndependentProfile
                 ? before.ArmStatusPrivateConnectionDeleteIndependent(binding, R.StatusPrivateConnectionDeleteIndependentReadPhase.Baseline)
@@ -3633,6 +8405,35 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
                 session.CounterpartAfter = counterpartAfter;
                 session.Subscription = Guid.NewGuid();
                 session.ArmedAt = armedAt;
+                if (statusUnknownNotificationUpdateCancellationProfile)
+                {
+                    session.UnknownNotificationUpdateCancellationBefore = new(session.Notifications!, session.NotificationPlan!, plan, binding,
+                        session.Subscription, armedAt, true, Guid.NewGuid());
+                    session.UnknownNotificationUpdateCancellationAfter = new(session.Notifications!, session.NotificationPlan!, plan, binding,
+                        session.Subscription, armedAt, false, Guid.NewGuid());
+                }
+                if (statusUnknownNotificationUpdateIndependentProfile)
+                {
+                    session.UnknownNotificationUpdateIndependentBefore = new(session.Notifications!, session.NotificationPlan!, plan, binding,
+                        session.Subscription, armedAt, true, Guid.NewGuid());
+                    session.UnknownNotificationUpdateIndependentAfter = new(session.Notifications!, session.NotificationPlan!, plan, binding,
+                        session.Subscription, armedAt, false, Guid.NewGuid());
+                }
+
+                if (statusDeniedNotificationUpdateProfile)
+                {
+                    session.DeniedNotificationUpdateBefore = new(session.Notifications!, session.NotificationPlan!, plan, binding,
+                        session.Subscription, armedAt, true, Guid.NewGuid());
+                    session.DeniedNotificationUpdateAfter = new(session.Notifications!, session.NotificationPlan!, plan, binding,
+                        session.Subscription, armedAt, false, Guid.NewGuid());
+                }
+                if (statusUnknownNotificationUpdateProfile)
+                {
+                    session.UnknownNotificationUpdateBefore = new(session.Notifications!, session.NotificationPlan!, plan, binding,
+                        session.Subscription, armedAt, true, Guid.NewGuid());
+                    session.UnknownNotificationUpdateAfter = new(session.Notifications!, session.NotificationPlan!, plan, binding,
+                        session.Subscription, armedAt, false, Guid.NewGuid());
+                }
                 if (statusNotificationUpdateIndependentProfile)
                 {
                     session.NotificationUpdateIndependentBefore = new(session.Notifications!, session.NotificationPlan!, plan, binding,
@@ -3678,8 +8479,25 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
         lock (gate)
         {
             session = Find(input.Nonce, input.LeaseId);
+            if (statusDeniedPrivateDeleteProfile && (!session.Armed || input.SubscriptionId != session.Subscription))
+            {
+                deniedPrivateDeleteRuns[session].Invalid = true;
+                if (baseline) session.BaselineClaimed = true; else session.AfterClaimed = true;
+            }
             Require(session.Armed && input.SubscriptionId == session.Subscription);
-            if (statusPrivateUpdateIndependentProfile)
+            if (statusDeniedPrivateDeleteProfile)
+            {
+                var run = deniedPrivateDeleteRuns[session];
+                bool valid = DeniedPrivateDeleteLive(session) && session.Active == 0 && run.Pending is null &&
+                    !token.IsCancellationRequested && !requestCancellation.IsCancellationRequested &&
+                    (baseline ? !session.BaselineClaimed && !session.StartClaimed : input.Phase == "selected-state" &&
+                        session.StartFinished && session.StartSucceeded && run.Drained is not null && !session.AfterClaimed);
+                if (baseline) session.BaselineClaimed = true; else session.AfterClaimed = true;
+                if (!valid) run.Invalid = true;
+                Require(valid);
+                TrackDeniedPrivateDelete(session, token, requestCancellation);
+            }
+            else if (statusPrivateUpdateIndependentProfile)
             {
                 bool valid = PrivateUpdateIndependentLive(session) && !token.IsCancellationRequested && !requestCancellation.IsCancellationRequested &&
                     (baseline ? !session.BaselineClaimed && !session.StartClaimed : input.Phase == "selected-state" &&
@@ -3749,10 +8567,15 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
         }
         try
         {
-            using var linked = statusPrivateUpdateIndependentProfile
+            using var linked = statusDeniedPrivateDeleteProfile
+                ? CancellationTokenSource.CreateLinkedTokenSource([.. deniedPrivateDeleteRuns[session].Tokens,
+                    token, session.Stop.Token, deniedPrivateDeleteExclusion!.ContinuityToken])
+                : statusPrivateUpdateIndependentProfile
                 ? CancellationTokenSource.CreateLinkedTokenSource([.. session.PrivateUpdateIndependentTokens, token, session.Stop.Token])
                 : CancellationTokenSource.CreateLinkedTokenSource(token, session.Stop.Token);
             var binding = session.Binding!;
+            if (statusDeniedPrivateDeleteProfile)
+                return await ObserveDeniedPrivateDelete(session, baseline, linked.Token, requestCancellation).ConfigureAwait(false);
             if (statusPrivateUpdateIndependentProfile)
             {
                 session.PrivateUpdateIndependentTokens.Add(linked.Token);
@@ -3764,6 +8587,27 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
                 return await ObserveStatusSucceededDeleteVaultIndependent(session, baseline, linked.Token).ConfigureAwait(false);
             if (statusSucceededDeleteVaultProfile)
                 return await ObserveStatusSucceededDeleteVault(session, baseline, linked.Token).ConfigureAwait(false);
+            if (statusUnknownNotificationUpdateCancellationProfile)
+            {
+                lock (gate) session.UnknownNotificationUpdateCancellationTokens.AddRange([token, requestCancellation]);
+                return await ObserveStatusUnknownNotificationUpdateCancellation(session, baseline, linked.Token, requestCancellation).ConfigureAwait(false);
+            }
+            if (statusUnknownNotificationUpdateIndependentProfile)
+            {
+                lock (gate) session.UnknownNotificationUpdateIndependentTokens.AddRange([token, requestCancellation]);
+                return await ObserveStatusUnknownNotificationUpdateIndependent(session, baseline, linked.Token, requestCancellation).ConfigureAwait(false);
+            }
+
+            if (statusDeniedNotificationUpdateProfile)
+            {
+                lock (gate) session.DeniedNotificationUpdateTokens.AddRange([token, requestCancellation]);
+                return await ObserveStatusDeniedNotificationUpdate(session, baseline, linked.Token, requestCancellation).ConfigureAwait(false);
+            }
+            if (statusUnknownNotificationUpdateProfile)
+            {
+                lock (gate) session.UnknownNotificationUpdateTokens.AddRange([token, requestCancellation]);
+                return await ObserveStatusUnknownNotificationUpdate(session, baseline, linked.Token, requestCancellation).ConfigureAwait(false);
+            }
             if (statusNotificationUpdateIndependentProfile)
             {
                 lock (gate) session.NotificationUpdateIndependentTokens.AddRange([token, linked.Token, requestCancellation]);
@@ -3997,12 +8841,27 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
         VaultAdministration client, ManagementScope originalScope, ManagementMutation operation,
         E.Input input, ManagementReceipt receipt, CancellationToken cancellationToken)
     {
+        Require(!statusDeniedVaultUpdateCleanup);
+        if (statusDeniedVaultUpdateProfile)
+            return await StartDeniedVaultUpdate(selector, client, originalScope, operation, input, receipt, cancellationToken).ConfigureAwait(false);
+        Require(!statusDeniedPrivateDeleteCleanup);
+        if (statusDeniedPrivateDeleteProfile)
+            return await StartDeniedPrivateDelete(selector, client, originalScope, operation, input, receipt, cancellationToken).ConfigureAwait(false);
         if (PendingProfile)
             return await StartPendingPurge(selector, client, originalScope, operation, input, receipt, cancellationToken).ConfigureAwait(false);
-        Require(profile == Profile.StatusFamily && !statusPrivateDeleteIndependentCleanup && !statusNotificationUpdateIndependentCleanup && !statusNotificationCreateIndependentCleanup);
+        Require(profile == Profile.StatusFamily && !statusPrivateDeleteIndependentCleanup && !statusUnknownNotificationUpdateCancellationCleanup && !statusUnknownNotificationUpdateIndependentCleanup && !statusDeniedNotificationUpdateCleanup && !statusUnknownNotificationUpdateCleanup && !statusNotificationUpdateIndependentCleanup && !statusNotificationCreateIndependentCleanup);
         Require(!statusPrivateUpdateIndependentCleanup);
         if (statusPrivateUpdateIndependentProfile)
             return await StartPrivateUpdateIndependent(selector, client, originalScope, operation, input, receipt, cancellationToken).ConfigureAwait(false);
+        if (statusUnknownNotificationUpdateCancellationProfile)
+            return await StartStatusUnknownNotificationUpdateCancellation(selector, client, originalScope, operation, input, receipt, cancellationToken).ConfigureAwait(false);
+        if (statusUnknownNotificationUpdateIndependentProfile)
+            return await StartStatusUnknownNotificationUpdateIndependent(selector, client, originalScope, operation, input, receipt, cancellationToken).ConfigureAwait(false);
+
+        if (statusDeniedNotificationUpdateProfile)
+            return await StartStatusDeniedNotificationUpdate(selector, client, originalScope, operation, input, receipt, cancellationToken).ConfigureAwait(false);
+        if (statusUnknownNotificationUpdateProfile)
+            return await StartStatusUnknownNotificationUpdate(selector, client, originalScope, operation, input, receipt, cancellationToken).ConfigureAwait(false);
         if (statusNotificationUpdateIndependentProfile)
             return await StartStatusNotificationUpdateIndependent(selector, client, originalScope, operation, input, receipt, cancellationToken).ConfigureAwait(false);
         if (statusNotificationCreateIndependentProfile)
@@ -4199,12 +9058,27 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
     public async ValueTask<SecretStatus> RunCheckStatusAsync(FixtureSelector selector, ManagementOperation handle,
         CancellationToken cancellationToken)
     {
+        Require(!statusDeniedVaultUpdateCleanup);
+        if (statusDeniedVaultUpdateProfile)
+            return await CheckDeniedVaultUpdate(selector, handle, cancellationToken).ConfigureAwait(false);
+        Require(!statusDeniedPrivateDeleteCleanup);
+        if (statusDeniedPrivateDeleteProfile)
+            return await CheckDeniedPrivateDelete(selector, handle, cancellationToken).ConfigureAwait(false);
         if (PendingProfile)
             return await CheckPendingPurge(selector, handle, cancellationToken).ConfigureAwait(false);
-        Require(profile == Profile.StatusFamily && !statusPrivateDeleteIndependentCleanup && !statusNotificationUpdateIndependentCleanup && !statusNotificationCreateIndependentCleanup);
+        Require(profile == Profile.StatusFamily && !statusPrivateDeleteIndependentCleanup && !statusUnknownNotificationUpdateCancellationCleanup && !statusUnknownNotificationUpdateIndependentCleanup && !statusDeniedNotificationUpdateCleanup && !statusUnknownNotificationUpdateCleanup && !statusNotificationUpdateIndependentCleanup && !statusNotificationCreateIndependentCleanup);
         Require(!statusPrivateUpdateIndependentCleanup);
         if (statusPrivateUpdateIndependentProfile)
             return await CheckPrivateUpdateIndependent(selector, handle, cancellationToken).ConfigureAwait(false);
+        if (statusUnknownNotificationUpdateCancellationProfile)
+            return await CheckStatusUnknownNotificationUpdateCancellation(selector, handle, cancellationToken).ConfigureAwait(false);
+        if (statusUnknownNotificationUpdateIndependentProfile)
+            return await CheckStatusUnknownNotificationUpdateIndependent(selector, handle, cancellationToken).ConfigureAwait(false);
+
+        if (statusDeniedNotificationUpdateProfile)
+            return await CheckStatusDeniedNotificationUpdate(selector, handle, cancellationToken).ConfigureAwait(false);
+        if (statusUnknownNotificationUpdateProfile)
+            return await CheckStatusUnknownNotificationUpdate(selector, handle, cancellationToken).ConfigureAwait(false);
         if (statusNotificationUpdateIndependentProfile)
             return await CheckStatusNotificationUpdateIndependent(selector, handle, cancellationToken).ConfigureAwait(false);
         if (statusNotificationCreateIndependentProfile)
@@ -5414,6 +10288,1200 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
         }
         finally { if (!retained) configuration?.Dispose(); }
     }
+
+    private async Task<HttpResponseMessage> ObserveStatusUnknownNotificationUpdateCancellation(Session session, bool baseline,
+        CancellationToken token, CancellationToken caller)
+    {
+        var slot = baseline ? session.UnknownNotificationUpdateCancellationBefore : session.UnknownNotificationUpdateCancellationAfter;
+        Require(slot is not null && slot.Nonce != Guid.Empty && slot.Baseline == baseline && slot.Subscription == session.Subscription &&
+            slot.ArmedAt == session.ArmedAt && ReferenceEquals(slot.Source, session.Notifications) &&
+            ReferenceEquals(slot.Child, session.NotificationPlan) && ReferenceEquals(slot.Parent, session.Plan) &&
+            ReferenceEquals(slot.Binding, session.Binding));
+        RequireNotificationJournal(session, provisioner.Journal.Read(owner, session.Selector), selected: !baseline);
+        C.StatusUnknownNotificationUpdateCancellationStartProof? start = null;
+        C.StatusTarget? target = null;
+        S.Window? statusWindow = null;
+        Task<S.Measurement>? statusTask = null;
+        DateTimeOffset afterStatus = session.ArmedAt;
+        if (!baseline)
+        {
+            Require(session.UnknownNotificationUpdateCancellationBaseline is not null && session.StartFinished &&
+                session.StartTask is { IsCompletedSuccessfully: true } &&
+                capture.TryGetStatusUnknownNotificationUpdateCancellationStart(session.Capture!, session.Binding!,
+                    session.Client!, session.ActualNotificationScope!, session.Receipt!, session.StartTask,
+                    session.Handle!, out start) &&
+                capture.TryGetStatusTarget(session.Capture!, session.Binding!, out target) &&
+                capture.OwnsStatusTarget(target, session.Binding!));
+            using var exactRaw = new PendingStatusTransport(unknownStatusReader!.Transport, target.TargetUri,
+                unknownStatusLimits!.MaximumResponseBytes, "Unknown", resourceState: true,
+                notificationPlan: session.NotificationPlan, configuration: notificationSource!.Baseline);
+            var independent = new S(capture, new(unknownStatusReader.Label, unknownStatusReader.Credential, exactRaw),
+                unknownStatusLimits, time);
+            statusWindow = independent.Arm(target, session.Binding!);
+            statusTask = independent.CollectAsync(statusWindow, session.Binding!, token).AsTask();
+            var status = await statusTask.ConfigureAwait(false);
+            exactRaw.Dispose();
+            Require(exactRaw.Valid);
+            Require(ReferenceEquals(status.Binding, session.Binding) && status.WindowId == statusWindow.Id &&
+                status.ResponseComplete && !status.Terminal && status.HttpStatus == 200 &&
+                status.Failure == S.Failure.None && status.Status == SecretStatus.Unknown && status.OperationState == NativeProvisioningState.Unknown &&
+                status.StartDispatch == target.StartDispatch && status.TargetSha256 == target.TargetSha256 &&
+                status.StartResponseSha256 == target.StartResponseSha256 &&
+                status.StartedAt >= session.StartedAt && status.FinishedAt >= status.StartedAt &&
+                Text(status.NativeRequestId, 256));
+            afterStatus = status.FinishedAt;
+        }
+        var task = baseline
+            ? slot.Source.ObserveAsync(owner, session.Selector, slot.Child.Scope.SubscriptionName, token, caller).AsTask()
+            : slot.Source.ObserveSelectedAsync(slot.Child, session.Dispatch, token, caller).AsTask();
+        using var measured = await task.ConfigureAwait(false);
+        token.ThrowIfCancellationRequested();
+        var proof = measured.StatusUnknownCancellationRead ?? throw Failure();
+        Require(slot.Source.OwnsStatusUnknownNotificationUpdateCancellationRead(proof, slot.Child, baseline ? Guid.Empty : session.Dispatch) &&
+            proof.NativeTask.IsCompletedSuccessfully && proof.HttpStatus == 200 && proof.NativeState == (baseline ? "Succeeded" : "Unknown") &&
+            proof.Phase == (baseline ? NotificationFixtureProvisioner.StatusUnknownNotificationUpdateCancellationReadPhase.Baseline :
+                NotificationFixtureProvisioner.StatusUnknownNotificationUpdateCancellationReadPhase.SelectedUnknown) &&
+            proof.RequestSha256.Length == 64 && proof.ResponseSha256.Length == 64 && Text(proof.NativeRequestId, 256) &&
+            proof.StartedAt >= afterStatus && proof.FinishedAt >= proof.StartedAt &&
+            measured.ObservedAt >= proof.FinishedAt && measured.Present == true &&
+            measured.Configuration is not null && NotificationConfigurationMatches(measured.Configuration,
+                baseline ? VaultNotificationEvent.SecretNearExpiry : VaultNotificationEvent.SecretNewVersionCreated));
+        RequireNotificationJournal(session, measured.Journal, selected: !baseline);
+        Require(RoleFixtureJournal.SameStatusUnknownNotificationUpdateCancellationSnapshot(baseline
+            ? session.UnknownNotificationUpdateCancellationReady! : session.UnknownNotificationUpdateCancellationDrained!, measured.Journal));
+        var configuration = new NotificationConfiguration(measured.Configuration.Endpoint.Reveal(),
+            measured.Configuration.EventTypes, measured.Configuration.DeliveryAttributes);
+        bool retained = false;
+        try
+        {
+            lock (gate)
+            {
+                Require(!disposed && !session.Closed && !token.IsCancellationRequested &&
+                    UnknownNotificationUpdateCancellationLive(session));
+                if (baseline)
+                {
+                    Require(!session.StartClaimed && session.UnknownNotificationUpdateCancellationBaseline is null &&
+                        measured.State == NotificationFixtureProvisioner.State.Ready);
+                    session.UnknownNotificationUpdateCancellationBaseline = new(slot, task, proof,
+                        Array.AsReadOnly(measured.Journal.Resources.ToArray()), configuration, measured.ObservedAt);
+                    session.BaselineAt = measured.ObservedAt;
+                    session.BaselineReady = true;
+                }
+                else
+                {
+                    Require(session.UnknownNotificationUpdateCancellationObservedConfiguration is null &&
+                        measured.State == NotificationFixtureProvisioner.State.Pending &&
+                        ReferenceEquals(measured.SelectedPlan, slot.Child) && measured.SelectedDispatch == session.Dispatch &&
+                        proof.StartedAt >= session.UnknownNotificationUpdateCancellationBaseline!.FinishedAt &&
+                        capture.TryGetStatusUnknownNotificationUpdateCancellationStart(session.Capture!, session.Binding!,
+                            session.Client!, session.ActualNotificationScope!, session.Receipt!, session.StartTask!,
+                            session.Handle!, out var issued) && ReferenceEquals(start, issued));
+                    session.UnknownNotificationUpdateCancellationObservedConfiguration = new(session.UnknownNotificationUpdateCancellationBaseline!, slot, task,
+                        proof, configuration, start!, target!, statusWindow!, statusTask!, measured.ObservedAt);
+                    session.Target = target;
+                    session.IndependentAt = measured.ObservedAt;
+                    session.IndependentReady = true;
+                }
+                retained = true;
+            }
+            return Reply(ProjectNotification(session, measured.ObservedAt,
+                NativeProvisioningState.Unknown, measured.Configuration));
+        }
+        finally { if (!retained) configuration.Dispose(); }
+    }
+
+    private async ValueTask<SecretOutcome<ManagementOperation>> StartStatusUnknownNotificationUpdateCancellation(
+        FixtureSelector selector, VaultAdministration client, ManagementScope originalScope, ManagementMutation operation,
+        E.Input input, ManagementReceipt receipt, CancellationToken cancellationToken)
+    {
+        ValidateSelector(selector);
+        Session session;
+        lock (gate)
+        {
+            session = OpenSelector(selector);
+            Require(originalScope is NotificationScope notification && session.NotificationPlan is { } child &&
+                notification.SubscriptionName == child.Scope.SubscriptionName && notification.Vault.ExportResourceId() == session.Plan!.VaultId &&
+                operation == ManagementMutation.UpdateNotification && session.Armed && session.BaselineReady && !session.StartClaimed &&
+                InputMatches(session, input));
+            session.StartClaimed = true;
+            session.UnknownNotificationUpdateCancellationTokens.AddRange([cancellationToken, lifetime.Token]);
+            var baseline = session.UnknownNotificationUpdateCancellationBaseline ?? throw Failure();
+            Require(UnknownNotificationUpdateCancellationLive(session) &&
+                session.Notifications!.OwnsStatusUnknownNotificationUpdateCancellationRead(baseline.Proof, session.NotificationPlan!, Guid.Empty));
+            session.Dispatch = Guid.NewGuid();
+            var admission = new StatusUnknownNotificationUpdateCancellationAdmission(this);
+            IssueUnknownNotificationUpdateCancellation(session, admission, UnknownNotificationUpdateCancellationStage.Begin,
+                session.UnknownNotificationUpdateCancellationReady!, baseline.Task, baseline.Proof.NativeTask);
+            session.Client = client;
+            session.ActualNotificationScope = (NotificationScope)originalScope;
+            session.Receipt = receipt;
+            try
+            {
+                session.UnknownNotificationUpdateCancellationBegin = FreezeUnknownNotificationUpdateCancellation(
+                    provisioner.Journal.BeginStatusUnknownNotificationUpdateCancellationInvocation(owner, selector, session.Plan!.LeaseId, admission));
+            }
+            catch { RevokeUnknownNotificationUpdateCancellation(session); throw; }
+            session.Active++;
+            active++;
+        }
+        try
+        {
+            session.StartedAt = time.GetUtcNow();
+            Require(session.StartedAt >= session.BaselineAt);
+            using var deadline = new CancellationTokenSource(limits.Timeout, time);
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, lifetime.Token, session.Stop.Token, deadline.Token, session.UnknownNotificationUpdateCancellationExclusion!.ContinuityToken);
+            lock (gate) session.UnknownNotificationUpdateCancellationTokens.Add(deadline.Token);
+            var result = await capture.StartStatusUnknownNotificationUpdateCancellationAsync(session.Capture!, selector, client, originalScope,
+                input, receipt, linked.Token, task => { lock (gate) session.StartTask = task; }, () =>
+                {
+                    linked.Token.ThrowIfCancellationRequested();
+                    Require(!disposed && !session.Closed && UnknownNotificationUpdateCancellationLive(session) && RoleFixtureJournal.SameStatusUnknownNotificationUpdateCancellationSnapshot(
+                        session.UnknownNotificationUpdateCancellationBegin!, provisioner.Journal.Read(owner, selector)));
+                }).ConfigureAwait(false);
+            lock (gate)
+            {
+                session.Handle = result.IsSuccess ? result.Value : null;
+                session.StartSucceeded = result.IsSuccess && session.StartTask is { IsCompletedSuccessfully: true };
+                Require(session.StartSucceeded && capture.TryGetStatusUnknownNotificationUpdateCancellationStart(session.Capture!, session.Binding!,
+                    client, session.ActualNotificationScope!, receipt, session.StartTask!, session.Handle!, out _));
+                var candidate = new StatusUnknownNotificationUpdateCancellationStartDrain(this);
+                IssueUnknownNotificationUpdateCancellation(session, candidate, UnknownNotificationUpdateCancellationStage.StartDrain,
+                    session.UnknownNotificationUpdateCancellationBegin!, session.StartTask!);
+                session.UnknownNotificationUpdateCancellationStartDrain = candidate;
+            }
+            RetryStatusUnknownNotificationUpdateCancellationPersistence(selector, cancellationToken);
+            return result;
+        }
+        catch (IOException) { throw; }
+        catch { lock (gate) RevokeUnknownNotificationUpdateCancellation(session); throw; }
+        finally
+        {
+            try
+            {
+                if (session.UnknownNotificationUpdateCancellationStartDrain is null)
+                    provisioner.Journal.EndDispatch(owner, selector, SelectedId(session), session.Dispatch, nativeSettled: false);
+            }
+            finally { Leave(session); }
+        }
+    }
+
+    private async ValueTask<SecretStatus> CheckStatusUnknownNotificationUpdateCancellation(FixtureSelector selector,
+        ManagementOperation handle, CancellationToken cancellationToken)
+    {
+        ValidateSelector(selector);
+        Session session;
+        bool canceled;
+        lock (gate)
+        {
+            session = OpenSelector(selector);
+            // Foreign references do not acquire or burn an owned invocation slot.
+            Require(ReferenceEquals(handle, session.Handle));
+            canceled = !session.UnknownNotificationUpdateCancellationCanceledClaimed;
+            bool valid = session.Active == 0 && session.StartFinished && session.StartSucceeded && session.IndependentReady &&
+                session.UnknownNotificationUpdateCancellationObservedConfiguration is not null &&
+                !session.UnknownNotificationUpdateCancellationInvalid && UnknownNotificationUpdateCancellationLive(session) &&
+                (canceled ? !session.StatusClaimed && cancellationToken.IsCancellationRequested :
+                    session.StatusClaimed && !session.UnknownNotificationUpdateCancellationCheckClaimed &&
+                    !cancellationToken.IsCancellationRequested && session.UnknownNotificationUpdateCancellationCanceled is not null &&
+                    session.UnknownNotificationUpdateCancellationCanceledTask is { IsCanceled: true });
+            if (canceled) session.UnknownNotificationUpdateCancellationCanceledClaimed = true;
+            else session.UnknownNotificationUpdateCancellationCheckClaimed = true;
+            if (!valid) { RevokeUnknownNotificationUpdateCancellation(session); throw Failure(); }
+            var observation = session.UnknownNotificationUpdateCancellationObservedConfiguration!;
+            Require(capture.TryGetStatusUnknownNotificationUpdateCancellationStart(session.Capture!, session.Binding!, session.Client!,
+                session.ActualNotificationScope!, session.Receipt!, session.StartTask!, handle, out var proof) && ReferenceEquals(proof, observation.Start) &&
+                session.Notifications!.OwnsStatusUnknownNotificationUpdateCancellationRead(observation.Baseline.Proof, session.NotificationPlan!, Guid.Empty) &&
+                session.Notifications.OwnsStatusUnknownNotificationUpdateCancellationRead(observation.Proof, session.NotificationPlan!, session.Dispatch));
+            if (canceled)
+            {
+                session.StatusClaimed = true;
+                session.UnknownNotificationUpdateCancellationCanceledOperand = cancellationToken;
+                var admission = new StatusUnknownNotificationUpdateCancellationReadAdmission(this);
+                IssueUnknownNotificationUpdateCancellation(session, admission, UnknownNotificationUpdateCancellationStage.Read,
+                    session.UnknownNotificationUpdateCancellationDrained!, observation.Baseline.Task, observation.Baseline.Proof.NativeTask,
+                    observation.Task, observation.Proof.NativeTask, observation.StatusTask, session.StartTask!);
+                try
+                {
+                    session.UnknownNotificationUpdateCancellationRead = FreezeUnknownNotificationUpdateCancellation(
+                        provisioner.Journal.AdmitStatusUnknownNotificationUpdateCancellationRead(owner, selector, session.Plan!.LeaseId, session.Dispatch, admission));
+                }
+                catch { RevokeUnknownNotificationUpdateCancellation(session); throw; }
+            }
+            else
+            {
+                Require(capture.TryGetStatusUnknownNotificationUpdateCancellationCanceled(session.Capture!, session.Binding!,
+                    session.Client!, session.ActualNotificationScope!, session.Receipt!, session.StartTask!, handle,
+                    session.UnknownNotificationUpdateCancellationCanceledTask!, out var actualCanceled) &&
+                    ReferenceEquals(actualCanceled, session.UnknownNotificationUpdateCancellationCanceled) &&
+                    ReferenceEquals(actualCanceled.Start, observation.Start) &&
+                    session.UnknownNotificationUpdateCancellationCanceledOperand.IsCancellationRequested &&
+                    RoleFixtureJournal.SameStatusUnknownNotificationUpdateCancellationSnapshot(session.UnknownNotificationUpdateCancellationRead!,
+                        provisioner.Journal.Read(owner, selector)));
+                session.UnknownNotificationUpdateCancellationTokens.Add(cancellationToken);
+            }
+            session.Active++;
+            active++;
+        }
+        bool expectedCanceled = false;
+        try
+        {
+            Require(time.GetUtcNow() >= session.IndependentAt);
+            using var deadline = new CancellationTokenSource(limits.Timeout, time);
+            using var linked = canceled
+                ? CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token, session.Stop.Token, deadline.Token,
+                    session.UnknownNotificationUpdateCancellationExclusion!.ContinuityToken)
+                : CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, lifetime.Token, session.Stop.Token, deadline.Token,
+                    session.UnknownNotificationUpdateCancellationExclusion!.ContinuityToken);
+            lock (gate) session.UnknownNotificationUpdateCancellationTokens.Add(deadline.Token);
+            linked.Token.ThrowIfCancellationRequested();
+            if (canceled)
+            {
+                try
+                {
+                    await capture.CheckStatusUnknownNotificationUpdateCancellationCanceledAsync(session.Capture!, selector, handle,
+                        cancellationToken, task => { lock (gate) session.UnknownNotificationUpdateCancellationCanceledTask = task; }).ConfigureAwait(false);
+                    throw Failure();
+                }
+                catch (OperationCanceledException) when (session.UnknownNotificationUpdateCancellationCanceledTask is { IsCanceled: true })
+                {
+                    lock (gate)
+                    {
+                        Require(!session.Closed && !linked.IsCancellationRequested && UnknownNotificationUpdateCancellationLive(session));
+                        Require(capture.TryGetStatusUnknownNotificationUpdateCancellationCanceled(session.Capture!, session.Binding!, session.Client!,
+                                session.ActualNotificationScope!, session.Receipt!, session.StartTask!, handle,
+                                session.UnknownNotificationUpdateCancellationCanceledTask, out var canceledProof) &&
+                            ReferenceEquals(canceledProof.Start, session.UnknownNotificationUpdateCancellationObservedConfiguration!.Start) &&
+                            ReferenceEquals(canceledProof.CanceledTask, session.UnknownNotificationUpdateCancellationCanceledTask));
+                        session.UnknownNotificationUpdateCancellationCanceled = canceledProof;
+                        expectedCanceled = true;
+                    }
+                    throw;
+                }
+            }
+            var status = await capture.CheckStatusAsync(session.Capture!, selector, handle, linked.Token,
+                task => { lock (gate) session.StatusTask = task; }).ConfigureAwait(false);
+            lock (gate)
+            {
+                Require(status == SecretStatus.Unknown && !linked.IsCancellationRequested);
+                Require(capture.TryGetStatusUnknownNotificationUpdateCancellationCompletion(session.Capture!, session.Binding!,
+                    session.Client!, session.ActualNotificationScope!, session.Receipt!, session.StartTask!, handle,
+                    session.UnknownNotificationUpdateCancellationCanceledTask!, session.StatusTask!, out var proof) &&
+                    ReferenceEquals(proof.Start, session.UnknownNotificationUpdateCancellationObservedConfiguration!.Start) &&
+                    ReferenceEquals(proof.Canceled, session.UnknownNotificationUpdateCancellationCanceled) &&
+                    !ReferenceEquals(session.UnknownNotificationUpdateCancellationCanceledTask, session.StatusTask));
+                var observation = session.UnknownNotificationUpdateCancellationObservedConfiguration!;
+                var candidate = new StatusUnknownNotificationUpdateCancellationObservation(this);
+                session.UnknownNotificationUpdateCancellationNativeCompletion = proof;
+                IssueUnknownNotificationUpdateCancellation(session, candidate, UnknownNotificationUpdateCancellationStage.Complete,
+                    session.UnknownNotificationUpdateCancellationRead!, observation.Baseline.Task, observation.Baseline.Proof.NativeTask,
+                    observation.Task, observation.Proof.NativeTask, observation.StatusTask, session.StartTask!, session.StatusTask!);
+                session.UnknownNotificationUpdateCancellationObservation = candidate;
+            }
+            RetryStatusUnknownNotificationUpdateCancellationPersistence(selector, cancellationToken);
+            return status;
+        }
+        catch (OperationCanceledException) when (expectedCanceled) { throw; }
+        catch (IOException) { throw; }
+        catch { lock (gate) RevokeUnknownNotificationUpdateCancellation(session); throw; }
+        finally
+        {
+            try
+            {
+                // The expected first SDK OCE produces no frame and leaves the paired read admitted.
+                if (!expectedCanceled && session.UnknownNotificationUpdateCancellationObservation is null)
+                    provisioner.Journal.EndDispatch(owner, selector, SelectedId(session), session.Dispatch, nativeSettled: false);
+            }
+            finally { Leave(session); }
+        }
+    }
+
+    internal RoleFixtureJournal.Snapshot RetryStatusUnknownNotificationUpdateCancellationPersistence(FixtureSelector selector,
+        CancellationToken token = default)
+    {
+        ValidateSelector(selector);
+        Session session;
+        lock (gate)
+        {
+            session = OpenSelector(selector);
+            Require(!statusUnknownNotificationUpdateCancellationCleanup && !session.UnknownNotificationUpdateCancellationInvalid);
+            if (token.IsCancellationRequested) { RevokeUnknownNotificationUpdateCancellation(session); token.ThrowIfCancellationRequested(); }
+            try
+            {
+                RoleFixtureJournal.Snapshot committed;
+                if (session.UnknownNotificationUpdateCancellationObservation is { } completion)
+                {
+                    committed = provisioner.Journal.CompleteStatusUnknownNotificationUpdateCancellationRead(owner, selector,
+                        session.Plan!.LeaseId, session.Dispatch, completion);
+                    session.StatusSucceeded = true;
+                    session.UnknownNotificationUpdateCancellationObserved = FreezeUnknownNotificationUpdateCancellation(committed);
+                }
+                else
+                {
+                    var drain = session.UnknownNotificationUpdateCancellationStartDrain ?? throw Failure();
+                    committed = provisioner.Journal.EndStatusUnknownNotificationUpdateCancellationStart(owner, selector,
+                        session.Plan!.LeaseId, session.Dispatch, drain);
+                    session.UnknownNotificationUpdateCancellationDrained = FreezeUnknownNotificationUpdateCancellation(committed);
+                    session.StartFinished = true;
+                }
+                return committed;
+            }
+            catch (IOException) { throw; }
+            catch { RevokeUnknownNotificationUpdateCancellation(session); throw; }
+        }
+    }
+
+    private async Task<HttpResponseMessage> ObserveStatusUnknownNotificationUpdateIndependent(Session session, bool baseline,
+        CancellationToken token, CancellationToken caller)
+    {
+        var slot = baseline ? session.UnknownNotificationUpdateIndependentBefore : session.UnknownNotificationUpdateIndependentAfter;
+        Require(slot is not null && slot.Nonce != Guid.Empty && slot.Baseline == baseline && slot.Subscription == session.Subscription &&
+            slot.ArmedAt == session.ArmedAt && ReferenceEquals(slot.Source, session.Notifications) &&
+            ReferenceEquals(slot.Child, session.NotificationPlan) && ReferenceEquals(slot.Parent, session.Plan) &&
+            ReferenceEquals(slot.Binding, session.Binding));
+        RequireNotificationJournal(session, provisioner.Journal.Read(owner, session.Selector), selected: !baseline);
+        C.StatusUnknownNotificationUpdateIndependentStartProof? start = null;
+        C.StatusTarget? target = null;
+        S.Window? statusWindow = null;
+        Task<S.Measurement>? statusTask = null;
+        DateTimeOffset afterStatus = session.ArmedAt;
+        if (!baseline)
+        {
+            Require(session.UnknownNotificationUpdateIndependentBaseline is not null && session.StartFinished &&
+                session.StartTask is { IsCompletedSuccessfully: true } &&
+                capture.TryGetStatusUnknownNotificationUpdateIndependentStart(session.Capture!, session.Binding!,
+                    session.Client!, session.ActualNotificationScope!, session.Receipt!, session.StartTask,
+                    session.Handle!, out start) &&
+                capture.TryGetStatusTarget(session.Capture!, session.Binding!, out target) &&
+                capture.OwnsStatusTarget(target, session.Binding!));
+            using var exactRaw = new PendingStatusTransport(unknownStatusReader!.Transport, target.TargetUri,
+                unknownStatusLimits!.MaximumResponseBytes, "Unknown", resourceState: true,
+                notificationPlan: session.NotificationPlan, configuration: notificationSource!.Baseline);
+            var independent = new S(capture, new(unknownStatusReader.Label, unknownStatusReader.Credential, exactRaw),
+                unknownStatusLimits, time);
+            statusWindow = independent.Arm(target, session.Binding!);
+            statusTask = independent.CollectAsync(statusWindow, session.Binding!, token).AsTask();
+            var status = await statusTask.ConfigureAwait(false);
+            exactRaw.Dispose();
+            Require(exactRaw.Valid);
+            Require(ReferenceEquals(status.Binding, session.Binding) && status.WindowId == statusWindow.Id &&
+                status.ResponseComplete && !status.Terminal && status.HttpStatus == 200 &&
+                status.Failure == S.Failure.None && status.Status == SecretStatus.Unknown && status.OperationState == NativeProvisioningState.Unknown &&
+                status.StartDispatch == target.StartDispatch && status.TargetSha256 == target.TargetSha256 &&
+                status.StartResponseSha256 == target.StartResponseSha256 &&
+                status.StartedAt >= session.StartedAt && status.FinishedAt >= status.StartedAt &&
+                Text(status.NativeRequestId, 256));
+            afterStatus = status.FinishedAt;
+        }
+        var task = baseline
+            ? slot.Source.ObserveAsync(owner, session.Selector, slot.Child.Scope.SubscriptionName, token, caller).AsTask()
+            : slot.Source.ObserveSelectedAsync(slot.Child, session.Dispatch, token, caller).AsTask();
+        using var measured = await task.ConfigureAwait(false);
+        token.ThrowIfCancellationRequested();
+        var proof = measured.StatusUnknownIndependentRead ?? throw Failure();
+        Require(slot.Source.OwnsStatusUnknownNotificationUpdateIndependentRead(proof, slot.Child, baseline ? Guid.Empty : session.Dispatch) &&
+            proof.NativeTask.IsCompletedSuccessfully && proof.HttpStatus == 200 && proof.NativeState == (baseline ? "Succeeded" : "Unknown") &&
+            proof.Phase == (baseline ? NotificationFixtureProvisioner.StatusUnknownNotificationUpdateIndependentReadPhase.Baseline :
+                NotificationFixtureProvisioner.StatusUnknownNotificationUpdateIndependentReadPhase.SelectedUnknown) &&
+            proof.RequestSha256.Length == 64 && proof.ResponseSha256.Length == 64 && Text(proof.NativeRequestId, 256) &&
+            proof.StartedAt >= afterStatus && proof.FinishedAt >= proof.StartedAt &&
+            measured.ObservedAt >= proof.FinishedAt && measured.Present == true &&
+            measured.Configuration is not null && NotificationConfigurationMatches(measured.Configuration,
+                baseline ? VaultNotificationEvent.SecretNearExpiry : VaultNotificationEvent.SecretNewVersionCreated));
+        RequireNotificationJournal(session, measured.Journal, selected: !baseline);
+        Require(RoleFixtureJournal.SameStatusUnknownNotificationUpdateIndependentSnapshot(baseline
+            ? session.UnknownNotificationUpdateIndependentReady! : session.UnknownNotificationUpdateIndependentDrained!, measured.Journal));
+        var configuration = new NotificationConfiguration(measured.Configuration.Endpoint.Reveal(),
+            measured.Configuration.EventTypes, measured.Configuration.DeliveryAttributes);
+        bool retained = false;
+        try
+        {
+            lock (gate)
+            {
+                Require(!disposed && !session.Closed && !token.IsCancellationRequested &&
+                    UnknownNotificationUpdateIndependentLive(session));
+                if (baseline)
+                {
+                    Require(!session.StartClaimed && session.UnknownNotificationUpdateIndependentBaseline is null &&
+                        measured.State == NotificationFixtureProvisioner.State.Ready);
+                    session.UnknownNotificationUpdateIndependentBaseline = new(slot, task, proof,
+                        Array.AsReadOnly(measured.Journal.Resources.ToArray()), configuration, measured.ObservedAt);
+                    session.BaselineAt = measured.ObservedAt;
+                    session.BaselineReady = true;
+                }
+                else
+                {
+                    Require(session.UnknownNotificationUpdateIndependentObservedConfiguration is null &&
+                        measured.State == NotificationFixtureProvisioner.State.Pending &&
+                        ReferenceEquals(measured.SelectedPlan, slot.Child) && measured.SelectedDispatch == session.Dispatch &&
+                        proof.StartedAt >= session.UnknownNotificationUpdateIndependentBaseline!.FinishedAt &&
+                        capture.TryGetStatusUnknownNotificationUpdateIndependentStart(session.Capture!, session.Binding!,
+                            session.Client!, session.ActualNotificationScope!, session.Receipt!, session.StartTask!,
+                            session.Handle!, out var issued) && ReferenceEquals(start, issued));
+                    session.UnknownNotificationUpdateIndependentObservedConfiguration = new(session.UnknownNotificationUpdateIndependentBaseline!, slot, task,
+                        proof, configuration, start!, target!, statusWindow!, statusTask!, measured.ObservedAt);
+                    session.Target = target;
+                    session.IndependentAt = measured.ObservedAt;
+                    session.IndependentReady = true;
+                }
+                retained = true;
+            }
+            return Reply(ProjectNotification(session, measured.ObservedAt,
+                NativeProvisioningState.Unknown, measured.Configuration));
+        }
+        finally { if (!retained) configuration.Dispose(); }
+    }
+
+    private async ValueTask<SecretOutcome<ManagementOperation>> StartStatusUnknownNotificationUpdateIndependent(
+        FixtureSelector selector, VaultAdministration client, ManagementScope originalScope, ManagementMutation operation,
+        E.Input input, ManagementReceipt receipt, CancellationToken cancellationToken)
+    {
+        ValidateSelector(selector);
+        Session session;
+        lock (gate)
+        {
+            session = OpenSelector(selector);
+            Require(originalScope is NotificationScope notification && session.NotificationPlan is { } child &&
+                notification.SubscriptionName == child.Scope.SubscriptionName && notification.Vault.ExportResourceId() == session.Plan!.VaultId &&
+                operation == ManagementMutation.UpdateNotification && session.Armed && session.BaselineReady && !session.StartClaimed &&
+                InputMatches(session, input));
+            session.StartClaimed = true;
+            session.UnknownNotificationUpdateIndependentTokens.AddRange([cancellationToken, lifetime.Token]);
+            var baseline = session.UnknownNotificationUpdateIndependentBaseline ?? throw Failure();
+            Require(UnknownNotificationUpdateIndependentLive(session) &&
+                session.Notifications!.OwnsStatusUnknownNotificationUpdateIndependentRead(baseline.Proof, session.NotificationPlan!, Guid.Empty));
+            session.Dispatch = Guid.NewGuid();
+            var admission = new StatusUnknownNotificationUpdateIndependentAdmission(this);
+            IssueUnknownNotificationUpdateIndependent(session, admission, UnknownNotificationUpdateIndependentStage.Begin,
+                session.UnknownNotificationUpdateIndependentReady!, baseline.Task, baseline.Proof.NativeTask);
+            session.Client = client;
+            session.ActualNotificationScope = (NotificationScope)originalScope;
+            session.Receipt = receipt;
+            try
+            {
+                session.UnknownNotificationUpdateIndependentBegin = FreezeUnknownNotificationUpdateIndependent(
+                    provisioner.Journal.BeginStatusUnknownNotificationUpdateIndependentInvocation(owner, selector, session.Plan!.LeaseId, admission));
+            }
+            catch { RevokeUnknownNotificationUpdateIndependent(session); throw; }
+            session.Active++;
+            active++;
+        }
+        try
+        {
+            session.StartedAt = time.GetUtcNow();
+            Require(session.StartedAt >= session.BaselineAt);
+            using var deadline = new CancellationTokenSource(limits.Timeout, time);
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, lifetime.Token, session.Stop.Token, deadline.Token, session.UnknownNotificationUpdateIndependentExclusion!.ContinuityToken);
+            lock (gate) session.UnknownNotificationUpdateIndependentTokens.Add(deadline.Token);
+            var result = await capture.StartStatusUnknownNotificationUpdateIndependentAsync(session.Capture!, selector, client, originalScope,
+                input, receipt, linked.Token, task => { lock (gate) session.StartTask = task; }, () =>
+                {
+                    linked.Token.ThrowIfCancellationRequested();
+                    Require(!disposed && !session.Closed && UnknownNotificationUpdateIndependentLive(session) && RoleFixtureJournal.SameStatusUnknownNotificationUpdateIndependentSnapshot(
+                        session.UnknownNotificationUpdateIndependentBegin!, provisioner.Journal.Read(owner, selector)));
+                }).ConfigureAwait(false);
+            lock (gate)
+            {
+                session.Handle = result.IsSuccess ? result.Value : null;
+                session.StartSucceeded = result.IsSuccess && session.StartTask is { IsCompletedSuccessfully: true };
+                Require(session.StartSucceeded && capture.TryGetStatusUnknownNotificationUpdateIndependentStart(session.Capture!, session.Binding!,
+                    client, session.ActualNotificationScope!, receipt, session.StartTask!, session.Handle!, out _));
+                var candidate = new StatusUnknownNotificationUpdateIndependentStartDrain(this);
+                IssueUnknownNotificationUpdateIndependent(session, candidate, UnknownNotificationUpdateIndependentStage.StartDrain,
+                    session.UnknownNotificationUpdateIndependentBegin!, session.StartTask!);
+                session.UnknownNotificationUpdateIndependentStartDrain = candidate;
+            }
+            RetryStatusUnknownNotificationUpdateIndependentPersistence(selector, cancellationToken);
+            return result;
+        }
+        catch (IOException) { throw; }
+        catch { lock (gate) RevokeUnknownNotificationUpdateIndependent(session); throw; }
+        finally
+        {
+            try
+            {
+                if (session.UnknownNotificationUpdateIndependentStartDrain is null)
+                    provisioner.Journal.EndDispatch(owner, selector, SelectedId(session), session.Dispatch, nativeSettled: false);
+            }
+            finally { Leave(session); }
+        }
+    }
+
+    private async ValueTask<SecretStatus> CheckStatusUnknownNotificationUpdateIndependent(FixtureSelector selector,
+        ManagementOperation handle, CancellationToken cancellationToken)
+    {
+        ValidateSelector(selector);
+        Session session;
+        lock (gate)
+        {
+            session = OpenSelector(selector);
+            // Foreign references do not acquire or burn an owned invocation slot.
+            Require(ReferenceEquals(handle, session.Handle));
+            bool valid = !session.StatusClaimed && session.Active == 0 && session.StartFinished && session.StartSucceeded &&
+                session.IndependentReady && session.UnknownNotificationUpdateIndependentObservedConfiguration is not null &&
+                !session.UnknownNotificationUpdateIndependentInvalid && !cancellationToken.IsCancellationRequested &&
+                session.UnknownNotificationUpdateIndependentTokens.All(t => !t.IsCancellationRequested);
+            session.StatusClaimed = true;
+            if (!valid) { RevokeUnknownNotificationUpdateIndependent(session); throw Failure(); }
+            var observation = session.UnknownNotificationUpdateIndependentObservedConfiguration!;
+            Require(capture.TryGetStatusUnknownNotificationUpdateIndependentStart(session.Capture!, session.Binding!, session.Client!,
+                session.ActualNotificationScope!, session.Receipt!, session.StartTask!, handle, out var proof) && ReferenceEquals(proof, observation.Start) &&
+                session.Notifications!.OwnsStatusUnknownNotificationUpdateIndependentRead(observation.Baseline.Proof, session.NotificationPlan!, Guid.Empty) &&
+                session.Notifications.OwnsStatusUnknownNotificationUpdateIndependentRead(observation.Proof, session.NotificationPlan!, session.Dispatch));
+            session.UnknownNotificationUpdateIndependentTokens.Add(cancellationToken);
+            var admission = new StatusUnknownNotificationUpdateIndependentReadAdmission(this);
+            IssueUnknownNotificationUpdateIndependent(session, admission, UnknownNotificationUpdateIndependentStage.Read,
+                session.UnknownNotificationUpdateIndependentDrained!, observation.Baseline.Task, observation.Baseline.Proof.NativeTask,
+                observation.Task, observation.Proof.NativeTask, observation.StatusTask, session.StartTask!);
+            try
+            {
+                session.UnknownNotificationUpdateIndependentRead = FreezeUnknownNotificationUpdateIndependent(
+                    provisioner.Journal.AdmitStatusUnknownNotificationUpdateIndependentRead(owner, selector, session.Plan!.LeaseId, session.Dispatch, admission));
+            }
+            catch { RevokeUnknownNotificationUpdateIndependent(session); throw; }
+            session.Active++;
+            active++;
+        }
+        try
+        {
+            Require(time.GetUtcNow() >= session.IndependentAt);
+            using var deadline = new CancellationTokenSource(limits.Timeout, time);
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, lifetime.Token, session.Stop.Token, deadline.Token, session.UnknownNotificationUpdateIndependentExclusion!.ContinuityToken);
+            lock (gate) session.UnknownNotificationUpdateIndependentTokens.Add(deadline.Token);
+            var status = await capture.CheckStatusAsync(session.Capture!, selector, handle, linked.Token,
+                task => { lock (gate) session.StatusTask = task; }).ConfigureAwait(false);
+            lock (gate)
+            {
+                Require(status == SecretStatus.Unknown);
+                Require(capture.TryGetStatusUnknownNotificationUpdateIndependentCompletion(session.Capture!, session.Binding!,
+                    session.Client!, session.ActualNotificationScope!, session.Receipt!, session.StartTask!, handle, session.StatusTask!, out var proof) &&
+                    ReferenceEquals(proof.Start, session.UnknownNotificationUpdateIndependentObservedConfiguration!.Start));
+                var observation = session.UnknownNotificationUpdateIndependentObservedConfiguration!;
+                var candidate = new StatusUnknownNotificationUpdateIndependentObservation(this);
+                IssueUnknownNotificationUpdateIndependent(session, candidate, UnknownNotificationUpdateIndependentStage.Complete,
+                    session.UnknownNotificationUpdateIndependentRead!, observation.Baseline.Task, observation.Baseline.Proof.NativeTask,
+                    observation.Task, observation.Proof.NativeTask, observation.StatusTask, session.StartTask!, session.StatusTask!);
+                session.UnknownNotificationUpdateIndependentObservation = candidate;
+                session.UnknownNotificationUpdateIndependentNativeCompletion = proof;
+            }
+            RetryStatusUnknownNotificationUpdateIndependentPersistence(selector, cancellationToken);
+            return status;
+        }
+        catch (IOException) { throw; }
+        catch { lock (gate) RevokeUnknownNotificationUpdateIndependent(session); throw; }
+        finally
+        {
+            try
+            {
+                if (session.UnknownNotificationUpdateIndependentObservation is null)
+                    provisioner.Journal.EndDispatch(owner, selector, SelectedId(session), session.Dispatch, nativeSettled: false);
+            }
+            finally { Leave(session); }
+        }
+    }
+
+    internal RoleFixtureJournal.Snapshot RetryStatusUnknownNotificationUpdateIndependentPersistence(FixtureSelector selector,
+        CancellationToken token = default)
+    {
+        ValidateSelector(selector);
+        Session session;
+        lock (gate)
+        {
+            session = OpenSelector(selector);
+            Require(!statusUnknownNotificationUpdateCancellationCleanup && !statusUnknownNotificationUpdateIndependentCleanup && !session.UnknownNotificationUpdateIndependentInvalid);
+            if (token.IsCancellationRequested) { RevokeUnknownNotificationUpdateIndependent(session); token.ThrowIfCancellationRequested(); }
+            try
+            {
+                RoleFixtureJournal.Snapshot committed;
+                if (session.UnknownNotificationUpdateIndependentObservation is { } completion)
+                {
+                    committed = provisioner.Journal.CompleteStatusUnknownNotificationUpdateIndependentRead(owner, selector,
+                        session.Plan!.LeaseId, session.Dispatch, completion);
+                    session.StatusSucceeded = true;
+                    session.UnknownNotificationUpdateIndependentObserved = FreezeUnknownNotificationUpdateIndependent(committed);
+                }
+                else
+                {
+                    var drain = session.UnknownNotificationUpdateIndependentStartDrain ?? throw Failure();
+                    committed = provisioner.Journal.EndStatusUnknownNotificationUpdateIndependentStart(owner, selector,
+                        session.Plan!.LeaseId, session.Dispatch, drain);
+                    session.UnknownNotificationUpdateIndependentDrained = FreezeUnknownNotificationUpdateIndependent(committed);
+                    session.StartFinished = true;
+                }
+                return committed;
+            }
+            catch (IOException) { throw; }
+            catch { RevokeUnknownNotificationUpdateIndependent(session); throw; }
+        }
+    }
+
+    private async Task<HttpResponseMessage> ObserveStatusUnknownNotificationUpdate(Session session, bool baseline,
+        CancellationToken token, CancellationToken caller)
+    {
+        var slot = baseline ? session.UnknownNotificationUpdateBefore : session.UnknownNotificationUpdateAfter;
+        Require(slot is not null && slot.Nonce != Guid.Empty && slot.Baseline == baseline && slot.Subscription == session.Subscription &&
+            slot.ArmedAt == session.ArmedAt && ReferenceEquals(slot.Source, session.Notifications) &&
+            ReferenceEquals(slot.Child, session.NotificationPlan) && ReferenceEquals(slot.Parent, session.Plan) &&
+            ReferenceEquals(slot.Binding, session.Binding));
+        RequireNotificationJournal(session, provisioner.Journal.Read(owner, session.Selector), selected: !baseline);
+        C.StatusUnknownNotificationUpdateStartProof? start = null;
+        C.StatusTarget? target = null;
+        S.Window? statusWindow = null;
+        Task<S.Measurement>? statusTask = null;
+        DateTimeOffset afterStatus = session.ArmedAt;
+        if (!baseline)
+        {
+            Require(session.UnknownNotificationUpdateBaseline is not null && session.StartFinished &&
+                session.StartTask is { IsCompletedSuccessfully: true } &&
+                capture.TryGetStatusUnknownNotificationUpdateStart(session.Capture!, session.Binding!,
+                    session.Client!, session.ActualNotificationScope!, session.Receipt!, session.StartTask,
+                    session.Handle!, out start) &&
+                capture.TryGetStatusTarget(session.Capture!, session.Binding!, out target) &&
+                capture.OwnsStatusTarget(target, session.Binding!));
+            using var exactRaw = new PendingStatusTransport(unknownStatusReader!.Transport, target.TargetUri,
+                unknownStatusLimits!.MaximumResponseBytes, "Unknown", resourceState: true,
+                notificationPlan: session.NotificationPlan, configuration: notificationSource!.Baseline);
+            var independent = new S(capture, new(unknownStatusReader.Label, unknownStatusReader.Credential, exactRaw),
+                unknownStatusLimits, time);
+            statusWindow = independent.Arm(target, session.Binding!);
+            statusTask = independent.CollectAsync(statusWindow, session.Binding!, token).AsTask();
+            var status = await statusTask.ConfigureAwait(false);
+            exactRaw.Dispose();
+            Require(exactRaw.Valid);
+            Require(ReferenceEquals(status.Binding, session.Binding) && status.WindowId == statusWindow.Id &&
+                status.ResponseComplete && !status.Terminal && status.HttpStatus == 200 &&
+                status.Failure == S.Failure.None && status.Status == SecretStatus.Unknown && status.OperationState == NativeProvisioningState.Unknown &&
+                status.StartDispatch == target.StartDispatch && status.TargetSha256 == target.TargetSha256 &&
+                status.StartResponseSha256 == target.StartResponseSha256 &&
+                status.StartedAt >= session.StartedAt && status.FinishedAt >= status.StartedAt &&
+                Text(status.NativeRequestId, 256));
+            afterStatus = status.FinishedAt;
+        }
+        var task = baseline
+            ? slot.Source.ObserveAsync(owner, session.Selector, slot.Child.Scope.SubscriptionName, token, caller).AsTask()
+            : slot.Source.ObserveSelectedAsync(slot.Child, session.Dispatch, token, caller).AsTask();
+        using var measured = await task.ConfigureAwait(false);
+        token.ThrowIfCancellationRequested();
+        var proof = measured.StatusUnknownRead ?? throw Failure();
+        Require(slot.Source.OwnsStatusUnknownNotificationUpdateRead(proof, slot.Child, baseline ? Guid.Empty : session.Dispatch) &&
+            proof.NativeTask.IsCompletedSuccessfully && proof.HttpStatus == 200 && proof.NativeState == (baseline ? "Succeeded" : "Unknown") &&
+            proof.Phase == (baseline ? NotificationFixtureProvisioner.StatusUnknownNotificationUpdateReadPhase.Baseline :
+                NotificationFixtureProvisioner.StatusUnknownNotificationUpdateReadPhase.SelectedUnknown) &&
+            proof.RequestSha256.Length == 64 && proof.ResponseSha256.Length == 64 && Text(proof.NativeRequestId, 256) &&
+            proof.StartedAt >= afterStatus && proof.FinishedAt >= proof.StartedAt &&
+            measured.ObservedAt >= proof.FinishedAt && measured.Present == true &&
+            measured.Configuration is not null && NotificationConfigurationMatches(measured.Configuration,
+                baseline ? VaultNotificationEvent.SecretNearExpiry : VaultNotificationEvent.SecretNewVersionCreated));
+        RequireNotificationJournal(session, measured.Journal, selected: !baseline);
+        Require(RoleFixtureJournal.SameStatusUnknownNotificationUpdateSnapshot(baseline
+            ? session.UnknownNotificationUpdateReady! : session.UnknownNotificationUpdateDrained!, measured.Journal));
+        var configuration = new NotificationConfiguration(measured.Configuration.Endpoint.Reveal(),
+            measured.Configuration.EventTypes, measured.Configuration.DeliveryAttributes);
+        bool retained = false;
+        try
+        {
+            lock (gate)
+            {
+                Require(!disposed && !session.Closed && !token.IsCancellationRequested &&
+                    UnknownNotificationUpdateLive(session));
+                if (baseline)
+                {
+                    Require(!session.StartClaimed && session.UnknownNotificationUpdateBaseline is null &&
+                        measured.State == NotificationFixtureProvisioner.State.Ready);
+                    session.UnknownNotificationUpdateBaseline = new(slot, task, proof,
+                        Array.AsReadOnly(measured.Journal.Resources.ToArray()), configuration, measured.ObservedAt);
+                    session.BaselineAt = measured.ObservedAt;
+                    session.BaselineReady = true;
+                }
+                else
+                {
+                    Require(session.UnknownNotificationUpdateObservedConfiguration is null &&
+                        measured.State == NotificationFixtureProvisioner.State.Pending &&
+                        ReferenceEquals(measured.SelectedPlan, slot.Child) && measured.SelectedDispatch == session.Dispatch &&
+                        proof.StartedAt >= session.UnknownNotificationUpdateBaseline!.FinishedAt &&
+                        capture.TryGetStatusUnknownNotificationUpdateStart(session.Capture!, session.Binding!,
+                            session.Client!, session.ActualNotificationScope!, session.Receipt!, session.StartTask!,
+                            session.Handle!, out var issued) && ReferenceEquals(start, issued));
+                    session.UnknownNotificationUpdateObservedConfiguration = new(session.UnknownNotificationUpdateBaseline!, slot, task,
+                        proof, configuration, start!, target!, statusWindow!, statusTask!, measured.ObservedAt);
+                    session.Target = target;
+                    session.IndependentAt = measured.ObservedAt;
+                    session.IndependentReady = true;
+                }
+                retained = true;
+            }
+            return Reply(ProjectNotification(session, measured.ObservedAt,
+                NativeProvisioningState.Unknown, measured.Configuration));
+        }
+        finally { if (!retained) configuration.Dispose(); }
+    }
+
+    private async ValueTask<SecretOutcome<ManagementOperation>> StartStatusUnknownNotificationUpdate(
+        FixtureSelector selector, VaultAdministration client, ManagementScope originalScope, ManagementMutation operation,
+        E.Input input, ManagementReceipt receipt, CancellationToken cancellationToken)
+    {
+        ValidateSelector(selector);
+        Session session;
+        lock (gate)
+        {
+            session = OpenSelector(selector);
+            Require(originalScope is NotificationScope notification && session.NotificationPlan is { } child &&
+                notification.SubscriptionName == child.Scope.SubscriptionName && notification.Vault.ExportResourceId() == session.Plan!.VaultId &&
+                operation == ManagementMutation.UpdateNotification && session.Armed && session.BaselineReady && !session.StartClaimed &&
+                InputMatches(session, input));
+            session.StartClaimed = true;
+            session.UnknownNotificationUpdateTokens.AddRange([cancellationToken, lifetime.Token]);
+            var baseline = session.UnknownNotificationUpdateBaseline ?? throw Failure();
+            Require(UnknownNotificationUpdateLive(session) &&
+                session.Notifications!.OwnsStatusUnknownNotificationUpdateRead(baseline.Proof, session.NotificationPlan!, Guid.Empty));
+            session.Dispatch = Guid.NewGuid();
+            var admission = new StatusUnknownNotificationUpdateAdmission(this);
+            IssueUnknownNotificationUpdate(session, admission, UnknownNotificationUpdateStage.Begin,
+                session.UnknownNotificationUpdateReady!, baseline.Task, baseline.Proof.NativeTask);
+            session.Client = client;
+            session.ActualNotificationScope = (NotificationScope)originalScope;
+            session.Receipt = receipt;
+            try
+            {
+                session.UnknownNotificationUpdateBegin = FreezeUnknownNotificationUpdate(
+                    provisioner.Journal.BeginStatusUnknownNotificationUpdateInvocation(owner, selector, session.Plan!.LeaseId, admission));
+            }
+            catch { RevokeUnknownNotificationUpdate(session); throw; }
+            session.Active++;
+            active++;
+        }
+        try
+        {
+            session.StartedAt = time.GetUtcNow();
+            Require(session.StartedAt >= session.BaselineAt);
+            using var deadline = new CancellationTokenSource(limits.Timeout, time);
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, lifetime.Token, session.Stop.Token, deadline.Token, session.UnknownNotificationUpdateExclusion!.ContinuityToken);
+            lock (gate) session.UnknownNotificationUpdateTokens.Add(deadline.Token);
+            var result = await capture.StartStatusUnknownNotificationUpdateAsync(session.Capture!, selector, client, originalScope,
+                input, receipt, linked.Token, task => { lock (gate) session.StartTask = task; }, () =>
+                {
+                    linked.Token.ThrowIfCancellationRequested();
+                    Require(!disposed && !session.Closed && UnknownNotificationUpdateLive(session) && RoleFixtureJournal.SameStatusUnknownNotificationUpdateSnapshot(
+                        session.UnknownNotificationUpdateBegin!, provisioner.Journal.Read(owner, selector)));
+                }).ConfigureAwait(false);
+            lock (gate)
+            {
+                session.Handle = result.IsSuccess ? result.Value : null;
+                session.StartSucceeded = result.IsSuccess && session.StartTask is { IsCompletedSuccessfully: true };
+                Require(session.StartSucceeded && capture.TryGetStatusUnknownNotificationUpdateStart(session.Capture!, session.Binding!,
+                    client, session.ActualNotificationScope!, receipt, session.StartTask!, session.Handle!, out _));
+                var candidate = new StatusUnknownNotificationUpdateStartDrain(this);
+                IssueUnknownNotificationUpdate(session, candidate, UnknownNotificationUpdateStage.StartDrain,
+                    session.UnknownNotificationUpdateBegin!, session.StartTask!);
+                session.UnknownNotificationUpdateStartDrain = candidate;
+            }
+            RetryStatusUnknownNotificationUpdatePersistence(selector, cancellationToken);
+            return result;
+        }
+        catch (IOException) { throw; }
+        catch { lock (gate) RevokeUnknownNotificationUpdate(session); throw; }
+        finally
+        {
+            try
+            {
+                if (session.UnknownNotificationUpdateStartDrain is null)
+                    provisioner.Journal.EndDispatch(owner, selector, SelectedId(session), session.Dispatch, nativeSettled: false);
+            }
+            finally { Leave(session); }
+        }
+    }
+
+    private async ValueTask<SecretStatus> CheckStatusUnknownNotificationUpdate(FixtureSelector selector,
+        ManagementOperation handle, CancellationToken cancellationToken)
+    {
+        ValidateSelector(selector);
+        Session session;
+        lock (gate)
+        {
+            session = OpenSelector(selector);
+            // Foreign references do not acquire or burn an owned invocation slot.
+            Require(ReferenceEquals(handle, session.Handle));
+            bool valid = !session.StatusClaimed && session.Active == 0 && session.StartFinished && session.StartSucceeded &&
+                session.IndependentReady && session.UnknownNotificationUpdateObservedConfiguration is not null &&
+                !session.UnknownNotificationUpdateInvalid && !cancellationToken.IsCancellationRequested &&
+                session.UnknownNotificationUpdateTokens.All(t => !t.IsCancellationRequested);
+            session.StatusClaimed = true;
+            if (!valid) { RevokeUnknownNotificationUpdate(session); throw Failure(); }
+            var observation = session.UnknownNotificationUpdateObservedConfiguration!;
+            Require(capture.TryGetStatusUnknownNotificationUpdateStart(session.Capture!, session.Binding!, session.Client!,
+                session.ActualNotificationScope!, session.Receipt!, session.StartTask!, handle, out var proof) && ReferenceEquals(proof, observation.Start) &&
+                session.Notifications!.OwnsStatusUnknownNotificationUpdateRead(observation.Baseline.Proof, session.NotificationPlan!, Guid.Empty) &&
+                session.Notifications.OwnsStatusUnknownNotificationUpdateRead(observation.Proof, session.NotificationPlan!, session.Dispatch));
+            session.UnknownNotificationUpdateTokens.Add(cancellationToken);
+            var admission = new StatusUnknownNotificationUpdateReadAdmission(this);
+            IssueUnknownNotificationUpdate(session, admission, UnknownNotificationUpdateStage.Read,
+                session.UnknownNotificationUpdateDrained!, observation.Baseline.Task, observation.Baseline.Proof.NativeTask,
+                observation.Task, observation.Proof.NativeTask, observation.StatusTask, session.StartTask!);
+            try
+            {
+                session.UnknownNotificationUpdateRead = FreezeUnknownNotificationUpdate(
+                    provisioner.Journal.AdmitStatusUnknownNotificationUpdateRead(owner, selector, session.Plan!.LeaseId, session.Dispatch, admission));
+            }
+            catch { RevokeUnknownNotificationUpdate(session); throw; }
+            session.Active++;
+            active++;
+        }
+        try
+        {
+            Require(time.GetUtcNow() >= session.IndependentAt);
+            using var deadline = new CancellationTokenSource(limits.Timeout, time);
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, lifetime.Token, session.Stop.Token, deadline.Token, session.UnknownNotificationUpdateExclusion!.ContinuityToken);
+            lock (gate) session.UnknownNotificationUpdateTokens.Add(deadline.Token);
+            var status = await capture.CheckStatusAsync(session.Capture!, selector, handle, linked.Token,
+                task => { lock (gate) session.StatusTask = task; }).ConfigureAwait(false);
+            lock (gate)
+            {
+                Require(status == SecretStatus.Unknown);
+                Require(capture.TryGetStatusUnknownNotificationUpdateCompletion(session.Capture!, session.Binding!,
+                    session.Client!, session.ActualNotificationScope!, session.Receipt!, session.StartTask!, handle, session.StatusTask!, out var proof) &&
+                    ReferenceEquals(proof.Start, session.UnknownNotificationUpdateObservedConfiguration!.Start));
+                var observation = session.UnknownNotificationUpdateObservedConfiguration!;
+                var candidate = new StatusUnknownNotificationUpdateObservation(this);
+                IssueUnknownNotificationUpdate(session, candidate, UnknownNotificationUpdateStage.Complete,
+                    session.UnknownNotificationUpdateRead!, observation.Baseline.Task, observation.Baseline.Proof.NativeTask,
+                    observation.Task, observation.Proof.NativeTask, observation.StatusTask, session.StartTask!, session.StatusTask!);
+                session.UnknownNotificationUpdateObservation = candidate;
+                session.UnknownNotificationUpdateNativeCompletion = proof;
+            }
+            RetryStatusUnknownNotificationUpdatePersistence(selector, cancellationToken);
+            return status;
+        }
+        catch (IOException) { throw; }
+        catch { lock (gate) RevokeUnknownNotificationUpdate(session); throw; }
+        finally
+        {
+            try
+            {
+                if (session.UnknownNotificationUpdateObservation is null)
+                    provisioner.Journal.EndDispatch(owner, selector, SelectedId(session), session.Dispatch, nativeSettled: false);
+            }
+            finally { Leave(session); }
+        }
+    }
+
+    internal RoleFixtureJournal.Snapshot RetryStatusUnknownNotificationUpdatePersistence(FixtureSelector selector,
+        CancellationToken token = default)
+    {
+        ValidateSelector(selector);
+        Session session;
+        lock (gate)
+        {
+            session = OpenSelector(selector);
+            Require(!statusUnknownNotificationUpdateCleanup && !session.UnknownNotificationUpdateInvalid);
+            if (token.IsCancellationRequested) { RevokeUnknownNotificationUpdate(session); token.ThrowIfCancellationRequested(); }
+            try
+            {
+                RoleFixtureJournal.Snapshot committed;
+                if (session.UnknownNotificationUpdateObservation is { } completion)
+                {
+                    committed = provisioner.Journal.CompleteStatusUnknownNotificationUpdateRead(owner, selector,
+                        session.Plan!.LeaseId, session.Dispatch, completion);
+                    session.StatusSucceeded = true;
+                    session.UnknownNotificationUpdateObserved = FreezeUnknownNotificationUpdate(committed);
+                }
+                else
+                {
+                    var drain = session.UnknownNotificationUpdateStartDrain ?? throw Failure();
+                    committed = provisioner.Journal.EndStatusUnknownNotificationUpdateStart(owner, selector,
+                        session.Plan!.LeaseId, session.Dispatch, drain);
+                    session.UnknownNotificationUpdateDrained = FreezeUnknownNotificationUpdate(committed);
+                    session.StartFinished = true;
+                }
+                return committed;
+            }
+            catch (IOException) { throw; }
+            catch { RevokeUnknownNotificationUpdate(session); throw; }
+        }
+    }
+
+    private async Task<HttpResponseMessage> ObserveStatusDeniedNotificationUpdate(Session session, bool baseline,
+        CancellationToken token, CancellationToken caller)
+    {
+        var slot = baseline ? session.DeniedNotificationUpdateBefore : session.DeniedNotificationUpdateAfter;
+        Require(slot is not null && slot.Nonce != Guid.Empty && slot.Baseline == baseline && slot.Subscription == session.Subscription &&
+            slot.ArmedAt == session.ArmedAt && ReferenceEquals(slot.Source, session.Notifications) &&
+            ReferenceEquals(slot.Child, session.NotificationPlan) && ReferenceEquals(slot.Parent, session.Plan) &&
+            ReferenceEquals(slot.Binding, session.Binding));
+        RequireNotificationJournal(session, provisioner.Journal.Read(owner, session.Selector), selected: !baseline);
+        C.StatusDeniedNotificationUpdateStartProof? start = null;
+        C.StatusTarget? target = null;
+        S.Window? statusWindow = null;
+        Task<S.Measurement>? statusTask = null;
+        DateTimeOffset afterStatus = session.ArmedAt;
+        if (!baseline)
+        {
+            Require(session.DeniedNotificationUpdateBaseline is not null && session.StartFinished &&
+                session.StartTask is { IsCompletedSuccessfully: true } &&
+                capture.TryGetStatusDeniedNotificationUpdateStart(session.Capture!, session.Binding!,
+                    session.Client!, session.ActualNotificationScope!, session.Receipt!, session.StartTask,
+                    session.Handle!, out start) &&
+                capture.TryGetStatusTarget(session.Capture!, session.Binding!, out target) &&
+                capture.OwnsStatusTarget(target, session.Binding!));
+            using var exactRaw = new PendingStatusTransport(unknownStatusReader!.Transport, target.TargetUri,
+                unknownStatusLimits!.MaximumResponseBytes, "Succeeded", resourceState: true,
+                notificationPlan: session.NotificationPlan, configuration: notificationSource!.Baseline);
+            var independent = new S(capture, new(unknownStatusReader.Label, unknownStatusReader.Credential, exactRaw),
+                unknownStatusLimits, time);
+            statusWindow = independent.Arm(target, session.Binding!);
+            statusTask = independent.CollectAsync(statusWindow, session.Binding!, token).AsTask();
+            var status = await statusTask.ConfigureAwait(false);
+            exactRaw.Dispose();
+            Require(exactRaw.Valid);
+            Require(ReferenceEquals(status.Binding, session.Binding) && status.WindowId == statusWindow.Id &&
+                status.ResponseComplete && status.Terminal && status.HttpStatus == 200 &&
+                status.Failure == S.Failure.None && status.Status == SecretStatus.Success && status.OperationState == NativeProvisioningState.Succeeded &&
+                status.StartDispatch == target.StartDispatch && status.TargetSha256 == target.TargetSha256 &&
+                status.StartResponseSha256 == target.StartResponseSha256 &&
+                status.StartedAt >= session.StartedAt && status.FinishedAt >= status.StartedAt &&
+                Text(status.NativeRequestId, 256));
+            afterStatus = status.FinishedAt;
+        }
+        var task = baseline
+            ? slot.Source.ObserveAsync(owner, session.Selector, slot.Child.Scope.SubscriptionName, token, caller).AsTask()
+            : slot.Source.ObserveSelectedAsync(slot.Child, session.Dispatch, token, caller).AsTask();
+        using var measured = await task.ConfigureAwait(false);
+        token.ThrowIfCancellationRequested();
+        var proof = measured.StatusDeniedUpdateRead ?? throw Failure();
+        Require(slot.Source.OwnsStatusDeniedNotificationUpdateRead(proof, slot.Child, baseline ? Guid.Empty : session.Dispatch) &&
+            proof.NativeTask.IsCompletedSuccessfully && proof.HttpStatus == 200 && proof.NativeState == "Succeeded" &&
+            proof.Phase == (baseline ? NotificationFixtureProvisioner.StatusDeniedNotificationUpdateReadPhase.Baseline :
+                NotificationFixtureProvisioner.StatusDeniedNotificationUpdateReadPhase.Selected) &&
+            proof.RequestSha256.Length == 64 && proof.ResponseSha256.Length == 64 && Text(proof.NativeRequestId, 256) &&
+            proof.StartedAt >= afterStatus && proof.FinishedAt >= proof.StartedAt &&
+            measured.ObservedAt >= proof.FinishedAt && measured.Present == true &&
+            measured.Configuration is not null && NotificationConfigurationMatches(measured.Configuration,
+                baseline ? VaultNotificationEvent.SecretNearExpiry : VaultNotificationEvent.SecretNewVersionCreated));
+        RequireNotificationJournal(session, measured.Journal, selected: !baseline);
+        Require(RoleFixtureJournal.SameStatusDeniedNotificationUpdateSnapshot(baseline
+            ? session.DeniedNotificationUpdateReady! : session.DeniedNotificationUpdateDrained!, measured.Journal));
+        var configuration = new NotificationConfiguration(measured.Configuration.Endpoint.Reveal(),
+            measured.Configuration.EventTypes, measured.Configuration.DeliveryAttributes);
+        bool retained = false;
+        try
+        {
+            lock (gate)
+            {
+                Require(!disposed && !session.Closed && !token.IsCancellationRequested &&
+                    DeniedNotificationUpdateLive(session));
+                if (baseline)
+                {
+                    Require(!session.StartClaimed && session.DeniedNotificationUpdateBaseline is null &&
+                        measured.State == NotificationFixtureProvisioner.State.Ready);
+                    session.DeniedNotificationUpdateBaseline = new(slot, task, proof,
+                        Array.AsReadOnly(measured.Journal.Resources.ToArray()), configuration, measured.ObservedAt);
+                    session.BaselineAt = measured.ObservedAt;
+                    session.BaselineReady = true;
+                }
+                else
+                {
+                    Require(session.DeniedNotificationUpdateObservedConfiguration is null &&
+                        measured.State == NotificationFixtureProvisioner.State.Pending &&
+                        ReferenceEquals(measured.SelectedPlan, slot.Child) && measured.SelectedDispatch == session.Dispatch &&
+                        proof.StartedAt >= session.DeniedNotificationUpdateBaseline!.FinishedAt &&
+                        capture.TryGetStatusDeniedNotificationUpdateStart(session.Capture!, session.Binding!,
+                            session.Client!, session.ActualNotificationScope!, session.Receipt!, session.StartTask!,
+                            session.Handle!, out var issued) && ReferenceEquals(start, issued));
+                    session.DeniedNotificationUpdateObservedConfiguration = new(session.DeniedNotificationUpdateBaseline!, slot, task,
+                        proof, configuration, start!, target!, statusWindow!, statusTask!, measured.ObservedAt);
+                    session.Target = target;
+                    session.IndependentAt = measured.ObservedAt;
+                    session.IndependentReady = true;
+                }
+                retained = true;
+            }
+            return Reply(ProjectNotification(session, measured.ObservedAt,
+                NativeProvisioningState.Succeeded, measured.Configuration));
+        }
+        finally { if (!retained) configuration.Dispose(); }
+    }
+
+    private async ValueTask<SecretOutcome<ManagementOperation>> StartStatusDeniedNotificationUpdate(
+        FixtureSelector selector, VaultAdministration client, ManagementScope originalScope, ManagementMutation operation,
+        E.Input input, ManagementReceipt receipt, CancellationToken cancellationToken)
+    {
+        ValidateSelector(selector);
+        Session session;
+        lock (gate)
+        {
+            session = OpenSelector(selector);
+            Require(originalScope is NotificationScope notification && session.NotificationPlan is { } child &&
+                notification.SubscriptionName == child.Scope.SubscriptionName && notification.Vault.ExportResourceId() == session.Plan!.VaultId &&
+                operation == statusDeniedNotificationOperation && session.Armed && session.BaselineReady && !session.StartClaimed &&
+                InputMatches(session, input));
+            session.StartClaimed = true;
+            session.DeniedNotificationUpdateTokens.AddRange([cancellationToken, lifetime.Token]);
+            var baseline = session.DeniedNotificationUpdateBaseline ?? throw Failure();
+            Require(DeniedNotificationUpdateLive(session) &&
+                session.Notifications!.OwnsStatusDeniedNotificationUpdateRead(baseline.Proof, session.NotificationPlan!, Guid.Empty));
+            session.Dispatch = Guid.NewGuid();
+            var admission = new StatusDeniedNotificationUpdateAdmission(this);
+            IssueDeniedNotificationUpdate(session, admission, UnknownNotificationUpdateStage.Begin,
+                session.DeniedNotificationUpdateReady!, baseline.Task, baseline.Proof.NativeTask);
+            session.Client = client;
+            session.ActualNotificationScope = (NotificationScope)originalScope;
+            session.Receipt = receipt;
+            try
+            {
+                session.DeniedNotificationUpdateBegin = FreezeDeniedNotificationUpdate(
+                    provisioner.Journal.BeginStatusDeniedNotificationUpdateInvocation(owner, selector, session.Plan!.LeaseId, admission));
+            }
+            catch { RevokeDeniedNotificationUpdate(session); throw; }
+            session.Active++;
+            active++;
+        }
+        try
+        {
+            session.StartedAt = time.GetUtcNow();
+            Require(session.StartedAt >= session.BaselineAt);
+            using var deadline = new CancellationTokenSource(limits.Timeout, time);
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, lifetime.Token, session.Stop.Token, deadline.Token, session.DeniedNotificationUpdateExclusion!.ContinuityToken);
+            lock (gate) session.DeniedNotificationUpdateTokens.Add(deadline.Token);
+            var result = await capture.StartStatusDeniedNotificationUpdateAsync(session.Capture!, session.Binding!.Selector, client, originalScope,
+                input, receipt, linked.Token, task => { lock (gate) session.StartTask = task; }, () =>
+                {
+                    linked.Token.ThrowIfCancellationRequested();
+                    Require(!disposed && !session.Closed && DeniedNotificationUpdateLive(session) && RoleFixtureJournal.SameStatusDeniedNotificationUpdateSnapshot(
+                        session.DeniedNotificationUpdateBegin!, provisioner.Journal.Read(owner, selector)));
+                }).ConfigureAwait(false);
+            lock (gate)
+            {
+                session.Handle = result.IsSuccess ? result.Value : null;
+                session.StartSucceeded = result.IsSuccess && session.StartTask is { IsCompletedSuccessfully: true };
+                Require(session.StartSucceeded && capture.TryGetStatusDeniedNotificationUpdateStart(session.Capture!, session.Binding!,
+                    client, session.ActualNotificationScope!, receipt, session.StartTask!, session.Handle!, out _));
+                var candidate = new StatusDeniedNotificationUpdateStartDrain(this);
+                IssueDeniedNotificationUpdate(session, candidate, UnknownNotificationUpdateStage.StartDrain,
+                    session.DeniedNotificationUpdateBegin!, session.StartTask!);
+                session.DeniedNotificationUpdateStartDrain = candidate;
+            }
+            RetryStatusDeniedNotificationUpdatePersistence(selector, cancellationToken);
+            return result;
+        }
+        catch (IOException) { throw; }
+        catch { lock (gate) RevokeDeniedNotificationUpdate(session); throw; }
+        finally
+        {
+            try
+            {
+                if (session.DeniedNotificationUpdateStartDrain is null)
+                    provisioner.Journal.EndDispatch(owner, selector, SelectedId(session), session.Dispatch, nativeSettled: false);
+            }
+            finally { Leave(session); }
+        }
+    }
+
+    private async ValueTask<SecretStatus> CheckStatusDeniedNotificationUpdate(FixtureSelector selector,
+        ManagementOperation handle, CancellationToken cancellationToken)
+    {
+        ValidateSelector(selector);
+        Session session;
+        lock (gate)
+        {
+            session = OpenSelector(selector);
+            // Foreign references do not acquire or burn an owned invocation slot.
+            Require(ReferenceEquals(handle, session.Handle));
+            bool valid = !session.StatusClaimed && session.Active == 0 && session.StartFinished && session.StartSucceeded &&
+                session.IndependentReady && session.DeniedNotificationUpdateObservedConfiguration is not null &&
+                !session.DeniedNotificationUpdateInvalid && !cancellationToken.IsCancellationRequested &&
+                session.DeniedNotificationUpdateTokens.All(t => !t.IsCancellationRequested);
+            session.StatusClaimed = true;
+            if (!valid) { RevokeDeniedNotificationUpdate(session); throw Failure(); }
+            var observation = session.DeniedNotificationUpdateObservedConfiguration!;
+            Require(capture.TryGetStatusDeniedNotificationUpdateStart(session.Capture!, session.Binding!, session.Client!,
+                session.ActualNotificationScope!, session.Receipt!, session.StartTask!, handle, out var proof) && ReferenceEquals(proof, observation.Start) &&
+                session.Notifications!.OwnsStatusDeniedNotificationUpdateRead(observation.Baseline.Proof, session.NotificationPlan!, Guid.Empty) &&
+                session.Notifications.OwnsStatusDeniedNotificationUpdateRead(observation.Proof, session.NotificationPlan!, session.Dispatch));
+            session.DeniedNotificationUpdateTokens.Add(cancellationToken);
+            var admission = new StatusDeniedNotificationUpdateReadAdmission(this);
+            IssueDeniedNotificationUpdate(session, admission, UnknownNotificationUpdateStage.Read,
+                session.DeniedNotificationUpdateDrained!, observation.Baseline.Task, observation.Baseline.Proof.NativeTask,
+                observation.Task, observation.Proof.NativeTask, observation.StatusTask, session.StartTask!);
+            try
+            {
+                session.DeniedNotificationUpdateRead = FreezeDeniedNotificationUpdate(
+                    provisioner.Journal.AdmitStatusDeniedNotificationUpdateRead(owner, selector, session.Plan!.LeaseId, session.Dispatch, admission));
+            }
+            catch { RevokeDeniedNotificationUpdate(session); throw; }
+            session.Active++;
+            active++;
+        }
+        try
+        {
+            Require(time.GetUtcNow() >= session.IndependentAt);
+            using var deadline = new CancellationTokenSource(limits.Timeout, time);
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, lifetime.Token, session.Stop.Token, deadline.Token, session.DeniedNotificationUpdateExclusion!.ContinuityToken);
+            lock (gate) session.DeniedNotificationUpdateTokens.Add(deadline.Token);
+            var status = await capture.CheckStatusDeniedNotificationUpdateAsync(session.Capture!, session.Binding!.Selector, handle, linked.Token,
+                task => { lock (gate) session.StatusTask = task; }).ConfigureAwait(false);
+            lock (gate)
+            {
+                Require(status == SecretStatus.Denied);
+                Require(capture.TryGetStatusDeniedNotificationUpdateDenied(session.Capture!, session.Binding!,
+                    session.Client!, session.ActualNotificationScope!, session.Receipt!, session.StartTask!, handle, session.StatusTask!, out var proof) &&
+                    ReferenceEquals(proof.Start, session.DeniedNotificationUpdateObservedConfiguration!.Start));
+                var observation = session.DeniedNotificationUpdateObservedConfiguration!;
+                var candidate = new StatusDeniedNotificationUpdateObservation(this);
+                IssueDeniedNotificationUpdate(session, candidate, UnknownNotificationUpdateStage.Complete,
+                    session.DeniedNotificationUpdateRead!, observation.Baseline.Task, observation.Baseline.Proof.NativeTask,
+                    observation.Task, observation.Proof.NativeTask, observation.StatusTask, session.StartTask!, session.StatusTask!);
+                session.DeniedNotificationUpdateObservation = candidate;
+                session.DeniedNotificationUpdateNativeDenied = proof;
+            }
+            RetryStatusDeniedNotificationUpdatePersistence(selector, cancellationToken);
+            return status;
+        }
+        catch (IOException) { throw; }
+        catch { lock (gate) RevokeDeniedNotificationUpdate(session); throw; }
+        finally
+        {
+            try
+            {
+                if (session.DeniedNotificationUpdateObservation is null)
+                    provisioner.Journal.EndDispatch(owner, selector, SelectedId(session), session.Dispatch, nativeSettled: false);
+            }
+            finally { Leave(session); }
+        }
+    }
+
+    internal RoleFixtureJournal.Snapshot RetryStatusDeniedNotificationUpdatePersistence(FixtureSelector selector,
+        CancellationToken token = default)
+    {
+        ValidateSelector(selector);
+        Session session;
+        lock (gate)
+        {
+            session = OpenSelector(selector);
+            Require(!statusDeniedNotificationUpdateCleanup && !session.DeniedNotificationUpdateInvalid);
+            if (token.IsCancellationRequested) { RevokeDeniedNotificationUpdate(session); token.ThrowIfCancellationRequested(); }
+            try
+            {
+                RoleFixtureJournal.Snapshot committed;
+                if (session.DeniedNotificationUpdateObservation is { } completion)
+                {
+                    committed = provisioner.Journal.CompleteStatusDeniedNotificationUpdateRead(owner, selector,
+                        session.Plan!.LeaseId, session.Dispatch, completion);
+                    session.StatusSucceeded = true;
+                    session.DeniedNotificationUpdateObserved = FreezeDeniedNotificationUpdate(committed);
+                }
+                else
+                {
+                    var drain = session.DeniedNotificationUpdateStartDrain ?? throw Failure();
+                    committed = provisioner.Journal.EndStatusDeniedNotificationUpdateStart(owner, selector,
+                        session.Plan!.LeaseId, session.Dispatch, drain);
+                    session.DeniedNotificationUpdateDrained = FreezeDeniedNotificationUpdate(committed);
+                    session.StartFinished = true;
+                }
+                return committed;
+            }
+            catch (IOException) { throw; }
+            catch { RevokeDeniedNotificationUpdate(session); throw; }
+        }
+    }
+
 
     private async Task<HttpResponseMessage> ObserveStatusNotificationUpdateIndependent(Session session, bool baseline,
         CancellationToken token)
@@ -9018,10 +15086,670 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
             ManagementMutation.UpdatePrivateConnection, state, session.ConnectionId!, SecretStatus.Success,
             null, connectionState, null);
 
+    private async Task<HttpResponseMessage> ReleaseStatusUnknownNotificationUpdateCancellation(FixtureSelector selector,
+        CancellationToken token, CancellationToken caller)
+    {
+        Session session;
+        lock (gate)
+        {
+            if (!sessions.TryGetValue(selector.Nonce, out session!))
+            {
+                Require(!disposed && sessions.Count < 32);
+                session = new(selector with { });
+                sessions.Add(selector.Nonce, session);
+            }
+            Require(session.Selector == selector);
+        }
+        await session.UnknownNotificationUpdateCancellationRelease.WaitAsync(token).ConfigureAwait(false);
+        try
+        {
+            // A retained image always wins over a new read, Close, or cleanup.
+            if ((session.UnknownNotificationUpdateCancellationParentPending || session.UnknownNotificationUpdateCancellationChildPending) &&
+                session.UnknownNotificationUpdateCancellationCleanupSnapshot is { } cleanup)
+                return await ReleaseUnknownNotificationUpdateCancellationChildren(session, cleanup, token, caller).ConfigureAwait(false);
+            if (session.UnknownNotificationUpdateCancellationCompletion is not null && !session.UnknownNotificationUpdateCancellationCompleted)
+            {
+                session.UnknownNotificationUpdateCancellationTokens.AddRange([token, caller]);
+                PersistUnknownNotificationUpdateCancellationCompletion(session);
+            }
+            if (!session.Closed && (session.UnknownNotificationUpdateCancellationObservation is not null &&
+                session.UnknownNotificationUpdateCancellationObserved is null || session.UnknownNotificationUpdateCancellationStartDrain is not null && !session.StartFinished))
+            {
+                RetryStatusUnknownNotificationUpdateCancellationPersistence(selector, caller);
+            }
+            lock (gate)
+            {
+                session.Closed = true;
+                if (session.Active == 0) session.PrivateDrained.TrySetResult();
+            }
+            var snapshot = provisioner.CloseSelectedRoot(owner, selector);
+            using var deadline = new CancellationTokenSource(limits.Timeout, time);
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, caller, deadline.Token);
+            try { await session.PrivateDrained.Task.WaitAsync(linked.Token).ConfigureAwait(false); }
+            catch (OperationCanceledException) when (!token.IsCancellationRequested && !caller.IsCancellationRequested)
+            { return Reply(ReleaseMeasurement(session, snapshot)); }
+            if (snapshot.Resources.Length == 0) return Reply(ReleaseMeasurement(session, snapshot));
+            if (!snapshot.Idle)
+            {
+                // A cold source has no original native check, epoch, or retained preimage.
+                if (statusUnknownNotificationUpdateCancellationCleanup || !UnknownNotificationUpdateCancellationLive(session) ||
+                    session.UnknownNotificationUpdateCancellationObserved is not { } observed || session.Plan is null ||
+                    session.NotificationPlan is null || session.Notifications is null ||
+                    session.UnknownNotificationUpdateCancellationObservedConfiguration is not { } observation ||
+                    session.UnknownNotificationUpdateCancellationNativeCompletion is not { } retained ||
+                    session.StartTask is not { IsCompletedSuccessfully: true } ||
+                    session.StatusTask is not { IsCompletedSuccessfully: true } ||
+                    session.UnknownNotificationUpdateCancellationCanceledTask is not { IsCanceled: true } ||
+                    session.UnknownNotificationUpdateCancellationCanceled is not { } canceled ||
+                    !ReferenceEquals(retained.Canceled, canceled) ||
+                    !ReferenceEquals(canceled.CanceledTask, session.UnknownNotificationUpdateCancellationCanceledTask) ||
+                    ReferenceEquals(session.StatusTask, session.UnknownNotificationUpdateCancellationCanceledTask) ||
+                    session.Handle is not { State: NativeProvisioningState.Unknown } ||
+                    !RoleFixtureJournal.SameStatusUnknownNotificationUpdateCancellationSnapshot(observed with
+                        { Closing = true, Revision = observed.Revision + 1 }, snapshot) ||
+                    !capture.TryGetStatusUnknownNotificationUpdateCancellationCompletion(session.Capture!, session.Binding!, session.Client!,
+                        session.ActualNotificationScope!, session.Receipt!, session.StartTask, session.Handle, session.UnknownNotificationUpdateCancellationCanceledTask!, session.StatusTask, out var actual) ||
+                    !ReferenceEquals(actual, retained) || !ReferenceEquals(actual.Start, observation.Start) ||
+                    !capture.OwnsStatusTarget(observation.Target, session.Binding!) ||
+                    observation.Target.TargetUri.AbsoluteUri != S.ArmOrigin + session.NotificationPlan.ResourceId + "?api-version=2025-02-15" ||
+                    !session.Notifications.OwnsStatusUnknownNotificationUpdateCancellationRead(observation.Proof, session.NotificationPlan, session.Dispatch) ||
+                    !session.Notifications.OwnsStatusUnknownNotificationUpdateCancellationRead(observation.Baseline.Proof, session.NotificationPlan, Guid.Empty))
+                    return Reply(ReleaseMeasurement(session, snapshot));
+                // Exactly one original-URI native read in this explicit release; no SDK handle polling.
+                var task = session.Notifications.ReadStatusUnknownNotificationUpdateCancellationTerminalAsync(session.NotificationPlan,
+                    session.Dispatch, linked.Token).AsTask();
+                using var terminal = await task.ConfigureAwait(false);
+                if (terminal.StatusUnknownCancellationRead is not { } proof || !task.IsCompletedSuccessfully ||
+                    proof.Phase != NotificationFixtureProvisioner.StatusUnknownNotificationUpdateCancellationReadPhase.ReleaseTerminal ||
+                    proof.HttpStatus != 200 || proof.NativeState != "Succeeded" || !proof.NativeTask.IsCompletedSuccessfully ||
+                    !session.Notifications.OwnsStatusUnknownNotificationUpdateCancellationRead(proof, session.NotificationPlan, session.Dispatch) ||
+                    terminal.Present != true || terminal.Configuration is null ||
+                    !NotificationConfigurationMatches(terminal.Configuration, VaultNotificationEvent.SecretNewVersionCreated) ||
+                    !RoleFixtureJournal.SameStatusUnknownNotificationUpdateCancellationSnapshot(snapshot, terminal.Journal) ||
+                    !ReferenceEquals(terminal.SelectedPlan, session.NotificationPlan) || terminal.SelectedDispatch != session.Dispatch ||
+                    proof.StartedAt < observation.FinishedAt || proof.FinishedAt < proof.StartedAt ||
+                    proof.RequestSha256.Length != 64 || proof.ResponseSha256.Length != 64 || !Text(proof.NativeRequestId, 256))
+                    return Reply(ReleaseMeasurement(session, snapshot));
+                lock (gate)
+                {
+                    Require(UnknownNotificationUpdateCancellationLive(session) && !linked.IsCancellationRequested && !caller.IsCancellationRequested &&
+                        capture.TryGetStatusUnknownNotificationUpdateCancellationCompletion(session.Capture!, session.Binding!, session.Client!,
+                            session.ActualNotificationScope!, session.Receipt!, session.StartTask, session.Handle, session.UnknownNotificationUpdateCancellationCanceledTask!, session.StatusTask, out actual) &&
+                        ReferenceEquals(actual, retained));
+                    session.UnknownNotificationUpdateCancellationTokens.AddRange([token, caller, deadline.Token]);
+                    var candidate = new StatusUnknownNotificationUpdateCancellationCompletion(this);
+                    IssueUnknownNotificationUpdateCancellation(session, candidate, UnknownNotificationUpdateCancellationStage.RemoteComplete, snapshot,
+                        observation.Baseline.Task, observation.Baseline.Proof.NativeTask, observation.Task, observation.Proof.NativeTask,
+                        observation.StatusTask, session.StartTask, session.StatusTask, task, proof.NativeTask);
+                    session.UnknownNotificationUpdateCancellationCompletion = candidate;
+                }
+                snapshot = PersistUnknownNotificationUpdateCancellationCompletion(session);
+            }
+            if (!snapshot.Idle) return Reply(ReleaseMeasurement(session, snapshot));
+            // Keep C and protected observations until all cleanup persistence is durable.
+            var response = await ReleaseUnknownNotificationUpdateCancellationChildren(session, snapshot, linked.Token, caller).ConfigureAwait(false);
+            return response;
+        }
+        catch (RoleFixtureJournal.StatusUnknownNotificationUpdateCancellationHistoryException)
+        {
+            lock (gate) RevokeUnknownNotificationUpdateCancellation(session);
+            throw;
+        }
+        finally { session.UnknownNotificationUpdateCancellationRelease.Release(); }
+    }
+
+    private RoleFixtureJournal.Snapshot PersistUnknownNotificationUpdateCancellationCompletion(Session session)
+    {
+        try
+        {
+            Require(UnknownNotificationUpdateCancellationLive(session) && session.UnknownNotificationUpdateCancellationCompletion is { });
+            var candidate = session.UnknownNotificationUpdateCancellationCompletion!;
+            var snapshot = provisioner.Journal.CompleteStatusUnknownNotificationUpdateCancellationInvocation(owner, session.Selector,
+                session.Plan!.LeaseId, session.Dispatch, candidate);
+            Require(RoleFixtureJournal.SameStatusUnknownNotificationUpdateCancellationSnapshot(candidate.Postimage, snapshot));
+            session.UnknownNotificationUpdateCancellationCompleted = true;
+            return snapshot;
+        }
+        catch (IOException) { throw; }
+        catch { RevokeUnknownNotificationUpdateCancellation(session); throw; }
+    }
+
+    private async Task<HttpResponseMessage> ReleaseUnknownNotificationUpdateCancellationChildren(Session session,
+        RoleFixtureJournal.Snapshot snapshot, CancellationToken token, CancellationToken caller)
+    {
+        var parent = session.Plan ?? provisioner.OpenCleanupPlan(owner, session.Selector);
+        Require(RoleFixtureJournal.StatusUnknownNotificationUpdateCancellationRoot(snapshot) && snapshot.Closing &&
+            (snapshot.Idle || session.UnknownNotificationUpdateCancellationParentPending || session.UnknownNotificationUpdateCancellationChildPending) &&
+            provisioner.MatchesOwnedPlan(parent, snapshot));
+        session.Plan = parent;
+        if (session.Notifications is null)
+        {
+            if (notificationSource is null) return Reply(ReleaseMeasurement(session, snapshot));
+            session.Notifications = NotificationFixtureProvisioner.ForOwnedCleanup(provisioner, owner, session.Selector,
+                notificationSource.Setup, notificationSource.Observer, notificationSource.Limits, time);
+        }
+        string name = parent.OwnedNotificationNames.Single();
+        session.UnknownNotificationUpdateCancellationCleanupSnapshot = FreezeUnknownNotificationUpdateCancellation(snapshot);
+        if (!session.UnknownNotificationUpdateCancellationParentPending)
+        {
+            session.UnknownNotificationUpdateCancellationChildPending = true;
+            using var child = await session.Notifications.ReleaseAsync(owner, session.Selector, name, token,
+                originalCallerToken: caller).ConfigureAwait(false);
+            snapshot = child.Journal;
+            session.UnknownNotificationUpdateCancellationCleanupSnapshot = FreezeUnknownNotificationUpdateCancellation(snapshot);
+            if (!ChildCleanupReady(child)) return Reply(ReleaseMeasurement(session, snapshot));
+            session.UnknownNotificationUpdateCancellationChildPending = false;
+        }
+        // At most the three ordered parent stages; never retry a native mutation.
+        for (int stage = 0; stage < 3; stage++)
+        {
+            session.UnknownNotificationUpdateCancellationParentPending = true;
+            var result = await provisioner.ReleaseAsync(owner, session.Selector, purge: true,
+                cancellationToken: token, originalCallerToken: caller).ConfigureAwait(false);
+            snapshot = result.Journal;
+            session.UnknownNotificationUpdateCancellationCleanupSnapshot = FreezeUnknownNotificationUpdateCancellation(snapshot);
+            if (!ParentCleanupReady(result)) return Reply(ReleaseMeasurement(session, snapshot));
+            session.UnknownNotificationUpdateCancellationParentPending = false;
+            if (result.State == VaultFixtureProvisioner.State.Released)
+            {
+                // No extra I/O after an exact final-absence retry. A later Release starts fresh.
+                if (session.Capture is not null) await capture.SealAsync(session.Capture).ConfigureAwait(false);
+                return Reply(ReleaseMeasurement(session, snapshot));
+            }
+            using var refreshed = await session.Notifications.ObserveAsync(owner, session.Selector, name, token,
+                originalCallerToken: caller).ConfigureAwait(false);
+            snapshot = refreshed.Journal;
+            if (!ChildCleanupReady(refreshed)) return Reply(ReleaseMeasurement(session, snapshot));
+        }
+        return Reply(ReleaseMeasurement(session, snapshot));
+    }
+    private async Task<HttpResponseMessage> ReleaseStatusUnknownNotificationUpdateIndependent(FixtureSelector selector,
+        CancellationToken token, CancellationToken caller)
+    {
+        Session session;
+        lock (gate)
+        {
+            if (!sessions.TryGetValue(selector.Nonce, out session!))
+            {
+                Require(!disposed && sessions.Count < 32);
+                session = new(selector with { });
+                sessions.Add(selector.Nonce, session);
+            }
+            Require(session.Selector == selector);
+        }
+        await session.UnknownNotificationUpdateIndependentRelease.WaitAsync(token).ConfigureAwait(false);
+        try
+        {
+            // A retained image always wins over a new read, Close, or cleanup.
+            if ((session.UnknownNotificationUpdateIndependentParentPending || session.UnknownNotificationUpdateIndependentChildPending) &&
+                session.UnknownNotificationUpdateIndependentCleanupSnapshot is { } cleanup)
+                return await ReleaseUnknownNotificationUpdateIndependentChildren(session, cleanup, token, caller).ConfigureAwait(false);
+            if (session.UnknownNotificationUpdateIndependentCompletion is not null && !session.UnknownNotificationUpdateIndependentCompleted)
+            {
+                session.UnknownNotificationUpdateIndependentTokens.AddRange([token, caller]);
+                PersistUnknownNotificationUpdateIndependentCompletion(session);
+            }
+            if (!session.Closed && (session.UnknownNotificationUpdateIndependentObservation is not null &&
+                session.UnknownNotificationUpdateIndependentObserved is null || session.UnknownNotificationUpdateIndependentStartDrain is not null && !session.StartFinished))
+            {
+                RetryStatusUnknownNotificationUpdateIndependentPersistence(selector, caller);
+            }
+            lock (gate)
+            {
+                session.Closed = true;
+                if (session.Active == 0) session.PrivateDrained.TrySetResult();
+            }
+            var snapshot = provisioner.CloseSelectedRoot(owner, selector);
+            using var deadline = new CancellationTokenSource(limits.Timeout, time);
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, caller, deadline.Token);
+            try { await session.PrivateDrained.Task.WaitAsync(linked.Token).ConfigureAwait(false); }
+            catch (OperationCanceledException) when (!token.IsCancellationRequested && !caller.IsCancellationRequested)
+            { return Reply(ReleaseMeasurement(session, snapshot)); }
+            if (snapshot.Resources.Length == 0) return Reply(ReleaseMeasurement(session, snapshot));
+            if (!snapshot.Idle)
+            {
+                // A cold source has no original native check, epoch, or retained preimage.
+                if (statusUnknownNotificationUpdateCancellationCleanup || statusUnknownNotificationUpdateIndependentCleanup || !UnknownNotificationUpdateIndependentLive(session) ||
+                    session.UnknownNotificationUpdateIndependentObserved is not { } observed || session.Plan is null ||
+                    session.NotificationPlan is null || session.Notifications is null ||
+                    session.UnknownNotificationUpdateIndependentObservedConfiguration is not { } observation ||
+                    session.UnknownNotificationUpdateIndependentNativeCompletion is not { } retained ||
+                    session.StartTask is not { IsCompletedSuccessfully: true } ||
+                    session.StatusTask is not { IsCompletedSuccessfully: true } ||
+                    session.Handle is not { State: NativeProvisioningState.Unknown } ||
+                    !RoleFixtureJournal.SameStatusUnknownNotificationUpdateIndependentSnapshot(observed with
+                        { Closing = true, Revision = observed.Revision + 1 }, snapshot) ||
+                    !capture.TryGetStatusUnknownNotificationUpdateIndependentCompletion(session.Capture!, session.Binding!, session.Client!,
+                        session.ActualNotificationScope!, session.Receipt!, session.StartTask, session.Handle, session.StatusTask, out var actual) ||
+                    !ReferenceEquals(actual, retained) || !ReferenceEquals(actual.Start, observation.Start) ||
+                    !capture.OwnsStatusTarget(observation.Target, session.Binding!) ||
+                    observation.Target.TargetUri.AbsoluteUri != S.ArmOrigin + session.NotificationPlan.ResourceId + "?api-version=2025-02-15" ||
+                    !session.Notifications.OwnsStatusUnknownNotificationUpdateIndependentRead(observation.Proof, session.NotificationPlan, session.Dispatch) ||
+                    !session.Notifications.OwnsStatusUnknownNotificationUpdateIndependentRead(observation.Baseline.Proof, session.NotificationPlan, Guid.Empty))
+                    return Reply(ReleaseMeasurement(session, snapshot));
+                // Exactly one original-URI native read in this explicit release; no SDK handle polling.
+                var task = session.Notifications.ReadStatusUnknownNotificationUpdateIndependentTerminalAsync(session.NotificationPlan,
+                    session.Dispatch, linked.Token).AsTask();
+                using var terminal = await task.ConfigureAwait(false);
+                if (terminal.StatusUnknownIndependentRead is not { } proof || !task.IsCompletedSuccessfully ||
+                    proof.Phase != NotificationFixtureProvisioner.StatusUnknownNotificationUpdateIndependentReadPhase.ReleaseTerminal ||
+                    proof.HttpStatus != 200 || proof.NativeState != "Succeeded" || !proof.NativeTask.IsCompletedSuccessfully ||
+                    !session.Notifications.OwnsStatusUnknownNotificationUpdateIndependentRead(proof, session.NotificationPlan, session.Dispatch) ||
+                    terminal.Present != true || terminal.Configuration is null ||
+                    !NotificationConfigurationMatches(terminal.Configuration, VaultNotificationEvent.SecretNewVersionCreated) ||
+                    !RoleFixtureJournal.SameStatusUnknownNotificationUpdateIndependentSnapshot(snapshot, terminal.Journal) ||
+                    !ReferenceEquals(terminal.SelectedPlan, session.NotificationPlan) || terminal.SelectedDispatch != session.Dispatch ||
+                    proof.StartedAt < observation.FinishedAt || proof.FinishedAt < proof.StartedAt ||
+                    proof.RequestSha256.Length != 64 || proof.ResponseSha256.Length != 64 || !Text(proof.NativeRequestId, 256))
+                    return Reply(ReleaseMeasurement(session, snapshot));
+                lock (gate)
+                {
+                    Require(UnknownNotificationUpdateIndependentLive(session) && !linked.IsCancellationRequested && !caller.IsCancellationRequested &&
+                        capture.TryGetStatusUnknownNotificationUpdateIndependentCompletion(session.Capture!, session.Binding!, session.Client!,
+                            session.ActualNotificationScope!, session.Receipt!, session.StartTask, session.Handle, session.StatusTask, out actual) &&
+                        ReferenceEquals(actual, retained));
+                    session.UnknownNotificationUpdateIndependentTokens.AddRange([token, caller, deadline.Token]);
+                    var candidate = new StatusUnknownNotificationUpdateIndependentCompletion(this);
+                    IssueUnknownNotificationUpdateIndependent(session, candidate, UnknownNotificationUpdateIndependentStage.RemoteComplete, snapshot,
+                        observation.Baseline.Task, observation.Baseline.Proof.NativeTask, observation.Task, observation.Proof.NativeTask,
+                        observation.StatusTask, session.StartTask, session.StatusTask, task, proof.NativeTask);
+                    session.UnknownNotificationUpdateIndependentCompletion = candidate;
+                }
+                snapshot = PersistUnknownNotificationUpdateIndependentCompletion(session);
+            }
+            if (!snapshot.Idle) return Reply(ReleaseMeasurement(session, snapshot));
+            // Keep C and protected observations until all cleanup persistence is durable.
+            var response = await ReleaseUnknownNotificationUpdateIndependentChildren(session, snapshot, linked.Token, caller).ConfigureAwait(false);
+            return response;
+        }
+        catch (RoleFixtureJournal.StatusUnknownNotificationUpdateIndependentHistoryException)
+        {
+            lock (gate) RevokeUnknownNotificationUpdateIndependent(session);
+            throw;
+        }
+        finally { session.UnknownNotificationUpdateIndependentRelease.Release(); }
+    }
+
+    private RoleFixtureJournal.Snapshot PersistUnknownNotificationUpdateIndependentCompletion(Session session)
+    {
+        try
+        {
+            Require(UnknownNotificationUpdateIndependentLive(session) && session.UnknownNotificationUpdateIndependentCompletion is { });
+            var candidate = session.UnknownNotificationUpdateIndependentCompletion!;
+            var snapshot = provisioner.Journal.CompleteStatusUnknownNotificationUpdateIndependentInvocation(owner, session.Selector,
+                session.Plan!.LeaseId, session.Dispatch, candidate);
+            Require(RoleFixtureJournal.SameStatusUnknownNotificationUpdateIndependentSnapshot(candidate.Postimage, snapshot));
+            session.UnknownNotificationUpdateIndependentCompleted = true;
+            return snapshot;
+        }
+        catch (IOException) { throw; }
+        catch { RevokeUnknownNotificationUpdateIndependent(session); throw; }
+    }
+
+    private async Task<HttpResponseMessage> ReleaseUnknownNotificationUpdateIndependentChildren(Session session,
+        RoleFixtureJournal.Snapshot snapshot, CancellationToken token, CancellationToken caller)
+    {
+        var parent = session.Plan ?? provisioner.OpenCleanupPlan(owner, session.Selector);
+        Require(RoleFixtureJournal.StatusUnknownNotificationUpdateIndependentRoot(snapshot) && snapshot.Closing &&
+            (snapshot.Idle || session.UnknownNotificationUpdateIndependentParentPending || session.UnknownNotificationUpdateIndependentChildPending) &&
+            provisioner.MatchesOwnedPlan(parent, snapshot));
+        session.Plan = parent;
+        if (session.Notifications is null)
+        {
+            if (notificationSource is null) return Reply(ReleaseMeasurement(session, snapshot));
+            session.Notifications = NotificationFixtureProvisioner.ForOwnedCleanup(provisioner, owner, session.Selector,
+                notificationSource.Setup, notificationSource.Observer, notificationSource.Limits, time);
+        }
+        string name = parent.OwnedNotificationNames.Single();
+        session.UnknownNotificationUpdateIndependentCleanupSnapshot = FreezeUnknownNotificationUpdateIndependent(snapshot);
+        if (!session.UnknownNotificationUpdateIndependentParentPending)
+        {
+            session.UnknownNotificationUpdateIndependentChildPending = true;
+            using var child = await session.Notifications.ReleaseAsync(owner, session.Selector, name, token,
+                originalCallerToken: caller).ConfigureAwait(false);
+            snapshot = child.Journal;
+            session.UnknownNotificationUpdateIndependentCleanupSnapshot = FreezeUnknownNotificationUpdateIndependent(snapshot);
+            if (!ChildCleanupReady(child)) return Reply(ReleaseMeasurement(session, snapshot));
+            session.UnknownNotificationUpdateIndependentChildPending = false;
+        }
+        // At most the three ordered parent stages; never retry a native mutation.
+        for (int stage = 0; stage < 3; stage++)
+        {
+            session.UnknownNotificationUpdateIndependentParentPending = true;
+            var result = await provisioner.ReleaseAsync(owner, session.Selector, purge: true,
+                cancellationToken: token, originalCallerToken: caller).ConfigureAwait(false);
+            snapshot = result.Journal;
+            session.UnknownNotificationUpdateIndependentCleanupSnapshot = FreezeUnknownNotificationUpdateIndependent(snapshot);
+            if (!ParentCleanupReady(result)) return Reply(ReleaseMeasurement(session, snapshot));
+            session.UnknownNotificationUpdateIndependentParentPending = false;
+            if (result.State == VaultFixtureProvisioner.State.Released)
+            {
+                // No extra I/O after an exact final-absence retry. A later Release starts fresh.
+                if (session.Capture is not null) await capture.SealAsync(session.Capture).ConfigureAwait(false);
+                return Reply(ReleaseMeasurement(session, snapshot));
+            }
+            using var refreshed = await session.Notifications.ObserveAsync(owner, session.Selector, name, token,
+                originalCallerToken: caller).ConfigureAwait(false);
+            snapshot = refreshed.Journal;
+            if (!ChildCleanupReady(refreshed)) return Reply(ReleaseMeasurement(session, snapshot));
+        }
+        return Reply(ReleaseMeasurement(session, snapshot));
+    }
+
+    private async Task<HttpResponseMessage> ReleaseStatusUnknownNotificationUpdate(FixtureSelector selector,
+        CancellationToken token, CancellationToken caller)
+    {
+        Session session;
+        lock (gate)
+        {
+            if (!sessions.TryGetValue(selector.Nonce, out session!))
+            {
+                Require(!disposed && sessions.Count < 32);
+                session = new(selector with { });
+                sessions.Add(selector.Nonce, session);
+            }
+            Require(session.Selector == selector);
+        }
+        await session.UnknownNotificationUpdateRelease.WaitAsync(token).ConfigureAwait(false);
+        try
+        {
+            // A retained image always wins over a new read, Close, or cleanup.
+            if ((session.UnknownNotificationUpdateParentPending || session.UnknownNotificationUpdateChildPending) &&
+                session.UnknownNotificationUpdateCleanupSnapshot is { } cleanup)
+                return await ReleaseUnknownNotificationUpdateChildren(session, cleanup, token, caller).ConfigureAwait(false);
+            if (session.UnknownNotificationUpdateCompletion is not null && !session.UnknownNotificationUpdateCompleted)
+            {
+                session.UnknownNotificationUpdateTokens.AddRange([token, caller]);
+                PersistUnknownNotificationUpdateCompletion(session);
+            }
+            if (!session.Closed && (session.UnknownNotificationUpdateObservation is not null &&
+                session.UnknownNotificationUpdateObserved is null || session.UnknownNotificationUpdateStartDrain is not null && !session.StartFinished))
+            {
+                RetryStatusUnknownNotificationUpdatePersistence(selector, caller);
+            }
+            lock (gate)
+            {
+                session.Closed = true;
+                if (session.Active == 0) session.PrivateDrained.TrySetResult();
+            }
+            var snapshot = provisioner.CloseSelectedRoot(owner, selector);
+            using var deadline = new CancellationTokenSource(limits.Timeout, time);
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, caller, deadline.Token);
+            try { await session.PrivateDrained.Task.WaitAsync(linked.Token).ConfigureAwait(false); }
+            catch (OperationCanceledException) when (!token.IsCancellationRequested && !caller.IsCancellationRequested)
+            { return Reply(ReleaseMeasurement(session, snapshot)); }
+            if (snapshot.Resources.Length == 0) return Reply(ReleaseMeasurement(session, snapshot));
+            if (!snapshot.Idle)
+            {
+                // A cold source has no original native check, epoch, or retained preimage.
+                if (statusUnknownNotificationUpdateCancellationCleanup || statusUnknownNotificationUpdateIndependentCleanup || statusDeniedNotificationUpdateCleanup || statusUnknownNotificationUpdateCleanup || !UnknownNotificationUpdateLive(session) ||
+                    session.UnknownNotificationUpdateObserved is not { } observed || session.Plan is null ||
+                    session.NotificationPlan is null || session.Notifications is null ||
+                    session.UnknownNotificationUpdateObservedConfiguration is not { } observation ||
+                    session.UnknownNotificationUpdateNativeCompletion is not { } retained ||
+                    session.StartTask is not { IsCompletedSuccessfully: true } ||
+                    session.StatusTask is not { IsCompletedSuccessfully: true } ||
+                    session.Handle is not { State: NativeProvisioningState.Unknown } ||
+                    !RoleFixtureJournal.SameStatusUnknownNotificationUpdateSnapshot(observed with
+                        { Closing = true, Revision = observed.Revision + 1 }, snapshot) ||
+                    !capture.TryGetStatusUnknownNotificationUpdateCompletion(session.Capture!, session.Binding!, session.Client!,
+                        session.ActualNotificationScope!, session.Receipt!, session.StartTask, session.Handle, session.StatusTask, out var actual) ||
+                    !ReferenceEquals(actual, retained) || !ReferenceEquals(actual.Start, observation.Start) ||
+                    !capture.OwnsStatusTarget(observation.Target, session.Binding!) ||
+                    observation.Target.TargetUri.AbsoluteUri != S.ArmOrigin + session.NotificationPlan.ResourceId + "?api-version=2025-02-15" ||
+                    !session.Notifications.OwnsStatusUnknownNotificationUpdateRead(observation.Proof, session.NotificationPlan, session.Dispatch) ||
+                    !session.Notifications.OwnsStatusUnknownNotificationUpdateRead(observation.Baseline.Proof, session.NotificationPlan, Guid.Empty))
+                    return Reply(ReleaseMeasurement(session, snapshot));
+                // Exactly one original-URI native read in this explicit release; no SDK handle polling.
+                var task = session.Notifications.ReadStatusUnknownNotificationUpdateTerminalAsync(session.NotificationPlan,
+                    session.Dispatch, linked.Token).AsTask();
+                using var terminal = await task.ConfigureAwait(false);
+                if (terminal.StatusUnknownRead is not { } proof || !task.IsCompletedSuccessfully ||
+                    proof.Phase != NotificationFixtureProvisioner.StatusUnknownNotificationUpdateReadPhase.ReleaseTerminal ||
+                    proof.HttpStatus != 200 || proof.NativeState != "Succeeded" || !proof.NativeTask.IsCompletedSuccessfully ||
+                    !session.Notifications.OwnsStatusUnknownNotificationUpdateRead(proof, session.NotificationPlan, session.Dispatch) ||
+                    terminal.Present != true || terminal.Configuration is null ||
+                    !NotificationConfigurationMatches(terminal.Configuration, VaultNotificationEvent.SecretNewVersionCreated) ||
+                    !RoleFixtureJournal.SameStatusUnknownNotificationUpdateSnapshot(snapshot, terminal.Journal) ||
+                    !ReferenceEquals(terminal.SelectedPlan, session.NotificationPlan) || terminal.SelectedDispatch != session.Dispatch ||
+                    proof.StartedAt < observation.FinishedAt || proof.FinishedAt < proof.StartedAt ||
+                    proof.RequestSha256.Length != 64 || proof.ResponseSha256.Length != 64 || !Text(proof.NativeRequestId, 256))
+                    return Reply(ReleaseMeasurement(session, snapshot));
+                lock (gate)
+                {
+                    Require(UnknownNotificationUpdateLive(session) && !linked.IsCancellationRequested && !caller.IsCancellationRequested &&
+                        capture.TryGetStatusUnknownNotificationUpdateCompletion(session.Capture!, session.Binding!, session.Client!,
+                            session.ActualNotificationScope!, session.Receipt!, session.StartTask, session.Handle, session.StatusTask, out actual) &&
+                        ReferenceEquals(actual, retained));
+                    session.UnknownNotificationUpdateTokens.AddRange([token, caller, deadline.Token]);
+                    var candidate = new StatusUnknownNotificationUpdateCompletion(this);
+                    IssueUnknownNotificationUpdate(session, candidate, UnknownNotificationUpdateStage.RemoteComplete, snapshot,
+                        observation.Baseline.Task, observation.Baseline.Proof.NativeTask, observation.Task, observation.Proof.NativeTask,
+                        observation.StatusTask, session.StartTask, session.StatusTask, task, proof.NativeTask);
+                    session.UnknownNotificationUpdateCompletion = candidate;
+                }
+                snapshot = PersistUnknownNotificationUpdateCompletion(session);
+            }
+            if (!snapshot.Idle) return Reply(ReleaseMeasurement(session, snapshot));
+            // Keep C and protected observations until all cleanup persistence is durable.
+            var response = await ReleaseUnknownNotificationUpdateChildren(session, snapshot, linked.Token, caller).ConfigureAwait(false);
+            return response;
+        }
+        catch (RoleFixtureJournal.StatusUnknownNotificationUpdateHistoryException)
+        {
+            lock (gate) RevokeUnknownNotificationUpdate(session);
+            throw;
+        }
+        finally { session.UnknownNotificationUpdateRelease.Release(); }
+    }
+
+    private RoleFixtureJournal.Snapshot PersistUnknownNotificationUpdateCompletion(Session session)
+    {
+        try
+        {
+            Require(UnknownNotificationUpdateLive(session) && session.UnknownNotificationUpdateCompletion is { });
+            var candidate = session.UnknownNotificationUpdateCompletion!;
+            var snapshot = provisioner.Journal.CompleteStatusUnknownNotificationUpdateInvocation(owner, session.Selector,
+                session.Plan!.LeaseId, session.Dispatch, candidate);
+            Require(RoleFixtureJournal.SameStatusUnknownNotificationUpdateSnapshot(candidate.Postimage, snapshot));
+            session.UnknownNotificationUpdateCompleted = true;
+            return snapshot;
+        }
+        catch (IOException) { throw; }
+        catch { RevokeUnknownNotificationUpdate(session); throw; }
+    }
+
+    private async Task<HttpResponseMessage> ReleaseUnknownNotificationUpdateChildren(Session session,
+        RoleFixtureJournal.Snapshot snapshot, CancellationToken token, CancellationToken caller)
+    {
+        var parent = session.Plan ?? provisioner.OpenCleanupPlan(owner, session.Selector);
+        Require(RoleFixtureJournal.StatusUnknownNotificationUpdateRoot(snapshot) && snapshot.Closing &&
+            (snapshot.Idle || session.UnknownNotificationUpdateParentPending || session.UnknownNotificationUpdateChildPending) &&
+            provisioner.MatchesOwnedPlan(parent, snapshot));
+        session.Plan = parent;
+        if (session.Notifications is null)
+        {
+            if (notificationSource is null) return Reply(ReleaseMeasurement(session, snapshot));
+            session.Notifications = NotificationFixtureProvisioner.ForOwnedCleanup(provisioner, owner, session.Selector,
+                notificationSource.Setup, notificationSource.Observer, notificationSource.Limits, time);
+        }
+        string name = parent.OwnedNotificationNames.Single();
+        session.UnknownNotificationUpdateCleanupSnapshot = FreezeUnknownNotificationUpdate(snapshot);
+        if (!session.UnknownNotificationUpdateParentPending)
+        {
+            session.UnknownNotificationUpdateChildPending = true;
+            using var child = await session.Notifications.ReleaseAsync(owner, session.Selector, name, token,
+                originalCallerToken: caller).ConfigureAwait(false);
+            snapshot = child.Journal;
+            session.UnknownNotificationUpdateCleanupSnapshot = FreezeUnknownNotificationUpdate(snapshot);
+            if (!ChildCleanupReady(child)) return Reply(ReleaseMeasurement(session, snapshot));
+            session.UnknownNotificationUpdateChildPending = false;
+        }
+        // At most the three ordered parent stages; never retry a native mutation.
+        for (int stage = 0; stage < 3; stage++)
+        {
+            session.UnknownNotificationUpdateParentPending = true;
+            var result = await provisioner.ReleaseAsync(owner, session.Selector, purge: true,
+                cancellationToken: token, originalCallerToken: caller).ConfigureAwait(false);
+            snapshot = result.Journal;
+            session.UnknownNotificationUpdateCleanupSnapshot = FreezeUnknownNotificationUpdate(snapshot);
+            if (!ParentCleanupReady(result)) return Reply(ReleaseMeasurement(session, snapshot));
+            session.UnknownNotificationUpdateParentPending = false;
+            if (result.State == VaultFixtureProvisioner.State.Released)
+            {
+                // No extra I/O after an exact final-absence retry. A later Release starts fresh.
+                if (session.Capture is not null) await capture.SealAsync(session.Capture).ConfigureAwait(false);
+                return Reply(ReleaseMeasurement(session, snapshot));
+            }
+            using var refreshed = await session.Notifications.ObserveAsync(owner, session.Selector, name, token,
+                originalCallerToken: caller).ConfigureAwait(false);
+            snapshot = refreshed.Journal;
+            if (!ChildCleanupReady(refreshed)) return Reply(ReleaseMeasurement(session, snapshot));
+        }
+        return Reply(ReleaseMeasurement(session, snapshot));
+    }
+
+    private async Task<HttpResponseMessage> ReleaseStatusDeniedNotificationUpdate(FixtureSelector selector,
+        CancellationToken token, CancellationToken caller)
+    {
+        Require(MatchesStatusDeniedNotificationOperation(selector));
+        Session session;
+        lock (gate)
+        {
+            if (!sessions.TryGetValue(selector.Nonce, out session!))
+            {
+                Require(!disposed && sessions.Count < 32);
+                session = new(selector with { });
+                sessions.Add(selector.Nonce, session);
+            }
+            Require(session.Selector == selector);
+        }
+        await session.DeniedNotificationUpdateRelease.WaitAsync(token).ConfigureAwait(false);
+        try
+        {
+            if ((session.DeniedNotificationUpdateParentPending || session.DeniedNotificationUpdateChildPending) &&
+                session.DeniedNotificationUpdateCleanupSnapshot is { } cleanup)
+                return await ReleaseDeniedNotificationUpdateChildren(session, cleanup, token, caller).ConfigureAwait(false);
+            // Even a readable completed observation must real-Flush its exact image
+            // before the first new Close changes that image's revision.
+            if (!session.Closed && session.Active == 0 && (session.DeniedNotificationUpdateObservation is not null ||
+                session.DeniedNotificationUpdateStartDrain is not null && !session.StartFinished))
+                RetryStatusDeniedNotificationUpdatePersistence(selector, caller);
+            var snapshot = provisioner.CloseSelectedRoot(owner, selector);
+            lock (gate)
+            {
+                session.Closed = true;
+                RevokeDeniedNotificationUpdate(session);
+                if (session.Active == 0) session.PrivateDrained.TrySetResult();
+            }
+            session.Stop.Cancel();
+            using var deadline = new CancellationTokenSource(limits.Timeout, time);
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, caller, deadline.Token);
+            try { await session.PrivateDrained.Task.WaitAsync(linked.Token).ConfigureAwait(false); }
+            catch (OperationCanceledException) when (!token.IsCancellationRequested && !caller.IsCancellationRequested)
+            { return Reply(ReleaseMeasurement(session, snapshot)); }
+            snapshot = provisioner.Journal.Read(owner, selector);
+            if (snapshot.Resources.Length == 0 || !snapshot.Idle)
+                return Reply(ReleaseMeasurement(session, snapshot));
+            return await ReleaseDeniedNotificationUpdateChildren(session, snapshot, linked.Token, caller).ConfigureAwait(false);
+        }
+        catch (RoleFixtureJournal.StatusDeniedNotificationUpdateHistoryException)
+        {
+            lock (gate) RevokeDeniedNotificationUpdate(session);
+            throw;
+        }
+        finally { session.DeniedNotificationUpdateRelease.Release(); }
+    }
+
+    private async Task<HttpResponseMessage> ReleaseDeniedNotificationUpdateChildren(Session session,
+        RoleFixtureJournal.Snapshot snapshot, CancellationToken token, CancellationToken caller)
+    {
+        Require(MatchesStatusDeniedNotificationOperation(session.Selector) && snapshot.Selector == session.Selector);
+        var parent = session.Plan ?? provisioner.OpenCleanupPlan(owner, session.Selector);
+        Require(RoleFixtureJournal.StatusDeniedNotificationUpdateRoot(snapshot) && snapshot.Closing &&
+            (snapshot.Idle || session.DeniedNotificationUpdateParentPending || session.DeniedNotificationUpdateChildPending) &&
+            provisioner.MatchesOwnedPlan(parent, snapshot));
+        session.Plan = parent;
+        if (session.Notifications is null)
+        {
+            if (notificationSource is null) return Reply(ReleaseMeasurement(session, snapshot));
+            session.Notifications = NotificationFixtureProvisioner.ForOwnedCleanup(provisioner, owner, session.Selector,
+                notificationSource.Setup, notificationSource.Observer, notificationSource.Limits, time);
+        }
+        string name = parent.OwnedNotificationNames.Single();
+        session.DeniedNotificationUpdateCleanupSnapshot = FreezeDeniedNotificationUpdate(snapshot);
+        if (!session.DeniedNotificationUpdateParentPending)
+        {
+            if (!session.DeniedNotificationUpdateChildPending && session.NotificationPlan is { Restored: false } originalChild &&
+                snapshot.Resources.Single(r => r.Id == originalChild.ResourceId) is { SelectedAttempted: true, DeleteAttempted: false })
+            {
+                var task = session.Notifications.ReadStatusDeniedNotificationUpdateCleanupAsync(originalChild,
+                    session.Dispatch, token).AsTask();
+                using var read = await task.ConfigureAwait(false);
+                if (!task.IsCompletedSuccessfully || read.StatusDeniedUpdateRead is not { } proof ||
+                    proof.Phase != NotificationFixtureProvisioner.StatusDeniedNotificationUpdateReadPhase.Cleanup ||
+                    proof.NativeState != "Succeeded" || proof.HttpStatus != 200 || !proof.NativeTask.IsCompletedSuccessfully ||
+                    !session.Notifications.OwnsStatusDeniedNotificationUpdateRead(proof, originalChild, session.Dispatch) ||
+                    read.Present != true || read.Configuration is null ||
+                    !NotificationConfigurationMatches(read.Configuration, VaultNotificationEvent.SecretNewVersionCreated) ||
+                    !RoleFixtureJournal.SameStatusDeniedNotificationUpdateSnapshot(snapshot, read.Journal) ||
+                    !ReferenceEquals(read.SelectedPlan, originalChild) || read.SelectedDispatch != session.Dispatch ||
+                    proof.StartedAt < session.IndependentAt || proof.FinishedAt < proof.StartedAt ||
+                    proof.RequestSha256.Length != 64 || proof.ResponseSha256.Length != 64 || !Text(proof.NativeRequestId, 256))
+                    return Reply(ReleaseMeasurement(session, snapshot));
+            }
+            session.DeniedNotificationUpdateChildPending = true;
+            using var child = await session.Notifications.ReleaseAsync(owner, session.Selector, name, token,
+                originalCallerToken: caller).ConfigureAwait(false);
+            snapshot = child.Journal;
+            session.DeniedNotificationUpdateCleanupSnapshot = FreezeDeniedNotificationUpdate(snapshot);
+            if (!ChildCleanupReady(child)) return Reply(ReleaseMeasurement(session, snapshot));
+            session.DeniedNotificationUpdateChildPending = false;
+        }
+        // At most the three ordered parent stages; never retry a native mutation.
+        for (int stage = 0; stage < 3; stage++)
+        {
+            session.DeniedNotificationUpdateParentPending = true;
+            var result = await provisioner.ReleaseAsync(owner, session.Selector, purge: true,
+                cancellationToken: token, originalCallerToken: caller).ConfigureAwait(false);
+            snapshot = result.Journal;
+            session.DeniedNotificationUpdateCleanupSnapshot = FreezeDeniedNotificationUpdate(snapshot);
+            if (!ParentCleanupReady(result)) return Reply(ReleaseMeasurement(session, snapshot));
+            session.DeniedNotificationUpdateParentPending = false;
+            if (result.State == VaultFixtureProvisioner.State.Released)
+            {
+                // No extra I/O after an exact final-absence retry. A later Release starts fresh.
+                if (session.Capture is not null) await capture.SealAsync(session.Capture).ConfigureAwait(false);
+                return Reply(ReleaseMeasurement(session, snapshot));
+            }
+            using var refreshed = await session.Notifications.ObserveAsync(owner, session.Selector, name, token,
+                originalCallerToken: caller).ConfigureAwait(false);
+            snapshot = refreshed.Journal;
+            if (!ChildCleanupReady(refreshed)) return Reply(ReleaseMeasurement(session, snapshot));
+        }
+        return Reply(ReleaseMeasurement(session, snapshot));
+    }
+
+
     private async Task<HttpResponseMessage> Release(FixtureSelector selector, CancellationToken token,
         CancellationToken requestCancellation = default)
     {
+        Require(statusDeniedPrivateDeleteProfile == VaultFixtureProvisioner.StatusDeniedPrivateConnectionDeleteSelector(selector));
+        if (statusDeniedPrivateDeleteProfile)
+        {
+            ValidateReleaseSelector(selector);
+            return await ReleaseDeniedPrivateDelete(selector, token, requestCancellation).ConfigureAwait(false);
+        }
         ValidateReleaseSelector(selector);
+        Require(statusUnknownNotificationUpdateCancellationProfile == NotificationFixtureProvisioner.StatusUnknownNotificationUpdateCancellationSelector(selector));
+        if (statusUnknownNotificationUpdateCancellationProfile) return await ReleaseStatusUnknownNotificationUpdateCancellation(selector, token, requestCancellation).ConfigureAwait(false);
+        Require(statusUnknownNotificationUpdateIndependentProfile == NotificationFixtureProvisioner.StatusUnknownNotificationUpdateIndependentSelector(selector));
+        if (statusUnknownNotificationUpdateIndependentProfile) return await ReleaseStatusUnknownNotificationUpdateIndependent(selector, token, requestCancellation).ConfigureAwait(false);
+
+        Require(statusDeniedNotificationUpdateProfile == NotificationFixtureProvisioner.StatusDeniedNotificationUpdateSelector(selector));
+        Require(statusUnknownNotificationUpdateProfile == NotificationFixtureProvisioner.StatusUnknownNotificationUpdateSelector(selector));
+        if (statusDeniedNotificationUpdateProfile) return await ReleaseStatusDeniedNotificationUpdate(selector, token, requestCancellation).ConfigureAwait(false);
+        if (statusUnknownNotificationUpdateProfile) return await ReleaseStatusUnknownNotificationUpdate(selector, token, requestCancellation).ConfigureAwait(false);
         Require(statusPrivateUpdateIndependentProfile == VaultFixtureProvisioner.StatusPrivateConnectionUpdateIndependentSelector(selector));
         Require(statusNotificationUpdateIndependentProfile == NotificationFixtureProvisioner.StatusNotificationUpdateIndependentSelector(selector));
         Require(statusNotificationCreateIndependentProfile == NotificationFixtureProvisioner.StatusNotificationCreateIndependentSelector(selector));
@@ -9102,7 +15830,7 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
                 var seal = capture.SealAsync(session.Capture);
                 if (VaultFixtureProvisioner.StatusPrivateConnectionDeleteCancellationSelector(selector) ||
                     VaultFixtureProvisioner.StatusPrivateConnectionDeleteSelectedSelector(selector) ||
-                    statusPrivateDeleteIndependentProfile || statusPrivateUpdateIndependentProfile || statusNotificationUpdateIndependentProfile || statusNotificationCreateIndependentProfile ||
+                    statusPrivateDeleteIndependentProfile || statusPrivateUpdateIndependentProfile || statusUnknownNotificationUpdateCancellationProfile || statusUnknownNotificationUpdateIndependentProfile || statusDeniedNotificationUpdateProfile || statusUnknownNotificationUpdateProfile || statusNotificationUpdateIndependentProfile || statusNotificationCreateIndependentProfile ||
                     NotificationFixtureProvisioner.StatusNotificationUpdateCancellationSelector(selector) ||
                     NotificationFixtureProvisioner.StatusNotificationCreateCancellationSelector(selector))
                 {
@@ -9221,6 +15949,30 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
                     !r.SelectedAttempted && !r.Absent && (r.CleanupOnly
                         ? !r.CreateAttempted && !r.InvocationTerminated : r.CreateAttempted && r.InvocationTerminated)) &&
                 (selected || snapshot.Resources.Single(r => r.Id == child.ResourceId).InvocationTerminated));
+        if (statusUnknownNotificationUpdateCancellationProfile)
+            Require(RoleFixtureJournal.StatusUnknownNotificationUpdateCancellationRoot(snapshot) &&
+                snapshot.Resources.Where(r => r.Id != child.ResourceId).All(r => !r.SelectedAttempted && !r.DeleteAttempted && !r.Absent &&
+                    (r.CleanupOnly ? !r.CreateAttempted && !r.InvocationTerminated : r.CreateAttempted && r.InvocationTerminated)) &&
+                (selected || snapshot.Resources.Single(r => r.Id == child.ResourceId).InvocationTerminated));
+        if (statusUnknownNotificationUpdateIndependentProfile)
+            Require(RoleFixtureJournal.StatusUnknownNotificationUpdateIndependentRoot(snapshot) &&
+                snapshot.Resources.Where(r => r.Id != child.ResourceId).All(r => !r.SelectedAttempted && !r.DeleteAttempted && !r.Absent &&
+                    (r.CleanupOnly ? !r.CreateAttempted && !r.InvocationTerminated : r.CreateAttempted && r.InvocationTerminated)) &&
+                (selected || snapshot.Resources.Single(r => r.Id == child.ResourceId).InvocationTerminated));
+
+        if (statusDeniedNotificationUpdateProfile)
+            Require(MatchesStatusDeniedNotificationOperation(session.Selector) &&
+                (session.Binding is null || session.Binding.Selector == session.Selector &&
+                    session.Binding.Operation == statusDeniedNotificationOperation) &&
+                RoleFixtureJournal.StatusDeniedNotificationUpdateRoot(snapshot) &&
+                snapshot.Resources.Where(r => r.Id != child.ResourceId).All(r => !r.SelectedAttempted && !r.DeleteAttempted && !r.Absent &&
+                    (r.CleanupOnly ? !r.CreateAttempted && !r.InvocationTerminated : r.CreateAttempted && r.InvocationTerminated)) &&
+                (selected || snapshot.Resources.Single(r => r.Id == child.ResourceId).InvocationTerminated));
+        if (statusUnknownNotificationUpdateProfile)
+            Require(RoleFixtureJournal.StatusUnknownNotificationUpdateRoot(snapshot) &&
+                snapshot.Resources.Where(r => r.Id != child.ResourceId).All(r => !r.SelectedAttempted && !r.DeleteAttempted && !r.Absent &&
+                    (r.CleanupOnly ? !r.CreateAttempted && !r.InvocationTerminated : r.CreateAttempted && r.InvocationTerminated)) &&
+                (selected || snapshot.Resources.Single(r => r.Id == child.ResourceId).InvocationTerminated));
         if (statusNotificationUpdateIndependentProfile)
             Require(RoleFixtureJournal.StatusNotificationUpdateIndependentRoot(snapshot) &&
                 snapshot.Resources.Where(r => r.Id != child.ResourceId).All(r => !r.SelectedAttempted && !r.DeleteAttempted && !r.Absent &&
@@ -9267,36 +16019,36 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
         }
         string name = parent.OwnedNotificationNames[0];
         using (var released = await session.Notifications.ReleaseAsync(owner, session.Selector, name, token,
-            originalCallerToken: statusNotificationUpdateIndependentProfile || statusNotificationCreateIndependentProfile ? requestCancellation : null).ConfigureAwait(false))
+            originalCallerToken: statusUnknownNotificationUpdateCancellationProfile || statusUnknownNotificationUpdateIndependentProfile || statusDeniedNotificationUpdateProfile || statusUnknownNotificationUpdateProfile || statusNotificationUpdateIndependentProfile || statusNotificationCreateIndependentProfile ? requestCancellation : null).ConfigureAwait(false))
         {
             snapshot = released.Journal;
             if (!ChildCleanupReady(released)) return Reply(ReleaseMeasurement(session, snapshot));
         }
         var parentResult = await provisioner.ReleaseAsync(owner, session.Selector, purge: true,
             cancellationToken: token,
-            originalCallerToken: statusNotificationUpdateIndependentProfile || statusNotificationCreateIndependentProfile ? requestCancellation : null).ConfigureAwait(false);
+            originalCallerToken: statusUnknownNotificationUpdateCancellationProfile || statusUnknownNotificationUpdateIndependentProfile || statusDeniedNotificationUpdateProfile || statusUnknownNotificationUpdateProfile || statusNotificationUpdateIndependentProfile || statusNotificationCreateIndependentProfile ? requestCancellation : null).ConfigureAwait(false);
         snapshot = parentResult.Journal;
         if (!ParentCleanupReady(parentResult)) return Reply(ReleaseMeasurement(session, snapshot));
         using (var refreshed = await session.Notifications.ObserveAsync(owner, session.Selector, name, token,
-            originalCallerToken: statusNotificationUpdateIndependentProfile || statusNotificationCreateIndependentProfile ? requestCancellation : null).ConfigureAwait(false))
+            originalCallerToken: statusUnknownNotificationUpdateCancellationProfile || statusUnknownNotificationUpdateIndependentProfile || statusDeniedNotificationUpdateProfile || statusUnknownNotificationUpdateProfile || statusNotificationUpdateIndependentProfile || statusNotificationCreateIndependentProfile ? requestCancellation : null).ConfigureAwait(false))
         {
             snapshot = refreshed.Journal;
             if (!ChildCleanupReady(refreshed)) return Reply(ReleaseMeasurement(session, snapshot));
         }
         parentResult = await provisioner.ReleaseAsync(owner, session.Selector, purge: true,
             cancellationToken: token,
-            originalCallerToken: statusNotificationUpdateIndependentProfile || statusNotificationCreateIndependentProfile ? requestCancellation : null).ConfigureAwait(false);
+            originalCallerToken: statusUnknownNotificationUpdateCancellationProfile || statusUnknownNotificationUpdateIndependentProfile || statusDeniedNotificationUpdateProfile || statusUnknownNotificationUpdateProfile || statusNotificationUpdateIndependentProfile || statusNotificationCreateIndependentProfile ? requestCancellation : null).ConfigureAwait(false);
         snapshot = parentResult.Journal;
         if (!ParentCleanupReady(parentResult)) return Reply(ReleaseMeasurement(session, snapshot));
         using (var refreshed = await session.Notifications.ObserveAsync(owner, session.Selector, name, token,
-            originalCallerToken: statusNotificationUpdateIndependentProfile || statusNotificationCreateIndependentProfile ? requestCancellation : null).ConfigureAwait(false))
+            originalCallerToken: statusUnknownNotificationUpdateCancellationProfile || statusUnknownNotificationUpdateIndependentProfile || statusDeniedNotificationUpdateProfile || statusUnknownNotificationUpdateProfile || statusNotificationUpdateIndependentProfile || statusNotificationCreateIndependentProfile ? requestCancellation : null).ConfigureAwait(false))
         {
             snapshot = refreshed.Journal;
             if (!ChildCleanupReady(refreshed)) return Reply(ReleaseMeasurement(session, snapshot));
         }
         parentResult = await provisioner.ReleaseAsync(owner, session.Selector, purge: true,
             cancellationToken: token,
-            originalCallerToken: statusNotificationUpdateIndependentProfile || statusNotificationCreateIndependentProfile ? requestCancellation : null).ConfigureAwait(false);
+            originalCallerToken: statusUnknownNotificationUpdateCancellationProfile || statusUnknownNotificationUpdateIndependentProfile || statusDeniedNotificationUpdateProfile || statusUnknownNotificationUpdateProfile || statusNotificationUpdateIndependentProfile || statusNotificationCreateIndependentProfile ? requestCancellation : null).ConfigureAwait(false);
         return Reply(ReleaseMeasurement(session, parentResult.Journal));
     }
 
@@ -9307,10 +16059,30 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
         result.State is VaultFixtureProvisioner.State.Closing or VaultFixtureProvisioner.State.SoftDeleted or VaultFixtureProvisioner.State.Released &&
         result.Journal.Resources.All(r => r.ActiveDispatch == Guid.Empty);
 
-    private ManagementMutation SelectionOperation(FixtureSelector selector) =>
-        (statusPendingPurgeProfile && VaultFixtureProvisioner.StatusPendingPurgeSelector(selector) ||
+    private ManagementMutation SelectionOperation(FixtureSelector selector)
+    {
+        if (statusDeniedNotificationUpdateProfile || NotificationFixtureProvisioner.StatusDeniedNotificationUpdateSelector(selector))
+        {
+            Require(MatchesStatusDeniedNotificationOperation(selector));
+            return statusDeniedNotificationOperation;
+        }
+        return statusUnknownNotificationUpdateCancellationProfile && NotificationFixtureProvisioner.StatusUnknownNotificationUpdateCancellationSelector(selector)
+            ? ManagementMutation.UpdateNotification :
+        statusUnknownNotificationUpdateIndependentProfile && NotificationFixtureProvisioner.StatusUnknownNotificationUpdateIndependentSelector(selector)
+            ? ManagementMutation.UpdateNotification :
+
+        statusUnknownNotificationUpdateProfile && NotificationFixtureProvisioner.StatusUnknownNotificationUpdateSelector(selector)
+            ? ManagementMutation.UpdateNotification :
+        (deniedProfile is not null && VaultFixtureProvisioner.StatusDeniedPurgeSelector(selector) ||
+            statusPendingPurgeProfile && VaultFixtureProvisioner.StatusPendingPurgeSelector(selector) ||
             pendingIndependentProfile is not null && VaultFixtureProvisioner.StatusPendingPurgeIndependentSelector(selector) ||
-            pendingCancellationProfile is not null && VaultFixtureProvisioner.StatusPendingPurgeCancellationSelector(selector))
+            pendingCancellationProfile is not null && VaultFixtureProvisioner.StatusPendingPurgeCancellationSelector(selector) ||
+            canceledCancellationProfile is not null && VaultFixtureProvisioner.StatusCanceledPurgeCancellationSelector(selector) ||
+            canceledIndependentProfile is not null && VaultFixtureProvisioner.StatusCanceledPurgeIndependentSelector(selector) ||
+            canceledProfile is not null && VaultFixtureProvisioner.StatusCanceledPurgeSelector(selector) ||
+            failedProfile is not null && VaultFixtureProvisioner.StatusFailedPurgeSelector(selector) ||
+            failedIndependentProfile is not null && VaultFixtureProvisioner.StatusFailedPurgeIndependentSelector(selector) ||
+            failedCancellationProfile is not null && VaultFixtureProvisioner.StatusFailedPurgeCancellationSelector(selector))
             ? ManagementMutation.PurgeDeletedVault :
         statusSucceededDeleteVaultCancellationProfile && VaultFixtureProvisioner.StatusSucceededDeleteVaultCancellationSelector(selector)
             ? ManagementMutation.DeleteVault :
@@ -9330,6 +16102,7 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
                 "operation.DeletePrivateConnection" => ManagementMutation.DeletePrivateConnection,
                 _ => throw Failure()
             };
+    }
     private static bool IsNotification(ManagementMutation operation) =>
         operation is ManagementMutation.UpdateNotification or ManagementMutation.CreateOrUpdateNotification or ManagementMutation.DeleteNotification;
     private string SelectedId(Session session) => IsNotification(SelectionOperation(session.Selector))
@@ -9359,6 +16132,10 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
         Require(!disposed);
         Require(sessions.TryGetValue(nonce, out var session));
         Require(!session.Closed && session.Plan is not null && session.Lease is not null && session.Plan.LeaseId == lease);
+        if (statusDeniedNotificationUpdateProfile)
+            Require(MatchesStatusDeniedNotificationOperation(session.Selector) && session.Plan.Selector == session.Selector &&
+                (session.Binding is null || session.Binding.Selector == session.Selector &&
+                    session.Binding.Operation == statusDeniedNotificationOperation));
         return session;
     }
     private RoleFixtureRelease.Measurement ReleaseMeasurement(Session session, RoleFixtureJournal.Snapshot snapshot, int extra = 0)
@@ -9373,7 +16150,28 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
             owned = [.. owned, .. dependencies];
             if (snapshot.PrivateEndpointAbsent) absent = [.. absent, .. dependencies];
         }
-        return new(session.Selector, true, session.Active + extra + snapshot.Resources.Count(r => r.ActiveDispatch != Guid.Empty) +
+        bool deniedPending = session.Pending?.DeniedProfile is not null &&
+            (session.Pending.Persistence is not null || session.Plan is not null && provisioner.HasStatusDeniedPurgePersistence(session.Plan));
+        bool deniedUpdatePending = statusDeniedNotificationUpdateProfile &&
+            (session.DeniedNotificationUpdateParentPending || session.DeniedNotificationUpdateChildPending);
+        bool unknownPending = statusUnknownNotificationUpdateProfile &&
+            (session.UnknownNotificationUpdateParentPending || session.UnknownNotificationUpdateChildPending ||
+                session.UnknownNotificationUpdateCompletion is not null && !session.UnknownNotificationUpdateCompleted) ||
+            statusUnknownNotificationUpdateIndependentProfile &&
+            (session.UnknownNotificationUpdateIndependentParentPending || session.UnknownNotificationUpdateIndependentChildPending ||
+                session.UnknownNotificationUpdateIndependentCompletion is not null && !session.UnknownNotificationUpdateIndependentCompleted) ||
+            statusUnknownNotificationUpdateCancellationProfile &&
+            (session.UnknownNotificationUpdateCancellationParentPending || session.UnknownNotificationUpdateCancellationChildPending ||
+                session.UnknownNotificationUpdateCancellationCompletion is not null && !session.UnknownNotificationUpdateCancellationCompleted);
+        bool deniedPrivatePending = statusDeniedPrivateDeleteProfile &&
+            (deniedPrivateDeleteRuns.TryGetValue(session, out var privateRun) && privateRun.Pending is not null ||
+                session.Plan is not null && (provisioner.HasStatusDeniedPrivateConnectionDeletePersistence(session.Plan) ||
+                    session.Endpoints?.HasStatusDeniedPrivateConnectionDeletePersistence(session.Plan) == true));
+        bool deniedVaultPending = statusDeniedVaultUpdateProfile &&
+            (deniedVaultUpdateRuns.TryGetValue(session, out var vaultRun) && vaultRun.Pending is not null ||
+                session.Plan is not null && provisioner.HasStatusDeniedVaultUpdatePersistence(session.Plan));
+        return new(session.Selector, true, session.Active + extra + (deniedVaultPending || deniedPrivatePending || unknownPending || deniedPending || deniedUpdatePending ? 1 : 0) +
+            snapshot.Resources.Count(r => r.ActiveDispatch != Guid.Empty) +
             (snapshot.PrivateEndpoint?.Connection is { ActiveDispatch: var childDispatch } && childDispatch != Guid.Empty ? 1 : 0),
             owned, snapshot.Resources.Where(r => r.Borrowed).Select(r => r.Id).ToArray(), absent,
             owned.Except(absent, StringComparer.OrdinalIgnoreCase).ToArray());
@@ -9386,7 +16184,32 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
         Require(selector is not null && selector.Nonce != Guid.Empty &&
             new[] { selector.Scope, selector.Operation, selector.Variant, selector.Case }.All(v => Text(v, 512)) &&
             selector.Operation == E.Members[0].Operation &&
-            (pendingCancellationProfile is not null ? VaultFixtureProvisioner.StatusPendingPurgeCancellationSelector(selector) :
+            statusDeniedVaultUpdateProfile == VaultFixtureProvisioner.StatusDeniedVaultUpdateSelector(selector) &&
+            statusDeniedPrivateDeleteProfile == VaultFixtureProvisioner.StatusDeniedPrivateConnectionDeleteSelector(selector) &&
+            (!VaultFixtureProvisioner.StatusDeniedPurgeSelector(selector) || deniedProfile is not null) &&
+            (!VaultFixtureProvisioner.StatusCanceledPurgeCancellationSelector(selector) || canceledCancellationProfile is not null) &&
+            (!VaultFixtureProvisioner.StatusCanceledPurgeIndependentSelector(selector) || canceledIndependentProfile is not null) &&
+            (!VaultFixtureProvisioner.StatusCanceledPurgeSelector(selector) || canceledProfile is not null) &&
+            (!NotificationFixtureProvisioner.StatusUnknownNotificationUpdateCancellationSelector(selector) || statusUnknownNotificationUpdateCancellationProfile) &&
+            (!NotificationFixtureProvisioner.StatusUnknownNotificationUpdateIndependentSelector(selector) || statusUnknownNotificationUpdateIndependentProfile) &&
+
+            (!NotificationFixtureProvisioner.StatusDeniedNotificationUpdateSelector(selector) || MatchesStatusDeniedNotificationOperation(selector)) &&
+            (!NotificationFixtureProvisioner.StatusUnknownNotificationUpdateSelector(selector) || statusUnknownNotificationUpdateProfile) &&
+            (statusDeniedVaultUpdateProfile ? VaultFixtureProvisioner.StatusDeniedVaultUpdateSelector(selector) :
+            statusDeniedPrivateDeleteProfile ? VaultFixtureProvisioner.StatusDeniedPrivateConnectionDeleteSelector(selector) :
+            deniedProfile is not null ? VaultFixtureProvisioner.StatusDeniedPurgeSelector(selector) &&
+                selector.Variant == deniedProfile.Variant :
+            statusUnknownNotificationUpdateCancellationProfile ? NotificationFixtureProvisioner.StatusUnknownNotificationUpdateCancellationSelector(selector) :
+            statusUnknownNotificationUpdateIndependentProfile ? NotificationFixtureProvisioner.StatusUnknownNotificationUpdateIndependentSelector(selector) :
+            statusDeniedNotificationUpdateProfile ? MatchesStatusDeniedNotificationOperation(selector) :
+            statusUnknownNotificationUpdateProfile ? NotificationFixtureProvisioner.StatusUnknownNotificationUpdateSelector(selector) :
+            failedCancellationProfile is not null ? VaultFixtureProvisioner.StatusFailedPurgeCancellationSelector(selector) :
+            failedIndependentProfile is not null ? VaultFixtureProvisioner.StatusFailedPurgeIndependentSelector(selector) :
+            canceledCancellationProfile is not null ? VaultFixtureProvisioner.StatusCanceledPurgeCancellationSelector(selector) :
+            canceledIndependentProfile is not null ? VaultFixtureProvisioner.StatusCanceledPurgeIndependentSelector(selector) :
+            canceledProfile is not null ? VaultFixtureProvisioner.StatusCanceledPurgeSelector(selector) :
+            failedProfile is not null ? VaultFixtureProvisioner.StatusFailedPurgeSelector(selector) :
+            pendingCancellationProfile is not null ? VaultFixtureProvisioner.StatusPendingPurgeCancellationSelector(selector) :
             pendingIndependentProfile is not null ? VaultFixtureProvisioner.StatusPendingPurgeIndependentSelector(selector) :
             statusPendingPurgeProfile ? VaultFixtureProvisioner.StatusPendingPurgeSelector(selector) :
             statusPrivateUpdateIndependentProfile ? VaultFixtureProvisioner.StatusPrivateConnectionUpdateIndependentSelector(selector) :
@@ -9412,10 +16235,14 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
              NotificationFixtureProvisioner.StatusNotificationDeleteIndependentSelector(selector) ||
              NotificationFixtureProvisioner.StatusNotificationUpdateCancellationSelector(selector) ||
              NotificationFixtureProvisioner.StatusNotificationCreateCancellationSelector(selector)));
-    private static void ValidateReleaseSelector(FixtureSelector selector) =>
+    private void ValidateReleaseSelector(FixtureSelector selector) =>
         Require(selector is not null && selector.Nonce != Guid.Empty &&
             new[] { selector.Scope, selector.Operation, selector.Variant, selector.Case }.All(v => Text(v, 512)) &&
-            selector.Operation == E.Members[0].Operation);
+            selector.Operation == E.Members[0].Operation &&
+            statusDeniedVaultUpdateProfile == VaultFixtureProvisioner.StatusDeniedVaultUpdateSelector(selector) &&
+            statusDeniedPrivateDeleteProfile == VaultFixtureProvisioner.StatusDeniedPrivateConnectionDeleteSelector(selector) &&
+            (!(statusDeniedNotificationUpdateProfile || NotificationFixtureProvisioner.StatusDeniedNotificationUpdateSelector(selector)) ||
+                MatchesStatusDeniedNotificationOperation(selector)));
     private static bool Text([NotNullWhen(true)] string? value, int maximum) =>
         !string.IsNullOrWhiteSpace(value) && value.Length <= maximum && !value.Any(char.IsControl);
     private static bool Segment(string? value, int maximum) => Text(value, maximum) &&
@@ -9509,10 +16336,25 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
     }
     public ValueTask DisposeAsync()
     {
+        if (statusDeniedVaultUpdateProfile) return DisposeDeniedVaultUpdateAsync();
         TaskCompletionSource completion;
         lock (gate)
         {
             if (disposal is not null) return new(disposal.Task);
+            if (statusDeniedPrivateDeleteProfile)
+                foreach (var session in sessions.Values.Where(s => !s.Closed && s.Active == 0))
+                {
+                    try
+                    {
+                        if (deniedPrivateDeleteRuns[session].Pending is not null)
+                            PersistDeniedPrivateDelete(session);
+                        if (session.Plan is not null && provisioner.HasStatusDeniedPrivateConnectionDeletePersistence(session.Plan))
+                            provisioner.RetryStatusDeniedPrivateConnectionDeletePersistence(session.Plan);
+                        if (session.Plan is not null && session.Endpoints?.HasStatusDeniedPrivateConnectionDeletePersistence(session.Plan) == true)
+                            session.Endpoints.RetryStatusDeniedPrivateConnectionDeletePersistence(session.Plan);
+                    }
+                    catch (Exception) { deniedPrivateDeleteDisposePublicationFailed = true; }
+                }
             disposed = true;
             completion = disposal = new(TaskCreationOptions.RunContinuationsAsynchronously);
             if (active == 0) drained.TrySetResult();
@@ -9529,7 +16371,7 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
     }
     private async Task Drain(TaskCompletionSource completion)
     {
-        bool valid = true;
+        bool valid = !deniedPrivateDeleteDisposePublicationFailed;
         Session[] owned;
         lock (gate)
         {
@@ -9539,10 +16381,16 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
                 session.Closed = true;
                 if (session.Pending is { } pending) pending.Invalid = true;
                 if (statusPrivateUpdateIndependentProfile) RevokePrivateUpdateIndependent(session);
+                if (statusUnknownNotificationUpdateCancellationProfile) RevokeUnknownNotificationUpdateCancellation(session);
+                if (statusUnknownNotificationUpdateIndependentProfile) RevokeUnknownNotificationUpdateIndependent(session);
+
+                if (statusDeniedNotificationUpdateProfile) RevokeDeniedNotificationUpdate(session);
+                if (statusUnknownNotificationUpdateProfile) RevokeUnknownNotificationUpdate(session);
                 if (statusNotificationUpdateIndependentProfile) RevokeNotificationUpdateIndependent(session);
                 if (statusNotificationCreateIndependentProfile) RevokeNotificationCreateIndependent(session);
                 try { provisioner.CloseSelectedRoot(owner, session.Selector); }
                 catch (Exception) { valid = false; }
+                if (statusDeniedPrivateDeleteProfile) deniedPrivateDeleteRuns[session].Invalid = true;
             }
         }
         foreach (var session in owned)
@@ -9555,8 +16403,16 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
             await drained.Task.ConfigureAwait(false);
             foreach (var session in owned)
             {
-                try { if (session.Capture is not null) await capture.SealAsync(session.Capture).ConfigureAwait(false); }
+                bool captureDrained = false;
+                try
+                {
+                    if (session.Capture is not null) await capture.SealAsync(session.Capture).ConfigureAwait(false);
+                    captureDrained = true;
+                }
                 catch (Exception) { valid = false; }
+                if (statusDeniedPrivateDeleteProfile && captureDrained)
+                    try { deniedPrivateDeleteRuns[session].PhysicalDrain = true; DrainDeniedPrivateDelete(session); }
+                    catch (Exception) { valid = false; }
                 try
                 {
                     if (statusSucceededDeleteVaultCancellationProfile)
@@ -9583,6 +16439,23 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
                 catch (Exception) { valid = false; }
                 finally
                 {
+                    session.UnknownNotificationUpdateCancellationBaseline?.Configuration.Dispose();
+                    session.UnknownNotificationUpdateCancellationObservedConfiguration?.Configuration.Dispose();
+                    session.UnknownNotificationUpdateCancellationContinuity.Dispose();
+                    RevokeUnknownNotificationUpdateCancellation(session);
+                    session.UnknownNotificationUpdateIndependentBaseline?.Configuration.Dispose();
+                    session.UnknownNotificationUpdateIndependentObservedConfiguration?.Configuration.Dispose();
+                    session.UnknownNotificationUpdateIndependentContinuity.Dispose();
+                    RevokeUnknownNotificationUpdateIndependent(session);
+
+                    session.DeniedNotificationUpdateBaseline?.Configuration.Dispose();
+                    session.DeniedNotificationUpdateObservedConfiguration?.Configuration.Dispose();
+                    session.DeniedNotificationUpdateContinuity.Dispose();
+                    RevokeDeniedNotificationUpdate(session);
+                    session.UnknownNotificationUpdateBaseline?.Configuration.Dispose();
+                    session.UnknownNotificationUpdateObservedConfiguration?.Configuration.Dispose();
+                    session.UnknownNotificationUpdateContinuity.Dispose();
+                    RevokeUnknownNotificationUpdate(session);
                     session.NotificationUpdateIndependentBaseline?.Configuration.Dispose();
                     session.NotificationUpdateIndependentObservation?.Configuration.Dispose();
                     RevokeNotificationUpdateIndependent(session);
@@ -9596,6 +16469,12 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
                     session.Stop.Dispose();
                 }
             }
+            failedCleanupAuthorizations.Clear();
+            failedAdmissions.Clear();
+            failedStartDrains.Clear();
+            failedReadAdmissions.Clear();
+            failedTerminalFailures.Clear();
+            failedInvocationDrains.Clear();
             privateUpdateIndependentFacts.Clear();
             pendingIndependentAdmissions.Clear();
             pendingCancellationAdmissions.Clear();
@@ -9642,6 +16521,9 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
             statusPrivateDeleteIndependentAdmissions.Clear();
             statusPrivateDeleteIndependentReadAdmissions.Clear();
             statusPrivateDeleteIndependentSettlements.Clear();
+            deniedPrivateDeleteFacts.Clear();
+            deniedPrivateDeleteRuns.Clear();
+            deniedPrivateDeleteConfiguration = null;
             statusDeleteSettlements.Clear();
             statusPurgeSettlements.Clear();
             statusRecoverSettlements.Clear();

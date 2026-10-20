@@ -175,7 +175,7 @@ internal sealed class ManagementOperationResourceCollector
     private sealed class StatusPendingPurgeReadRegistration(VaultAdministrationEffects.Configuration baseline,
         StatusPendingPurgeReadPhase phase)
     {
-        internal readonly StatusPendingPurgeReadRun Run = new(baseline,
+        internal readonly PurgeReadRun Run = new(baseline,
             phase is StatusPendingPurgeReadPhase.ReadyDeletedPresent or
                 StatusPendingPurgeReadPhase.BaselineDeletedPresent or StatusPendingPurgeReadPhase.SelectedDeletedPresent);
         internal readonly StatusPendingPurgeReadPhase Phase = phase;
@@ -210,7 +210,7 @@ internal sealed class ManagementOperationResourceCollector
     private sealed class StatusPendingPurgeIndependentReadRegistration(VaultAdministrationEffects.Configuration baseline,
         StatusPendingPurgeIndependentReadPhase phase)
     {
-        internal readonly StatusPendingPurgeReadRun Run = new(baseline,
+        internal readonly PurgeReadRun Run = new(baseline,
             phase is StatusPendingPurgeIndependentReadPhase.ReadyDeletedPresent or
                 StatusPendingPurgeIndependentReadPhase.BaselineDeletedPresent or
                 StatusPendingPurgeIndependentReadPhase.SelectedDeletedPresent);
@@ -246,7 +246,7 @@ internal sealed class ManagementOperationResourceCollector
     private sealed class StatusPendingPurgeCancellationReadRegistration(VaultAdministrationEffects.Configuration baseline,
         StatusPendingPurgeCancellationReadPhase phase)
     {
-        internal readonly StatusPendingPurgeReadRun Run = new(baseline,
+        internal readonly PurgeReadRun Run = new(baseline,
             phase is StatusPendingPurgeCancellationReadPhase.ReadyDeletedPresent or
                 StatusPendingPurgeCancellationReadPhase.BaselineDeletedPresent or
                 StatusPendingPurgeCancellationReadPhase.SelectedDeletedPresent);
@@ -256,9 +256,602 @@ internal sealed class ManagementOperationResourceCollector
     private readonly Dictionary<Window, StatusPendingPurgeCancellationReadRegistration> statusPendingCancellationReads =
         new(ReferenceEqualityComparer.Instance);
 
-    // Shared native read state contains no S, I or C proof authority. Only the
+    internal enum StatusFailedPurgeReadPhase
+    {
+        ReadyActiveAbsent, ReadyDeletedPresent, BaselineActiveAbsent, BaselineDeletedPresent,
+        SelectedActiveAbsent, SelectedDeletedPresent, CleanupActiveAbsent, CleanupDeletedPresent,
+        FinalActiveAbsent, FinalDeletedAbsent
+    }
+    internal sealed class StatusFailedPurgeReadProof(Window window, Capture.Binding binding,
+        StatusFailedPurgeReadPhase phase, Task nativeTask, int httpStatus, string? originalVaultId,
+        string requestSha256, string responseSha256, string nativeRequestId,
+        DateTimeOffset startedAt, DateTimeOffset finishedAt)
+    {
+        internal Window Window { get; } = window;
+        internal Capture.Binding Binding { get; } = binding;
+        internal StatusFailedPurgeReadPhase Phase { get; } = phase;
+        internal Task NativeTask { get; } = nativeTask;
+        internal int HttpStatus { get; } = httpStatus;
+        internal string? OriginalVaultId { get; } = originalVaultId;
+        internal string RequestSha256 { get; } = requestSha256;
+        internal string ResponseSha256 { get; } = responseSha256;
+        internal string NativeRequestId { get; } = nativeRequestId;
+        internal DateTimeOffset StartedAt { get; } = startedAt;
+        internal DateTimeOffset FinishedAt { get; } = finishedAt;
+        public override string ToString() => "[StatusFailedPurgeReadProof]";
+    }
+    private sealed class StatusFailedPurgeReadRegistration(VaultAdministrationEffects.Configuration baseline,
+        StatusFailedPurgeReadPhase phase)
+    {
+        internal readonly PurgeReadRun Run = new(baseline,
+            phase is StatusFailedPurgeReadPhase.ReadyDeletedPresent or
+                StatusFailedPurgeReadPhase.BaselineDeletedPresent or StatusFailedPurgeReadPhase.SelectedDeletedPresent or
+                StatusFailedPurgeReadPhase.CleanupDeletedPresent);
+        internal readonly StatusFailedPurgeReadPhase Phase = phase;
+        internal StatusFailedPurgeReadProof? Proof;
+    }
+    private readonly Dictionary<Window, StatusFailedPurgeReadRegistration> statusFailedReads =
+        new(ReferenceEqualityComparer.Instance);
+
+    internal enum StatusFailedPurgeIndependentReadPhase
+    {
+        ReadyActiveAbsent, ReadyDeletedPresent, BaselineActiveAbsent, BaselineDeletedPresent,
+        SelectedActiveAbsent, SelectedDeletedPresent, CleanupActiveAbsent, CleanupDeletedPresent,
+        FinalActiveAbsent, FinalDeletedAbsent
+    }
+    internal sealed class StatusFailedPurgeIndependentReadProof(Window window, Capture.Binding binding,
+        StatusFailedPurgeIndependentReadPhase phase, Task nativeTask, int httpStatus, string? originalVaultId,
+        string requestSha256, string responseSha256, string nativeRequestId,
+        DateTimeOffset startedAt, DateTimeOffset finishedAt)
+    {
+        internal Window Window { get; } = window;
+        internal Capture.Binding Binding { get; } = binding;
+        internal StatusFailedPurgeIndependentReadPhase Phase { get; } = phase;
+        internal Task NativeTask { get; } = nativeTask;
+        internal int HttpStatus { get; } = httpStatus;
+        internal string? OriginalVaultId { get; } = originalVaultId;
+        internal string RequestSha256 { get; } = requestSha256;
+        internal string ResponseSha256 { get; } = responseSha256;
+        internal string NativeRequestId { get; } = nativeRequestId;
+        internal DateTimeOffset StartedAt { get; } = startedAt;
+        internal DateTimeOffset FinishedAt { get; } = finishedAt;
+        public override string ToString() => "[StatusFailedPurgeIndependentReadProof]";
+    }
+    private sealed class StatusFailedPurgeIndependentReadRegistration(VaultAdministrationEffects.Configuration baseline,
+        StatusFailedPurgeIndependentReadPhase phase)
+    {
+        internal readonly PurgeReadRun Run = new(baseline,
+            phase is StatusFailedPurgeIndependentReadPhase.ReadyDeletedPresent or
+                StatusFailedPurgeIndependentReadPhase.BaselineDeletedPresent or
+                StatusFailedPurgeIndependentReadPhase.SelectedDeletedPresent or
+                StatusFailedPurgeIndependentReadPhase.CleanupDeletedPresent);
+        internal readonly StatusFailedPurgeIndependentReadPhase Phase = phase;
+        internal StatusFailedPurgeIndependentReadProof? Proof;
+    }
+    private readonly Dictionary<Window, StatusFailedPurgeIndependentReadRegistration> statusFailedIndependentReads =
+        new(ReferenceEqualityComparer.Instance);
+
+    internal enum StatusFailedPurgeCancellationReadPhase
+    {
+        ReadyActiveAbsent, ReadyDeletedPresent, BaselineActiveAbsent, BaselineDeletedPresent,
+        SelectedActiveAbsent, SelectedDeletedPresent, CleanupActiveAbsent, CleanupDeletedPresent,
+        FinalActiveAbsent, FinalDeletedAbsent
+    }
+    internal sealed class StatusFailedPurgeCancellationReadProof(Window window, Capture.Binding binding,
+        StatusFailedPurgeCancellationReadPhase phase, Task nativeTask, int httpStatus, string? originalVaultId,
+        string requestSha256, string responseSha256, string nativeRequestId,
+        DateTimeOffset startedAt, DateTimeOffset finishedAt)
+    {
+        internal Window Window { get; } = window;
+        internal Capture.Binding Binding { get; } = binding;
+        internal StatusFailedPurgeCancellationReadPhase Phase { get; } = phase;
+        internal Task NativeTask { get; } = nativeTask;
+        internal int HttpStatus { get; } = httpStatus;
+        internal string? OriginalVaultId { get; } = originalVaultId;
+        internal string RequestSha256 { get; } = requestSha256;
+        internal string ResponseSha256 { get; } = responseSha256;
+        internal string NativeRequestId { get; } = nativeRequestId;
+        internal DateTimeOffset StartedAt { get; } = startedAt;
+        internal DateTimeOffset FinishedAt { get; } = finishedAt;
+        public override string ToString() => "[StatusFailedPurgeCancellationReadProof]";
+    }
+    private sealed class StatusFailedPurgeCancellationReadRegistration(VaultAdministrationEffects.Configuration baseline,
+        StatusFailedPurgeCancellationReadPhase phase)
+    {
+        internal readonly PurgeReadRun Run = new(baseline,
+            phase is StatusFailedPurgeCancellationReadPhase.ReadyDeletedPresent or
+                StatusFailedPurgeCancellationReadPhase.BaselineDeletedPresent or
+                StatusFailedPurgeCancellationReadPhase.SelectedDeletedPresent or
+                StatusFailedPurgeCancellationReadPhase.CleanupDeletedPresent);
+        internal readonly StatusFailedPurgeCancellationReadPhase Phase = phase;
+        internal StatusFailedPurgeCancellationReadProof? Proof;
+    }
+    private readonly Dictionary<Window, StatusFailedPurgeCancellationReadRegistration> statusFailedCancellationReads =
+        new(ReferenceEqualityComparer.Instance);
+
+    internal enum StatusCanceledPurgeReadPhase
+    {
+        ReadyActiveAbsent, ReadyDeletedPresent, BaselineActiveAbsent, BaselineDeletedPresent,
+        SelectedActiveAbsent, SelectedDeletedPresent, CleanupActiveAbsent, CleanupDeletedPresent,
+        FinalActiveAbsent, FinalDeletedAbsent
+    }
+    internal sealed class StatusCanceledPurgeReadProof(Window window, Capture.Binding binding,
+        StatusCanceledPurgeReadPhase phase, Task nativeTask, int httpStatus, string? originalVaultId,
+        string requestSha256, string responseSha256, string nativeRequestId,
+        DateTimeOffset startedAt, DateTimeOffset finishedAt)
+    {
+        internal Window Window { get; } = window;
+        internal Capture.Binding Binding { get; } = binding;
+        internal StatusCanceledPurgeReadPhase Phase { get; } = phase;
+        internal Task NativeTask { get; } = nativeTask;
+        internal int HttpStatus { get; } = httpStatus;
+        internal string? OriginalVaultId { get; } = originalVaultId;
+        internal string RequestSha256 { get; } = requestSha256;
+        internal string ResponseSha256 { get; } = responseSha256;
+        internal string NativeRequestId { get; } = nativeRequestId;
+        internal DateTimeOffset StartedAt { get; } = startedAt;
+        internal DateTimeOffset FinishedAt { get; } = finishedAt;
+        public override string ToString() => "[StatusCanceledPurgeReadProof]";
+    }
+    private sealed class StatusCanceledPurgeReadRegistration(VaultAdministrationEffects.Configuration baseline,
+        StatusCanceledPurgeReadPhase phase)
+    {
+        internal readonly PurgeReadRun Run = new(baseline,
+            phase is StatusCanceledPurgeReadPhase.ReadyDeletedPresent or
+                StatusCanceledPurgeReadPhase.BaselineDeletedPresent or StatusCanceledPurgeReadPhase.SelectedDeletedPresent or
+                StatusCanceledPurgeReadPhase.CleanupDeletedPresent);
+        internal readonly StatusCanceledPurgeReadPhase Phase = phase;
+        internal StatusCanceledPurgeReadProof? Proof;
+    }
+    private readonly Dictionary<Window, StatusCanceledPurgeReadRegistration> statusCanceledReads =
+        new(ReferenceEqualityComparer.Instance);
+
+    internal enum StatusCanceledPurgeIndependentReadPhase
+    {
+        ReadyActiveAbsent, ReadyDeletedPresent, BaselineActiveAbsent, BaselineDeletedPresent,
+        SelectedActiveAbsent, SelectedDeletedPresent, CleanupActiveAbsent, CleanupDeletedPresent,
+        FinalActiveAbsent, FinalDeletedAbsent
+    }
+    internal sealed class StatusCanceledPurgeIndependentReadProof(Window window, Capture.Binding binding,
+        StatusCanceledPurgeIndependentReadPhase phase, Task nativeTask, int httpStatus, string? originalVaultId,
+        string requestSha256, string responseSha256, string nativeRequestId,
+        DateTimeOffset startedAt, DateTimeOffset finishedAt)
+    {
+        internal Window Window { get; } = window;
+        internal Capture.Binding Binding { get; } = binding;
+        internal StatusCanceledPurgeIndependentReadPhase Phase { get; } = phase;
+        internal Task NativeTask { get; } = nativeTask;
+        internal int HttpStatus { get; } = httpStatus;
+        internal string? OriginalVaultId { get; } = originalVaultId;
+        internal string RequestSha256 { get; } = requestSha256;
+        internal string ResponseSha256 { get; } = responseSha256;
+        internal string NativeRequestId { get; } = nativeRequestId;
+        internal DateTimeOffset StartedAt { get; } = startedAt;
+        internal DateTimeOffset FinishedAt { get; } = finishedAt;
+        public override string ToString() => "[StatusCanceledPurgeIndependentReadProof]";
+    }
+    private sealed class StatusCanceledPurgeIndependentReadRegistration(VaultAdministrationEffects.Configuration baseline,
+        StatusCanceledPurgeIndependentReadPhase phase)
+    {
+        internal readonly PurgeReadRun Run = new(baseline,
+            phase is StatusCanceledPurgeIndependentReadPhase.ReadyDeletedPresent or
+                StatusCanceledPurgeIndependentReadPhase.BaselineDeletedPresent or
+                StatusCanceledPurgeIndependentReadPhase.SelectedDeletedPresent or
+                StatusCanceledPurgeIndependentReadPhase.CleanupDeletedPresent);
+        internal readonly StatusCanceledPurgeIndependentReadPhase Phase = phase;
+        internal StatusCanceledPurgeIndependentReadProof? Proof;
+    }
+    private readonly Dictionary<Window, StatusCanceledPurgeIndependentReadRegistration> statusCanceledIndependentReads =
+        new(ReferenceEqualityComparer.Instance);
+
+    internal enum StatusCanceledPurgeCancellationReadPhase
+    {
+        ReadyActiveAbsent, ReadyDeletedPresent, BaselineActiveAbsent, BaselineDeletedPresent,
+        SelectedActiveAbsent, SelectedDeletedPresent, CleanupActiveAbsent, CleanupDeletedPresent,
+        FinalActiveAbsent, FinalDeletedAbsent
+    }
+    internal sealed class StatusCanceledPurgeCancellationReadProof(Window window, Capture.Binding binding,
+        StatusCanceledPurgeCancellationReadPhase phase, Task nativeTask, int httpStatus, string? originalVaultId,
+        string requestSha256, string responseSha256, string nativeRequestId,
+        DateTimeOffset startedAt, DateTimeOffset finishedAt)
+    {
+        internal Window Window { get; } = window;
+        internal Capture.Binding Binding { get; } = binding;
+        internal StatusCanceledPurgeCancellationReadPhase Phase { get; } = phase;
+        internal Task NativeTask { get; } = nativeTask;
+        internal int HttpStatus { get; } = httpStatus;
+        internal string? OriginalVaultId { get; } = originalVaultId;
+        internal string RequestSha256 { get; } = requestSha256;
+        internal string ResponseSha256 { get; } = responseSha256;
+        internal string NativeRequestId { get; } = nativeRequestId;
+        internal DateTimeOffset StartedAt { get; } = startedAt;
+        internal DateTimeOffset FinishedAt { get; } = finishedAt;
+        public override string ToString() => "[StatusCanceledPurgeCancellationReadProof]";
+    }
+    private sealed class StatusCanceledPurgeCancellationReadRegistration(VaultAdministrationEffects.Configuration baseline,
+        StatusCanceledPurgeCancellationReadPhase phase)
+    {
+        internal readonly PurgeReadRun Run = new(baseline,
+            phase is StatusCanceledPurgeCancellationReadPhase.ReadyDeletedPresent or
+                StatusCanceledPurgeCancellationReadPhase.BaselineDeletedPresent or
+                StatusCanceledPurgeCancellationReadPhase.SelectedDeletedPresent or
+                StatusCanceledPurgeCancellationReadPhase.CleanupDeletedPresent);
+        internal readonly StatusCanceledPurgeCancellationReadPhase Phase = phase;
+        internal StatusCanceledPurgeCancellationReadProof? Proof;
+    }
+    private readonly Dictionary<Window, StatusCanceledPurgeCancellationReadRegistration> statusCanceledCancellationReads =
+        new(ReferenceEqualityComparer.Instance);
+
+    internal enum StatusDeniedVaultUpdateReadPhase
+    {
+        ReadyActive, ReadyDeletedAbsent, BaselineActive, BaselineDeletedAbsent,
+        SelectedActive, SelectedDeletedAbsent, CleanupActive, CleanupDeletedAbsent,
+        FinalActiveAbsent, FinalDeletedAbsent
+    }
+
+    internal sealed class StatusDeniedVaultUpdateReadProof(
+        ManagementOperationResourceCollector source, Window window, Capture.Binding binding,
+        StatusDeniedVaultUpdateReadPhase phase, VaultAdministrationEffects.Configuration expected,
+        VaultConfiguration? configuration, Task<Measurement> readTask, Task nativeTask,
+        RequestFailedException? nativeError, int httpStatus, string? originalVaultId,
+        string? errorCode, string requestSha256, string responseSha256, string nativeRequestId,
+        DateTimeOffset startedAt, DateTimeOffset finishedAt,
+        CancellationToken callerToken, CancellationToken originalCallerToken)
+    {
+        internal ManagementOperationResourceCollector Source { get; } = source;
+        internal Window Window { get; } = window;
+        internal Capture.Binding Binding { get; } = binding;
+        internal StatusDeniedVaultUpdateReadPhase Phase { get; } = phase;
+        internal VaultAdministrationEffects.Configuration ExpectedConfiguration { get; } = expected;
+        internal VaultConfiguration? Configuration { get; } = configuration;
+        internal Task<Measurement> ReadTask { get; } = readTask;
+        internal Task NativeTask { get; } = nativeTask;
+        internal RequestFailedException? NativeError { get; } = nativeError;
+        internal int HttpStatus { get; } = httpStatus;
+        internal string? OriginalVaultId { get; } = originalVaultId;
+        internal string? ErrorCode { get; } = errorCode;
+        internal string RequestSha256 { get; } = requestSha256;
+        internal string ResponseSha256 { get; } = responseSha256;
+        internal string NativeRequestId { get; } = nativeRequestId;
+        internal DateTimeOffset StartedAt { get; } = startedAt;
+        internal DateTimeOffset FinishedAt { get; } = finishedAt;
+        internal CancellationToken CallerToken { get; } = callerToken;
+        internal CancellationToken OriginalCallerToken { get; } = originalCallerToken;
+        public override string ToString() => "[StatusDeniedVaultUpdateReadProof]";
+    }
+
+    private sealed class StatusDeniedVaultUpdateReadRegistration(
+        VaultAdministrationEffects.Configuration expected, StatusDeniedVaultUpdateReadPhase phase)
+    {
+        internal readonly VaultAdministrationEffects.Configuration Expected = expected;
+        internal readonly StatusDeniedVaultUpdateReadPhase Phase = phase;
+        internal CancellationToken[] Tokens = [];
+        internal StatusDeniedVaultUpdateReadProof? Proof;
+    }
+    private readonly Dictionary<Window, StatusDeniedVaultUpdateReadRegistration> statusDeniedVaultUpdateReads =
+        new(ReferenceEqualityComparer.Instance);
+
+    private static bool StatusDeniedVaultUpdateBinding(Capture.Binding binding) =>
+        binding.Selector is not null &&
+        binding.Selector.Operation == "a.management.ManagementOperation.CheckStatusAsync" &&
+        binding.Selector.Variant == "operation.CreateOrUpdateVault" &&
+        binding.Selector.Case == "denied-authority" &&
+        binding.Operation == ManagementMutation.CreateOrUpdateVault;
+
+    internal Window ArmStatusDeniedVaultUpdate(Capture.Binding binding,
+        VaultAdministrationEffects.Configuration expected, StatusDeniedVaultUpdateReadPhase phase)
+    {
+        Require(binding is not null && StatusDeniedVaultUpdateBinding(binding) && Enum.IsDefined(phase));
+        // Deleted counterpart admission is local to this enrollment, not a
+        // broader generic CreateOrUpdateVault read contract.
+        ValidateBinding(binding, statusDeniedVaultUpdateRead: true);
+        Require(expected is { Rbac: true, PurgeProtection: false, Policies.Length: 0 } &&
+            expected.TenantId == tenantId && expected.Location == binding.Location);
+        _ = expected.Build();
+        bool active = phase is StatusDeniedVaultUpdateReadPhase.ReadyActive or
+            StatusDeniedVaultUpdateReadPhase.BaselineActive or StatusDeniedVaultUpdateReadPhase.SelectedActive or
+            StatusDeniedVaultUpdateReadPhase.CleanupActive or StatusDeniedVaultUpdateReadPhase.FinalActiveAbsent;
+        Require(active ? binding.Resource is VaultScope :
+            binding.Resource is DeletedVaultScope deleted && deleted.Location == binding.Location);
+        Require(phase switch
+        {
+            StatusDeniedVaultUpdateReadPhase.ReadyActive or StatusDeniedVaultUpdateReadPhase.ReadyDeletedAbsent or
+                StatusDeniedVaultUpdateReadPhase.BaselineActive or StatusDeniedVaultUpdateReadPhase.BaselineDeletedAbsent =>
+                !expected.PublicNetworkAccess,
+            StatusDeniedVaultUpdateReadPhase.SelectedActive or StatusDeniedVaultUpdateReadPhase.SelectedDeletedAbsent =>
+                expected.PublicNetworkAccess,
+            _ => true
+        });
+        string name = Path(binding.Resource).Split('/')[^1];
+        Require(name.Length == 24 && name.StartsWith("skv", StringComparison.Ordinal) && name[3..].All(char.IsAsciiHexDigit));
+        var snapshot = expected with { Policies = [] };
+        var armed = time.GetUtcNow();
+        var stamp = time.GetTimestamp();
+        lock (gate)
+        {
+            var window = ArmPurgeReadWindow(binding, armed, stamp);
+            statusDeniedVaultUpdateReads.Add(window, new(snapshot, phase));
+            return window;
+        }
+    }
+
+    internal bool TryGetStatusDeniedVaultUpdateRead(Window window, Capture.Binding binding,
+        StatusDeniedVaultUpdateReadPhase phase, Task<Measurement> task,
+        [NotNullWhen(true)] out StatusDeniedVaultUpdateReadProof? proof)
+    {
+        lock (gate)
+        {
+            proof = null;
+            if (window is null || !windows.TryGetValue(window, out var registration) ||
+                !statusDeniedVaultUpdateReads.TryGetValue(window, out var selected) ||
+                !ReferenceEquals(window.Binding, binding) || selected.Phase != phase ||
+                !ReferenceEquals(registration.Task, task) || !task.IsCompletedSuccessfully) return false;
+            if (selected.Tokens.Any(t => t.IsCancellationRequested)) selected.Proof = null;
+            if (selected.Proof is null) return false;
+            proof = selected.Proof;
+            return true;
+        }
+    }
+
+    internal bool OwnsStatusDeniedVaultUpdateRead(StatusDeniedVaultUpdateReadProof proof, Window window,
+        Capture.Binding binding, StatusDeniedVaultUpdateReadPhase phase, Task<Measurement> task) =>
+        TryGetStatusDeniedVaultUpdateRead(window, binding, phase, task, out var issued) && ReferenceEquals(issued, proof);
+
+    private async Task<Measurement> CollectStatusDeniedVaultUpdateAsync(Window window, Capture.Binding binding,
+        Registration registration, StatusDeniedVaultUpdateReadRegistration selected, Task admission)
+    {
+        await admission.ConfigureAwait(false);
+        var budget = new Budget(time, window.ArmedAt, registration.Timestamp, limits.Timeout);
+        budget.Check();
+        var started = budget.ObservedAt;
+        using var deadline = new CancellationTokenSource(budget.Remaining, time);
+        budget.Deadline = deadline;
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource([.. selected.Tokens, deadline.Token]);
+        var read = new PrivateRead();
+        Task? nativeTask = null;
+        RequestFailedException? nativeError = null;
+        int? status = null;
+        string? requestId = null, responseHash = null, originalVaultId = null, errorCode = null;
+        VaultConfiguration? configuration = null;
+        Failure failure = Failure.Unavailable;
+        SecretStatus outcome = SecretStatus.Unavailable;
+        bool valid = false;
+        try
+        {
+            linked.Token.ThrowIfCancellationRequested();
+            var uri = new Uri(ArmOrigin + Path(binding.Resource) + "?api-version=" + binding.ApiRevision);
+            var options = new ArmClientOptions
+            {
+                Environment = new(new Uri(ArmOrigin), ArmOrigin),
+                Transport = new ReadTransport(authority.Transport, uri, budget, read, limits.MaximumResponseBytes,
+                    requireErrorRebuffer: true)
+            };
+            options.Retry.MaxRetries = 0;
+            options.Diagnostics.IsLoggingEnabled = false;
+            options.Diagnostics.IsLoggingContentEnabled = false;
+            options.Diagnostics.IsDistributedTracingEnabled = false;
+            options.SetApiVersion(Type(binding.Resource), binding.ApiRevision);
+            if (binding.Resource is DeletedVaultScope)
+                options.SetApiVersion("Microsoft.KeyVault/deletedVaults", binding.ApiRevision);
+            var client = new ArmClient(new ObserverCredential(authority.Credential, budget), null, options);
+            Response<KeyVaultResource>? activeResponse = null;
+            Response<DeletedKeyVaultResource>? deletedResponse = null;
+            try
+            {
+                if (binding.Resource is VaultScope vault)
+                {
+                    var actual = client.GetKeyVaultResource(new(vault.ExportResourceId())).GetAsync(linked.Token);
+                    nativeTask = actual;
+                    activeResponse = await actual.ConfigureAwait(false);
+                }
+                else
+                {
+                    var actual = client.GetDeletedKeyVaultResource(new(Path(binding.Resource))).GetAsync(linked.Token);
+                    nativeTask = actual;
+                    deletedResponse = await actual.ConfigureAwait(false);
+                }
+            }
+            catch (RequestFailedException exception) { nativeError = exception; }
+            if (read.Send is not null) await read.Send.ConfigureAwait(false);
+            budget.Check();
+            linked.Token.ThrowIfCancellationRequested();
+            Require(nativeTask is not null && read.Body is not null && read.Parser is { Complete: true, Invalid: false });
+            status = read.Body.Response.Status;
+            requestId = read.Body.NativeRequestId;
+            responseHash = read.Body.Sha256;
+            long? length = ResponseHeaders(read.Body.Response, out var headerRequestId);
+            Require(requestId == headerRequestId && (length is null || length == read.Body.Bytes.Length) &&
+                read.Body.Bytes.Length <= limits.MaximumRowBytes);
+            Shape(read.Body.Bytes.Span);
+            using var json = JsonDocument.Parse(read.Body.Bytes, new JsonDocumentOptions { MaxDepth = limits.MaximumDepth });
+            bool present = selected.Phase is StatusDeniedVaultUpdateReadPhase.ReadyActive or
+                StatusDeniedVaultUpdateReadPhase.BaselineActive or StatusDeniedVaultUpdateReadPhase.SelectedActive or
+                StatusDeniedVaultUpdateReadPhase.CleanupActive;
+            Require(status == (present ? 200 : 404));
+            if (present)
+            {
+                Require(binding.Resource is VaultScope && activeResponse is not null && deletedResponse is null &&
+                    nativeError is null && nativeTask.IsCompletedSuccessfully && read.Parser.Owns(activeResponse.GetRawResponse()));
+                originalVaultId = Path(binding.Resource);
+                // This validator requires every raw configuration field, both
+                // empty arrays and ownership, then joins the installed model.
+                ValidateStatusSucceededActive(json.RootElement, activeResponse.Value.Data, originalVaultId,
+                    binding.Selector.Nonce, selected.Expected);
+                var properties = Object(json.RootElement, "properties");
+                Require(OptionalText(properties, "createMode") is null or "default");
+                configuration = new(selected.Expected.Location, selected.Expected.TenantId, selected.Expected.Sku,
+                    selected.Expected.Rbac, selected.Expected.PurgeProtection, selected.Expected.RetentionDays,
+                    selected.Expected.PublicNetworkAccess, [], OptionalText(properties, "createMode"));
+                outcome = SecretStatus.Success;
+            }
+            else
+            {
+                Require(nativeError is { Status: 404 } && nativeTask.IsFaulted &&
+                    activeResponse is null && deletedResponse is null &&
+                    Only(json.RootElement, "error") && json.RootElement.EnumerateObject().Count() == 1);
+                var error = Object(json.RootElement, "error");
+                errorCode = Text(error, "code");
+                Require(Only(error, "code", "message") &&
+                    errorCode is "NotFound" or "ResourceNotFound" or "VaultNotFound" &&
+                    nativeError.ErrorCode == errorCode);
+                if (error.TryGetProperty("message", out var message))
+                    Require(message.ValueKind == JsonValueKind.String && message.GetString()!.Length <= 4096 &&
+                        !message.GetString()!.Any(char.IsControl));
+                outcome = SecretStatus.Absent;
+            }
+            valid = true;
+        }
+        catch (Exception exception)
+        {
+            failure = deadline.IsCancellationRequested ? Failure.Deadline :
+                exception is Boundary boundary ? boundary.Reason : Failure.Unavailable;
+        }
+        finally
+        {
+            // No proof until real credential/send/native/parser/storage owners
+            // have ended. Cancellation cannot detach a borrower or fake drain.
+            if (nativeTask is not null) try { await nativeTask.ConfigureAwait(false); } catch (Exception) { }
+            if (read.Send is not null) try { await read.Send.ConfigureAwait(false); } catch (Exception) { }
+            try { read.Storage.Dispose(); }
+            catch (Exception) { valid = false; failure = Failure.Unavailable; }
+        }
+        lock (gate)
+        {
+            if (selected.Tokens.Any(t => t.IsCancellationRequested))
+                throw new OperationCanceledException(selected.Tokens.First(t => t.IsCancellationRequested));
+            try
+            {
+                budget.Check();
+                linked.Token.ThrowIfCancellationRequested();
+                Require(valid && read.Parser is { Complete: true, Invalid: false } && nativeTask is { IsCompleted: true } &&
+                    read.Send is { IsCompletedSuccessfully: true } &&
+                    ReferenceEquals(statusDeniedVaultUpdateReads[window], selected) && selected.Proof is null &&
+                    registration.Task is not null && read.RequestSha256 is not null &&
+                    responseHash is not null && requestId is not null);
+                selected.Proof = new(this, window, binding, selected.Phase, selected.Expected, configuration,
+                    registration.Task, nativeTask, nativeError, status!.Value, originalVaultId, errorCode,
+                    read.RequestSha256, responseHash, requestId, started, budget.ObservedAt,
+                    selected.Tokens[0], selected.Tokens[1]);
+                failure = Failure.None;
+            }
+            catch (Exception exception)
+            {
+                failure = deadline.IsCancellationRequested ? Failure.Deadline :
+                    exception is Boundary boundary ? boundary.Reason : Failure.Unavailable;
+                outcome = SecretStatus.Unavailable;
+            }
+        }
+        bool exists = failure == Failure.None && outcome == SecretStatus.Success;
+        return new()
+        {
+            Binding = binding,
+            WindowId = window.Id,
+            ArmedAt = window.ArmedAt,
+            StartedAt = started,
+            FinishedAt = budget.ObservedAt,
+            Identity = authority.Label,
+            Failure = failure,
+            ResourceStatus = failure == Failure.None ? outcome : SecretStatus.Unavailable,
+            HttpStatus = status ?? read.ObservedStatus,
+            NativeRequestId = requestId,
+            ResourceId = exists ? originalVaultId : null,
+            ResourceName = exists ? Path(binding.Resource).Split('/')[^1] : null,
+            ResourceType = exists ? Type(binding.Resource) : null,
+            NativeState = exists ? "Succeeded" : null,
+            Topic = null,
+            EventTypes = [],
+            VaultConfiguration = exists ? configuration : null,
+            ConnectionState = null,
+            NotificationConfiguration = null,
+            DeletedVault = null,
+            RoleAssignment = null,
+            PersistedStateEligible = exists
+        };
+    }
+
+    internal enum StatusDeniedPurgeReadPhase
+    {
+        ReadyActiveAbsent, ReadyDeletedPresent, BaselineActiveAbsent, BaselineDeletedPresent,
+        SelectedActiveAbsent, SelectedDeletedAbsent, FinalActiveAbsent, FinalDeletedAbsent
+    }
+    internal sealed class StatusDeniedPurgeReadProof(Window window, Capture.Binding binding,
+        StatusDeniedPurgeReadPhase phase, Task nativeTask, int httpStatus, string? originalVaultId,
+        string requestSha256, string responseSha256, string nativeRequestId,
+        DateTimeOffset startedAt, DateTimeOffset finishedAt)
+    {
+        internal Window Window { get; } = window;
+        internal Capture.Binding Binding { get; } = binding;
+        internal StatusDeniedPurgeReadPhase Phase { get; } = phase;
+        internal Task NativeTask { get; } = nativeTask;
+        internal int HttpStatus { get; } = httpStatus;
+        internal string? OriginalVaultId { get; } = originalVaultId;
+        internal string RequestSha256 { get; } = requestSha256;
+        internal string ResponseSha256 { get; } = responseSha256;
+        internal string NativeRequestId { get; } = nativeRequestId;
+        internal DateTimeOffset StartedAt { get; } = startedAt;
+        internal DateTimeOffset FinishedAt { get; } = finishedAt;
+        public override string ToString() => "[StatusDeniedPurgeReadProof]";
+    }
+    private sealed class StatusDeniedPurgeReadRegistration(VaultAdministrationEffects.Configuration baseline,
+        StatusDeniedPurgeReadPhase phase)
+    {
+        internal readonly PurgeReadRun Run = new(baseline,
+            phase is StatusDeniedPurgeReadPhase.ReadyDeletedPresent or
+                StatusDeniedPurgeReadPhase.BaselineDeletedPresent);
+        internal readonly StatusDeniedPurgeReadPhase Phase = phase;
+        internal StatusDeniedPurgeReadProof? Proof;
+    }
+    private readonly Dictionary<Window, StatusDeniedPurgeReadRegistration> statusDeniedReads =
+        new(ReferenceEqualityComparer.Instance);
+
+    internal Window ArmStatusDeniedPurge(Capture.Binding binding, VaultAdministrationEffects.Configuration baseline,
+        StatusDeniedPurgeReadPhase phase)
+    {
+        Require(binding is not null && binding.Selector is not null &&
+            binding.Selector.Operation == "a.management.ManagementOperation.CheckStatusAsync" &&
+            binding.Selector.Variant is "operation.PurgeDeletedVault" or "status.Succeeded" or
+                "status.Pending" or "status.Failed" or "status.Canceled" or "status.Unknown" &&
+            binding.Selector.Case == "denied-authority" && Enum.IsDefined(phase));
+        bool active = phase is StatusDeniedPurgeReadPhase.ReadyActiveAbsent or
+            StatusDeniedPurgeReadPhase.BaselineActiveAbsent or StatusDeniedPurgeReadPhase.SelectedActiveAbsent or
+            StatusDeniedPurgeReadPhase.FinalActiveAbsent;
+        ValidatePurgeReadBinding(binding, baseline, active);
+        var snapshot = baseline with { Policies = [] };
+        var armed = time.GetUtcNow();
+        var stamp = time.GetTimestamp();
+        lock (gate)
+        {
+            var window = ArmPurgeReadWindow(binding, armed, stamp);
+            statusDeniedReads.Add(window, new(snapshot, phase));
+            return window;
+        }
+    }
+
+    internal bool TryGetStatusDeniedPurgeRead(Window window, Capture.Binding binding,
+        StatusDeniedPurgeReadPhase phase, Task<Measurement> task,
+        [NotNullWhen(true)] out StatusDeniedPurgeReadProof? proof)
+    {
+        lock (gate)
+        {
+            proof = null;
+            if (window is null || !windows.TryGetValue(window, out var registration) ||
+                !statusDeniedReads.TryGetValue(window, out var denied) ||
+                !ReferenceEquals(window.Binding, binding) || denied.Phase != phase ||
+                !ReferenceEquals(registration.Task, task) || !task.IsCompletedSuccessfully) return false;
+            if (denied.Run.Tokens.Any(t => t.IsCancellationRequested)) denied.Proof = null;
+            if (denied.Proof is null) return false;
+            proof = denied.Proof;
+            return true;
+        }
+    }
+
+    internal bool OwnsStatusDeniedPurgeRead(StatusDeniedPurgeReadProof proof, Window window,
+        Capture.Binding binding, StatusDeniedPurgeReadPhase phase, Task<Measurement> task) =>
+        TryGetStatusDeniedPurgeRead(window, binding, phase, task, out var issued) && ReferenceEquals(issued, proof);
+
+    // Shared native read state contains no profile proof authority. Only the
     // distinct reference registries can publish their corresponding proof.
-    private sealed class StatusPendingPurgeReadRun(VaultAdministrationEffects.Configuration baseline, bool present)
+    private sealed class PurgeReadRun(VaultAdministrationEffects.Configuration baseline, bool present)
     {
         internal readonly VaultAdministrationEffects.Configuration Baseline = baseline;
         internal readonly bool Present = present;
@@ -275,13 +868,13 @@ internal sealed class ManagementOperationResourceCollector
         bool active = phase is StatusPendingPurgeReadPhase.ReadyActiveAbsent or
             StatusPendingPurgeReadPhase.BaselineActiveAbsent or StatusPendingPurgeReadPhase.SelectedActiveAbsent or
             StatusPendingPurgeReadPhase.FinalActiveAbsent;
-        ValidateStatusPendingPurgeReadBinding(binding, baseline, active);
+        ValidatePurgeReadBinding(binding, baseline, active);
         var snapshot = baseline with { Policies = [] };
         var armed = time.GetUtcNow();
         var stamp = time.GetTimestamp();
         lock (gate)
         {
-            var window = ArmStatusPendingPurgeReadWindow(binding, armed, stamp);
+            var window = ArmPurgeReadWindow(binding, armed, stamp);
             statusPendingReads.Add(window, new(snapshot, phase));
             return window;
         }
@@ -297,13 +890,13 @@ internal sealed class ManagementOperationResourceCollector
         bool active = phase is StatusPendingPurgeIndependentReadPhase.ReadyActiveAbsent or
             StatusPendingPurgeIndependentReadPhase.BaselineActiveAbsent or StatusPendingPurgeIndependentReadPhase.SelectedActiveAbsent or
             StatusPendingPurgeIndependentReadPhase.FinalActiveAbsent;
-        ValidateStatusPendingPurgeReadBinding(binding, baseline, active);
+        ValidatePurgeReadBinding(binding, baseline, active);
         var snapshot = baseline with { Policies = [] };
         var armed = time.GetUtcNow();
         var stamp = time.GetTimestamp();
         lock (gate)
         {
-            var window = ArmStatusPendingPurgeReadWindow(binding, armed, stamp);
+            var window = ArmPurgeReadWindow(binding, armed, stamp);
             statusPendingIndependentReads.Add(window, new(snapshot, phase));
             return window;
         }
@@ -319,19 +912,151 @@ internal sealed class ManagementOperationResourceCollector
         bool active = phase is StatusPendingPurgeCancellationReadPhase.ReadyActiveAbsent or
             StatusPendingPurgeCancellationReadPhase.BaselineActiveAbsent or StatusPendingPurgeCancellationReadPhase.SelectedActiveAbsent or
             StatusPendingPurgeCancellationReadPhase.FinalActiveAbsent;
-        ValidateStatusPendingPurgeReadBinding(binding, baseline, active);
+        ValidatePurgeReadBinding(binding, baseline, active);
         var snapshot = baseline with { Policies = [] };
         var armed = time.GetUtcNow();
         var stamp = time.GetTimestamp();
         lock (gate)
         {
-            var window = ArmStatusPendingPurgeReadWindow(binding, armed, stamp);
+            var window = ArmPurgeReadWindow(binding, armed, stamp);
             statusPendingCancellationReads.Add(window, new(snapshot, phase));
             return window;
         }
     }
 
-    private void ValidateStatusPendingPurgeReadBinding(Capture.Binding binding,
+    internal Window ArmStatusFailedPurge(Capture.Binding binding, VaultAdministrationEffects.Configuration baseline,
+        StatusFailedPurgeReadPhase phase)
+    {
+        Require(binding is not null && binding.Selector is not null &&
+            binding.Selector.Operation == "a.management.ManagementOperation.CheckStatusAsync" &&
+            binding.Selector.Variant == "status.Failed" && binding.Selector.Case == "selected-contract" &&
+            Enum.IsDefined(phase));
+        bool active = phase is StatusFailedPurgeReadPhase.ReadyActiveAbsent or
+            StatusFailedPurgeReadPhase.BaselineActiveAbsent or StatusFailedPurgeReadPhase.SelectedActiveAbsent or
+            StatusFailedPurgeReadPhase.CleanupActiveAbsent or StatusFailedPurgeReadPhase.FinalActiveAbsent;
+        ValidatePurgeReadBinding(binding, baseline, active);
+        var snapshot = baseline with { Policies = [] };
+        var armed = time.GetUtcNow();
+        var stamp = time.GetTimestamp();
+        lock (gate)
+        {
+            var window = ArmPurgeReadWindow(binding, armed, stamp);
+            statusFailedReads.Add(window, new(snapshot, phase));
+            return window;
+        }
+    }
+
+    internal Window ArmStatusFailedPurgeIndependent(Capture.Binding binding, VaultAdministrationEffects.Configuration baseline,
+        StatusFailedPurgeIndependentReadPhase phase)
+    {
+        Require(binding is not null && binding.Selector is not null &&
+            binding.Selector.Operation == "a.management.ManagementOperation.CheckStatusAsync" &&
+            binding.Selector.Variant == "status.Failed" && binding.Selector.Case == "independent-effect" &&
+            Enum.IsDefined(phase));
+        bool active = phase is StatusFailedPurgeIndependentReadPhase.ReadyActiveAbsent or
+            StatusFailedPurgeIndependentReadPhase.BaselineActiveAbsent or StatusFailedPurgeIndependentReadPhase.SelectedActiveAbsent or
+            StatusFailedPurgeIndependentReadPhase.CleanupActiveAbsent or StatusFailedPurgeIndependentReadPhase.FinalActiveAbsent;
+        ValidatePurgeReadBinding(binding, baseline, active);
+        var snapshot = baseline with { Policies = [] };
+        var armed = time.GetUtcNow();
+        var stamp = time.GetTimestamp();
+        lock (gate)
+        {
+            var window = ArmPurgeReadWindow(binding, armed, stamp);
+            statusFailedIndependentReads.Add(window, new(snapshot, phase));
+            return window;
+        }
+    }
+
+    internal Window ArmStatusFailedPurgeCancellation(Capture.Binding binding, VaultAdministrationEffects.Configuration baseline,
+        StatusFailedPurgeCancellationReadPhase phase)
+    {
+        Require(binding is not null && binding.Selector is not null &&
+            binding.Selector.Operation == "a.management.ManagementOperation.CheckStatusAsync" &&
+            binding.Selector.Variant == "status.Failed" && binding.Selector.Case == "cancellation-boundary" &&
+            Enum.IsDefined(phase));
+        bool active = phase is StatusFailedPurgeCancellationReadPhase.ReadyActiveAbsent or
+            StatusFailedPurgeCancellationReadPhase.BaselineActiveAbsent or StatusFailedPurgeCancellationReadPhase.SelectedActiveAbsent or
+            StatusFailedPurgeCancellationReadPhase.CleanupActiveAbsent or StatusFailedPurgeCancellationReadPhase.FinalActiveAbsent;
+        ValidatePurgeReadBinding(binding, baseline, active);
+        var snapshot = baseline with { Policies = [] };
+        var armed = time.GetUtcNow();
+        var stamp = time.GetTimestamp();
+        lock (gate)
+        {
+            var window = ArmPurgeReadWindow(binding, armed, stamp);
+            statusFailedCancellationReads.Add(window, new(snapshot, phase));
+            return window;
+        }
+    }
+
+    internal Window ArmStatusCanceledPurge(Capture.Binding binding, VaultAdministrationEffects.Configuration baseline,
+        StatusCanceledPurgeReadPhase phase)
+    {
+        Require(binding is not null && binding.Selector is not null &&
+            binding.Selector.Operation == "a.management.ManagementOperation.CheckStatusAsync" &&
+            binding.Selector.Variant == "status.Canceled" && binding.Selector.Case == "selected-contract" &&
+            Enum.IsDefined(phase));
+        bool active = phase is StatusCanceledPurgeReadPhase.ReadyActiveAbsent or
+            StatusCanceledPurgeReadPhase.BaselineActiveAbsent or StatusCanceledPurgeReadPhase.SelectedActiveAbsent or
+            StatusCanceledPurgeReadPhase.CleanupActiveAbsent or StatusCanceledPurgeReadPhase.FinalActiveAbsent;
+        ValidatePurgeReadBinding(binding, baseline, active);
+        var snapshot = baseline with { Policies = [] };
+        var armed = time.GetUtcNow();
+        var stamp = time.GetTimestamp();
+        lock (gate)
+        {
+            var window = ArmPurgeReadWindow(binding, armed, stamp);
+            statusCanceledReads.Add(window, new(snapshot, phase));
+            return window;
+        }
+    }
+
+    internal Window ArmStatusCanceledPurgeIndependent(Capture.Binding binding, VaultAdministrationEffects.Configuration baseline,
+        StatusCanceledPurgeIndependentReadPhase phase)
+    {
+        Require(binding is not null && binding.Selector is not null &&
+            binding.Selector.Operation == "a.management.ManagementOperation.CheckStatusAsync" &&
+            binding.Selector.Variant == "status.Canceled" && binding.Selector.Case == "independent-effect" &&
+            Enum.IsDefined(phase));
+        bool active = phase is StatusCanceledPurgeIndependentReadPhase.ReadyActiveAbsent or
+            StatusCanceledPurgeIndependentReadPhase.BaselineActiveAbsent or StatusCanceledPurgeIndependentReadPhase.SelectedActiveAbsent or
+            StatusCanceledPurgeIndependentReadPhase.CleanupActiveAbsent or StatusCanceledPurgeIndependentReadPhase.FinalActiveAbsent;
+        ValidatePurgeReadBinding(binding, baseline, active);
+        var snapshot = baseline with { Policies = [] };
+        var armed = time.GetUtcNow();
+        var stamp = time.GetTimestamp();
+        lock (gate)
+        {
+            var window = ArmPurgeReadWindow(binding, armed, stamp);
+            statusCanceledIndependentReads.Add(window, new(snapshot, phase));
+            return window;
+        }
+    }
+
+    internal Window ArmStatusCanceledPurgeCancellation(Capture.Binding binding, VaultAdministrationEffects.Configuration baseline,
+        StatusCanceledPurgeCancellationReadPhase phase)
+    {
+        Require(binding is not null && binding.Selector is not null &&
+            binding.Selector.Operation == "a.management.ManagementOperation.CheckStatusAsync" &&
+            binding.Selector.Variant == "status.Canceled" && binding.Selector.Case == "cancellation-boundary" &&
+            Enum.IsDefined(phase));
+        bool active = phase is StatusCanceledPurgeCancellationReadPhase.ReadyActiveAbsent or
+            StatusCanceledPurgeCancellationReadPhase.BaselineActiveAbsent or StatusCanceledPurgeCancellationReadPhase.SelectedActiveAbsent or
+            StatusCanceledPurgeCancellationReadPhase.CleanupActiveAbsent or StatusCanceledPurgeCancellationReadPhase.FinalActiveAbsent;
+        ValidatePurgeReadBinding(binding, baseline, active);
+        var snapshot = baseline with { Policies = [] };
+        var armed = time.GetUtcNow();
+        var stamp = time.GetTimestamp();
+        lock (gate)
+        {
+            var window = ArmPurgeReadWindow(binding, armed, stamp);
+            statusCanceledCancellationReads.Add(window, new(snapshot, phase));
+            return window;
+        }
+    }
+
+    private void ValidatePurgeReadBinding(Capture.Binding binding,
         VaultAdministrationEffects.Configuration baseline, bool active)
     {
         Require(binding.Operation == ManagementMutation.PurgeDeletedVault && binding.ApiRevision == "2026-02-01" &&
@@ -347,7 +1072,7 @@ internal sealed class ManagementOperationResourceCollector
         Require(name.Length == 24 && name.StartsWith("skv", StringComparison.Ordinal) && name[3..].All(char.IsAsciiHexDigit));
     }
 
-    private Window ArmStatusPendingPurgeReadWindow(Capture.Binding binding, DateTimeOffset armed, long stamp)
+    private Window ArmPurgeReadWindow(Capture.Binding binding, DateTimeOffset armed, long stamp)
     {
         // Called under gate. Each phase has its own collector, not a rearmed
         // generic window; the caller registers its own exact profile.
@@ -424,8 +1149,140 @@ internal sealed class ManagementOperationResourceCollector
         Capture.Binding binding, StatusPendingPurgeCancellationReadPhase phase, Task<Measurement> task) =>
         TryGetStatusPendingPurgeCancellationRead(window, binding, phase, task, out var issued) && ReferenceEquals(issued, proof);
 
-    private async Task<Measurement> CollectStatusPendingPurgeAsync(Window window, Capture.Binding binding,
-        Registration registration, StatusPendingPurgeReadRun run, Task admission)
+    internal bool TryGetStatusFailedPurgeRead(Window window, Capture.Binding binding,
+        StatusFailedPurgeReadPhase phase, Task<Measurement> task,
+        [NotNullWhen(true)] out StatusFailedPurgeReadProof? proof)
+    {
+        lock (gate)
+        {
+            proof = null;
+            if (window is null || !windows.TryGetValue(window, out var registration) ||
+                !statusFailedReads.TryGetValue(window, out var failed) ||
+                !ReferenceEquals(window.Binding, binding) || failed.Phase != phase ||
+                !ReferenceEquals(registration.Task, task) || !task.IsCompletedSuccessfully) return false;
+            if (failed.Run.Tokens.Any(t => t.IsCancellationRequested)) failed.Proof = null;
+            if (failed.Proof is null) return false;
+            proof = failed.Proof;
+            return true;
+        }
+    }
+
+    internal bool OwnsStatusFailedPurgeRead(StatusFailedPurgeReadProof proof, Window window,
+        Capture.Binding binding, StatusFailedPurgeReadPhase phase, Task<Measurement> task) =>
+        TryGetStatusFailedPurgeRead(window, binding, phase, task, out var issued) && ReferenceEquals(issued, proof);
+
+    internal bool TryGetStatusFailedPurgeIndependentRead(Window window, Capture.Binding binding,
+        StatusFailedPurgeIndependentReadPhase phase, Task<Measurement> task,
+        [NotNullWhen(true)] out StatusFailedPurgeIndependentReadProof? proof)
+    {
+        lock (gate)
+        {
+            proof = null;
+            if (window is null || !windows.TryGetValue(window, out var registration) ||
+                !statusFailedIndependentReads.TryGetValue(window, out var independent) ||
+                !ReferenceEquals(window.Binding, binding) || independent.Phase != phase ||
+                !ReferenceEquals(registration.Task, task) || !task.IsCompletedSuccessfully) return false;
+            if (independent.Run.Tokens.Any(t => t.IsCancellationRequested)) independent.Proof = null;
+            if (independent.Proof is null) return false;
+            proof = independent.Proof;
+            return true;
+        }
+    }
+
+    internal bool OwnsStatusFailedPurgeIndependentRead(StatusFailedPurgeIndependentReadProof proof, Window window,
+        Capture.Binding binding, StatusFailedPurgeIndependentReadPhase phase, Task<Measurement> task) =>
+        TryGetStatusFailedPurgeIndependentRead(window, binding, phase, task, out var issued) && ReferenceEquals(issued, proof);
+
+    internal bool TryGetStatusFailedPurgeCancellationRead(Window window, Capture.Binding binding,
+        StatusFailedPurgeCancellationReadPhase phase, Task<Measurement> task,
+        [NotNullWhen(true)] out StatusFailedPurgeCancellationReadProof? proof)
+    {
+        lock (gate)
+        {
+            proof = null;
+            if (window is null || !windows.TryGetValue(window, out var registration) ||
+                !statusFailedCancellationReads.TryGetValue(window, out var cancellation) ||
+                !ReferenceEquals(window.Binding, binding) || cancellation.Phase != phase ||
+                !ReferenceEquals(registration.Task, task) || !task.IsCompletedSuccessfully) return false;
+            if (cancellation.Run.Tokens.Any(t => t.IsCancellationRequested)) cancellation.Proof = null;
+            if (cancellation.Proof is null) return false;
+            proof = cancellation.Proof;
+            return true;
+        }
+    }
+
+    internal bool OwnsStatusFailedPurgeCancellationRead(StatusFailedPurgeCancellationReadProof proof, Window window,
+        Capture.Binding binding, StatusFailedPurgeCancellationReadPhase phase, Task<Measurement> task) =>
+        TryGetStatusFailedPurgeCancellationRead(window, binding, phase, task, out var issued) && ReferenceEquals(issued, proof);
+
+    internal bool TryGetStatusCanceledPurgeRead(Window window, Capture.Binding binding,
+        StatusCanceledPurgeReadPhase phase, Task<Measurement> task,
+        [NotNullWhen(true)] out StatusCanceledPurgeReadProof? proof)
+    {
+        lock (gate)
+        {
+            proof = null;
+            if (window is null || !windows.TryGetValue(window, out var registration) ||
+                !statusCanceledReads.TryGetValue(window, out var canceled) ||
+                !ReferenceEquals(window.Binding, binding) || canceled.Phase != phase ||
+                !ReferenceEquals(registration.Task, task) || !task.IsCompletedSuccessfully) return false;
+            if (canceled.Run.Tokens.Any(t => t.IsCancellationRequested)) canceled.Proof = null;
+            if (canceled.Proof is null) return false;
+            proof = canceled.Proof;
+            return true;
+        }
+    }
+
+    internal bool OwnsStatusCanceledPurgeRead(StatusCanceledPurgeReadProof proof, Window window,
+        Capture.Binding binding, StatusCanceledPurgeReadPhase phase, Task<Measurement> task) =>
+        TryGetStatusCanceledPurgeRead(window, binding, phase, task, out var issued) && ReferenceEquals(issued, proof);
+
+    internal bool TryGetStatusCanceledPurgeIndependentRead(Window window, Capture.Binding binding,
+        StatusCanceledPurgeIndependentReadPhase phase, Task<Measurement> task,
+        [NotNullWhen(true)] out StatusCanceledPurgeIndependentReadProof? proof)
+    {
+        lock (gate)
+        {
+            proof = null;
+            if (window is null || !windows.TryGetValue(window, out var registration) ||
+                !statusCanceledIndependentReads.TryGetValue(window, out var independent) ||
+                !ReferenceEquals(window.Binding, binding) || independent.Phase != phase ||
+                !ReferenceEquals(registration.Task, task) || !task.IsCompletedSuccessfully) return false;
+            if (independent.Run.Tokens.Any(t => t.IsCancellationRequested)) independent.Proof = null;
+            if (independent.Proof is null) return false;
+            proof = independent.Proof;
+            return true;
+        }
+    }
+
+    internal bool OwnsStatusCanceledPurgeIndependentRead(StatusCanceledPurgeIndependentReadProof proof, Window window,
+        Capture.Binding binding, StatusCanceledPurgeIndependentReadPhase phase, Task<Measurement> task) =>
+        TryGetStatusCanceledPurgeIndependentRead(window, binding, phase, task, out var issued) && ReferenceEquals(issued, proof);
+
+    internal bool TryGetStatusCanceledPurgeCancellationRead(Window window, Capture.Binding binding,
+        StatusCanceledPurgeCancellationReadPhase phase, Task<Measurement> task,
+        [NotNullWhen(true)] out StatusCanceledPurgeCancellationReadProof? proof)
+    {
+        lock (gate)
+        {
+            proof = null;
+            if (window is null || !windows.TryGetValue(window, out var registration) ||
+                !statusCanceledCancellationReads.TryGetValue(window, out var cancellation) ||
+                !ReferenceEquals(window.Binding, binding) || cancellation.Phase != phase ||
+                !ReferenceEquals(registration.Task, task) || !task.IsCompletedSuccessfully) return false;
+            if (cancellation.Run.Tokens.Any(t => t.IsCancellationRequested)) cancellation.Proof = null;
+            if (cancellation.Proof is null) return false;
+            proof = cancellation.Proof;
+            return true;
+        }
+    }
+
+    internal bool OwnsStatusCanceledPurgeCancellationRead(StatusCanceledPurgeCancellationReadProof proof, Window window,
+        Capture.Binding binding, StatusCanceledPurgeCancellationReadPhase phase, Task<Measurement> task) =>
+        TryGetStatusCanceledPurgeCancellationRead(window, binding, phase, task, out var issued) && ReferenceEquals(issued, proof);
+
+    private async Task<Measurement> CollectPurgeReadAsync(Window window, Capture.Binding binding,
+        Registration registration, PurgeReadRun run, Task admission)
     {
         await admission.ConfigureAwait(false);
         var budget = new Budget(time, window.ArmedAt, registration.Timestamp, limits.Timeout);
@@ -450,7 +1307,7 @@ internal sealed class ManagementOperationResourceCollector
             {
                 Environment = new(new Uri(ArmOrigin), ArmOrigin),
                 Transport = new ReadTransport(authority.Transport, uri, budget, read, limits.MaximumResponseBytes,
-                    statusPendingPurge: true)
+                    requireErrorRebuffer: true)
             };
             options.Retry.MaxRetries = 0;
             options.Diagnostics.IsLoggingEnabled = false;
@@ -511,7 +1368,7 @@ internal sealed class ManagementOperationResourceCollector
                     parts[2] == coordinate.Subscription.SubscriptionId.ToString("D") &&
                     parts[3] == "resourceGroups" && Segment(parts[4], 90) && parts[5] == "providers" &&
                     parts[6] == "Microsoft.KeyVault" && parts[7] == "vaults" && parts[8] == coordinate.VaultName);
-                ValidateStatusPendingPurgeDeleted(json.RootElement, deletedResponse.Value.Data, Path(binding.Resource),
+                ValidatePurgeDeleted(json.RootElement, deletedResponse.Value.Data, Path(binding.Resource),
                     originalVaultId, binding.Selector.Nonce, run.Baseline);
                 var properties = deletedResponse.Value.Data.Properties;
                 deleted = new(originalVaultId, properties.DeletedOn, properties.ScheduledPurgeOn, properties.PurgeProtectionEnabled);
@@ -543,7 +1400,13 @@ internal sealed class ManagementOperationResourceCollector
                 linked.Token.ThrowIfCancellationRequested();
                 Require(valid && read.Parser is { Complete: true, Invalid: false } &&
                     nativeTask is not null && nativeTask.IsCompleted && read.Send is { IsCompletedSuccessfully: true });
-                if (statusPendingReads.TryGetValue(window, out var selected))
+                if (statusDeniedReads.TryGetValue(window, out var denied))
+                {
+                    Require(ReferenceEquals(denied.Run, run) && denied.Proof is null);
+                    denied.Proof = new(window, binding, denied.Phase, nativeTask, status!.Value, originalVaultId,
+                        read.RequestSha256!, responseHash!, requestId!, started, budget.ObservedAt);
+                }
+                else if (statusPendingReads.TryGetValue(window, out var selected))
                 {
                     Require(ReferenceEquals(selected.Run, run) && selected.Proof is null);
                     selected.Proof = new(window, binding, selected.Phase, nativeTask, status!.Value, originalVaultId,
@@ -555,11 +1418,47 @@ internal sealed class ManagementOperationResourceCollector
                     independent.Proof = new(window, binding, independent.Phase, nativeTask, status!.Value, originalVaultId,
                         read.RequestSha256!, responseHash!, requestId!, started, budget.ObservedAt);
                 }
+                else if (statusPendingCancellationReads.TryGetValue(window, out var cancellation))
+                {
+                    Require(ReferenceEquals(cancellation.Run, run) && cancellation.Proof is null);
+                    cancellation.Proof = new(window, binding, cancellation.Phase, nativeTask, status!.Value, originalVaultId,
+                        read.RequestSha256!, responseHash!, requestId!, started, budget.ObservedAt);
+                }
+                else if (statusFailedReads.TryGetValue(window, out var failed))
+                {
+                    Require(ReferenceEquals(failed.Run, run) && failed.Proof is null);
+                    failed.Proof = new(window, binding, failed.Phase, nativeTask, status!.Value, originalVaultId,
+                        read.RequestSha256!, responseHash!, requestId!, started, budget.ObservedAt);
+                }
+                else if (statusFailedIndependentReads.TryGetValue(window, out var failedIndependent))
+                {
+                    Require(ReferenceEquals(failedIndependent.Run, run) && failedIndependent.Proof is null);
+                    failedIndependent.Proof = new(window, binding, failedIndependent.Phase, nativeTask, status!.Value, originalVaultId,
+                        read.RequestSha256!, responseHash!, requestId!, started, budget.ObservedAt);
+                }
+                else if (statusCanceledReads.TryGetValue(window, out var canceled))
+                {
+                    Require(ReferenceEquals(canceled.Run, run) && canceled.Proof is null);
+                    canceled.Proof = new(window, binding, canceled.Phase, nativeTask, status!.Value, originalVaultId,
+                        read.RequestSha256!, responseHash!, requestId!, started, budget.ObservedAt);
+                }
+                else if (statusCanceledIndependentReads.TryGetValue(window, out var canceledIndependent))
+                {
+                    Require(ReferenceEquals(canceledIndependent.Run, run) && canceledIndependent.Proof is null);
+                    canceledIndependent.Proof = new(window, binding, canceledIndependent.Phase, nativeTask, status!.Value, originalVaultId,
+                        read.RequestSha256!, responseHash!, requestId!, started, budget.ObservedAt);
+                }
+                else if (statusCanceledCancellationReads.TryGetValue(window, out var canceledCancellation))
+                {
+                    Require(ReferenceEquals(canceledCancellation.Run, run) && canceledCancellation.Proof is null);
+                    canceledCancellation.Proof = new(window, binding, canceledCancellation.Phase, nativeTask, status!.Value, originalVaultId,
+                        read.RequestSha256!, responseHash!, requestId!, started, budget.ObservedAt);
+                }
                 else
                 {
-                    Require(statusPendingCancellationReads.TryGetValue(window, out var cancellation) &&
-                        ReferenceEquals(cancellation.Run, run) && cancellation.Proof is null);
-                    cancellation.Proof = new(window, binding, cancellation.Phase, nativeTask, status!.Value, originalVaultId,
+                    Require(statusFailedCancellationReads.TryGetValue(window, out var failedCancellation) &&
+                        ReferenceEquals(failedCancellation.Run, run) && failedCancellation.Proof is null);
+                    failedCancellation.Proof = new(window, binding, failedCancellation.Phase, nativeTask, status!.Value, originalVaultId,
                         read.RequestSha256!, responseHash!, requestId!, started, budget.ObservedAt);
                 }
                 failure = Failure.None;
@@ -583,7 +1482,9 @@ internal sealed class ManagementOperationResourceCollector
             Identity = authority.Label,
             Failure = failure,
             ResourceStatus = outcome,
-            HttpStatus = status,
+            // A positive response revokes old absence even when native parsing
+            // fails. Typed proof publication still requires all checks above.
+            HttpStatus = status ?? read.ObservedStatus,
             NativeRequestId = requestId,
             ResourceId = exists ? Path(binding.Resource) : null,
             ResourceName = exists ? Path(binding.Resource).Split('/')[^1] : null,
@@ -600,7 +1501,7 @@ internal sealed class ManagementOperationResourceCollector
         };
     }
 
-    private static void ValidateStatusPendingPurgeDeleted(JsonElement root, DeletedKeyVaultData native, string deletedId,
+    private static void ValidatePurgeDeleted(JsonElement root, DeletedKeyVaultData native, string deletedId,
         string vaultId, Guid nonce, VaultAdministrationEffects.Configuration baseline)
     {
         Require(Only(root, "id", "name", "type", "properties") && Text(root, "id") == deletedId &&
@@ -1413,6 +2314,7 @@ internal sealed class ManagementOperationResourceCollector
     private sealed class PrivateRead
     {
         internal readonly OwnedArmResponse.Storage Storage = new();
+        internal int? ObservedStatus;
         internal OwnedArmResponse.Body? Body;
         internal OwnedArmResponse.ParserCustody? Parser;
         internal Task<Response<KeyVaultPrivateEndpointConnectionResource>>? NativeTask;
@@ -1485,6 +2387,72 @@ internal sealed class ManagementOperationResourceCollector
     }
     private readonly Dictionary<Window, StatusPrivateConnectionDeleteIndependentReadPhase> statusPrivateDeleteIndependentReads =
         new(ReferenceEqualityComparer.Instance);
+
+    internal enum StatusDeniedPrivateConnectionDeleteReadPhase { Discovery, Baseline, SelectedState, Cleanup }
+
+    internal sealed class StatusDeniedPrivateConnectionDeleteReadProof(Window window, Capture.Binding binding,
+        Task<Response<KeyVaultPrivateEndpointConnectionResource>> nativeTask, StatusPrivateConnectionFacts? facts,
+        int httpStatus, string? errorCode, string requestSha256, string responseSha256, string nativeRequestId,
+        DateTimeOffset startedAt, DateTimeOffset finishedAt, PrivateConnectionOptional? errorMessage,
+        StatusDeniedPrivateConnectionDeleteReadPhase phase)
+    {
+        internal Window Window { get; } = window;
+        internal Capture.Binding Binding { get; } = binding;
+        internal Task<Response<KeyVaultPrivateEndpointConnectionResource>> NativeTask { get; } = nativeTask;
+        internal StatusPrivateConnectionFacts? Facts { get; } = facts;
+        internal int HttpStatus { get; } = httpStatus;
+        internal string? ErrorCode { get; } = errorCode;
+        internal PrivateConnectionOptional? ErrorMessage { get; } = errorMessage;
+        internal string RequestSha256 { get; } = requestSha256;
+        internal string ResponseSha256 { get; } = responseSha256;
+        internal string NativeRequestId { get; } = nativeRequestId;
+        internal DateTimeOffset StartedAt { get; } = startedAt;
+        internal DateTimeOffset FinishedAt { get; } = finishedAt;
+        internal StatusDeniedPrivateConnectionDeleteReadPhase Phase { get; } = phase;
+        public override string ToString() => "[StatusDeniedPrivateConnectionDeleteReadProof]";
+    }
+    private sealed class StatusDeniedPrivateConnectionDeleteReadRegistration(StatusDeniedPrivateConnectionDeleteReadPhase phase)
+    {
+        internal readonly StatusDeniedPrivateConnectionDeleteReadPhase Phase = phase;
+        internal CancellationToken[] Tokens = [];
+        internal StatusDeniedPrivateConnectionDeleteReadProof? Proof;
+    }
+    private readonly Dictionary<Window, StatusDeniedPrivateConnectionDeleteReadRegistration> statusDeniedPrivateDeleteReads =
+        new(ReferenceEqualityComparer.Instance);
+
+    internal Window ArmStatusDeniedPrivateConnectionDelete(Capture.Binding binding,
+        StatusDeniedPrivateConnectionDeleteReadPhase phase)
+    {
+        Require(binding is not null && binding.Selector is not null &&
+            binding.Selector.Operation == "a.management.ManagementOperation.CheckStatusAsync" &&
+            binding.Selector.Variant == "operation.DeletePrivateConnection" &&
+            binding.Selector.Case == "denied-authority" &&
+            binding.Operation == ManagementMutation.DeletePrivateConnection && binding.Resource is PrivateConnectionScope &&
+            binding.ApiRevision == "2026-02-01" && Enum.IsDefined(phase));
+        return ArmPrivateRead(binding, false, null, deniedPrivateDeletePhase: phase);
+    }
+
+    internal bool TryGetStatusDeniedPrivateConnectionDeleteRead(Window window, Capture.Binding binding,
+        Task<Measurement> readTask, [NotNullWhen(true)] out StatusDeniedPrivateConnectionDeleteReadProof? proof)
+    {
+        lock (gate)
+        {
+            proof = null;
+            if (window is null || !statusDeniedPrivateDeleteReads.TryGetValue(window, out var selected) ||
+                !windows.TryGetValue(window, out var registration) ||
+                !ReferenceEquals(window.Binding, binding) || !ReferenceEquals(registration.Task, readTask) ||
+                !readTask.IsCompletedSuccessfully) return false;
+            if (selected.Tokens.Any(t => t.IsCancellationRequested)) selected.Proof = null;
+            if (selected.Proof is null || selected.Proof.Phase != selected.Phase) return false;
+            proof = selected.Proof;
+            return true;
+        }
+    }
+
+    internal bool OwnsStatusDeniedPrivateConnectionDeleteRead(StatusDeniedPrivateConnectionDeleteReadProof proof,
+        Window window, Capture.Binding binding, Task<Measurement> readTask) =>
+        TryGetStatusDeniedPrivateConnectionDeleteRead(window, binding, readTask, out var issued) &&
+        ReferenceEquals(issued, proof);
 
     internal enum StatusPrivateConnectionUpdateIndependentReadPhase { Discovery, Baseline, SelectedState, BeforeEndpointDelete, Cleanup }
 
@@ -1580,7 +2548,8 @@ internal sealed class ManagementOperationResourceCollector
 
     private Window ArmPrivateRead(Capture.Binding binding, bool statusPrivateDeleteSelectedProfile,
         StatusPrivateConnectionDeleteIndependentReadPhase? independentPhase,
-        StatusPrivateConnectionUpdateIndependentReadPhase? independentUpdatePhase = null)
+        StatusPrivateConnectionUpdateIndependentReadPhase? independentUpdatePhase = null,
+        StatusDeniedPrivateConnectionDeleteReadPhase? deniedPrivateDeletePhase = null)
     {
         try { ValidateBinding(binding); }
         catch (Exception) { throw new ArgumentException("management-resource-binding"); }
@@ -1588,7 +2557,8 @@ internal sealed class ManagementOperationResourceCollector
             VaultFixtureProvisioner.StatusPrivateConnectionDeleteSelectedSelector(binding.Selector));
         bool privateCancellation = VaultFixtureProvisioner.StatusPrivateConnectionUpdateCancellationSelector(binding.Selector) ||
             VaultFixtureProvisioner.StatusPrivateConnectionDeleteCancellationSelector(binding.Selector) ||
-            statusPrivateDeleteSelectedProfile || independentPhase is not null || independentUpdatePhase is not null;
+            statusPrivateDeleteSelectedProfile || independentPhase is not null || independentUpdatePhase is not null ||
+            deniedPrivateDeletePhase is not null;
         DateTimeOffset armedAt = privateCancellation ? time.GetUtcNow() : default;
         long timestamp = privateCancellation ? time.GetTimestamp() : 0;
         lock (gate)
@@ -1600,6 +2570,7 @@ internal sealed class ManagementOperationResourceCollector
             windows.Add(window, new(privateCancellation ? timestamp : time.GetTimestamp()));
             if (independentPhase is { } phase) statusPrivateDeleteIndependentReads.Add(window, phase);
             if (independentUpdatePhase is { } updatePhase) statusPrivateUpdateIndependentReads.Add(window, updatePhase);
+            if (deniedPrivateDeletePhase is { } deniedPhase) statusDeniedPrivateDeleteReads.Add(window, new(deniedPhase));
             nonces.Add(binding.Selector.Nonce);
             leases.Add(binding.LeaseId);
             return window;
@@ -1613,7 +2584,27 @@ internal sealed class ManagementOperationResourceCollector
         Task<Measurement>? selectedTask = null;
         lock (gate)
         {
-            if (statusPendingReads.TryGetValue(window, out var pending))
+            if (statusDeniedVaultUpdateReads.TryGetValue(window, out var vaultUpdate))
+            {
+                Require(windows.TryGetValue(window, out var registration) && !registration.Consumed &&
+                    registration.Task is null && ReferenceEquals(window.Binding, binding));
+                registration.Consumed = true;
+                vaultUpdate.Tokens = [cancellationToken, originalCallerToken ?? cancellationToken];
+                admitted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                selectedTask = registration.Task = CollectStatusDeniedVaultUpdateAsync(window, binding,
+                    registration, vaultUpdate, admitted.Task);
+            }
+            else if (statusDeniedReads.TryGetValue(window, out var denied))
+            {
+                Require(windows.TryGetValue(window, out var registration) && !registration.Consumed &&
+                    registration.Task is null && ReferenceEquals(window.Binding, binding));
+                registration.Consumed = true;
+                denied.Run.Tokens = [cancellationToken, originalCallerToken ?? cancellationToken];
+                admitted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                selectedTask = registration.Task = CollectPurgeReadAsync(window, binding,
+                    registration, denied.Run, admitted.Task);
+            }
+            else if (statusPendingReads.TryGetValue(window, out var pending))
             {
                 // Foreign preflight never consumes the registered phase.
                 Require(windows.TryGetValue(window, out var registration) && !registration.Consumed &&
@@ -1621,7 +2612,7 @@ internal sealed class ManagementOperationResourceCollector
                 registration.Consumed = true;
                 pending.Run.Tokens = [cancellationToken, originalCallerToken ?? cancellationToken];
                 admitted = new(TaskCreationOptions.RunContinuationsAsynchronously);
-                selectedTask = registration.Task = CollectStatusPendingPurgeAsync(window, binding,
+                selectedTask = registration.Task = CollectPurgeReadAsync(window, binding,
                     registration, pending.Run, admitted.Task);
             }
             else if (statusPendingIndependentReads.TryGetValue(window, out var pendingIndependent))
@@ -1631,7 +2622,7 @@ internal sealed class ManagementOperationResourceCollector
                 registration.Consumed = true;
                 pendingIndependent.Run.Tokens = [cancellationToken, originalCallerToken ?? cancellationToken];
                 admitted = new(TaskCreationOptions.RunContinuationsAsynchronously);
-                selectedTask = registration.Task = CollectStatusPendingPurgeAsync(window, binding,
+                selectedTask = registration.Task = CollectPurgeReadAsync(window, binding,
                     registration, pendingIndependent.Run, admitted.Task);
             }
             else if (statusPendingCancellationReads.TryGetValue(window, out var pendingCancellation))
@@ -1641,8 +2632,68 @@ internal sealed class ManagementOperationResourceCollector
                 registration.Consumed = true;
                 pendingCancellation.Run.Tokens = [cancellationToken, originalCallerToken ?? cancellationToken];
                 admitted = new(TaskCreationOptions.RunContinuationsAsynchronously);
-                selectedTask = registration.Task = CollectStatusPendingPurgeAsync(window, binding,
+                selectedTask = registration.Task = CollectPurgeReadAsync(window, binding,
                     registration, pendingCancellation.Run, admitted.Task);
+            }
+            else if (statusFailedReads.TryGetValue(window, out var failed))
+            {
+                Require(windows.TryGetValue(window, out var registration) && !registration.Consumed &&
+                    registration.Task is null && ReferenceEquals(window.Binding, binding));
+                registration.Consumed = true;
+                failed.Run.Tokens = [cancellationToken, originalCallerToken ?? cancellationToken];
+                admitted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                selectedTask = registration.Task = CollectPurgeReadAsync(window, binding,
+                    registration, failed.Run, admitted.Task);
+            }
+            else if (statusFailedIndependentReads.TryGetValue(window, out var failedIndependent))
+            {
+                Require(windows.TryGetValue(window, out var registration) && !registration.Consumed &&
+                    registration.Task is null && ReferenceEquals(window.Binding, binding));
+                registration.Consumed = true;
+                failedIndependent.Run.Tokens = [cancellationToken, originalCallerToken ?? cancellationToken];
+                admitted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                selectedTask = registration.Task = CollectPurgeReadAsync(window, binding,
+                    registration, failedIndependent.Run, admitted.Task);
+            }
+            else if (statusFailedCancellationReads.TryGetValue(window, out var failedCancellation))
+            {
+                Require(windows.TryGetValue(window, out var registration) && !registration.Consumed &&
+                    registration.Task is null && ReferenceEquals(window.Binding, binding));
+                registration.Consumed = true;
+                failedCancellation.Run.Tokens = [cancellationToken, originalCallerToken ?? cancellationToken];
+                admitted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                selectedTask = registration.Task = CollectPurgeReadAsync(window, binding,
+                    registration, failedCancellation.Run, admitted.Task);
+            }
+            else if (statusCanceledReads.TryGetValue(window, out var canceled))
+            {
+                Require(windows.TryGetValue(window, out var registration) && !registration.Consumed &&
+                    registration.Task is null && ReferenceEquals(window.Binding, binding));
+                registration.Consumed = true;
+                canceled.Run.Tokens = [cancellationToken, originalCallerToken ?? cancellationToken];
+                admitted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                selectedTask = registration.Task = CollectPurgeReadAsync(window, binding,
+                    registration, canceled.Run, admitted.Task);
+            }
+            else if (statusCanceledIndependentReads.TryGetValue(window, out var canceledIndependent))
+            {
+                Require(windows.TryGetValue(window, out var registration) && !registration.Consumed &&
+                    registration.Task is null && ReferenceEquals(window.Binding, binding));
+                registration.Consumed = true;
+                canceledIndependent.Run.Tokens = [cancellationToken, originalCallerToken ?? cancellationToken];
+                admitted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                selectedTask = registration.Task = CollectPurgeReadAsync(window, binding,
+                    registration, canceledIndependent.Run, admitted.Task);
+            }
+            else if (statusCanceledCancellationReads.TryGetValue(window, out var canceledCancellation))
+            {
+                Require(windows.TryGetValue(window, out var registration) && !registration.Consumed &&
+                    registration.Task is null && ReferenceEquals(window.Binding, binding));
+                registration.Consumed = true;
+                canceledCancellation.Run.Tokens = [cancellationToken, originalCallerToken ?? cancellationToken];
+                admitted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                selectedTask = registration.Task = CollectPurgeReadAsync(window, binding,
+                    registration, canceledCancellation.Run, admitted.Task);
             }
             else if (statusSucceededReads.TryGetValue(window, out var selected))
             {
@@ -1673,13 +2724,15 @@ internal sealed class ManagementOperationResourceCollector
             }
         }
         if (admitted is not null) { admitted.SetResult(); return new(selectedTask!); }
-        bool independentPrivateDelete, independentPrivateUpdate;
+        bool independentPrivateDelete, independentPrivateUpdate, deniedPrivateDelete;
         lock (gate)
         {
             independentPrivateDelete = statusPrivateDeleteIndependentReads.ContainsKey(window);
             independentPrivateUpdate = statusPrivateUpdateIndependentReads.ContainsKey(window);
+            deniedPrivateDelete = statusDeniedPrivateDeleteReads.ContainsKey(window);
         }
-        if (!independentPrivateDelete && !independentPrivateUpdate && !VaultFixtureProvisioner.StatusPrivateConnectionUpdateCancellationSelector(binding.Selector) &&
+        if (!independentPrivateDelete && !independentPrivateUpdate && !deniedPrivateDelete &&
+            !VaultFixtureProvisioner.StatusPrivateConnectionUpdateCancellationSelector(binding.Selector) &&
             !VaultFixtureProvisioner.StatusPrivateConnectionDeleteCancellationSelector(binding.Selector) &&
             !window.StatusPrivateDeleteSelectedProfile)
             return CollectCoreAsync(window, binding, cancellationToken);
@@ -1691,6 +2744,8 @@ internal sealed class ManagementOperationResourceCollector
                 registration.Task is null && ReferenceEquals(window.Binding, binding));
             registration.Consumed = true;
             if (independentPrivateUpdate) registration.PrivateUpdateTokens = [cancellationToken, originalCallerToken ?? cancellationToken];
+            if (deniedPrivateDelete)
+                statusDeniedPrivateDeleteReads[window].Tokens = [cancellationToken, originalCallerToken ?? cancellationToken];
             task = registration.Task = CollectPrivateReadAsync(window, binding, registration, start.Task, cancellationToken);
         }
         start.SetResult();
@@ -1787,13 +2842,16 @@ internal sealed class ManagementOperationResourceCollector
         bool independentDelete, independentUpdate;
         StatusPrivateConnectionDeleteIndependentReadPhase independentPhase;
         StatusPrivateConnectionUpdateIndependentReadPhase updatePhase;
+        StatusDeniedPrivateConnectionDeleteReadRegistration? deniedPrivateDelete;
         lock (gate)
         {
             independentDelete = statusPrivateDeleteIndependentReads.TryGetValue(window, out independentPhase);
             independentUpdate = statusPrivateUpdateIndependentReads.TryGetValue(window, out updatePhase);
+            statusDeniedPrivateDeleteReads.TryGetValue(window, out deniedPrivateDelete);
         }
         bool selectedDelete = window.StatusPrivateDeleteSelectedProfile;
-        bool delete = independentDelete || selectedDelete || VaultFixtureProvisioner.StatusPrivateConnectionDeleteCancellationSelector(binding.Selector);
+        bool delete = deniedPrivateDelete is not null || independentDelete || selectedDelete ||
+            VaultFixtureProvisioner.StatusPrivateConnectionDeleteCancellationSelector(binding.Selector);
         StatusPrivateConnectionFacts? facts = null;
         Failure failure = Failure.Unavailable;
         SecretStatus outcome = SecretStatus.Unavailable;
@@ -1804,6 +2862,7 @@ internal sealed class ManagementOperationResourceCollector
         try
         {
             Require(binding.Resource is PrivateConnectionScope && registration.PrivateUpdateTokens.All(t => !t.IsCancellationRequested));
+            Require(deniedPrivateDelete is null || deniedPrivateDelete.Tokens.All(t => !t.IsCancellationRequested));
             var uri = new Uri(ArmOrigin + Path(binding.Resource) + "?api-version=" + binding.ApiRevision);
             var options = new ArmClientOptions
             {
@@ -1864,6 +2923,17 @@ internal sealed class ManagementOperationResourceCollector
                 ? status == 200 && facts is { State: "Pending", Provisioning: "Succeeded" }
                 : status == 404 && facts is null && errorCode is "NotFound" or "ResourceNotFound"));
             Require(registration.PrivateUpdateTokens.All(t => !t.IsCancellationRequested));
+            Require(deniedPrivateDelete is null || deniedPrivateDelete.Tokens.All(t => !t.IsCancellationRequested) &&
+                (deniedPrivateDelete.Phase switch
+                {
+                    StatusDeniedPrivateConnectionDeleteReadPhase.Discovery or StatusDeniedPrivateConnectionDeleteReadPhase.Baseline =>
+                        status == 200 && facts is { State: "Pending", Provisioning: "Succeeded" } &&
+                        read.NativeTask.IsCompletedSuccessfully,
+                    StatusDeniedPrivateConnectionDeleteReadPhase.SelectedState or StatusDeniedPrivateConnectionDeleteReadPhase.Cleanup =>
+                        status == 404 && facts is null && errorCode is "NotFound" or "ResourceNotFound" &&
+                        read.NativeTask.IsFaulted,
+                    _ => false
+                }));
             Require(!independentUpdate || (updatePhase switch
             {
                 StatusPrivateConnectionUpdateIndependentReadPhase.Discovery or StatusPrivateConnectionUpdateIndependentReadPhase.Baseline =>
@@ -1876,7 +2946,19 @@ internal sealed class ManagementOperationResourceCollector
                 _ => false
             }));
             failure = Failure.None;
-            if (independentUpdate)
+            if (deniedPrivateDelete is not null)
+            {
+                var proof = new StatusDeniedPrivateConnectionDeleteReadProof(window, binding, read.NativeTask, facts,
+                    status.Value, errorCode, read.RequestSha256!, responseHash, requestId, started, budget.ObservedAt,
+                    errorMessage, deniedPrivateDelete.Phase);
+                lock (gate)
+                {
+                    Require(deniedPrivateDelete.Proof is null &&
+                        deniedPrivateDelete.Tokens.All(t => !t.IsCancellationRequested));
+                    deniedPrivateDelete.Proof = proof;
+                }
+            }
+            else if (independentUpdate)
             {
                 var proof = new StatusPrivateConnectionUpdateIndependentReadProof(window, binding, read.NativeTask, facts,
                     status.Value, errorCode, read.RequestSha256!, responseHash, requestId, started, budget.ObservedAt,
@@ -1941,6 +3023,7 @@ internal sealed class ManagementOperationResourceCollector
                         registration.SelectedDeleteProof = null;
                         registration.IndependentDeleteProof = null;
                         registration.IndependentUpdateProof = null;
+                        if (deniedPrivateDelete is not null) deniedPrivateDelete.Proof = null;
                     }
                 }
         }
@@ -2563,7 +3646,7 @@ internal sealed class ManagementOperationResourceCollector
 
     private static T Native<T>(BinaryData bytes) => ModelReaderWriter.Read<T>(bytes) ?? throw new Boundary();
 
-    private static void ValidateBinding(Capture.Binding b)
+    private static void ValidateBinding(Capture.Binding b, bool statusDeniedVaultUpdateRead = false)
     {
         Require(b is not null && b.Selector is not null && b.Resource is not null && b.Selector.Nonce != Guid.Empty &&
             b.LeaseId != Guid.Empty && Segment(b.Location, 50) &&
@@ -2575,10 +3658,17 @@ internal sealed class ManagementOperationResourceCollector
             b.Selector.Case is "selected-contract" or "denied-authority" or "cancellation-boundary" or "independent-effect");
         Require(b.Operation != ManagementMutation.PurgeDeletedVault || b.Selector.Variant != "status.Pending" ||
             b.Selector.Case is not ("selected-contract" or "independent-effect" or "cancellation-boundary"));
+        Require(b.Operation != ManagementMutation.PurgeDeletedVault || b.Selector.Variant != "status.Failed" ||
+            b.Selector.Case is not ("selected-contract" or "independent-effect" or "cancellation-boundary"));
+        Require(b.Operation != ManagementMutation.PurgeDeletedVault || b.Selector.Variant != "status.Canceled" ||
+            b.Selector.Case is not ("selected-contract" or "independent-effect" or "cancellation-boundary"));
+        Require(b.Operation != ManagementMutation.PurgeDeletedVault ||
+            b.Selector.Variant != "operation.PurgeDeletedVault" || b.Selector.Case != "denied-authority");
         Require(b.Operation switch
         {
             ManagementMutation.CreateOrUpdateVault => b.Resource is VaultScope ||
-                VaultFixtureProvisioner.StatusVaultUpdateCancellationSelector(b.Selector) &&
+                (VaultFixtureProvisioner.StatusVaultUpdateCancellationSelector(b.Selector) ||
+                    statusDeniedVaultUpdateRead && StatusDeniedVaultUpdateBinding(b)) &&
                 b.Resource is DeletedVaultScope updated && Same(updated.Location, b.Location),
             ManagementMutation.RecoverVault => b.Resource is VaultScope ||
                 VaultFixtureProvisioner.StatusVaultRecoverCancellationSelector(b.Selector) &&
@@ -2817,7 +3907,7 @@ internal sealed class ManagementOperationResourceCollector
         }
     }
     private sealed class ReadTransport(HttpPipelineTransport inner, Uri uri, Budget budget,
-        PrivateRead? privateRead = null, int maximumBytes = 0, bool statusPendingPurge = false) : HttpPipelineTransport
+        PrivateRead? privateRead = null, int maximumBytes = 0, bool requireErrorRebuffer = false) : HttpPipelineTransport
     {
         private int sends;
         public override Request CreateRequest() => inner.CreateRequest();
@@ -2840,7 +3930,11 @@ internal sealed class ManagementOperationResourceCollector
             try { await inner.ProcessAsync(message).ConfigureAwait(false); }
             finally
             {
-                if (privateRead is not null && message.HasResponse) privateRead.Storage.Own(message.Response);
+                if (privateRead is not null && message.HasResponse)
+                {
+                    privateRead.ObservedStatus = message.Response.Status;
+                    privateRead.Storage.Own(message.Response);
+                }
             }
             budget.Check();
             message.CancellationToken.ThrowIfCancellationRequested();
@@ -2858,7 +3952,7 @@ internal sealed class ManagementOperationResourceCollector
                 privateRead.RequestSha256 = Convert.ToHexString(SHA256.HashData(
                     System.Text.Encoding.UTF8.GetBytes("GET " + uri.AbsoluteUri)));
                 privateRead.Parser = OwnedArmResponse.ParserCustody.Install(message, privateRead.Body.Response,
-                    privateRead.Body.Bytes, privateRead.Storage, requireRebuffer: statusPendingPurge && message.Response.Status >= 400,
+                    privateRead.Body.Bytes, privateRead.Storage, requireRebuffer: requireErrorRebuffer && message.Response.Status >= 400,
                     requireDownstreamRead: true);
             }
         }

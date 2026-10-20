@@ -403,10 +403,10 @@ public sealed partial class AzureVaultFixtureProvisionerTests
     [Arguments("denied-authority")]
     public async Task SelectedNotificationReadRejectsUnadmittedCasesBeforeNativeIo(string boundary)
     {
-        if (boundary == "independent-effect")
         {
+            bool denied = boundary == "denied-authority";
             await using var owned = new PurgeServiceFixture(boundary, ManagementMutation.UpdateNotification,
-                statusNotificationUpdateIndependent: true);
+                statusNotificationUpdateIndependent: !denied, statusDeniedNotificationUpdate: denied);
             var lease = await owned.PrepareAndBaseline();
             var (source, plan) = RetainedNotificationUpdateIndependentFixture(owned.Source, owned.Native.Selector.Nonce);
             int before = owned.NotificationResourceReads;
@@ -415,14 +415,12 @@ public sealed partial class AzureVaultFixtureProvisionerTests
             await Assert.That(owned.NotificationResourceReads).IsEqualTo(before);
             var started = await owned.Start(lease);
             await owned.Observe(lease);
-            await FinishNotificationUpdateIndependent(owned, started.Value!);
+            if (denied)
+                await Assert.That(await owned.Source.RunCheckStatusAsync(owned.Native.Selector, started.Value!, default))
+                    .IsEqualTo(SecretStatus.Denied);
+            else await FinishNotificationUpdateIndependent(owned, started.Value!);
             RoleFixtureRelease.Validate(await owned.Release(), owned.Native.Selector, lease.Facts);
-            return;
         }
-        await using var f = await SelectedNotificationFixture.Create(boundary);
-        int reads = f.Children.Requests.Count;
-        await Assert.That(async () => { using var result = await f.Read(); }).Throws<InvalidOperationException>();
-        await Assert.That(f.Children.Requests.Count).IsEqualTo(reads);
     }
 
     private sealed class SelectedNotificationFixture : IAsyncDisposable
