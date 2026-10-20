@@ -57,9 +57,8 @@ internal sealed class ControlledTransport(HttpPipelineTransport inner, string ho
             throw new BoundaryException();
         }
 
-        // Event Grid admits only a provider-authored Location on this exact selected resource.
-        // Other Event Grid status URL shapes are unestablished, not a generic ARM polling escape.
-        // Never accept directory, generic resources, data-plane or cross-subscription locations.
+        // Event Grid DELETE also issues the documented2025-02-15 operation URLs.
+        // Retain exact issued membership; this is not a generic ARM polling escape.
         if (receipt is not null)
         {
             foreach (string header in new[] { "Azure-AsyncOperation", "Location", "Operation-Location" })
@@ -68,7 +67,9 @@ internal sealed class ControlledTransport(HttpPipelineTransport inner, string ho
                 {
                     if (!Uri.TryCreate(uri, value, out var next) || !Trusted(next) || !Revision(next) ||
                         !(receipt.Scope is NotificationScope
-                            ? next.AbsolutePath.Equals(path, StringComparison.OrdinalIgnoreCase)
+                            ? next.AbsolutePath.Equals(path, StringComparison.OrdinalIgnoreCase) ||
+                                receipt.Operation == ManagementMutation.DeleteNotification &&
+                                header != "Operation-Location" && IsNotificationOperationTarget(next, value)
                             : IsOperationPath(next.AbsolutePath)))
                     {
                         message.Response.Dispose();
@@ -200,6 +201,25 @@ internal sealed class ControlledTransport(HttpPipelineTransport inner, string ho
             (parts[7].Equals("operations", StringComparison.OrdinalIgnoreCase) ||
                 parts[7].Equals("operationResults", StringComparison.OrdinalIgnoreCase)) &&
             Guid.TryParse(parts[8], out _);
+    }
+
+    private bool IsNotificationOperationTarget(Uri candidate, string issued)
+    {
+        if (candidate.AbsoluteUri != issued || issued.Contains('%') ||
+            candidate.Query != "?api-version=2025-02-15")
+            return false;
+        string[] origin = path.Split('/');
+        string[] parts = candidate.AbsolutePath.Split('/');
+        return parts.Length == 13 &&
+            parts.Take(5).SequenceEqual(origin.Take(5), StringComparer.OrdinalIgnoreCase) &&
+            parts[5].Equals("providers", StringComparison.OrdinalIgnoreCase) &&
+            parts[6].Equals("Microsoft.EventGrid", StringComparison.OrdinalIgnoreCase) &&
+            parts[7] == "locations" &&
+            parts[8].Length is >= 1 and <= 50 && parts[8].All(char.IsAsciiLetterOrDigit) &&
+            (parts[9] == "operationResults" && Guid.TryParseExact(parts[10], "D", out _) &&
+                parts[11] == "Spring" && parts[12] == "default" ||
+             parts[9] == "operationStatus" && parts[10] == "default" &&
+                parts[11] == "operationId" && Guid.TryParseExact(parts[12], "D", out _));
     }
 
     internal sealed class BoundaryException() : IOException("Management boundary validation failed.");

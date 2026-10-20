@@ -102,6 +102,17 @@ disposal. Supplied token sources and injected transports remain host-owned.
 Azure supplied credentials/transports remain host-owned. Host HTTP,
 credential and proxy instrumentation is outside SDK-owned diagnostic controls.
 
+## Azure management notification DELETE
+
+Azure management notification DELETE accepts a bounded subset of originally
+issued Event Grid operation URLs at API version 2025-02-15: the documented
+regional operationResults and operationStatus paths in the selected resource
+group and subscription. The existing selected-resource Location remains
+supported. This does not broaden notification PUT/PATCH or admit arbitrary ARM
+status URLs. Native status or authorization denial is not resource-absence,
+delivery-drain or cleanup-settlement proof. This local subset is not live
+provider or principal qualification.
+
 ## Generations, changes and consumer workflows
 
 The optional configuration package collects all required consumer-key selections

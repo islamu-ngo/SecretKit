@@ -10,7 +10,7 @@
     },
     {
       "file": "src/SecretKit.AzureKeyVault.Management/ControlledTransport.cs",
-      "sha256": "678654fb0c94f35ee124117129475a18fbf67be8ae937f99dd18784d3330b991"
+      "sha256": "c8808ac38de406e88574e7b055d253c334aa360f32bde06d0ec09bdc76d5dd74"
     },
     {
       "file": "src/SecretKit.AzureKeyVault.Management/ManagementOperation.cs",
