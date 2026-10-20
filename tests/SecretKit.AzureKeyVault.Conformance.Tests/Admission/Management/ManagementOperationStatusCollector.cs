@@ -89,7 +89,12 @@ internal sealed class ManagementOperationStatusCollector
     internal Window Arm(Capture.StatusTarget target, Capture.Binding binding)
     {
         if (!source.OwnsStatusTarget(target, binding)) throw new InvalidOperationException("management-status-target");
-        try { ValidateTarget(target); }
+        try
+        {
+            Require(target.Kind != Capture.StatusTargetKind.EventGridDeleteAsyncOperation ||
+                ReferenceEquals(target.Binding, binding));
+            ValidateTarget(target);
+        }
         catch (Exception) { throw new InvalidOperationException("management-status-target"); }
         lock (gate)
         {
@@ -113,12 +118,16 @@ internal sealed class ManagementOperationStatusCollector
         lock (gate)
         {
             if (window is null || !windows.TryGetValue(window, out var found) || found.Consumed ||
-                window.Binding != binding || !source.OwnsStatusTarget(window.Target, binding))
+                window.Binding != binding || !source.OwnsStatusTarget(window.Target, binding) ||
+                window.Target.Kind == Capture.StatusTargetKind.EventGridDeleteAsyncOperation &&
+                    (!ReferenceEquals(window.Binding, binding) || !ReferenceEquals(window.Target.Binding, binding)))
                 throw new InvalidOperationException("management-status-window");
             registration = found;
             registration.Consumed = true;
         }
         cancellationToken.ThrowIfCancellationRequested();
+        if (window.Target.Kind == Capture.StatusTargetKind.EventGridDeleteAsyncOperation)
+            ValidateTarget(window.Target);
         DateTimeOffset started = time.GetUtcNow();
         TimeSpan elapsed = time.GetElapsedTime(registration.Timestamp);
         int? httpStatus = null;
@@ -285,6 +294,24 @@ internal sealed class ManagementOperationStatusCollector
             Require(binding.Resource is NotificationScope n && binding.Operation is
                 (ManagementMutation.CreateOrUpdateNotification or ManagementMutation.UpdateNotification or ManagementMutation.DeleteNotification) &&
                 uri.AbsolutePath == n.Vault.ExportResourceId() + "/providers/Microsoft.EventGrid/eventSubscriptions/" + n.SubscriptionName);
+        else if (target.Kind == Capture.StatusTargetKind.EventGridDeleteAsyncOperation)
+        {
+            Require(binding.Operation == ManagementMutation.DeleteNotification &&
+                binding.Resource is NotificationScope &&
+                binding.Selector is { Operation: "a.management.ManagementOperation.CheckStatusAsync",
+                    Variant: "operation.DeleteNotification", Case: "denied-authority" } &&
+                !uri.OriginalString.Contains('%'));
+            var notification = (NotificationScope)binding.Resource;
+            var group = notification.Vault.ResourceGroup;
+            string prefix = $"/subscriptions/{group.Subscription.SubscriptionId:D}/resourceGroups/{group.ResourceGroup}/providers/Microsoft.EventGrid/locations/";
+            Require(uri.AbsolutePath.StartsWith(prefix, StringComparison.Ordinal));
+            string[] tail = uri.AbsolutePath[prefix.Length..].Split('/');
+            Require(tail.Length == 5 && tail[0].Length is > 0 and <= 50 &&
+                tail[0].All(char.IsAsciiLetterOrDigit) && tail[1] == "operationResults" &&
+                Guid.TryParseExact(tail[2], "D", out var id) && id != Guid.Empty &&
+                tail[2] == id.ToString("D") && tail[3] == "Spring" && tail[4] == "default" &&
+                uri.OriginalString == ArmOrigin + uri.AbsolutePath + "?api-version=2025-02-15");
+        }
         else
         {
             Require(target.Kind == Capture.StatusTargetKind.Operation && Segment(binding.Location, 50));
@@ -320,6 +347,19 @@ internal sealed class ManagementOperationStatusCollector
 
     private static NativeProvisioningState ReadState(Capture.StatusTarget target, JsonElement root)
     {
+        if (target.Kind == Capture.StatusTargetKind.EventGridDeleteAsyncOperation)
+        {
+            // This is the issued operation envelope, not the selected child.
+            // No resource state, error mixture or optional envelope fields qualify.
+            Require(root.EnumerateObject().Count() == 1 &&
+                root.TryGetProperty("status", out var status) && status.ValueKind == JsonValueKind.String);
+            return root.GetProperty("status").GetString() switch
+            {
+                "Succeeded" => NativeProvisioningState.Succeeded,
+                "InProgress" or "Deleting" => NativeProvisioningState.Pending,
+                _ => NativeProvisioningState.Unknown
+            };
+        }
         string text;
         if (target.Kind == Capture.StatusTargetKind.Operation)
         {

@@ -83,10 +83,16 @@ public sealed partial class AzureVaultFixtureProvisionerTests
     [Arguments("denied-authority")]
     public async Task SelectedNotificationDeletionReadRejectsUnadmittedCasesBeforeGet(string boundary)
     {
-        await using var f = await SelectedNotificationFixture.Create(boundary, ManagementMutation.DeleteNotification);
-        int reads = f.Children.Requests.Count;
-        await Assert.That(async () => { using var measured = await f.Read(); }).Throws<InvalidOperationException>();
-        await Assert.That(f.Children.Requests.Count).IsEqualTo(reads);
+        using var f = new Fixture();
+        f.Selector = f.Selector with
+        {
+            Operation = Op.Members[0].Operation,
+            Variant = "operation.DeleteNotification",
+            Case = boundary
+        };
+        await Assert.That(() => f.Plan(seedCanary: false, notifications: ["one-child"]))
+            .Throws<InvalidOperationException>();
+        await Assert.That(f.Backends.Sum(b => b.Requests.Count)).IsEqualTo(0);
     }
 
     [Test]

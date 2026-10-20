@@ -270,6 +270,8 @@ public sealed partial class AzureVaultFixtureProvisionerTests
         private const string Capability = "private-purge-service-capability";
         private static readonly Uri Origin = new("https://purge-observer.example/");
         private static readonly string StatusPath = $"/subscriptions/{Subscription:D}/providers/Microsoft.KeyVault/locations/eastus/operations/33333333-3333-3333-3333-333333333333";
+        private static readonly string NotificationDeleteAsyncPath = $"/subscriptions/{Subscription:D}/resourceGroups/fixture-group/providers/Microsoft.EventGrid/locations/eastus/operationResults/33333333-3333-3333-3333-333333333333/Spring/default";
+        private static readonly string NotificationDeleteLocationPath = $"/subscriptions/{Subscription:D}/resourceGroups/fixture-group/providers/Microsoft.EventGrid/locations/eastus/operationStatus/default/operationId/44444444-4444-4444-4444-444444444444";
         internal readonly Fixture Native;
         private readonly SecretMaterial capability = SecretMaterial.FromText(Capability);
         private readonly List<HttpClient> clients = [];
@@ -287,8 +289,9 @@ public sealed partial class AzureVaultFixtureProvisionerTests
         private readonly bool statusPrivateDeleteIndependent;
         private readonly bool statusNotificationUpdateIndependent, statusUnknownNotificationUpdate, statusUnknownNotificationUpdateIndependent, statusUnknownNotificationUpdateCancellation;
         private bool UnknownNotificationWire => statusUnknownNotificationUpdate || statusUnknownNotificationUpdateIndependent ||
-            statusUnknownNotificationUpdateCancellation || statusDeniedNotificationUpdate;
+            statusUnknownNotificationUpdateCancellation || statusDeniedNotificationUpdate || statusDeniedNotificationDelete;
         private readonly bool statusDeniedNotificationUpdate;
+        internal readonly bool statusDeniedNotificationDelete;
         private readonly bool statusDeniedPrivateConnectionDelete;
         internal readonly bool statusDeniedVaultUpdate;
         internal readonly bool statusDeniedVaultRecover;
@@ -363,6 +366,11 @@ public sealed partial class AzureVaultFixtureProvisionerTests
         internal int SelectedPurges, SelectedDeletes, SelectedRecoveries, SelectedUpdates, OriginalStatusReads, OriginalResourceReads,
             IndependentStatusReads, ResourceReads, SetupPurges, SetupDeletes;
         internal int NotificationResourceReads;
+        internal string NotificationDeleteStatusBody = """{"status":"Succeeded"}""";
+        internal int NotificationDeleteStatusCode = 200;
+        internal string? NotificationDeleteSelected404Body, NotificationDeleteCleanup404Body;
+        internal int NotificationDeleteSelectedReads, NotificationDeleteCleanupReads;
+        internal bool NotificationDeleteAaoOnly;
         internal int DeletedResourceReads, ActiveCounterpartReads, ResourceFaultsReached, SelectedStatusFaultsReached, CleanupFaultsReached;
         internal JsonObject? RecoveryRequest;
         internal bool Prejournaled = true;
@@ -378,12 +386,14 @@ public sealed partial class AzureVaultFixtureProvisionerTests
             bool statusPendingPurge = false, bool statusPendingPurgeIndependent = false, bool statusPendingPurgeCancellation = false, bool statusFailedPurge = false, bool statusFailedPurgeIndependent = false, bool statusFailedPurgeCancellation = false, bool statusCanceledPurge = false, bool statusCanceledPurgeIndependent = false, bool statusCanceledPurgeCancellation = false, bool statusUnknownNotificationUpdate = false, bool statusUnknownNotificationUpdateIndependent = false, bool statusUnknownNotificationUpdateCancellation = false,
             bool statusDeniedPurge = false, NativeProvisioningState? statusDeniedVariant = null,
             bool statusDeniedNotificationUpdate = false, bool statusDeniedPrivateConnectionDelete = false,
-            bool statusDeniedVaultUpdate = false, bool statusDeniedVaultRecover = false)
+            bool statusDeniedVaultUpdate = false, bool statusDeniedVaultRecover = false,
+            bool statusDeniedNotificationDelete = false)
         {
             Operation = operation;
             this.statusDeniedPurge = statusDeniedPurge;
             this.statusDeniedVariant = statusDeniedVariant;
             this.statusDeniedNotificationUpdate = statusDeniedNotificationUpdate;
+            this.statusDeniedNotificationDelete = statusDeniedNotificationDelete;
             this.statusDeniedPrivateConnectionDelete = statusDeniedPrivateConnectionDelete;
             this.statusDeniedVaultUpdate = statusDeniedVaultUpdate;
             this.statusDeniedVaultRecover = statusDeniedVaultRecover;
@@ -422,7 +432,7 @@ public sealed partial class AzureVaultFixtureProvisionerTests
             Native.Selector = Native.Selector with
             {
                 Operation = Op.Members[0].Operation,
-                Variant = statusDeniedNotificationUpdate ? "operation." + operation : statusDeniedPurge ? statusDeniedVariant is { } deniedVariant ? "status." + deniedVariant : "operation.PurgeDeletedVault" : UnknownNotificationWire ? "status.Unknown" : statusCanceledPurge || statusCanceledPurgeIndependent || statusCanceledPurgeCancellation ? "status.Canceled" : FailedPurgeWire ? "status.Failed" : PurgeStatusWire ? "status.Pending" : succeededDeleteVaultWire ? "status.Succeeded" : "operation." + operation,
+                Variant = statusDeniedNotificationUpdate || statusDeniedNotificationDelete ? "operation." + operation : statusDeniedPurge ? statusDeniedVariant is { } deniedVariant ? "status." + deniedVariant : "operation.PurgeDeletedVault" : UnknownNotificationWire ? "status.Unknown" : statusCanceledPurge || statusCanceledPurgeIndependent || statusCanceledPurgeCancellation ? "status.Canceled" : FailedPurgeWire ? "status.Failed" : PurgeStatusWire ? "status.Pending" : succeededDeleteVaultWire ? "status.Succeeded" : "operation." + operation,
                 Case = boundary
             };
             HttpPipelineTransport Wire(string role)
@@ -452,6 +462,14 @@ public sealed partial class AzureVaultFixtureProvisionerTests
                     new("resource-reader", deniedVaultReadCredential, resourceTransport), new(65536, TimeSpan.FromSeconds(20)));
             else if (statusDeniedPrivateConnectionDelete)
                 provisioner = VaultFixtureProvisioner.ForStatusDeniedPrivateConnectionDelete(Native.Journal,
+                    new(Subscription, "fixture-group", "eastus", Tenant, true, true), Baseline,
+                    new("setup-arm", new Credential("setup-arm"), setup),
+                    new("setup-secret", new Credential("setup-secret"), secretSetup),
+                    new("read-arm", pendingReadCredential, read),
+                    new("read-secret", new Credential("read-secret"), secretRead),
+                    new(65536, TimeSpan.FromSeconds(20)));
+            else if (statusDeniedNotificationDelete)
+                provisioner = VaultFixtureProvisioner.ForStatusDeniedNotificationDelete(Native.Journal,
                     new(Subscription, "fixture-group", "eastus", Tenant, true, true), Baseline,
                     new("setup-arm", new Credential("setup-arm"), setup),
                     new("setup-secret", new Credential("setup-secret"), secretSetup),
@@ -779,6 +797,27 @@ public sealed partial class AzureVaultFixtureProvisionerTests
                         new(65536, 8192, 4096, 32, 16, TimeSpan.FromSeconds(20)),
                         new(65536, 65536, TimeSpan.FromSeconds(20)), time ?? TimeProvider.System, notification);
             }
+            if (statusDeniedNotificationDelete)
+            {
+                var notification = new OpService.NotificationSource(
+                    new(notificationSetupCredential, notificationSetup), new(notificationObserverCredential, notificationObserver),
+                    new(65536, 65536, 65536, 16, 32, 8192, TimeSpan.FromSeconds(20)),
+                    cleanupOnly ? null : notificationBaseline, !cleanupOnly);
+                return cleanupOnly
+                    ? OpService.ForStatusDeniedNotificationDeleteCleanup(Origin, Owner, "purge-source", capability,
+                        declaredScope ?? new(Subscription, "fixture-group", "eastus", Tenant, true, true), parent ?? provisioner,
+                        notification, new(65536, 65536, TimeSpan.FromSeconds(20)), time ?? TimeProvider.System)
+                    : OpService.ForStatusDeniedNotificationDelete(Origin, Owner, "purge-source", capability,
+                        declaredScope ?? new(Subscription, "fixture-group", "eastus", Tenant, true, true), parent ?? provisioner,
+                        new("status-reader", statusCredential, statusTransport),
+                        new("resource-reader", new Credential("resource-arm"), resourceTransport), selectedTransport,
+                        new(65536, 8192, 512, TimeSpan.FromSeconds(20)),
+                        new(65536, 8192, 4096, 32, 16, TimeSpan.FromSeconds(20)),
+                        new(65536, 65536, TimeSpan.FromSeconds(20)), time ?? TimeProvider.System, notification,
+                        UnknownExclusion ? new OpService.StatusDeniedNotificationDeleteWriterExclusion(
+                            notificationEpoch ?? UnknownEpoch, continuousWriterExclusion, UnknownNoOlderInflight,
+                            UnknownNoNameReuse, UnknownContinuity.Token) : null!);
+            }
             if (statusDeniedNotificationUpdate && Operation == ManagementMutation.CreateOrUpdateNotification)
             {
                 var notification = new OpService.NotificationSource(
@@ -1047,6 +1086,12 @@ public sealed partial class AzureVaultFixtureProvisionerTests
                     new("setup-arm", new Credential("setup-arm"), Wire("setup-arm")),
                     new("read-arm", new Credential("read-arm"), Wire("read-arm")),
                     new(65536, TimeSpan.FromSeconds(20)));
+            if (statusDeniedNotificationDelete)
+                return VaultFixtureProvisioner.ForStatusDeniedNotificationDeleteCleanup(Native.Journal,
+                    new(Subscription, "fixture-group", "eastus", Tenant, true, true),
+                    new("setup-arm", new Credential("setup-arm"), Wire("setup-arm")),
+                    new("read-arm", new Credential("read-arm"), Wire("read-arm")),
+                    new(65536, TimeSpan.FromSeconds(20)));
             if (statusDeniedNotificationUpdate && Operation == ManagementMutation.CreateOrUpdateNotification)
                 return VaultFixtureProvisioner.ForStatusDeniedNotificationPutCleanup(Native.Journal,
                     new(Subscription, "fixture-group", "eastus", Tenant, true, true),
@@ -1175,7 +1220,7 @@ public sealed partial class AzureVaultFixtureProvisionerTests
         private ManagementOperation? PendingHandle;
         internal async Task<SecretOutcome<ManagementOperation>> Start(Op.Lease lease, CancellationToken token = default)
         {
-            var client = new VaultAdministration(new PurgeCredential(statusDeniedVaultRecover || statusDeniedVaultUpdate || statusDeniedPurge || statusDeniedNotificationUpdate || statusDeniedPrivateConnectionDelete ? "denied-arm" : "selected-arm", this),
+            var client = new VaultAdministration(new PurgeCredential(statusDeniedVaultRecover || statusDeniedVaultUpdate || statusDeniedPurge || statusDeniedNotificationUpdate || statusDeniedNotificationDelete || statusDeniedPrivateConnectionDelete ? "denied-arm" : "selected-arm", this),
                 new PurgeSdkSeam(Source.SelectedTransport, this));
             ManagementScope scope = Operation is ManagementMutation.UpdateNotification or ManagementMutation.CreateOrUpdateNotification or ManagementMutation.DeleteNotification
                 ? new NotificationScope(new(new(new(Subscription), "fixture-group"), lease.VaultName), lease.NotificationName!)
@@ -1377,12 +1422,12 @@ public sealed partial class AzureVaultFixtureProvisionerTests
                 return endpointResponse;
             }
             if (request.RequestUri.Host != "management.azure.com" || request.RequestUri.Query != "?api-version=2026-02-01" ||
-                request.Headers.Authorization?.Parameter != ((statusDeniedVaultRecover || statusDeniedVaultUpdate || statusDeniedPurge || statusDeniedNotificationUpdate || statusDeniedPrivateConnectionDelete) && role == "selected-arm" ? "denied-arm" : role))
+                request.Headers.Authorization?.Parameter != ((statusDeniedVaultRecover || statusDeniedVaultUpdate || statusDeniedPurge || statusDeniedNotificationUpdate || statusDeniedNotificationDelete || statusDeniedPrivateConnectionDelete) && role == "selected-arm" ? "denied-arm" : role))
             {
                 if (Operation is ManagementMutation.UpdateNotification or ManagementMutation.CreateOrUpdateNotification or ManagementMutation.DeleteNotification &&
                     request.RequestUri.Host == "management.azure.com" &&
                     request.RequestUri.Query == "?api-version=2025-02-15" &&
-                    request.Headers.Authorization?.Parameter == (statusDeniedNotificationUpdate && role == "selected-arm" ? "denied-arm" : role))
+                    request.Headers.Authorization?.Parameter == ((statusDeniedNotificationUpdate || statusDeniedNotificationDelete) && role == "selected-arm" ? "denied-arm" : role))
                     return await SendNotification(request, role, token);
                 throw new InvalidOperationException("purge-native-boundary");
             }
@@ -1398,7 +1443,7 @@ public sealed partial class AzureVaultFixtureProvisionerTests
                 bool closing = Native.Read().Closing, selected = SelectedDeletes > 0 || PurgeStatusWire && SelectedPurges > 0 ||
                     statusDeniedVaultUpdate && SelectedUpdates > 0 || statusDeniedVaultRecover && SelectedRecoveries > 0;
                 if (UnknownNotificationWire && closing && !unknownFinalAbsenceHookCalled &&
-                    !Native.Wire.Active && !Native.Wire.Deleted && Native.Read().Resources.Single(r => r.SelectedAttempted).Absent)
+                    !Native.Wire.Active && !Native.Wire.Deleted && Native.Read().Resources.Any(r => r.SelectedAttempted && r.Absent))
                 {
                     unknownFinalAbsenceHookCalled = true;
                     BeforeUnknownFinalAbsence?.Invoke();
@@ -1905,6 +1950,30 @@ public sealed partial class AzureVaultFixtureProvisionerTests
         }
         private async Task<HttpResponseMessage> SendNotification(HttpRequestMessage request, string role, CancellationToken token)
         {
+            if (statusDeniedNotificationDelete && request.RequestUri!.AbsolutePath == NotificationDeleteAsyncPath)
+            {
+                if (request.Method != HttpMethod.Get || SelectedDeletes == 0)
+                    throw new InvalidOperationException("notification-delete-async-boundary");
+                if (role == "status-arm")
+                {
+                    IndependentStatusReads++;
+                    await Pause("status-send");
+                    var status = Reply(NotificationDeleteStatusCode, NotificationDeleteStatusBody);
+                    if (Barrier == "status-body") await Body(status, "status-body");
+                    return status;
+                }
+                if (role != "selected-arm")
+                    throw new InvalidOperationException("notification-delete-async-identity");
+                OriginalStatusReads++;
+                await Pause("original-status");
+                if (Fault == "original-lost") throw new IOException("controlled-notification-delete-status-loss");
+                var denial = Reply(Fault == "original-unauthorized" ? 401 : Fault == "original-pending" ? 200 : 403,
+                    Fault == "original-malformed" ? "{" : Fault == "original-pending"
+                        ? """{"status":"InProgress"}"""
+                        : """{"error":{"code":"AuthorizationFailed","message":"controlled-denied-status"}}""");
+                if (Barrier == "original-status-body") await Body(denial, "original-status-body");
+                return denial;
+            }
             if (request.Method == HttpMethod.Get) NotificationResourceReads++;
             string id = request.RequestUri!.AbsolutePath;
             var plan = Plan();
@@ -1918,9 +1987,12 @@ public sealed partial class AzureVaultFixtureProvisionerTests
                 NotificationRow["type"] = "Microsoft.EventGrid/eventSubscriptions";
                 NotificationRow["properties"]!["topic"] = plan.VaultId;
                 NotificationRow["properties"]!["provisioningState"] = "Succeeded";
+                if (statusDeniedNotificationDelete)
+                    NotificationRow["properties"]!["destination"]!["properties"]!["deliveryAttributeMappings"] = new JsonArray();
                 await Pause("notification-setup");
                 var response = Reply(201, NotificationRow.ToJsonString());
-                response.Headers.TryAddWithoutValidation("Location", request.RequestUri.AbsoluteUri);
+                if (!statusDeniedNotificationDelete)
+                    response.Headers.TryAddWithoutValidation("Location", request.RequestUri.AbsoluteUri);
                 return response;
             }
             if ((request.Method == HttpMethod.Patch || request.Method == HttpMethod.Put) && role == "selected-arm")
@@ -1981,11 +2053,22 @@ public sealed partial class AzureVaultFixtureProvisionerTests
             {
                 SelectedDeletes++;
                 Prejournaled &= Native.Read().Resources.Single(r => r.Id == id).ActiveDispatch != Guid.Empty;
+                if (statusDeniedNotificationDelete && Fault == "start-denied")
+                    return Reply(403, """{"error":{"code":"AuthorizationFailed","message":"controlled-denied-start"}}""");
                 if (Fault != "surviving") NotificationRow = null;
                 await Pause("selected-send");
                 if (Fault == "lost") throw new IOException("controlled-notification-delete-loss");
-                var response = Reply(SelectedNotificationDeleteStatus,
+                var response = Reply(statusDeniedNotificationDelete ? 202 : SelectedNotificationDeleteStatus,
                     Fault == "nonempty" ? """{"status":"Succeeded"}""" : "");
+                if (statusDeniedNotificationDelete)
+                {
+                    if (Fault != "missing-aao")
+                        response.Headers.TryAddWithoutValidation("Azure-AsyncOperation",
+                            "https://management.azure.com" + NotificationDeleteAsyncPath + "?api-version=2025-02-15");
+                    if (!NotificationDeleteAaoOnly)
+                        response.Headers.TryAddWithoutValidation("Location",
+                            "https://management.azure.com" + NotificationDeleteLocationPath + "?api-version=2025-02-15");
+                }
                 if (Fault == "continuation")
                     response.Headers.TryAddWithoutValidation("Location", request.RequestUri.AbsoluteUri);
                 if (Fault == "retry") response.Headers.TryAddWithoutValidation("Retry-After", "1");
@@ -2060,6 +2143,17 @@ public sealed partial class AzureVaultFixtureProvisionerTests
             }
             if (NotificationRow is null)
             {
+                if (statusDeniedNotificationDelete && role == "notification-observer-arm" && SelectedDeletes > 0)
+                {
+                    bool closing = Native.Read().Closing;
+                    if (closing) NotificationDeleteCleanupReads++;
+                    else NotificationDeleteSelectedReads++;
+                    await Pause("notification-read");
+                    var deleted = Reply(404, (closing ? NotificationDeleteCleanup404Body : NotificationDeleteSelected404Body)
+                        ?? """{"error":{"code":"NotFound"}}""");
+                    if (Barrier == "notification-read-body") await Body(deleted, "notification-read-body");
+                    return deleted;
+                }
                 if (exclusiveNotificationCreation && role == "notification-observer-arm" &&
                     SelectedUpdates == 0 && !Native.Read().Closing)
                 {
@@ -2224,7 +2318,7 @@ public sealed partial class AzureVaultFixtureProvisionerTests
         {
             if (requestContext.Scopes.Single() != "https://management.azure.com/.default") throw new InvalidOperationException("foreign-audience");
             await fixture.Pause(role == "selected-arm" ||
-                role == "denied-arm" && (fixture.Operation == ManagementMutation.DeletePrivateConnection || fixture.statusDeniedVaultUpdate || fixture.statusDeniedVaultRecover)
+                role == "denied-arm" && (fixture.Operation == ManagementMutation.DeletePrivateConnection || fixture.statusDeniedVaultUpdate || fixture.statusDeniedVaultRecover || fixture.statusDeniedNotificationDelete)
                 ? "selected-credential" : "status-credential");
             cancellationToken.ThrowIfCancellationRequested();
             return new(role, DateTimeOffset.MaxValue);

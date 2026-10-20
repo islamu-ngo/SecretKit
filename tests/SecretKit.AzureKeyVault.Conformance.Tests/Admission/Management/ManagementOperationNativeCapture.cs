@@ -2285,7 +2285,7 @@ internal sealed class ManagementOperationNativeCapture
         public override string ToString() => "[ManagementOperationNativeCapture]";
     }
 
-    internal enum StatusTargetKind { Operation, SelectedResource }
+    internal enum StatusTargetKind { Operation, SelectedResource, EventGridDeleteAsyncOperation }
     internal sealed class StatusTarget(Binding binding, Guid startDispatch, StatusTargetKind kind,
         Uri targetUri, string targetSha256, string startResponseSha256)
     {
@@ -6455,6 +6455,572 @@ internal sealed class ManagementOperationNativeCapture
         }
     }
 
+    internal sealed class StatusDeniedNotificationDeleteStartProof(Binding binding, Guid startDispatch,
+        int httpStatus, int responseBytes, string requestSha256, string responseSha256, string nativeRequestId,
+        StatusTarget target)
+    {
+        internal Binding Binding { get; } = binding;
+        internal Guid StartDispatch { get; } = startDispatch;
+        internal int HttpStatus { get; } = httpStatus;
+        internal int ResponseBytes { get; } = responseBytes;
+        internal string RequestSha256 { get; } = requestSha256;
+        internal string ResponseSha256 { get; } = responseSha256;
+        internal string NativeRequestId { get; } = nativeRequestId;
+        internal StatusTarget Target { get; } = target;
+        public override string ToString() => "[StatusDeniedNotificationDeleteStartProof]";
+    }
+
+    internal sealed class StatusDeniedNotificationDeleteDeniedProof(StatusDeniedNotificationDeleteStartProof start,
+        Task checkTask, int httpStatus, string responseSha256, string nativeRequestId)
+    {
+        internal StatusDeniedNotificationDeleteStartProof Start { get; } = start;
+        internal Task CheckTask { get; } = checkTask;
+        internal int HttpStatus { get; } = httpStatus;
+        internal string ResponseSha256 { get; } = responseSha256;
+        internal string NativeRequestId { get; } = nativeRequestId;
+        internal SecretStatus Outcome => SecretStatus.Denied;
+        internal NativeProvisioningState State => NativeProvisioningState.Failed;
+        internal DispatchEvidence ReceiptEvidence => DispatchEvidence.Pending;
+        public override string ToString() => "[StatusDeniedNotificationDeleteDeniedProof]";
+    }
+
+    private static bool StatusDeniedNotificationDeleteSelector(FixtureSelector selector) =>
+        selector is { Operation: "a.management.ManagementOperation.CheckStatusAsync",
+            Variant: "operation.DeleteNotification", Case: "denied-authority" };
+
+    private sealed class StatusDeniedNotificationDeleteRegistration(Window window, Invocation start,
+        VaultAdministration client, NotificationScope scope, ManagementReceipt receipt, CancellationToken token,
+        Action? beforeSend)
+    {
+        internal readonly Window Window = window;
+        internal readonly Binding Binding = window.Binding;
+        internal readonly FixtureSelector Selector = window.Binding.Selector;
+        internal readonly ManagementScope PlannedScope = window.Binding.Resource;
+        internal readonly Invocation Start = start;
+        internal readonly VaultAdministration Client = client;
+        internal readonly NotificationScope Scope = scope;
+        internal readonly ManagementReceipt Receipt = receipt;
+        internal readonly CancellationToken StartToken = token;
+        internal readonly Action? BeforeSend = beforeSend;
+        internal readonly OwnedArmResponse.Storage Storage = new();
+        internal readonly TaskCompletionSource Started = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal readonly TaskCompletionSource Checked = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal EmptyNotificationResponseCustody? EmptyCustody;
+        internal OwnedArmResponse.ParserCustody? ErrorCustody;
+        internal StatusTarget? Target;
+        internal StatusVaultCancellationWire? StartWire, StatusWire;
+        internal StatusDeniedNotificationDeleteStartProof? Candidate, StartProof;
+        internal StatusDeniedNotificationDeleteDeniedProof? Denied;
+        internal string? IssuedAsyncOperation, IssuedLocation, AuthorizationSha256;
+        internal Task<SecretOutcome<ManagementOperation>>? StartTask;
+        internal Task<SecretStatus>? StatusTask;
+        internal Task<Capture>? SealTask;
+        internal Invocation? Status;
+        internal ManagementOperation? Handle;
+        internal CancellationToken StatusToken, StatusCallerToken;
+        internal int StartSends, StatusSends;
+        internal bool Invalid, Sealed, StartHookReturned, StartSucceeded, StartComplete;
+        internal bool CheckClaimed, StatusHookReturned, StatusSucceeded, StorageDisposed, Complete;
+    }
+
+    private readonly Dictionary<Window, StatusDeniedNotificationDeleteRegistration> statusDeniedNotificationDeletes =
+        new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<Invocation, StatusDeniedNotificationDeleteRegistration> statusDeniedNotificationDeleteInvocations =
+        new(ReferenceEqualityComparer.Instance);
+
+    private static bool StatusDeniedNotificationDeleteStartValid(StatusDeniedNotificationDeleteRegistration r) =>
+        !r.Invalid && !r.Sealed && r.StartComplete && r.StartProof is not null &&
+        r.Started.Task.IsCompletedSuccessfully && r.StartTask is { IsCompletedSuccessfully: true } &&
+        ReferenceEquals(r.Binding.Resource, r.PlannedScope) && ReferenceEquals(r.Binding.Selector, r.Selector) &&
+        !r.StartToken.IsCancellationRequested &&
+        (!r.CheckClaimed || !r.StatusToken.IsCancellationRequested && !r.StatusCallerToken.IsCancellationRequested);
+
+    internal bool TryGetStatusDeniedNotificationDeleteStart(Window window, Binding binding,
+        VaultAdministration client, NotificationScope scope, ManagementReceipt receipt, Task startTask,
+        ManagementOperation handle, [NotNullWhen(true)] out StatusDeniedNotificationDeleteStartProof? proof)
+    {
+        lock (gate)
+        {
+            proof = null;
+            if (window is null || !statusDeniedNotificationDeletes.TryGetValue(window, out var r) ||
+                !ReferenceEquals(r.Binding, binding) || !ReferenceEquals(r.Client, client) ||
+                !ReferenceEquals(r.Scope, scope) || !ReferenceEquals(r.Receipt, receipt) ||
+                !ReferenceEquals(r.StartTask, startTask) || !ReferenceEquals(r.Handle, handle) ||
+                !StatusDeniedNotificationDeleteStartValid(r) || receipt.Evidence != DispatchEvidence.Pending ||
+                !(handle.State == NativeProvisioningState.Pending || r.Complete && handle.State == NativeProvisioningState.Failed) ||
+                !ReferenceEquals(targets.GetValueOrDefault(window), r.Target)) return false;
+            proof = r.StartProof;
+            return proof is not null;
+        }
+    }
+
+    internal bool TryGetStatusDeniedNotificationDeleteDenied(Window window, Binding binding,
+        VaultAdministration client, NotificationScope scope, ManagementReceipt receipt, Task startTask,
+        ManagementOperation handle, Task checkTask,
+        [NotNullWhen(true)] out StatusDeniedNotificationDeleteDeniedProof? proof)
+    {
+        lock (gate)
+        {
+            proof = null;
+            if (!TryGetStatusDeniedNotificationDeleteStart(window, binding, client, scope, receipt, startTask, handle, out _) ||
+                !statusDeniedNotificationDeletes.TryGetValue(window, out var r) || !r.Complete || !r.StorageDisposed ||
+                !ReferenceEquals(r.StatusTask, checkTask) || !r.Checked.Task.IsCompletedSuccessfully ||
+                r.StatusTask is not { IsCompletedSuccessfully: true } || r.StatusTask.Result != SecretStatus.Denied ||
+                r.StatusToken.IsCancellationRequested || r.StatusCallerToken.IsCancellationRequested ||
+                handle.State != NativeProvisioningState.Failed || receipt.Evidence != DispatchEvidence.Pending) return false;
+            proof = r.Denied;
+            return proof is not null && ReferenceEquals(proof.Start, r.StartProof) &&
+                ReferenceEquals(proof.CheckTask, checkTask);
+        }
+    }
+
+    internal bool OwnsStatusDeniedNotificationDeleteStart(StatusDeniedNotificationDeleteStartProof proof,
+        Window window, Binding binding, VaultAdministration client, NotificationScope scope,
+        ManagementReceipt receipt, Task startTask, ManagementOperation handle) =>
+        TryGetStatusDeniedNotificationDeleteStart(window, binding, client, scope, receipt, startTask, handle, out var issued) &&
+        ReferenceEquals(proof, issued);
+
+    internal bool OwnsStatusDeniedNotificationDeleteDenied(StatusDeniedNotificationDeleteDeniedProof proof,
+        Window window, Binding binding, VaultAdministration client, NotificationScope scope,
+        ManagementReceipt receipt, Task startTask, ManagementOperation handle, Task checkTask) =>
+        TryGetStatusDeniedNotificationDeleteDenied(window, binding, client, scope, receipt, startTask, handle, checkTask, out var issued) &&
+        ReferenceEquals(proof, issued);
+
+    internal async Task<SecretOutcome<ManagementOperation>> StartStatusDeniedNotificationDeleteAsync(
+        Window window, FixtureSelector selector, VaultAdministration client, ManagementScope scope,
+        ManagementOperationEffects.Input input, ManagementReceipt receipt, CancellationToken token = default,
+        Action<Task>? retained = null, Action? beforeSend = null)
+    {
+        StatusDeniedNotificationDeleteRegistration r;
+        lock (gate)
+        {
+            Own(window, selector);
+            Require(client is not null && receipt is not null && scope is NotificationScope &&
+                StatusDeniedNotificationDeleteSelector(selector) && ReferenceEquals(window.Binding.Selector, selector) &&
+                window.Binding.Operation == ManagementMutation.DeleteNotification &&
+                window.Binding.ApiRevision == "2025-02-15" && InputMatches(window.Binding, input) &&
+                Route(window.Binding with { Resource = scope }) == Route(window.Binding));
+            if (statusDeniedNotificationDeletes.TryGetValue(window, out var existing))
+            {
+                Require(ReferenceEquals(existing.Client, client) && ReferenceEquals(existing.Scope, scope) &&
+                    ReferenceEquals(existing.Receipt, receipt));
+                existing.Invalid = true;
+                throw new InvalidOperationException("management-capture-boundary");
+            }
+            Require(!window.Closed && window.Start is null && !token.IsCancellationRequested &&
+                receipt.Evidence == DispatchEvidence.NotDispatched && startedWindows.Add(window));
+            var invocation = window.Start = new();
+            r = new(window, invocation, client, (NotificationScope)scope, receipt, token, beforeSend);
+            statusDeniedNotificationDeletes.Add(window, r);
+            statusDeniedNotificationDeleteInvocations.Add(invocation, r);
+        }
+        try
+        {
+            Task<SecretOutcome<ManagementOperation>> task;
+            var previous = current.Value;
+            current.Value = new(window, r.Start, false);
+            try { task = ManagementOperationEffects.StartAsync(client, scope, window.Binding.Operation, input, receipt, token).AsTask(); }
+            finally { current.Value = previous; }
+            lock (gate) r.Start.SdkTask = r.StartTask = task;
+            try
+            {
+                retained?.Invoke(task);
+                lock (gate) r.StartHookReturned = true;
+            }
+            finally
+            {
+                var result = await task.ConfigureAwait(false);
+                lock (gate)
+                {
+                    r.Start.Outcome = result.Status;
+                    r.Handle = result.IsSuccess ? result.Value : null;
+                    r.Start.WrapperState = r.Handle?.State;
+                    r.StartSucceeded = task.IsCompletedSuccessfully && result.IsSuccess &&
+                        r.Handle!.State == NativeProvisioningState.Pending && receipt.Evidence == DispatchEvidence.Pending;
+                    r.Start.HasNativeHandle = r.StartSucceeded;
+                }
+            }
+            return await task.ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            lock (gate) { r.Invalid = true; r.Start.Canceled = true; }
+            throw;
+        }
+        catch { lock (gate) r.Invalid = true; throw; }
+        finally { await FinishStatusDeniedNotificationDeleteAsync(r, r.Start).ConfigureAwait(false); }
+    }
+
+    internal ValueTask<SecretStatus> CheckStatusDeniedNotificationDeleteAsync(Window window, FixtureSelector selector,
+        ManagementOperation handle, CancellationToken token, Action<Task>? retained = null) =>
+        CheckStatusDeniedNotificationDeleteCoreAsync(window, selector, handle, token, retained, token);
+
+    private async ValueTask<SecretStatus> CheckStatusDeniedNotificationDeleteCoreAsync(Window window, FixtureSelector selector,
+        ManagementOperation handle, CancellationToken token, Action<Task>? retained, CancellationToken originalCallerToken)
+    {
+        StatusDeniedNotificationDeleteRegistration r;
+        Invocation invocation;
+        lock (gate)
+        {
+            Own(window, selector);
+            Require(statusDeniedNotificationDeletes.TryGetValue(window, out r!) &&
+                ReferenceEquals(r.Selector, selector) && handle is not null && ReferenceEquals(r.Handle, handle));
+            bool valid = !r.CheckClaimed && !window.Closed && window.Status is null &&
+                StatusDeniedNotificationDeleteStartValid(r) && !token.IsCancellationRequested &&
+                !originalCallerToken.IsCancellationRequested && handle.State == NativeProvisioningState.Pending &&
+                r.Receipt.Evidence == DispatchEvidence.Pending;
+            r.CheckClaimed = true;
+            r.Invalid |= !valid;
+            Require(valid);
+            invocation = r.Status = window.Status = new();
+            r.StatusToken = token;
+            r.StatusCallerToken = originalCallerToken;
+            statusDeniedNotificationDeleteInvocations.Add(invocation, r);
+        }
+        try
+        {
+            Task<SecretStatus> task;
+            var previous = current.Value;
+            current.Value = new(window, invocation, true);
+            try { task = handle.CheckStatusAsync(token).AsTask(); }
+            finally { current.Value = previous; }
+            lock (gate) invocation.SdkTask = r.StatusTask = task;
+            try
+            {
+                retained?.Invoke(task);
+                lock (gate) r.StatusHookReturned = true;
+            }
+            finally
+            {
+                var outcome = await task.ConfigureAwait(false);
+                lock (gate)
+                {
+                    invocation.Outcome = outcome;
+                    invocation.WrapperState = handle.State;
+                    r.StatusSucceeded = task.IsCompletedSuccessfully && outcome == SecretStatus.Denied &&
+                        handle.State == NativeProvisioningState.Failed;
+                }
+            }
+            return await task.ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            lock (gate) { r.Invalid = true; invocation.Canceled = true; }
+            throw;
+        }
+        catch { lock (gate) r.Invalid = true; throw; }
+        finally { await FinishStatusDeniedNotificationDeleteAsync(r, invocation).ConfigureAwait(false); }
+    }
+
+    private async Task FinishStatusDeniedNotificationDeleteAsync(StatusDeniedNotificationDeleteRegistration r, Invocation invocation)
+    {
+        bool start = ReferenceEquals(r.Start, invocation);
+        Task<Task>? borrower;
+        lock (gate)
+        {
+            Task? actual = start ? r.StartTask : r.StatusTask;
+            Require(actual is null || actual.IsCompleted);
+            finishing.Add(invocation);
+            borrower = borrowers.TryGetValue(invocation, out var pending) ? pending.Task : null;
+        }
+        if (borrower is not null)
+        {
+            var actual = await borrower.ConfigureAwait(false);
+            try { await actual.ConfigureAwait(false); }
+            catch { lock (gate) r.Invalid = true; }
+        }
+        bool custodyValid, disposalFailed = false;
+        try
+        {
+            custodyValid = r.EmptyCustody is { Complete: true } &&
+                (start ? r.ErrorCustody is null : r.ErrorCustody is { Complete: true, Invalid: false });
+        }
+        catch { custodyValid = false; }
+        if (!start)
+        {
+            try
+            {
+                r.EmptyCustody?.PrepareStorageDisposal();
+                r.Storage.Dispose();
+                r.StorageDisposed = true;
+            }
+            catch { disposalFailed = true; }
+            try
+            {
+                custodyValid &= r.EmptyCustody is { Complete: true } &&
+                    r.ErrorCustody is { Complete: true, Invalid: false };
+            }
+            catch { custodyValid = false; }
+        }
+        lock (gate)
+        {
+            r.Invalid |= !custodyValid || disposalFailed || requestFactories.Contains(invocation);
+            requestOwners.Remove(invocation);
+            requestCandidates.Remove(invocation);
+            borrowers.Remove(invocation);
+            if (start)
+            {
+                r.StartComplete = !r.Invalid && !r.Sealed && !r.Window.Closed &&
+                    r.StartHookReturned && r.StartSucceeded && r.StartSends == 1 &&
+                    r.Candidate is not null && r.StartWire is { HttpStatus: 202, State: WireState.Pending, Complete: true } wire &&
+                    r.Target is { Kind: StatusTargetKind.EventGridDeleteAsyncOperation } target &&
+                    ReferenceEquals(r.Candidate.Target, target) && wire.Dispatch == target.StartDispatch &&
+                    target.TargetUri.OriginalString == r.IssuedAsyncOperation &&
+                    r.StartTask is { IsCompletedSuccessfully: true } && !r.StartToken.IsCancellationRequested &&
+                    r.Handle?.State == NativeProvisioningState.Pending && r.Receipt.Evidence == DispatchEvidence.Pending;
+                if (r.StartComplete)
+                {
+                    r.StartProof = r.Candidate;
+                    targets[r.Window] = r.Target;
+                    eligible.Add(r.Window);
+                }
+                r.Started.TrySetResult();
+            }
+            else
+            {
+                r.Complete = StatusDeniedNotificationDeleteStartValid(r) && !r.Window.Closed &&
+                    r.StorageDisposed && r.StatusHookReturned && r.StatusSucceeded &&
+                    r.StatusTask is { IsCompletedSuccessfully: true } && r.StatusTask.Result == SecretStatus.Denied &&
+                    r.Receipt.Evidence == DispatchEvidence.Pending && r.Handle?.State == NativeProvisioningState.Failed &&
+                    r.StatusSends == 1 && r.StatusWire is { HttpStatus: 401 or 403, State: WireState.Denied, Complete: true } wire &&
+                    r.StartWire is { } original && wire.Uri == r.IssuedAsyncOperation &&
+                    wire.Dispatch != original.Dispatch && !ReferenceEquals(wire.Request, original.Request);
+                if (r.Complete)
+                {
+                    var deniedWire = r.StatusWire!;
+                    r.Denied = new(r.StartProof!, r.StatusTask!, deniedWire.HttpStatus, deniedWire.ResponseSha256, deniedWire.NativeRequestId);
+                }
+                r.Checked.TrySetResult();
+            }
+            invocation.Terminated = true;
+            invocation.Drained.TrySetResult();
+        }
+        if (disposalFailed) throw new InvalidOperationException("management-capture-finalization");
+    }
+
+    private Task<Capture> SealStatusDeniedNotificationDeleteAsync(Window window)
+    {
+        StatusDeniedNotificationDeleteRegistration r;
+        TaskCompletionSource ready;
+        Task<Capture> task;
+        lock (gate)
+        {
+            Own(window, window.Binding.Selector);
+            r = statusDeniedNotificationDeletes[window];
+            window.Closed = true;
+            if (r.SealTask is not null) return r.SealTask;
+            r.Sealed = true;
+            ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            task = r.SealTask = Drain(ready.Task);
+        }
+        ready.SetResult();
+        return task;
+
+        async Task<Capture> Drain(Task admission)
+        {
+            await admission.ConfigureAwait(false);
+            await r.Started.Task.ConfigureAwait(false);
+            if (r.Status is not null) await r.Checked.Task.ConfigureAwait(false);
+            try
+            {
+                if (!r.StorageDisposed)
+                {
+                    r.EmptyCustody?.PrepareStorageDisposal();
+                    r.Storage.Dispose();
+                    r.StorageDisposed = true;
+                }
+                r.AuthorizationSha256 = null;
+            }
+            catch { lock (gate) r.Invalid = true; throw; }
+            return new() { Binding = r.Binding, Start = r.Start, Status = r.Status };
+        }
+    }
+
+    // Only the physically issued headers from this original DELETE enroll a
+    // status endpoint. Generic Continuation deliberately retains its old rules.
+    private static (string AsyncOperation, string? Location) StatusDeniedNotificationDeleteHeaders(
+        StatusDeniedNotificationDeleteRegistration r, HttpHeader[] headers)
+    {
+        Headers(headers);
+        Require(headers.Select(h => h.Name).Distinct(StringComparer.OrdinalIgnoreCase).Count() == headers.Length &&
+            headers.All(h => h.Name.Length > 0 && h.Name.All(c => char.IsAsciiLetterOrDigit(c) || c == '-')) &&
+            !headers.Any(h => new[] { "Operation-Location", "WWW-Authenticate", "Retry-After",
+                "Content-Encoding", "Transfer-Encoding", "Content-Range", "Range" }
+                .Contains(h.Name, StringComparer.OrdinalIgnoreCase)));
+        string? Header(string name) => headers.FirstOrDefault(h => h.Name.Equals(name, StringComparison.OrdinalIgnoreCase)).Value;
+        Require(Header("Content-Length") is null or "0");
+        string? aao = Header("Azure-AsyncOperation"), location = Header("Location");
+        Require(aao is not null);
+        Validate(aao, false);
+        if (location is not null) { Validate(location, true); Require(location != aao); }
+        return (aao, location);
+
+        void Validate(string text, bool isLocation)
+        {
+            string prefix = Origin + $"/subscriptions/{r.Scope.Vault.ResourceGroup.Subscription.SubscriptionId:D}" +
+                $"/resourceGroups/{r.Scope.Vault.ResourceGroup.ResourceGroup}/providers/Microsoft.EventGrid/locations/";
+            const string query = "?api-version=2025-02-15";
+            Require(text.Length <= 2048 && text.StartsWith(prefix, StringComparison.Ordinal) &&
+                text.EndsWith(query, StringComparison.Ordinal) && !text.Any(c => c is '%' or '\\' || !char.IsAscii(c) || char.IsControl(c)) &&
+                Uri.TryCreate(text, UriKind.Absolute, out var uri) && Trusted(uri) && uri.Query == query);
+            string[] tail = text[prefix.Length..^query.Length].Split('/');
+            Require(tail.Length == 5 && tail[0] is { Length: > 0 and <= 50 } && tail[0].All(char.IsAsciiLetterOrDigit) &&
+                (isLocation ? tail[1] == "operationStatus" && tail[2] == "default" && tail[3] == "operationId" :
+                    tail[1] == "operationResults" && tail[3] == "Spring" && tail[4] == "default"));
+            string id = tail[isLocation ? 4 : 2];
+            Require(Guid.TryParseExact(id, "D", out var operation) && operation != Guid.Empty && id == operation.ToString("D"));
+        }
+    }
+
+    private async Task SendStatusDeniedNotificationDeleteAsync(StatusDeniedNotificationDeleteRegistration r,
+        InvocationContext context, HttpMessage message, TaskCompletionSource<Task> borrower)
+    {
+        var invocation = context.Invocation;
+        bool status = context.Status;
+        lock (gate)
+        {
+            bool valid = !r.Invalid && !r.Sealed && !r.Window.Closed && !finishing.Contains(invocation) &&
+                ReferenceEquals(invocation, status ? r.Status : r.Start) &&
+                (status ? ++r.StatusSends == 1 && r.Target is not null && r.Receipt.Evidence == DispatchEvidence.Pending :
+                    ++r.StartSends == 1 && r.Receipt.Evidence == DispatchEvidence.PossiblyDispatched) &&
+                requestCandidates.TryGetValue(invocation, out var candidates) && candidates.Contains(message.Request);
+            r.Invalid |= !valid;
+            Require(valid);
+            borrowers.Add(invocation, borrower);
+            invocation.Sending = true;
+            requestOwners.Add(invocation, message.Request);
+            requestCandidates.Remove(invocation);
+        }
+        Attempt? attempt = null;
+        try
+        {
+            var request = message.Request;
+            var headers = request.Headers.ToArray();
+            string expectedUri = status ? r.IssuedAsyncOperation! : Origin + r.Window.Path + "?api-version=2025-02-15";
+            void Check()
+            {
+                Require(ReferenceEquals(message.Request, request) && headers.SequenceEqual(request.Headers) &&
+                    headers.Select(h => h.Name).Distinct(StringComparer.OrdinalIgnoreCase).Count() == headers.Length &&
+                    request.Method == (status ? RequestMethod.Get : RequestMethod.Delete) && request.Content is null &&
+                    Trusted(request.Uri.ToUri()) && request.Uri.ToUri().OriginalString == expectedUri &&
+                    ReferenceEquals(r.Binding.Resource, r.PlannedScope) && ReferenceEquals(r.Binding.Selector, r.Selector) &&
+                    request.Headers.TryGetValue("Authorization", out var auth) &&
+                    auth.StartsWith("Bearer ", StringComparison.Ordinal) && auth.Length > 7 &&
+                    !headers.Any(h => new[] { "Content-Encoding", "Transfer-Encoding", "Content-Range", "Range" }
+                        .Contains(h.Name, StringComparer.OrdinalIgnoreCase)));
+                Headers(headers);
+                if (request.Headers.TryGetValue("Content-Length", out var length)) Require(length == "0");
+                if (request.Headers.TryGetValue("Host", out var host)) Require(host == "management.azure.com");
+                r.StartToken.ThrowIfCancellationRequested();
+                if (status)
+                {
+                    r.StatusToken.ThrowIfCancellationRequested();
+                    r.StatusCallerToken.ThrowIfCancellationRequested();
+                }
+                message.CancellationToken.ThrowIfCancellationRequested();
+            }
+            Check();
+            request.Headers.TryGetValue("Authorization", out var authorization);
+            byte[] authorizationBytes = System.Text.Encoding.UTF8.GetBytes(authorization!);
+            string authorizationSha256;
+            try { authorizationSha256 = Convert.ToHexString(SHA256.HashData(authorizationBytes)); }
+            finally { CryptographicOperations.ZeroMemory(authorizationBytes); }
+            if (status) Require(r.AuthorizationSha256 == authorizationSha256);
+            else r.AuthorizationSha256 = authorizationSha256;
+            if (!status) r.BeforeSend?.Invoke();
+            Check();
+            string hash = Convert.ToHexString(SHA256.HashData(ReadOnlySpan<byte>.Empty));
+            Guid dispatch = Guid.NewGuid();
+            attempt = new() { Dispatch = dispatch, RequestSha256 = hash };
+            lock (gate) invocation.Attempts.Add(attempt);
+            message.BufferResponse = false;
+            try { await backend.ProcessAsync(message).ConfigureAwait(false); }
+            finally { if (message.HasResponse) r.Storage.Own(message.Response); }
+            Check();
+            var original = message.Response;
+            var stream = original.ContentStream;
+            int httpStatus;
+            string responseHash, nativeId;
+            if (status)
+            {
+                var body = await OwnedArmResponse.CaptureAsync(message, maximumBytes, r.Storage).ConfigureAwait(false);
+                Check();
+                Require(ReferenceEquals(original.ContentStream, stream) && body.Response.Status is 401 or 403);
+                using var document = JsonDocument.Parse(body.Bytes, new JsonDocumentOptions { MaxDepth = 4 });
+                int rows = 8;
+                JsonRows(document.RootElement, ref rows);
+                var root = document.RootElement;
+                Require(OnlyApprovalFields(root, "error") && root.TryGetProperty("error", out var error) &&
+                    OnlyApprovalFields(error, "code", "message") &&
+                    error.TryGetProperty("code", out var code) && code.ValueKind == JsonValueKind.String &&
+                    code.GetString() is { Length: > 0 and <= 128 } errorCode && !errorCode.Any(char.IsControl) &&
+                    error.TryGetProperty("message", out var text) && text.ValueKind == JsonValueKind.String &&
+                    text.GetString() is { Length: > 0 and <= 2048 } errorMessage && !errorMessage.Any(char.IsControl));
+                r.ErrorCustody = OwnedArmResponse.ParserCustody.Install(message, body.Response, body.Bytes, r.Storage,
+                    requireRebuffer: true, requireDownstreamRead: true);
+                httpStatus = body.Response.Status;
+                responseHash = body.Sha256;
+                nativeId = body.NativeRequestId;
+            }
+            else
+            {
+                httpStatus = original.Status;
+                string reason = original.ReasonPhrase, clientId = original.ClientRequestId;
+                var responseHeaders = original.Headers.Take(33).ToArray();
+                var issued = StatusDeniedNotificationDeleteHeaders(r, responseHeaders);
+                Require(httpStatus == 202 && reason.Length <= 256 && !reason.Any(char.IsControl) &&
+                    clientId.Length <= 1024 && !clientId.Any(char.IsControl));
+                nativeId = responseHeaders.FirstOrDefault(h => h.Name.Equals("x-ms-request-id", StringComparison.OrdinalIgnoreCase)).Value!;
+                Require(Segment(nativeId, 256));
+                if (stream is not null)
+                {
+                    r.Storage.Own(stream);
+                    byte[] one = new byte[1];
+                    try { Require(await stream.ReadAsync(one, message.CancellationToken).ConfigureAwait(false) == 0); }
+                    finally { CryptographicOperations.ZeroMemory(one); }
+                }
+                Check();
+                Require(ReferenceEquals(message.Response, original) && ReferenceEquals(original.ContentStream, stream) &&
+                    original.Status == httpStatus && original.ReasonPhrase == reason && original.ClientRequestId == clientId &&
+                    responseHeaders.SequenceEqual(original.Headers));
+                var buffer = new MemoryStream([], writable: false);
+                r.Storage.Own(buffer);
+                var owned = new OwnedArmResponse(httpStatus, reason, clientId, responseHeaders, buffer);
+                r.EmptyCustody = new(message, original, stream, owned, r.Storage);
+                responseHash = hash;
+                r.IssuedAsyncOperation = issued.AsyncOperation;
+                r.IssuedLocation = issued.Location;
+                r.Target = new(r.Binding, dispatch, StatusTargetKind.EventGridDeleteAsyncOperation, new Uri(issued.AsyncOperation),
+                    Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(issued.AsyncOperation))), responseHash);
+                r.Candidate = new(r.Binding, dispatch, httpStatus, 0, hash, responseHash, nativeId, r.Target);
+            }
+            attempt.HttpStatus = httpStatus;
+            attempt.ResponseObserved = true;
+            attempt.ResponseSha256 = responseHash;
+            attempt.State = status ? WireState.Denied : WireState.Pending;
+            attempt.Valid = true;
+            attempt.HasProviderContinuation = !status;
+            var wire = new StatusVaultCancellationWire(status ? 1 : 0, request, expectedUri, dispatch,
+                httpStatus, attempt.State, responseHash, nativeId, true, hash,
+                Array.AsReadOnly(headers.Select(h => (h.Name, h.Value)).ToArray()));
+            lock (gate)
+            {
+                if (status) r.StatusWire = wire;
+                else r.StartWire = wire;
+            }
+        }
+        catch (OperationCanceledException) { lock (gate) r.Invalid = true; throw; }
+        catch { lock (gate) r.Invalid = true; throw new IOException("management-capture-transport"); }
+        finally
+        {
+            lock (gate)
+            {
+                if (attempt is not null) attempt.TransportTerminated = true;
+                invocation.Sending = false;
+            }
+        }
+    }
+
     internal sealed class StatusDeniedNotificationUpdateStartProof(Binding binding, Guid startDispatch,
         int httpStatus, int responseBytes, string requestSha256, string responseSha256, string nativeRequestId)
     {
@@ -9145,6 +9711,7 @@ internal sealed class ManagementOperationNativeCapture
         private readonly Envelope envelope;
         private MemoryStream? rebuffer;
         private bool invalid;
+        private bool storageDisposing;
 
         internal EmptyNotificationResponseCustody(HttpMessage message, Azure.Response original,
             Stream? originalStream, OwnedArmResponse response, OwnedArmResponse.Storage storage)
@@ -9168,18 +9735,26 @@ internal sealed class ManagementOperationNativeCapture
         {
             // HttpMessage detaches its response before native disposal. As with
             // nonempty custody, inspect identity only while the message owns it.
-            if (message.HasResponse && !ReferenceEquals(message.Response, envelope) || original.Status != status ||
+            if (message.HasResponse && !ReferenceEquals(message.Response, envelope) || !storageDisposing && (original.Status != status ||
                 original.ReasonPhrase != reason || original.ClientRequestId != clientRequestId ||
                 !headers.SequenceEqual(original.Headers) ||
-                !ReferenceEquals(original.ContentStream, originalStream))
+                !ReferenceEquals(original.ContentStream, originalStream)))
                 invalid = true;
-            if (rebuffer is not null && (!rebuffer.CanRead || !rebuffer.CanSeek ||
+            if (!storageDisposing && rebuffer is not null && (!rebuffer.CanRead || !rebuffer.CanSeek ||
                 rebuffer.Length != 0 || rebuffer.Position != 0))
                 invalid = true;
         }
         internal bool Complete
         {
             get { Check(); return !invalid && initial.Eof && rebuffer is not null; }
+        }
+        // Opted into only by DELETE D after the actual native consumer exits.
+        // A disposed empty rebuffer is expected, not a substituted native input.
+        internal void PrepareStorageDisposal()
+        {
+            try { if (!Complete) invalid = true; }
+            catch { invalid = true; }
+            storageDisposing = true;
         }
         private void Rebuffer(Stream? value)
         {
@@ -12774,6 +13349,8 @@ internal sealed class ManagementOperationNativeCapture
                     !StatusDeniedPurgeTargetValid(deniedPurge, expectedBinding) ||
                 statusDeniedNotificationUpdate.TryGetValue(window, out var deniedUpdate) &&
                     (!StatusDeniedNotificationUpdateStartValid(deniedUpdate) || !ReferenceEquals(window.Binding, expectedBinding)) ||
+                statusDeniedNotificationDeletes.TryGetValue(window, out var deniedNotificationDelete) &&
+                    (!StatusDeniedNotificationDeleteStartValid(deniedNotificationDelete) || !ReferenceEquals(window.Binding, expectedBinding)) ||
                 TryGetStatusPendingPurgeRun(window, out var pending) &&
                     (!ReferenceEquals(window.Binding, expectedBinding) || !StatusPendingPurgeLive(pending) ||
                         pending.SelectedRevoked || pending.StartFacts is null || pending.Start is not { Finished: true } ||
@@ -12806,7 +13383,12 @@ internal sealed class ManagementOperationNativeCapture
                 (deleteVaultWindows.Contains(window) || purgeDeletedVaultWindows.Contains(window) ||
                     createVaultWindows.Contains(window) || recoverVaultWindows.Contains(window)) &&
                     !ReferenceEquals(window.Binding, expectedBinding) ||
-                !targets.TryGetValue(window, out target) || target is null)
+                !targets.TryGetValue(window, out target) || target is null ||
+                target.Kind == StatusTargetKind.EventGridDeleteAsyncOperation &&
+                    (!statusDeniedNotificationDeletes.TryGetValue(window, out var issuedDelete) ||
+                        !StatusDeniedNotificationDeleteStartValid(issuedDelete) ||
+                        !ReferenceEquals(issuedDelete.Binding, expectedBinding) ||
+                        !ReferenceEquals(issuedDelete.StartProof?.Target, target)))
                 return false;
             return true;
         }
@@ -12830,6 +13412,14 @@ internal sealed class ManagementOperationNativeCapture
                         StatusDeniedPurgeTargetValid(deniedPurge, expectedBinding)) &&
                     (!statusDeniedNotificationUpdate.TryGetValue(pair.Key, out var deniedUpdate) ||
                         StatusDeniedNotificationUpdateStartValid(deniedUpdate) && ReferenceEquals(pair.Key.Binding, expectedBinding)) &&
+                    (!statusDeniedNotificationDeletes.TryGetValue(pair.Key, out var deniedNotificationDelete) ||
+                        StatusDeniedNotificationDeleteStartValid(deniedNotificationDelete) &&
+                        ReferenceEquals(pair.Key.Binding, expectedBinding)) &&
+                    (target.Kind != StatusTargetKind.EventGridDeleteAsyncOperation ||
+                        statusDeniedNotificationDeletes.TryGetValue(pair.Key, out var issuedDelete) &&
+                        StatusDeniedNotificationDeleteStartValid(issuedDelete) &&
+                        ReferenceEquals(issuedDelete.Binding, expectedBinding) &&
+                        ReferenceEquals(issuedDelete.StartProof?.Target, target)) &&
                     (!TryGetStatusPendingPurgeRun(pair.Key, out var pending) ||
                         ReferenceEquals(pair.Key.Binding, expectedBinding) && StatusPendingPurgeLive(pending) &&
                         !pending.SelectedRevoked && pending.StartFacts is not null && pending.Start is { Finished: true } &&
@@ -12876,6 +13466,7 @@ internal sealed class ManagementOperationNativeCapture
                 !StatusDeniedPrivateConnectionDeleteSelector(window.Binding.Selector) &&
                 !statusDeniedPrivateConnectionDeletes.ContainsKey(window) &&
                 !statusDeniedPurges.ContainsKey(window) &&
+                !statusDeniedNotificationDeletes.ContainsKey(window) &&
                 !(StatusDeniedNotificationUpdateSelector(window.Binding.Selector) &&
                     window.Binding.Selector.Variant == "operation." + window.Binding.Operation) &&
                 !(NotificationFixtureProvisioner.StatusUnknownNotificationUpdateCancellationSelector(window.Binding.Selector) &&
@@ -13972,6 +14563,7 @@ internal sealed class ManagementOperationNativeCapture
             Require(!statusDeniedPrivateConnectionDeletes.ContainsKey(window));
             Require(!statusDeniedPurges.ContainsKey(window));
             Require(!statusDeniedNotificationUpdate.ContainsKey(window));
+            Require(!statusDeniedNotificationDeletes.ContainsKey(window));
             Require(!(NotificationFixtureProvisioner.StatusUnknownNotificationUpdateCancellationSelector(selector) &&
                     window.Binding.Operation == ManagementMutation.UpdateNotification) &&
                 !(NotificationFixtureProvisioner.StatusUnknownNotificationUpdateSelector(selector) &&
@@ -14243,6 +14835,11 @@ internal sealed class ManagementOperationNativeCapture
         ManagementOperation handle, CancellationToken token = default, Action<Task>? retained = null,
         CancellationToken? originalCallerToken = null)
     {
+        bool deniedNotificationDelete;
+        lock (gate) deniedNotificationDelete = statusDeniedNotificationDeletes.ContainsKey(window);
+        if (deniedNotificationDelete)
+            return await CheckStatusDeniedNotificationDeleteCoreAsync(window, selector, handle, token, retained,
+                originalCallerToken ?? token).ConfigureAwait(false);
         bool deniedVaultRecover;
         lock (gate) deniedVaultRecover = statusDeniedVaultRecovers.ContainsKey(window);
         if (deniedVaultRecover)
@@ -14542,6 +15139,9 @@ internal sealed class ManagementOperationNativeCapture
     // No cancellation/timeout may turn a still-running SDK task into a drain.
     internal async Task<Capture> SealAsync(Window window)
     {
+        bool deniedNotificationDelete;
+        lock (gate) deniedNotificationDelete = statusDeniedNotificationDeletes.ContainsKey(window);
+        if (deniedNotificationDelete) return await SealStatusDeniedNotificationDeleteAsync(window).ConfigureAwait(false);
         bool deniedVaultRecover;
         lock (gate) deniedVaultRecover = statusDeniedVaultRecovers.ContainsKey(window);
         if (deniedVaultRecover) return await SealStatusDeniedVaultRecoverAsync(window).ConfigureAwait(false);
@@ -15650,6 +16250,13 @@ internal sealed class ManagementOperationNativeCapture
             Invocation invocation = context.Invocation;
             lock (source.gate)
             {
+                if (source.statusDeniedNotificationDeleteInvocations.TryGetValue(invocation, out var deniedNotificationDelete) &&
+                    (deniedNotificationDelete.Invalid || deniedNotificationDelete.Sealed || deniedNotificationDelete.Window.Closed ||
+                        source.finishing.Contains(invocation)))
+                {
+                    deniedNotificationDelete.Invalid = true;
+                    throw new InvalidOperationException("status-denied-notification-delete-check");
+                }
                 if (source.statusDeniedNotificationUpdateInvocations.TryGetValue(invocation, out var deniedUpdate) &&
                     (deniedUpdate.Invalid || deniedUpdate.Sealed || source.finishing.Contains(invocation)))
                 {
@@ -15763,6 +16370,8 @@ internal sealed class ManagementOperationNativeCapture
                         unknownUpdate.Invalid = true;
                     if (source.statusDeniedNotificationUpdateInvocations.TryGetValue(invocation, out var deniedUpdate))
                         deniedUpdate.Invalid = true;
+                    if (source.statusDeniedNotificationDeleteInvocations.TryGetValue(invocation, out var deniedNotificationDelete))
+                        deniedNotificationDelete.Invalid = true;
                     if (source.statusUnknownNotificationUpdateIndependentInvocations.TryGetValue(invocation, out var unknownIndependentUpdate))
                         unknownIndependentUpdate.Invalid = true;
                 }
@@ -15772,6 +16381,10 @@ internal sealed class ManagementOperationNativeCapture
         }
         public override void Process(HttpMessage message)
         {
+            lock (source.gate)
+                if (source.current.Value is { } deleteContext &&
+                    source.statusDeniedNotificationDeleteInvocations.TryGetValue(deleteContext.Invocation, out var deniedNotificationDelete))
+                    deniedNotificationDelete.Invalid = true;
             if (source.currentStatusDeniedVaultRecover.Value is { } deniedVaultRecover)
                 deniedVaultRecover.Registration.Invalid = true;
             if (source.currentStatusDeniedVaultUpdate.Value is { } deniedVaultUpdate)
@@ -15930,6 +16543,7 @@ internal sealed class ManagementOperationNativeCapture
             StatusUnknownNotificationUpdateIndependentRegistration? unknownIndependentUpdate = null;
             StatusUnknownNotificationUpdateRegistration? unknownUpdate = null;
             StatusDeniedNotificationUpdateRegistration? deniedUpdate = null;
+            StatusDeniedNotificationDeleteRegistration? deniedNotificationDelete = null;
             StatusNotificationUpdateIndependentRegistration? independentUpdate = null;
             StatusNotificationCreateIndependentRegistration? independentCreate = null;
             StatusNotificationDeleteIndependentRegistration? independentDelete = null;
@@ -15944,12 +16558,15 @@ internal sealed class ManagementOperationNativeCapture
                     source.statusUnknownNotificationUpdateIndependentInvocations.TryGetValue(context.Invocation, out unknownIndependentUpdate);
                     source.statusUnknownNotificationUpdateInvocations.TryGetValue(context.Invocation, out unknownUpdate);
                     source.statusDeniedNotificationUpdateInvocations.TryGetValue(context.Invocation, out deniedUpdate);
+                    source.statusDeniedNotificationDeleteInvocations.TryGetValue(context.Invocation, out deniedNotificationDelete);
                     source.statusNotificationUpdateIndependentInvocations.TryGetValue(context.Invocation, out independentUpdate);
                     source.statusNotificationCreateIndependentInvocations.TryGetValue(context.Invocation, out independentCreate);
                     source.statusNotificationDeleteIndependentInvocations.TryGetValue(context.Invocation, out independentDelete);
                     source.statusRoleDeleteIndependentInvocations.TryGetValue(context.Invocation, out independentRoleDelete);
                 }
-            Task actual = deniedUpdate is not null
+            Task actual = deniedNotificationDelete is not null
+                ? source.SendStatusDeniedNotificationDeleteAsync(deniedNotificationDelete, context!, message, borrower)
+                : deniedUpdate is not null
                 ? source.SendStatusDeniedNotificationUpdateAsync(deniedUpdate, context!, message, borrower)
                 : unknownCancellationUpdate is not null
                 ? source.SendStatusUnknownNotificationUpdateCancellationAsync(unknownCancellationUpdate, context!, message, borrower)

@@ -2678,7 +2678,8 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
     private sealed record PendingStatusWitness(S Collector, S.Window Window, Task<S.Measurement> Task,
         C.StatusTarget Target, C.Binding Binding, PendingStatusTransport Transport, CancellationToken Token);
     private sealed class PendingStatusTransport(HttpPipelineTransport inner, Uri target, int maximum, string expectedState = "InProgress",
-        bool resourceState = false, NotificationFixtureProvisioner.Plan? notificationPlan = null, NotificationConfiguration? configuration = null)
+        bool resourceState = false, NotificationFixtureProvisioner.Plan? notificationPlan = null, NotificationConfiguration? configuration = null,
+        bool canonicalTarget = false)
         : HttpPipelineTransport, IDisposable
     {
         private readonly OwnedArmResponse.Storage storage = new();
@@ -2702,7 +2703,8 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
                 message.CancellationToken.ThrowIfCancellationRequested();
                 Require(ReferenceEquals(request, message.Request) && headers.SequenceEqual(message.Request.Headers) &&
                     message.Request.Method == Azure.Core.RequestMethod.Get && message.Request.Content is null &&
-                    message.Request.Uri.ToUri() == target);
+                    message.Request.Uri.ToUri() == target && (!canonicalTarget ||
+                        string.Equals(message.Request.Uri.ToUri().AbsoluteUri, target.OriginalString, StringComparison.Ordinal)));
             }
             Check();
             try { await inner.ProcessAsync(message).ConfigureAwait(false); }
@@ -7306,6 +7308,228 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
         public override string ToString() => "[StatusUnknownNotificationUpdateCompletion]";
     }
 
+    private bool statusDeniedNotificationDeleteProfile { get; init; }
+    private bool statusDeniedNotificationDeleteCleanup { get; init; }
+    private bool MatchesStatusDeniedNotificationDeleteOperation(FixtureSelector selector) =>
+        statusDeniedNotificationDeleteProfile && provisioner.MatchesStatusDeniedNotificationDeleteOperation(selector);
+    private enum DeniedNotificationDeleteStage { Begin, StartDrain, Read, Complete }
+    private sealed class DeniedNotificationDeleteLatch
+    {
+        private int invalid;
+        internal bool Invalid => Volatile.Read(ref invalid) != 0;
+        internal void Revoke() => Interlocked.Exchange(ref invalid, 1);
+    }
+    private VaultAdministrationEffects.Configuration? statusDeniedNotificationDeleteConfiguration;
+    private sealed record DeniedNotificationDeleteFacts(RoleFixtureJournal.Snapshot Preimage,
+        RoleFixtureJournal.Snapshot Postimage, string ResourceId, Guid Dispatch, DeniedNotificationDeleteStage Stage,
+        CancellationToken[] Tokens, (Task Task, TaskStatus Outcome)[] Tasks, DeniedNotificationDeleteLatch Latch,
+        VaultFixtureProvisioner.Plan Parent, NotificationFixtureProvisioner.Plan Child, C.Binding Binding,
+        StatusDeniedNotificationDeleteWriterExclusion Exclusion, StatusDeniedNotificationDeleteBaseline Baseline,
+        StatusDeniedNotificationDeleteObservedAbsence? Observed, C.StatusDeniedNotificationDeleteStartProof? Start,
+        C.StatusDeniedNotificationDeleteDeniedProof? Denied)
+    {
+        public override string ToString() => "[DeniedNotificationDeleteFacts]";
+    }
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<object, DeniedNotificationDeleteFacts>
+        deniedNotificationDeleteFacts = new(ReferenceEqualityComparer.Instance);
+
+    internal sealed class StatusDeniedNotificationDeleteAdmission(ManagementOperationFixtureObserverService source)
+    {
+        internal string ResourceId => source.deniedNotificationDeleteFacts.TryGetValue(this, out var f) ? f.ResourceId : "";
+        internal Guid Dispatch => source.deniedNotificationDeleteFacts.TryGetValue(this, out var f) ? f.Dispatch : Guid.Empty;
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.ValidateDeniedNotificationDelete(this, journal, state, DeniedNotificationDeleteStage.Begin);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.ValidateDeniedNotificationDelete(this, journal, state, DeniedNotificationDeleteStage.Begin, true);
+        internal RoleFixtureJournal.Snapshot Postimage => FreezeDeniedNotificationDelete(source.deniedNotificationDeleteFacts[this].Postimage);
+        public override string ToString() => "[StatusDeniedNotificationDeleteAdmission]";
+    }
+    internal sealed class StatusDeniedNotificationDeleteStartDrain(ManagementOperationFixtureObserverService source)
+    {
+        internal Guid Dispatch => source.deniedNotificationDeleteFacts.TryGetValue(this, out var f) ? f.Dispatch : Guid.Empty;
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.ValidateDeniedNotificationDelete(this, journal, state, DeniedNotificationDeleteStage.StartDrain);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.ValidateDeniedNotificationDelete(this, journal, state, DeniedNotificationDeleteStage.StartDrain, true);
+        internal RoleFixtureJournal.Snapshot Postimage => FreezeDeniedNotificationDelete(source.deniedNotificationDeleteFacts[this].Postimage);
+        public override string ToString() => "[StatusDeniedNotificationDeleteStartDrain]";
+    }
+    internal sealed class StatusDeniedNotificationDeleteReadAdmission(ManagementOperationFixtureObserverService source)
+    {
+        internal Guid Dispatch => source.deniedNotificationDeleteFacts.TryGetValue(this, out var f) ? f.Dispatch : Guid.Empty;
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.ValidateDeniedNotificationDelete(this, journal, state, DeniedNotificationDeleteStage.Read);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.ValidateDeniedNotificationDelete(this, journal, state, DeniedNotificationDeleteStage.Read, true);
+        internal RoleFixtureJournal.Snapshot Postimage => FreezeDeniedNotificationDelete(source.deniedNotificationDeleteFacts[this].Postimage);
+        public override string ToString() => "[StatusDeniedNotificationDeleteReadAdmission]";
+    }
+    internal sealed class StatusDeniedNotificationDeleteObservation(ManagementOperationFixtureObserverService source)
+    {
+        internal Guid Dispatch => source.deniedNotificationDeleteFacts.TryGetValue(this, out var f) ? f.Dispatch : Guid.Empty;
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.ValidateDeniedNotificationDelete(this, journal, state, DeniedNotificationDeleteStage.Complete);
+        internal bool AcceptPostimage(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state) =>
+            source.ValidateDeniedNotificationDelete(this, journal, state, DeniedNotificationDeleteStage.Complete, true);
+        internal RoleFixtureJournal.Snapshot Postimage => FreezeDeniedNotificationDelete(source.deniedNotificationDeleteFacts[this].Postimage);
+        public override string ToString() => "[StatusDeniedNotificationDeleteObservation]";
+    }
+    private bool ValidateDeniedNotificationDelete(object capability, RoleFixtureJournal journal,
+        RoleFixtureJournal.Snapshot state, DeniedNotificationDeleteStage stage, bool postimage = false) =>
+        ReferenceEquals(journal, provisioner.Journal) && deniedNotificationDeleteFacts.TryGetValue(capability, out var f) &&
+        f.Stage == stage && !state.Closing && !f.Latch.Invalid && !disposed &&
+        !f.Exclusion.ContinuityToken.IsCancellationRequested && f.Tokens.All(t => !t.IsCancellationRequested) &&
+        f.Tasks.All(t => t.Task.IsCompleted && t.Task.Status == t.Outcome && t.Outcome != TaskStatus.Canceled) &&
+        RoleFixtureJournal.SameStatusDeniedNotificationDeleteSnapshot(postimage ? f.Postimage : f.Preimage, state);
+
+    private static RoleFixtureJournal.Snapshot FreezeDeniedNotificationDelete(RoleFixtureJournal.Snapshot state) =>
+        state with { Selector = state.Selector with { }, Resources = state.Resources.Select(r => r with { }).ToArray() };
+
+    private void IssueDeniedNotificationDelete(Session session, object capability, DeniedNotificationDeleteStage stage,
+        RoleFixtureJournal.Snapshot state, params Task[] tasks)
+    {
+        Require(MatchesStatusDeniedNotificationDeleteOperation(state.Selector) && session.Selector == state.Selector &&
+            session.Plan?.Selector == state.Selector && session.Binding?.Selector == state.Selector &&
+            session.Binding.Operation == ManagementMutation.DeleteNotification &&
+            !disposed && !session.Closed && DeniedNotificationDeleteLive(session) &&
+            session.DeniedNotificationDeleteTokens.All(t => !t.IsCancellationRequested));
+        Require(tasks.All(t => t.IsCompleted && !t.IsCanceled) && session.DeniedNotificationDeleteBaseline is not null);
+        Require(stage == DeniedNotificationDeleteStage.Begin || session.DeniedNotificationDeleteStart is not null);
+        Require(stage is DeniedNotificationDeleteStage.Begin or DeniedNotificationDeleteStage.StartDrain ||
+            session.DeniedNotificationDeleteObservedAbsence is not null);
+        Require(stage != DeniedNotificationDeleteStage.Complete || session.DeniedNotificationDeleteNativeDenied is not null);
+        var preimage = FreezeDeniedNotificationDelete(state);
+        string id = session.NotificationPlan!.ResourceId;
+        var postimage = preimage with
+        {
+            Revision = preimage.Revision + 1,
+            Resources = preimage.Resources.Select(r => r.Id == id ? r with
+            {
+                SelectedAttempted = true,
+                InvocationTerminated = stage is DeniedNotificationDeleteStage.StartDrain or DeniedNotificationDeleteStage.Complete,
+                ActiveDispatch = stage == DeniedNotificationDeleteStage.Complete ? Guid.Empty : session.Dispatch
+            } : r).ToArray()
+        };
+        Require(deniedNotificationDeleteFacts.TryAdd(capability, new(preimage, postimage, id, session.Dispatch, stage,
+            session.DeniedNotificationDeleteTokens.ToArray(), tasks.Select(t => (t, t.Status)).ToArray(),
+            session.DeniedNotificationDeleteLatch, session.Plan!, session.NotificationPlan!, session.Binding!, session.DeniedNotificationDeleteExclusion!,
+            session.DeniedNotificationDeleteBaseline, session.DeniedNotificationDeleteObservedAbsence,
+            session.DeniedNotificationDeleteStart, session.DeniedNotificationDeleteNativeDenied)));
+        session.DeniedNotificationDeleteCapabilities.Add(capability);
+    }
+    private void RevokeDeniedNotificationDelete(Session session)
+    {
+        session.DeniedNotificationDeleteInvalid = true;
+        session.DeniedNotificationDeleteLatch.Revoke();
+        foreach (var capability in session.DeniedNotificationDeleteCapabilities)
+            deniedNotificationDeleteFacts.TryRemove(capability, out _);
+    }
+
+    private sealed record StatusDeniedNotificationDeleteReadSlot(NotificationFixtureProvisioner Source,
+        NotificationFixtureProvisioner.Plan Child, VaultFixtureProvisioner.Plan Parent, C.Binding Binding,
+        Guid Subscription, DateTimeOffset ArmedAt, bool Baseline, Guid Nonce)
+    {
+        public override string ToString() => "[StatusDeniedNotificationDeleteReadSlot]";
+    }
+    private sealed record StatusDeniedNotificationDeleteBaseline(StatusDeniedNotificationDeleteReadSlot Slot,
+        Task<NotificationFixtureProvisioner.Result> Task, NotificationFixtureProvisioner.StatusDeniedNotificationDeleteReadProof Proof,
+        IReadOnlyList<RoleFixtureJournal.Resource> Rows, NotificationConfiguration Configuration, DateTimeOffset FinishedAt)
+    {
+        public override string ToString() => "[StatusDeniedNotificationDeleteBaseline]";
+    }
+    private sealed record StatusDeniedNotificationDeleteObservedAbsence(StatusDeniedNotificationDeleteBaseline Baseline,
+        StatusDeniedNotificationDeleteReadSlot Slot, Task<NotificationFixtureProvisioner.Result> Task,
+        NotificationFixtureProvisioner.StatusDeniedNotificationDeleteReadProof Proof,
+        C.StatusDeniedNotificationDeleteStartProof Start, StatusDeniedNotificationDeleteStatusWitness Witness, DateTimeOffset FinishedAt)
+    {
+        public override string ToString() => "[StatusDeniedNotificationDeleteObservedAbsence]";
+    }
+
+    internal static ManagementOperationFixtureObserverService ForStatusDeniedNotificationDelete(Uri origin, string owner,
+        string observerIdentity, SecretMaterial capability, VaultFixtureProvisioner.HostScope scope,
+        VaultFixtureProvisioner provisioner, S.Authority statusReader, R.Authority resourceReader,
+        HttpPipelineTransport selectedBackend, S.Limits statusLimits, R.Limits resourceLimits, Limits limits,
+        TimeProvider time, NotificationSource notificationSource, StatusDeniedNotificationDeleteWriterExclusion writerExclusion)
+    {
+        Require(provisioner.StatusDeniedNotificationDeleteProfile && !provisioner.StatusDeniedNotificationDeleteCleanup);
+        Require(notificationSource is { HttpsWebhookReady: true, Baseline: not null, ExclusiveCreation: null } &&
+            writerExclusion is { NamespaceEpoch: var epoch, ContinuousWriterExclusion: true, NoOlderInflightInvocations: true,
+                NoNameReuse: true } && epoch != Guid.Empty &&
+            !writerExclusion.ContinuityToken.IsCancellationRequested);
+        Require(Uri.TryCreate(notificationSource.Baseline.Endpoint.Reveal(), UriKind.Absolute, out var endpoint) &&
+            endpoint.Scheme == "https" && endpoint.UserInfo.Length == 0 && endpoint.Fragment.Length == 0 &&
+            notificationSource.Baseline.EventTypes.Count() == 1 &&
+            notificationSource.Baseline.EventTypes.Single() == VaultNotificationEvent.SecretNearExpiry &&
+            notificationSource.Baseline.DeliveryAttributes.Count == 0 &&
+            notificationSource.Limits is { MaximumResponseBytes: >= 1024 and <= 16 * 1024 * 1024,
+                MaximumRequestBytes: >= 1024 and <= 1024 * 1024, MaximumRowBytes: >= 1024,
+                MaximumDepth: >= 4 and <= 32, MaximumHeaders: >= 1 and <= 128, MaximumHeaderBytes: >= 128 and <= 64 * 1024 } &&
+            notificationSource.Limits.MaximumRowBytes <= notificationSource.Limits.MaximumResponseBytes &&
+            notificationSource.Limits.Timeout > TimeSpan.Zero && notificationSource.Limits.Timeout <= TimeSpan.FromMinutes(2));
+        var configuration = provisioner.StatusDeniedNotificationDeleteConfiguration(scope, statusReader, resourceReader, selectedBackend);
+        return new(origin, owner, observerIdentity, capability, scope, provisioner, statusReader, resourceReader,
+            selectedBackend, statusLimits, resourceLimits, limits, time, notificationSource)
+        { statusDeniedNotificationDeleteProfile = true, statusDeniedNotificationDeleteConfiguration = configuration,
+            deniedNotificationDeleteExclusion = writerExclusion };
+    }
+    internal static ManagementOperationFixtureObserverService ForStatusDeniedNotificationDeleteCleanup(Uri origin, string owner,
+        string observerIdentity, SecretMaterial capability, VaultFixtureProvisioner.HostScope scope,
+        VaultFixtureProvisioner provisioner, NotificationSource notificationSource, Limits limits, TimeProvider? time = null)
+    {
+        Require(provisioner.StatusDeniedNotificationDeleteProfile && provisioner.StatusDeniedNotificationDeleteCleanup);
+        return new(origin, owner, observerIdentity, capability, scope, provisioner, notificationSource, limits, time, deniedNotificationDelete: true);
+    }
+
+    internal sealed class StatusDeniedNotificationDeleteWriterExclusion(Guid namespaceEpoch, bool continuousWriterExclusion,
+        bool noOlderInflightInvocations, bool noNameReuse, CancellationToken continuityToken)
+    {
+        internal Guid NamespaceEpoch { get; } = namespaceEpoch;
+        internal bool ContinuousWriterExclusion { get; } = continuousWriterExclusion;
+        internal bool NoOlderInflightInvocations { get; } = noOlderInflightInvocations;
+        internal bool NoNameReuse { get; } = noNameReuse;
+        internal CancellationToken ContinuityToken { get; } = continuityToken;
+        public override string ToString() => "[StatusDeniedNotificationDeleteWriterExclusion]";
+    }
+    private StatusDeniedNotificationDeleteWriterExclusion? deniedNotificationDeleteExclusion;
+    private bool DeniedNotificationDeleteLive(Session session)
+    {
+        var declaration = session.DeniedNotificationDeleteExclusion;
+        if (!MatchesStatusDeniedNotificationDeleteOperation(session.Selector) ||
+            session.Plan is { } parent && parent.Selector != session.Selector ||
+            session.Binding is { } binding && (binding.Selector != session.Selector ||
+                binding.Operation != ManagementMutation.DeleteNotification) ||
+            session.DeniedNotificationDeleteInvalid || declaration is null ||
+            !ReferenceEquals(declaration, deniedNotificationDeleteExclusion) || declaration.NamespaceEpoch == Guid.Empty ||
+            !declaration.ContinuousWriterExclusion || !declaration.NoOlderInflightInvocations || !declaration.NoNameReuse ||
+            declaration.ContinuityToken.IsCancellationRequested ||
+            session.DeniedNotificationDeleteTokens.Any(t => t.IsCancellationRequested))
+        {
+            RevokeDeniedNotificationDelete(session);
+            return false;
+        }
+        return true;
+    }
+
+    private sealed record StatusDeniedNotificationDeleteStatusWitness(S Collector, S.Window Window,
+        Task<S.Measurement> Task, C.StatusTarget Target, C.Binding Binding, PendingStatusTransport Transport, CancellationToken Token);
+    private sealed record DeniedNotificationDeleteCleanupFacts(RoleFixtureJournal.Snapshot Acknowledged,
+        VaultFixtureProvisioner.Plan Parent, NotificationFixtureProvisioner.Plan Child,
+        StatusDeniedNotificationDeleteObservedAbsence Observation, C.StatusDeniedNotificationDeleteDeniedProof Denied,
+        StatusDeniedNotificationDeleteWriterExclusion Exclusion, CancellationToken[] Tokens, DeniedNotificationDeleteLatch Latch);
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<StatusDeniedNotificationDeleteCleanupAuthority,
+        DeniedNotificationDeleteCleanupFacts> deniedNotificationDeleteCleanupAuthorities = new(ReferenceEqualityComparer.Instance);
+    internal sealed class StatusDeniedNotificationDeleteCleanupAuthority(ManagementOperationFixtureObserverService source)
+    {
+        internal bool Validate(RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state,
+            VaultFixtureProvisioner.Plan parent, NotificationFixtureProvisioner.Plan child) =>
+            ReferenceEquals(journal, source.provisioner.Journal) && !source.disposed &&
+            source.deniedNotificationDeleteCleanupAuthorities.TryGetValue(this, out var f) &&
+            ReferenceEquals(parent, f.Parent) && ReferenceEquals(child, f.Child) && !f.Latch.Invalid &&
+            !f.Exclusion.ContinuityToken.IsCancellationRequested && f.Tokens.All(t => !t.IsCancellationRequested) &&
+            journal.IsStatusDeniedNotificationDeleteDescendant(f.Acknowledged, state);
+        public override string ToString() => "[StatusDeniedNotificationDeleteCleanupAuthority]";
+    }
+
     private bool statusDeniedNotificationUpdateProfile, statusDeniedNotificationUpdateCleanup;
     private ManagementMutation statusDeniedNotificationOperation { get; init; } = ManagementMutation.UpdateNotification;
     private bool MatchesStatusDeniedNotificationOperation(FixtureSelector selector) =>
@@ -7752,7 +7976,7 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
 
     private ManagementOperationFixtureObserverService(Uri origin, string owner, string observerIdentity,
         SecretMaterial capability, VaultFixtureProvisioner.HostScope scope, VaultFixtureProvisioner provisioner,
-        NotificationSource notification, Limits limits, TimeProvider? time, bool notificationCreateIndependent = false, bool unknownNotificationUpdate = false, bool deniedNotificationUpdate = false, bool unknownNotificationUpdateIndependent = false, bool unknownNotificationUpdateCancellation = false)
+        NotificationSource notification, Limits limits, TimeProvider? time, bool notificationCreateIndependent = false, bool unknownNotificationUpdate = false, bool deniedNotificationUpdate = false, bool unknownNotificationUpdateIndependent = false, bool unknownNotificationUpdateCancellation = false, bool deniedNotificationDelete = false)
         : this(origin, owner, observerIdentity, capability, scope, provisioner, limits, time)
     {
         Require(notification is
@@ -7764,7 +7988,9 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
             !ReferenceEquals(notification.Setup.Transport, notification.Observer.Transport));
         notificationSource = notification with { Baseline = null };
         profile = Profile.StatusFamily;
-        if (deniedNotificationUpdate)
+        if (deniedNotificationDelete)
+            statusDeniedNotificationDeleteProfile = statusDeniedNotificationDeleteCleanup = true;
+        else if (deniedNotificationUpdate)
             statusDeniedNotificationUpdateProfile = statusDeniedNotificationUpdateCleanup = true;
         else if (unknownNotificationUpdateCancellation)
             statusUnknownNotificationUpdateCancellationProfile = statusUnknownNotificationUpdateCancellationCleanup = true;
@@ -8236,6 +8462,28 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
         internal bool UnknownNotificationUpdateParentPending, UnknownNotificationUpdateChildPending;
         internal RoleFixtureJournal.Snapshot? UnknownNotificationUpdateCleanupSnapshot;
         internal readonly SemaphoreSlim UnknownNotificationUpdateRelease = new(1, 1);
+        internal StatusDeniedNotificationDeleteReadSlot? DeniedNotificationDeleteBefore, DeniedNotificationDeleteAfter;
+        internal StatusDeniedNotificationDeleteBaseline? DeniedNotificationDeleteBaseline;
+        internal StatusDeniedNotificationDeleteObservedAbsence? DeniedNotificationDeleteObservedAbsence;
+        internal RoleFixtureJournal.Snapshot? DeniedNotificationDeleteReady, DeniedNotificationDeleteBegin,
+            DeniedNotificationDeleteDrained, DeniedNotificationDeleteRead;
+        internal StatusDeniedNotificationDeleteStartDrain? DeniedNotificationDeleteStartDrain;
+        internal StatusDeniedNotificationDeleteObservation? DeniedNotificationDeleteObservation;
+        internal readonly List<object> DeniedNotificationDeleteCapabilities = [];
+        internal readonly List<CancellationToken> DeniedNotificationDeleteTokens = [];
+        internal bool DeniedNotificationDeleteInvalid;
+        internal StatusDeniedNotificationDeleteWriterExclusion? DeniedNotificationDeleteExclusion;
+        internal CancellationTokenRegistration DeniedNotificationDeleteContinuity;
+        internal C.StatusDeniedNotificationDeleteStartProof? DeniedNotificationDeleteStart;
+        internal C.StatusDeniedNotificationDeleteDeniedProof? DeniedNotificationDeleteNativeDenied;
+        internal RoleFixtureJournal.Snapshot? DeniedNotificationDeleteObserved;
+        internal bool DeniedNotificationDeleteParentPending, DeniedNotificationDeleteChildPending;
+        internal RoleFixtureJournal.Snapshot? DeniedNotificationDeleteCleanupSnapshot;
+        internal readonly SemaphoreSlim DeniedNotificationDeleteRelease = new(1, 1);
+
+        internal readonly DeniedNotificationDeleteLatch DeniedNotificationDeleteLatch = new(), DeniedNotificationDeleteCleanupLatch = new();
+        internal object? DeniedNotificationDeletePending;
+        internal StatusDeniedNotificationDeleteCleanupAuthority? DeniedNotificationDeleteCleanupAuthority;
         internal StatusDeniedNotificationUpdateReadSlot? DeniedNotificationUpdateBefore, DeniedNotificationUpdateAfter;
         internal StatusDeniedNotificationUpdateBaseline? DeniedNotificationUpdateBaseline;
         internal StatusDeniedNotificationUpdateObservedConfiguration? DeniedNotificationUpdateObservedConfiguration;
@@ -8519,7 +8767,7 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
                 return uri.AbsolutePath == "/operation/release"
                     ? await Release(body.RootElement.Deserialize<FixtureSelector>(Json) ?? throw Failure(), linked.Token, cancellationToken).ConfigureAwait(false)
                     : Error(HttpStatusCode.NotFound);
-            if (statusUnknownNotificationUpdateCancellationCleanup || statusUnknownNotificationUpdateIndependentCleanup || statusDeniedNotificationUpdateCleanup || statusUnknownNotificationUpdateCleanup || statusNotificationUpdateIndependentCleanup || statusNotificationCreateIndependentCleanup)
+            if (statusUnknownNotificationUpdateCancellationCleanup || statusUnknownNotificationUpdateIndependentCleanup || statusDeniedNotificationDeleteCleanup || statusDeniedNotificationUpdateCleanup || statusUnknownNotificationUpdateCleanup || statusNotificationUpdateIndependentCleanup || statusNotificationCreateIndependentCleanup)
                 return uri.AbsolutePath == "/operation/release"
                     ? await Release(body.RootElement.Deserialize<FixtureSelector>(Json) ?? throw Failure(),
                         linked.Token, cancellationToken).ConfigureAwait(false)
@@ -8592,6 +8840,11 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
                 VaultAdministrationEffects.SameConfiguration(expectedNotificationParent,
                     new(input.Location, input.TenantId, input.Sku, true, false, input.RetentionDays, false, [])));
 
+        if (statusDeniedNotificationDeleteProfile)
+            Require(!statusDeniedNotificationDeleteCleanup && input.Operation == ManagementMutation.DeleteNotification &&
+                statusDeniedNotificationDeleteConfiguration is { } expectedNotificationParent &&
+                VaultAdministrationEffects.SameConfiguration(expectedNotificationParent,
+                    new(input.Location, input.TenantId, input.Sku, true, false, input.RetentionDays, false, [])));
         if (statusDeniedNotificationUpdateProfile)
             Require(!statusDeniedNotificationUpdateCleanup && input.Operation == statusDeniedNotificationOperation &&
                 statusDeniedNotificationUpdateConfiguration is { } expectedNotificationParent &&
@@ -8663,7 +8916,7 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
                 NotificationFixtureProvisioner.StatusNotificationCreateCancellationSelector(input.Selection));
             Require(NotificationConfigurationMatches(notificationSource.Baseline, VaultNotificationEvent.SecretNearExpiry) &&
                 input.WebhookUrl == notificationSource.Baseline.Endpoint.Reveal());
-            if (statusUnknownNotificationUpdateCancellationProfile || statusUnknownNotificationUpdateIndependentProfile || statusDeniedNotificationUpdateProfile || statusUnknownNotificationUpdateProfile || statusNotificationUpdateIndependentProfile || statusNotificationCreateIndependentProfile ||
+            if (statusUnknownNotificationUpdateCancellationProfile || statusUnknownNotificationUpdateIndependentProfile || statusDeniedNotificationDeleteProfile || statusDeniedNotificationUpdateProfile || statusUnknownNotificationUpdateProfile || statusNotificationUpdateIndependentProfile || statusNotificationCreateIndependentProfile ||
                 NotificationFixtureProvisioner.StatusNotificationDeleteCancellationSelector(input.Selection) ||
                 NotificationFixtureProvisioner.StatusNotificationDeleteIndependentSelector(input.Selection) ||
                 NotificationFixtureProvisioner.StatusNotificationUpdateCancellationSelector(input.Selection) ||
@@ -8724,6 +8977,16 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
                 });
             }
 
+            if (statusDeniedNotificationDeleteProfile)
+            {
+                session.DeniedNotificationDeleteExclusion = deniedNotificationDeleteExclusion;
+                session.DeniedNotificationDeleteTokens.AddRange([token, requestCancellation]);
+                Require(DeniedNotificationDeleteLive(session));
+                session.DeniedNotificationDeleteContinuity = deniedNotificationDeleteExclusion!.ContinuityToken.Register(() =>
+                {
+                    lock (gate) RevokeDeniedNotificationDelete(session);
+                });
+            }
             if (statusDeniedNotificationUpdateProfile)
             {
                 session.DeniedNotificationUpdateExclusion = deniedNotificationUpdateExclusion;
@@ -8758,6 +9021,8 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
                 ? CancellationTokenSource.CreateLinkedTokenSource(token, session.Stop.Token, session.UnknownNotificationUpdateCancellationExclusion!.ContinuityToken)
                 : statusUnknownNotificationUpdateIndependentProfile
                 ? CancellationTokenSource.CreateLinkedTokenSource(token, session.Stop.Token, session.UnknownNotificationUpdateIndependentExclusion!.ContinuityToken)
+                : statusDeniedNotificationDeleteProfile
+                ? CancellationTokenSource.CreateLinkedTokenSource(token, session.Stop.Token, session.DeniedNotificationDeleteExclusion!.ContinuityToken)
                 : statusDeniedNotificationUpdateProfile
                 ? CancellationTokenSource.CreateLinkedTokenSource(token, session.Stop.Token, session.DeniedNotificationUpdateExclusion!.ContinuityToken)
                 : statusUnknownNotificationUpdateProfile
@@ -8798,6 +9063,10 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
                     session.NotificationPlan is { Restored: false } originalChild && ReferenceEquals(originalChild.ObjectPlan, session.Plan) &&
                     originalChild.LeaseId == session.Plan.LeaseId && originalChild.Selector == session.Selector);
 
+            if (statusDeniedNotificationDeleteProfile)
+                Require(DeniedNotificationDeleteLive(session) && session.Plan is { Restored: false } &&
+                    session.NotificationPlan is { Restored: false } originalChild && ReferenceEquals(originalChild.ObjectPlan, session.Plan) &&
+                    originalChild.LeaseId == session.Plan.LeaseId && originalChild.Selector == session.Selector);
             if (statusDeniedNotificationUpdateProfile)
                 Require(DeniedNotificationUpdateLive(session) && session.Plan is { Restored: false } &&
                     session.NotificationPlan is { Restored: false } originalChild && ReferenceEquals(originalChild.ObjectPlan, session.Plan) &&
@@ -8807,7 +9076,7 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
                     session.NotificationPlan is { Restored: false } originalChild && ReferenceEquals(originalChild.ObjectPlan, session.Plan) &&
                     originalChild.LeaseId == session.Plan.LeaseId && originalChild.Selector == session.Selector);
             var prepared = await provisioner.ProvisionAsync(session.Plan, cancellationToken: linked.Token,
-                originalCallerToken: statusDeniedPrivateDeleteProfile || statusPrivateUpdateIndependentProfile || statusUnknownNotificationUpdateCancellationProfile || statusUnknownNotificationUpdateIndependentProfile || statusDeniedNotificationUpdateProfile || statusUnknownNotificationUpdateProfile || statusNotificationUpdateIndependentProfile || statusNotificationCreateIndependentProfile ? requestCancellation : null).ConfigureAwait(false);
+                originalCallerToken: statusDeniedPrivateDeleteProfile || statusPrivateUpdateIndependentProfile || statusUnknownNotificationUpdateCancellationProfile || statusUnknownNotificationUpdateIndependentProfile || statusDeniedNotificationDeleteProfile || statusDeniedNotificationUpdateProfile || statusUnknownNotificationUpdateProfile || statusNotificationUpdateIndependentProfile || statusNotificationCreateIndependentProfile ? requestCancellation : null).ConfigureAwait(false);
             Require(prepared.State == VaultFixtureProvisioner.State.Ready &&
                 prepared.DeletedVaultPresent == (!notification && !privateApproval && input.Operation is not (ManagementMutation.DeleteVault or ManagementMutation.CreateOrUpdateVault)) &&
                 prepared.VaultPresent == (notification || privateApproval || input.Operation is ManagementMutation.DeleteVault or ManagementMutation.CreateOrUpdateVault));
@@ -8841,6 +9110,9 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
                 Require(provisioner.OwnsPreparedPlan(session.Plan) && prepared.Configuration is not null &&
                     VaultAdministrationEffects.SameConfiguration(prepared.Configuration, statusUnknownNotificationUpdateIndependentConfiguration!));
 
+            if (statusDeniedNotificationDeleteProfile)
+                Require(provisioner.OwnsPreparedPlan(session.Plan) && prepared.Configuration is not null &&
+                    VaultAdministrationEffects.SameConfiguration(prepared.Configuration, statusDeniedNotificationDeleteConfiguration!));
             if (statusDeniedNotificationUpdateProfile)
                 Require(provisioner.OwnsPreparedPlan(session.Plan) && prepared.Configuration is not null &&
                     VaultAdministrationEffects.SameConfiguration(prepared.Configuration, statusDeniedNotificationUpdateConfiguration!));
@@ -8865,7 +9137,7 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
             if (notification)
             {
                 using var child = await session.Notifications!.ProvisionAsync(session.NotificationPlan!, linked.Token,
-                    originalCallerToken: statusUnknownNotificationUpdateCancellationProfile || statusUnknownNotificationUpdateIndependentProfile || statusDeniedNotificationUpdateProfile || statusUnknownNotificationUpdateProfile || statusNotificationUpdateIndependentProfile || statusNotificationCreateIndependentProfile ? requestCancellation : null).ConfigureAwait(false);
+                    originalCallerToken: statusUnknownNotificationUpdateCancellationProfile || statusUnknownNotificationUpdateIndependentProfile || statusDeniedNotificationDeleteProfile || statusDeniedNotificationUpdateProfile || statusUnknownNotificationUpdateProfile || statusNotificationUpdateIndependentProfile || statusNotificationCreateIndependentProfile ? requestCancellation : null).ConfigureAwait(false);
                 Require(child.State == NotificationFixtureProvisioner.State.Ready &&
                     (notificationSource!.ExclusiveCreation is null
                         ? child.Present == true && child.Configuration is not null &&
@@ -8912,6 +9184,11 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
                     session.UnknownNotificationUpdateIndependentReady = FreezeUnknownNotificationUpdateIndependent(snapshot);
                 }
 
+                if (statusDeniedNotificationDeleteProfile)
+                {
+                    Require(DeniedNotificationDeleteLive(session));
+                    session.DeniedNotificationDeleteReady = FreezeDeniedNotificationDelete(snapshot);
+                }
                 if (statusDeniedNotificationUpdateProfile)
                 {
                     Require(DeniedNotificationUpdateLive(session));
@@ -8965,6 +9242,11 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
                 Require(UnknownNotificationUpdateIndependentLive(session));
             }
 
+            if (statusDeniedNotificationDeleteProfile)
+            {
+                session.DeniedNotificationDeleteTokens.AddRange([token, originalCallerToken]);
+                Require(DeniedNotificationDeleteLive(session));
+            }
             if (statusDeniedNotificationUpdateProfile)
             {
                 session.DeniedNotificationUpdateTokens.AddRange([token, originalCallerToken]);
@@ -8975,7 +9257,15 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
                 session.UnknownNotificationUpdateTokens.AddRange([token, originalCallerToken]);
                 Require(UnknownNotificationUpdateLive(session));
             }
-            if (statusPrivateUpdateIndependentProfile)
+            if (statusDeniedNotificationDeleteProfile)
+            {
+                bool valid = !session.ArmClaimed && session.Active == 0 && input.Phase == "subscribe-before-trigger" &&
+                    input.SubscriptionId is null && DeniedNotificationDeleteLive(session);
+                session.ArmClaimed = true;
+                if (!valid) RevokeDeniedNotificationDelete(session);
+                Require(valid);
+            }
+            else if (statusPrivateUpdateIndependentProfile)
             {
                 bool valid = PrivateUpdateIndependentLive(session) && !session.ArmClaimed && input.Phase == "subscribe-before-trigger" &&
                     input.SubscriptionId is null && !token.IsCancellationRequested && !originalCallerToken.IsCancellationRequested;
@@ -9097,6 +9387,13 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
                         session.Subscription, armedAt, false, Guid.NewGuid());
                 }
 
+                if (statusDeniedNotificationDeleteProfile)
+                {
+                    session.DeniedNotificationDeleteBefore = new(session.Notifications!, session.NotificationPlan!, plan, binding,
+                        session.Subscription, armedAt, true, Guid.NewGuid());
+                    session.DeniedNotificationDeleteAfter = new(session.Notifications!, session.NotificationPlan!, plan, binding,
+                        session.Subscription, armedAt, false, Guid.NewGuid());
+                }
                 if (statusDeniedNotificationUpdateProfile)
                 {
                     session.DeniedNotificationUpdateBefore = new(session.Notifications!, session.NotificationPlan!, plan, binding,
@@ -9174,6 +9471,18 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
                 Require(valid);
                 TrackDeniedPrivateDelete(session, token, requestCancellation);
             }
+            else if (statusDeniedNotificationDeleteProfile)
+            {
+                bool valid = !statusDeniedNotificationDeleteCleanup && DeniedNotificationDeleteLive(session) &&
+                    session.Active == 0 && session.DeniedNotificationDeletePending is null &&
+                    !token.IsCancellationRequested && !requestCancellation.IsCancellationRequested &&
+                    (baseline ? !session.BaselineClaimed && !session.StartClaimed : input.Phase == "selected-state" &&
+                        session.StartFinished && session.StartSucceeded && !session.AfterClaimed);
+                if (baseline) session.BaselineClaimed = true; else session.AfterClaimed = true;
+                if (!valid) RevokeDeniedNotificationDelete(session);
+                Require(valid);
+                session.DeniedNotificationDeleteTokens.AddRange([token, requestCancellation]);
+            }
             else if (statusPrivateUpdateIndependentProfile)
             {
                 bool valid = PrivateUpdateIndependentLive(session) && !token.IsCancellationRequested && !requestCancellation.IsCancellationRequested &&
@@ -9244,7 +9553,10 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
         }
         try
         {
-            using var linked = statusDeniedPrivateDeleteProfile
+            using var linked = statusDeniedNotificationDeleteProfile
+                ? CancellationTokenSource.CreateLinkedTokenSource([.. session.DeniedNotificationDeleteTokens, token, session.Stop.Token,
+                    session.DeniedNotificationDeleteExclusion!.ContinuityToken])
+                : statusDeniedPrivateDeleteProfile
                 ? CancellationTokenSource.CreateLinkedTokenSource([.. deniedPrivateDeleteRuns[session].Tokens,
                     token, session.Stop.Token, deniedPrivateDeleteExclusion!.ContinuityToken])
                 : statusPrivateUpdateIndependentProfile
@@ -9275,6 +9587,11 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
                 return await ObserveStatusUnknownNotificationUpdateIndependent(session, baseline, linked.Token, requestCancellation).ConfigureAwait(false);
             }
 
+            if (statusDeniedNotificationDeleteProfile)
+            {
+                lock (gate) session.DeniedNotificationDeleteTokens.AddRange([token, requestCancellation]);
+                return await ObserveStatusDeniedNotificationDelete(session, baseline, linked.Token, requestCancellation).ConfigureAwait(false);
+            }
             if (statusDeniedNotificationUpdateProfile)
             {
                 lock (gate) session.DeniedNotificationUpdateTokens.AddRange([token, requestCancellation]);
@@ -9528,7 +9845,7 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
             return await StartDeniedPrivateDelete(selector, client, originalScope, operation, input, receipt, cancellationToken).ConfigureAwait(false);
         if (PendingProfile)
             return await StartPendingPurge(selector, client, originalScope, operation, input, receipt, cancellationToken).ConfigureAwait(false);
-        Require(profile == Profile.StatusFamily && !statusPrivateDeleteIndependentCleanup && !statusUnknownNotificationUpdateCancellationCleanup && !statusUnknownNotificationUpdateIndependentCleanup && !statusDeniedNotificationUpdateCleanup && !statusUnknownNotificationUpdateCleanup && !statusNotificationUpdateIndependentCleanup && !statusNotificationCreateIndependentCleanup);
+        Require(profile == Profile.StatusFamily && !statusPrivateDeleteIndependentCleanup && !statusUnknownNotificationUpdateCancellationCleanup && !statusUnknownNotificationUpdateIndependentCleanup && !statusDeniedNotificationDeleteCleanup && !statusDeniedNotificationUpdateCleanup && !statusUnknownNotificationUpdateCleanup && !statusNotificationUpdateIndependentCleanup && !statusNotificationCreateIndependentCleanup);
         Require(!statusPrivateUpdateIndependentCleanup);
         if (statusPrivateUpdateIndependentProfile)
             return await StartPrivateUpdateIndependent(selector, client, originalScope, operation, input, receipt, cancellationToken).ConfigureAwait(false);
@@ -9537,6 +9854,8 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
         if (statusUnknownNotificationUpdateIndependentProfile)
             return await StartStatusUnknownNotificationUpdateIndependent(selector, client, originalScope, operation, input, receipt, cancellationToken).ConfigureAwait(false);
 
+        if (statusDeniedNotificationDeleteProfile)
+            return await StartStatusDeniedNotificationDelete(selector, client, originalScope, operation, input, receipt, cancellationToken).ConfigureAwait(false);
         if (statusDeniedNotificationUpdateProfile)
             return await StartStatusDeniedNotificationUpdate(selector, client, originalScope, operation, input, receipt, cancellationToken).ConfigureAwait(false);
         if (statusUnknownNotificationUpdateProfile)
@@ -9747,7 +10066,7 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
             return await CheckDeniedPrivateDelete(selector, handle, cancellationToken).ConfigureAwait(false);
         if (PendingProfile)
             return await CheckPendingPurge(selector, handle, cancellationToken).ConfigureAwait(false);
-        Require(profile == Profile.StatusFamily && !statusPrivateDeleteIndependentCleanup && !statusUnknownNotificationUpdateCancellationCleanup && !statusUnknownNotificationUpdateIndependentCleanup && !statusDeniedNotificationUpdateCleanup && !statusUnknownNotificationUpdateCleanup && !statusNotificationUpdateIndependentCleanup && !statusNotificationCreateIndependentCleanup);
+        Require(profile == Profile.StatusFamily && !statusPrivateDeleteIndependentCleanup && !statusUnknownNotificationUpdateCancellationCleanup && !statusUnknownNotificationUpdateIndependentCleanup && !statusDeniedNotificationDeleteCleanup && !statusDeniedNotificationUpdateCleanup && !statusUnknownNotificationUpdateCleanup && !statusNotificationUpdateIndependentCleanup && !statusNotificationCreateIndependentCleanup);
         Require(!statusPrivateUpdateIndependentCleanup);
         if (statusPrivateUpdateIndependentProfile)
             return await CheckPrivateUpdateIndependent(selector, handle, cancellationToken).ConfigureAwait(false);
@@ -9756,6 +10075,8 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
         if (statusUnknownNotificationUpdateIndependentProfile)
             return await CheckStatusUnknownNotificationUpdateIndependent(selector, handle, cancellationToken).ConfigureAwait(false);
 
+        if (statusDeniedNotificationDeleteProfile)
+            return await CheckStatusDeniedNotificationDelete(selector, handle, cancellationToken).ConfigureAwait(false);
         if (statusDeniedNotificationUpdateProfile)
             return await CheckStatusDeniedNotificationUpdate(selector, handle, cancellationToken).ConfigureAwait(false);
         if (statusUnknownNotificationUpdateProfile)
@@ -11876,6 +12197,337 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
             }
             catch (IOException) { throw; }
             catch { RevokeUnknownNotificationUpdate(session); throw; }
+        }
+    }
+
+    private async Task<HttpResponseMessage> ObserveStatusDeniedNotificationDelete(Session session, bool baseline,
+        CancellationToken token, CancellationToken caller)
+    {
+        var slot = baseline ? session.DeniedNotificationDeleteBefore : session.DeniedNotificationDeleteAfter;
+        Require(slot is not null && slot.Nonce != Guid.Empty && slot.Baseline == baseline && slot.Subscription == session.Subscription &&
+            slot.ArmedAt == session.ArmedAt && ReferenceEquals(slot.Source, session.Notifications) &&
+            ReferenceEquals(slot.Child, session.NotificationPlan) && ReferenceEquals(slot.Parent, session.Plan) &&
+            ReferenceEquals(slot.Binding, session.Binding));
+        RequireNotificationJournal(session, provisioner.Journal.Read(owner, session.Selector), selected: !baseline);
+        C.StatusDeniedNotificationDeleteStartProof? start = null;
+        C.StatusTarget? target = null;
+        S.Window? statusWindow = null;
+        Task<S.Measurement>? statusTask = null;
+        StatusDeniedNotificationDeleteStatusWitness? witness = null;
+        DateTimeOffset afterStatus = session.ArmedAt;
+        if (!baseline)
+        {
+            Require(session.DeniedNotificationDeleteBaseline is not null && session.StartFinished &&
+                session.StartTask is { IsCompletedSuccessfully: true } &&
+                capture.TryGetStatusDeniedNotificationDeleteStart(session.Capture!, session.Binding!,
+                    session.Client!, session.ActualNotificationScope!, session.Receipt!, session.StartTask,
+                    session.Handle!, out start) &&
+                capture.TryGetStatusTarget(session.Capture!, session.Binding!, out target) &&
+                capture.OwnsStatusTarget(target, session.Binding!) && ReferenceEquals(start.Target, target) &&
+                target.Kind == C.StatusTargetKind.EventGridDeleteAsyncOperation);
+            using var exactRaw = new PendingStatusTransport(unknownStatusReader!.Transport, target.TargetUri,
+                unknownStatusLimits!.MaximumResponseBytes, "Succeeded", resourceState: false, canonicalTarget: true);
+            var independent = new S(capture, new(unknownStatusReader.Label, unknownStatusReader.Credential, exactRaw),
+                unknownStatusLimits, time);
+            statusWindow = independent.Arm(target, session.Binding!);
+            statusTask = independent.CollectAsync(statusWindow, session.Binding!, token).AsTask();
+            var status = await statusTask.ConfigureAwait(false);
+            exactRaw.Dispose();
+            Require(exactRaw.Valid);
+            Require(ReferenceEquals(status.Binding, session.Binding) && ReferenceEquals(statusWindow.Binding, session.Binding) &&
+                ReferenceEquals(statusWindow.Target, target) && status.ArmedAt == statusWindow.ArmedAt && status.WindowId == statusWindow.Id &&
+                status.ResponseComplete && status.Terminal && status.HttpStatus == 200 &&
+                status.Failure == S.Failure.None && status.Status == SecretStatus.Success && status.OperationState == NativeProvisioningState.Succeeded &&
+                status.StartDispatch == target.StartDispatch && status.TargetSha256 == target.TargetSha256 &&
+                status.StartResponseSha256 == target.StartResponseSha256 &&
+                status.StartedAt >= session.StartedAt && status.FinishedAt >= status.StartedAt &&
+                Text(status.NativeRequestId, 256));
+            Require(status.Identity == unknownStatusReader.Label);
+            witness = new(independent, statusWindow, statusTask, target, session.Binding!, exactRaw, token);
+            afterStatus = status.FinishedAt;
+        }
+        var task = baseline
+            ? slot.Source.ObserveAsync(owner, session.Selector, slot.Child.Scope.SubscriptionName, token, caller).AsTask()
+            : slot.Source.ObserveSelectedAsync(slot.Child, session.Dispatch, token, caller).AsTask();
+        using var measured = await task.ConfigureAwait(false);
+        token.ThrowIfCancellationRequested();
+        var proof = measured.StatusDeniedDeleteRead ?? throw Failure();
+        Require(slot.Source.OwnsStatusDeniedNotificationDeleteRead(proof, slot.Child, baseline ? Guid.Empty : session.Dispatch) &&
+            (baseline ? proof.NativeTask.IsCompletedSuccessfully && proof.HttpStatus == 200 && proof.NativeState == "Succeeded" && proof.Present
+                : proof.NativeTask.IsFaulted && proof.HttpStatus == 404 && proof.NativeState is null && !proof.Present) &&
+            proof.Phase == (baseline ? NotificationFixtureProvisioner.StatusDeniedNotificationDeleteReadPhase.Baseline :
+                NotificationFixtureProvisioner.StatusDeniedNotificationDeleteReadPhase.Selected) &&
+            proof.RequestSha256.Length == 64 && proof.ResponseSha256.Length == 64 && Text(proof.NativeRequestId, 256) &&
+            proof.StartedAt >= afterStatus && proof.FinishedAt >= proof.StartedAt &&
+            measured.ObservedAt >= proof.FinishedAt && (baseline
+                ? measured.Present == true && measured.Configuration is not null &&
+                    NotificationConfigurationMatches(measured.Configuration, VaultNotificationEvent.SecretNearExpiry)
+                : measured.Present == false && measured.Configuration is null));
+        RequireNotificationJournal(session, measured.Journal, selected: !baseline);
+        Require(RoleFixtureJournal.SameStatusDeniedNotificationDeleteSnapshot(baseline
+            ? session.DeniedNotificationDeleteReady! : session.DeniedNotificationDeleteDrained!, measured.Journal));
+        var configuration = baseline ? new NotificationConfiguration(measured.Configuration!.Endpoint.Reveal(),
+            measured.Configuration.EventTypes, measured.Configuration.DeliveryAttributes) : null;
+        bool retained = false;
+        try
+        {
+            lock (gate)
+            {
+                Require(!disposed && !session.Closed && !token.IsCancellationRequested &&
+                    DeniedNotificationDeleteLive(session));
+                if (baseline)
+                {
+                    Require(!session.StartClaimed && session.DeniedNotificationDeleteBaseline is null &&
+                        measured.State == NotificationFixtureProvisioner.State.Ready);
+                    session.DeniedNotificationDeleteBaseline = new(slot, task, proof,
+                        Array.AsReadOnly(measured.Journal.Resources.ToArray()), configuration!, measured.ObservedAt);
+                    session.BaselineAt = measured.ObservedAt;
+                    session.BaselineReady = true;
+                }
+                else
+                {
+                    Require(session.DeniedNotificationDeleteObservedAbsence is null &&
+                        measured.State == NotificationFixtureProvisioner.State.Pending &&
+                        ReferenceEquals(measured.SelectedPlan, slot.Child) && measured.SelectedDispatch == session.Dispatch &&
+                        proof.StartedAt >= session.DeniedNotificationDeleteBaseline!.FinishedAt &&
+                        capture.TryGetStatusDeniedNotificationDeleteStart(session.Capture!, session.Binding!,
+                            session.Client!, session.ActualNotificationScope!, session.Receipt!, session.StartTask!,
+                            session.Handle!, out var issued) && ReferenceEquals(start, issued));
+                    session.DeniedNotificationDeleteObservedAbsence = new(session.DeniedNotificationDeleteBaseline!, slot, task,
+                        proof, start!, witness!, measured.ObservedAt);
+                    session.Target = target;
+                    session.IndependentAt = measured.ObservedAt;
+                    session.IndependentReady = true;
+                }
+                retained = true;
+            }
+            return Reply(ProjectNotification(session, measured.ObservedAt,
+                NativeProvisioningState.Succeeded, measured.Configuration));
+        }
+        finally { if (!retained) configuration?.Dispose(); }
+    }
+
+    private async ValueTask<SecretOutcome<ManagementOperation>> StartStatusDeniedNotificationDelete(
+        FixtureSelector selector, VaultAdministration client, ManagementScope originalScope, ManagementMutation operation,
+        E.Input input, ManagementReceipt receipt, CancellationToken cancellationToken)
+    {
+        ValidateSelector(selector);
+        Session session;
+        lock (gate)
+        {
+            session = OpenSelector(selector);
+            Require(originalScope is NotificationScope notification && session.NotificationPlan is { } child &&
+                notification.SubscriptionName == child.Scope.SubscriptionName && notification.Vault.ExportResourceId() == session.Plan!.VaultId &&
+                operation == ManagementMutation.DeleteNotification && InputMatches(session, input));
+            bool valid = session.Armed && session.BaselineReady && !session.StartClaimed && session.Active == 0 &&
+                session.DeniedNotificationDeletePending is null && !cancellationToken.IsCancellationRequested;
+            session.StartClaimed = true;
+            if (!valid) RevokeDeniedNotificationDelete(session);
+            Require(valid);
+            session.DeniedNotificationDeleteTokens.AddRange([cancellationToken, lifetime.Token]);
+            var baseline = session.DeniedNotificationDeleteBaseline ?? throw Failure();
+            Require(DeniedNotificationDeleteLive(session) &&
+                session.Notifications!.OwnsStatusDeniedNotificationDeleteRead(baseline.Proof, session.NotificationPlan!, Guid.Empty));
+            session.Dispatch = Guid.NewGuid();
+            var admission = new StatusDeniedNotificationDeleteAdmission(this);
+            IssueDeniedNotificationDelete(session, admission, DeniedNotificationDeleteStage.Begin,
+                session.DeniedNotificationDeleteReady!, baseline.Task, baseline.Proof.NativeTask);
+            session.DeniedNotificationDeletePending = admission;
+            session.Client = client;
+            session.ActualNotificationScope = (NotificationScope)originalScope;
+            session.Receipt = receipt;
+            try
+            {
+                session.DeniedNotificationDeleteBegin = FreezeDeniedNotificationDelete(
+                    provisioner.Journal.BeginStatusDeniedNotificationDeleteInvocation(owner, selector, session.Plan!.LeaseId, admission));
+                session.DeniedNotificationDeletePending = null;
+            }
+            catch (IOException) { throw; }
+            catch { RevokeDeniedNotificationDelete(session); throw; }
+            session.Active++;
+            active++;
+        }
+        try
+        {
+            session.StartedAt = time.GetUtcNow();
+            Require(session.StartedAt >= session.BaselineAt);
+            using var deadline = new CancellationTokenSource(limits.Timeout, time);
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, lifetime.Token, session.Stop.Token, deadline.Token, session.DeniedNotificationDeleteExclusion!.ContinuityToken);
+            lock (gate) session.DeniedNotificationDeleteTokens.Add(deadline.Token);
+            var result = await capture.StartStatusDeniedNotificationDeleteAsync(session.Capture!, session.Binding!.Selector, client, originalScope,
+                input, receipt, linked.Token, task => { lock (gate) session.StartTask = task; }, () =>
+                {
+                    linked.Token.ThrowIfCancellationRequested();
+                    Require(!disposed && !session.Closed && DeniedNotificationDeleteLive(session) && RoleFixtureJournal.SameStatusDeniedNotificationDeleteSnapshot(
+                        session.DeniedNotificationDeleteBegin!, provisioner.Journal.Read(owner, selector)));
+                }).ConfigureAwait(false);
+            lock (gate)
+            {
+                session.Handle = result.IsSuccess ? result.Value : null;
+                session.StartSucceeded = result.IsSuccess && session.StartTask is { IsCompletedSuccessfully: true };
+                Require(session.StartSucceeded);
+                Require(capture.TryGetStatusDeniedNotificationDeleteStart(session.Capture!, session.Binding!,
+                    client, session.ActualNotificationScope!, receipt, session.StartTask!, session.Handle!, out var startProof));
+                session.DeniedNotificationDeleteStart = startProof;
+                var candidate = new StatusDeniedNotificationDeleteStartDrain(this);
+                IssueDeniedNotificationDelete(session, candidate, DeniedNotificationDeleteStage.StartDrain,
+                    session.DeniedNotificationDeleteBegin!, session.StartTask!);
+                session.DeniedNotificationDeleteStartDrain = candidate;
+                session.DeniedNotificationDeletePending = candidate;
+            }
+            RetryStatusDeniedNotificationDeletePersistence(selector, cancellationToken);
+            return result;
+        }
+        catch (IOException) { throw; }
+        catch { lock (gate) RevokeDeniedNotificationDelete(session); throw; }
+        finally
+        {
+            try
+            {
+                if (session.DeniedNotificationDeleteStartDrain is null)
+                    provisioner.Journal.EndDispatch(owner, selector, SelectedId(session), session.Dispatch, nativeSettled: false);
+            }
+            finally { Leave(session); }
+        }
+    }
+
+    private async ValueTask<SecretStatus> CheckStatusDeniedNotificationDelete(FixtureSelector selector,
+        ManagementOperation handle, CancellationToken cancellationToken)
+    {
+        ValidateSelector(selector);
+        Session session;
+        lock (gate)
+        {
+            session = OpenSelector(selector);
+            // Foreign references do not acquire or burn an owned invocation slot.
+            Require(ReferenceEquals(handle, session.Handle));
+            bool valid = !session.StatusClaimed && session.Active == 0 && session.StartFinished && session.StartSucceeded &&
+                session.IndependentReady && session.DeniedNotificationDeleteObservedAbsence is not null &&
+                !session.DeniedNotificationDeleteInvalid && !cancellationToken.IsCancellationRequested &&
+                session.DeniedNotificationDeleteTokens.All(t => !t.IsCancellationRequested);
+            session.StatusClaimed = true;
+            if (!valid) { RevokeDeniedNotificationDelete(session); throw Failure(); }
+            var observation = session.DeniedNotificationDeleteObservedAbsence!;
+            Require(capture.TryGetStatusDeniedNotificationDeleteStart(session.Capture!, session.Binding!, session.Client!,
+                session.ActualNotificationScope!, session.Receipt!, session.StartTask!, handle, out var proof) && ReferenceEquals(proof, observation.Start) &&
+                session.Notifications!.OwnsStatusDeniedNotificationDeleteRead(observation.Baseline.Proof, session.NotificationPlan!, Guid.Empty) &&
+                session.Notifications.OwnsStatusDeniedNotificationDeleteRead(observation.Proof, session.NotificationPlan!, session.Dispatch));
+            session.DeniedNotificationDeleteTokens.Add(cancellationToken);
+            var admission = new StatusDeniedNotificationDeleteReadAdmission(this);
+            IssueDeniedNotificationDelete(session, admission, DeniedNotificationDeleteStage.Read,
+                session.DeniedNotificationDeleteDrained!, observation.Baseline.Task, observation.Baseline.Proof.NativeTask,
+                observation.Task, observation.Proof.NativeTask, observation.Witness.Task, session.StartTask!);
+            session.DeniedNotificationDeletePending = admission;
+            try
+            {
+                session.DeniedNotificationDeleteRead = FreezeDeniedNotificationDelete(
+                    provisioner.Journal.AdmitStatusDeniedNotificationDeleteRead(owner, selector, session.Plan!.LeaseId, session.Dispatch, admission));
+                session.DeniedNotificationDeletePending = null;
+            }
+            catch (IOException) { throw; }
+            catch { RevokeDeniedNotificationDelete(session); throw; }
+            session.Active++;
+            active++;
+        }
+        try
+        {
+            Require(time.GetUtcNow() >= session.IndependentAt);
+            using var deadline = new CancellationTokenSource(limits.Timeout, time);
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, lifetime.Token, session.Stop.Token, deadline.Token, session.DeniedNotificationDeleteExclusion!.ContinuityToken);
+            lock (gate) session.DeniedNotificationDeleteTokens.Add(deadline.Token);
+            var status = await capture.CheckStatusDeniedNotificationDeleteAsync(session.Capture!, session.Binding!.Selector, handle, linked.Token,
+                task => { lock (gate) session.StatusTask = task; }).ConfigureAwait(false);
+            lock (gate)
+            {
+                Require(status == SecretStatus.Denied);
+                Require(capture.TryGetStatusDeniedNotificationDeleteDenied(session.Capture!, session.Binding!,
+                    session.Client!, session.ActualNotificationScope!, session.Receipt!, session.StartTask!, handle, session.StatusTask!, out var proof) &&
+                    ReferenceEquals(proof.Start, session.DeniedNotificationDeleteObservedAbsence!.Start));
+                var observation = session.DeniedNotificationDeleteObservedAbsence!;
+                session.DeniedNotificationDeleteNativeDenied = proof;
+                var candidate = new StatusDeniedNotificationDeleteObservation(this);
+                IssueDeniedNotificationDelete(session, candidate, DeniedNotificationDeleteStage.Complete,
+                    session.DeniedNotificationDeleteRead!, observation.Baseline.Task, observation.Baseline.Proof.NativeTask,
+                    observation.Task, observation.Proof.NativeTask, observation.Witness.Task, session.StartTask!, session.StatusTask!);
+                session.DeniedNotificationDeleteObservation = candidate;
+                session.DeniedNotificationDeletePending = candidate;
+                session.DeniedNotificationDeleteNativeDenied = proof;
+            }
+            RetryStatusDeniedNotificationDeletePersistence(selector, cancellationToken);
+            return status;
+        }
+        catch (IOException) { throw; }
+        catch { lock (gate) RevokeDeniedNotificationDelete(session); throw; }
+        finally
+        {
+            try
+            {
+                if (session.DeniedNotificationDeleteObservation is null)
+                    provisioner.Journal.EndDispatch(owner, selector, SelectedId(session), session.Dispatch, nativeSettled: false);
+            }
+            finally { Leave(session); }
+        }
+    }
+
+    internal RoleFixtureJournal.Snapshot RetryStatusDeniedNotificationDeletePersistence(FixtureSelector selector,
+        CancellationToken token = default)
+    {
+        ValidateSelector(selector);
+        lock (gate)
+        {
+            Require(!disposed);
+            Require(sessions.TryGetValue(selector.Nonce, out var session));
+            Require(session.Selector == selector && session.Plan is not null);
+            Require(!statusDeniedNotificationDeleteCleanup && DeniedNotificationDeleteLive(session));
+            if (token.IsCancellationRequested) { RevokeDeniedNotificationDelete(session); token.ThrowIfCancellationRequested(); }
+            var candidate = session.DeniedNotificationDeletePending;
+            if (candidate is null) return provisioner.Journal.Read(owner, selector);
+            try
+            {
+                var journal = provisioner.Journal;
+                var committed = candidate switch
+                {
+                    StatusDeniedNotificationDeleteAdmission admission => journal.BeginStatusDeniedNotificationDeleteInvocation(owner, selector, session.Plan!.LeaseId, admission),
+                    StatusDeniedNotificationDeleteStartDrain drain => journal.EndStatusDeniedNotificationDeleteStart(owner, selector, session.Plan!.LeaseId, session.Dispatch, drain),
+                    StatusDeniedNotificationDeleteReadAdmission admission => journal.AdmitStatusDeniedNotificationDeleteRead(owner, selector, session.Plan!.LeaseId, session.Dispatch, admission),
+                    StatusDeniedNotificationDeleteObservation completion => journal.CompleteStatusDeniedNotificationDeleteRead(owner, selector, session.Plan!.LeaseId, session.Dispatch, completion),
+                    _ => throw Failure()
+                };
+                Require(deniedNotificationDeleteFacts.TryGetValue(candidate, out var facts) &&
+                    RoleFixtureJournal.SameStatusDeniedNotificationDeleteSnapshot(facts.Postimage, committed));
+                if (candidate is StatusDeniedNotificationDeleteAdmission)
+                    session.DeniedNotificationDeleteBegin = FreezeDeniedNotificationDelete(committed);
+                if (candidate is StatusDeniedNotificationDeleteReadAdmission)
+                    session.DeniedNotificationDeleteRead = FreezeDeniedNotificationDelete(committed);
+                if (candidate is StatusDeniedNotificationDeleteStartDrain)
+                {
+                    session.DeniedNotificationDeleteDrained = FreezeDeniedNotificationDelete(committed);
+                    session.StartFinished = true;
+                }
+                if (candidate is StatusDeniedNotificationDeleteObservation)
+                {
+                    session.StatusSucceeded = true;
+                    session.DeniedNotificationDeleteObserved = FreezeDeniedNotificationDelete(committed);
+                    var authority = session.DeniedNotificationDeleteCleanupAuthority;
+                    if (authority is null)
+                    {
+                        authority = new StatusDeniedNotificationDeleteCleanupAuthority(this);
+                        Require(deniedNotificationDeleteCleanupAuthorities.TryAdd(authority, new(
+                        FreezeDeniedNotificationDelete(committed), session.Plan!, session.NotificationPlan!,
+                        session.DeniedNotificationDeleteObservedAbsence!, session.DeniedNotificationDeleteNativeDenied!,
+                        session.DeniedNotificationDeleteExclusion!, session.DeniedNotificationDeleteTokens.ToArray(),
+                        session.DeniedNotificationDeleteCleanupLatch)));
+                        session.DeniedNotificationDeleteCleanupAuthority = authority;
+                    }
+                    provisioner.BindStatusDeniedNotificationDeleteCleanupAuthority(session.Plan!, session.NotificationPlan!, authority, committed);
+                    session.Notifications!.BindStatusDeniedNotificationDeleteCleanupAuthority(session.NotificationPlan!, authority, committed);
+                    session.DeniedNotificationDeleteCleanupAuthority = authority;
+                }
+                session.DeniedNotificationDeletePending = null;
+                return committed;
+            }
+            catch (IOException) { throw; }
+            catch { RevokeDeniedNotificationDelete(session); throw; }
         }
     }
 
@@ -16163,7 +16815,7 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
             if (!snapshot.Idle)
             {
                 // A cold source has no original native check, epoch, or retained preimage.
-                if (statusUnknownNotificationUpdateCancellationCleanup || statusUnknownNotificationUpdateIndependentCleanup || statusDeniedNotificationUpdateCleanup || statusUnknownNotificationUpdateCleanup || !UnknownNotificationUpdateLive(session) ||
+                if (statusUnknownNotificationUpdateCancellationCleanup || statusUnknownNotificationUpdateIndependentCleanup || statusDeniedNotificationDeleteCleanup || statusDeniedNotificationUpdateCleanup || statusUnknownNotificationUpdateCleanup || !UnknownNotificationUpdateLive(session) ||
                     session.UnknownNotificationUpdateObserved is not { } observed || session.Plan is null ||
                     session.NotificationPlan is null || session.Notifications is null ||
                     session.UnknownNotificationUpdateObservedConfiguration is not { } observation ||
@@ -16289,6 +16941,153 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
         }
         return Reply(ReleaseMeasurement(session, snapshot));
     }
+
+    private async Task<HttpResponseMessage> ReleaseStatusDeniedNotificationDelete(FixtureSelector selector,
+        CancellationToken token, CancellationToken caller)
+    {
+        Require(MatchesStatusDeniedNotificationDeleteOperation(selector));
+        Session session;
+        lock (gate)
+        {
+            if (!sessions.TryGetValue(selector.Nonce, out session!))
+            {
+                Require(!disposed && sessions.Count < 32);
+                session = new(selector with { });
+                sessions.Add(selector.Nonce, session);
+            }
+            Require(session.Selector == selector);
+        }
+        await session.DeniedNotificationDeleteRelease.WaitAsync(token).ConfigureAwait(false);
+        try
+        {
+            if ((session.DeniedNotificationDeleteParentPending || session.DeniedNotificationDeleteChildPending) &&
+                session.DeniedNotificationDeleteCleanupSnapshot is { } cleanup)
+                return await ReleaseDeniedNotificationDeleteChildren(session, cleanup, token, caller).ConfigureAwait(false);
+            // Even a readable completed observation must real-Flush its exact image
+            // before the first new Close changes that image's revision.
+            if (session.Active == 0 && session.DeniedNotificationDeletePending is not null)
+                RetryStatusDeniedNotificationDeletePersistence(selector, caller);
+            if (!session.Closed && session.Active == 0 && session.Plan is { } plan)
+            {
+                // These exact D branches only retry retained journal candidates.
+                // They never repeat preparation, selected work, or provider reads.
+                await provisioner.SettleAsync(plan, token).ConfigureAwait(false);
+                if (session.Notifications is not null && session.NotificationPlan is { } child)
+                {
+                    using var local = await session.Notifications.SettleAsync(owner, selector,
+                        child.Scope.SubscriptionName, token).ConfigureAwait(false);
+                }
+            }
+            token.ThrowIfCancellationRequested();
+            caller.ThrowIfCancellationRequested();
+            var snapshot = provisioner.CloseSelectedRoot(owner, selector);
+            lock (gate)
+            {
+                session.Closed = true;
+                RevokeDeniedNotificationDelete(session);
+                if (session.Active == 0) session.PrivateDrained.TrySetResult();
+            }
+            session.Stop.Cancel();
+            using var deadline = new CancellationTokenSource(limits.Timeout, time);
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, caller, deadline.Token);
+            try { await session.PrivateDrained.Task.WaitAsync(linked.Token).ConfigureAwait(false); }
+            catch (OperationCanceledException) when (!token.IsCancellationRequested && !caller.IsCancellationRequested)
+            { return Reply(ReleaseMeasurement(session, snapshot)); }
+            snapshot = provisioner.Journal.Read(owner, selector);
+            if (snapshot.Resources.Length == 0 || !snapshot.Idle)
+                return Reply(ReleaseMeasurement(session, snapshot));
+            return await ReleaseDeniedNotificationDeleteChildren(session, snapshot, linked.Token, caller).ConfigureAwait(false);
+        }
+        catch (IOException)
+        {
+            await DrainDeniedNotificationDeleteAfterReleaseFailure(session, token, caller).ConfigureAwait(false);
+            throw;
+        }
+        catch (RoleFixtureJournal.StatusDeniedNotificationDeleteHistoryException)
+        {
+            lock (gate)
+            {
+                RevokeDeniedNotificationDelete(session);
+                session.DeniedNotificationDeleteCleanupLatch.Revoke();
+            }
+            await DrainDeniedNotificationDeleteAfterReleaseFailure(session, token, caller).ConfigureAwait(false);
+            throw;
+        }
+        finally { session.DeniedNotificationDeleteRelease.Release(); }
+    }
+
+    private async Task DrainDeniedNotificationDeleteAfterReleaseFailure(Session session,
+        CancellationToken token, CancellationToken caller)
+    {
+        lock (gate)
+        {
+            // A failed durable Close still closes local admission. An already
+            // frozen persistence candidate remains retryable, not redispatchable.
+            session.Closed = true;
+            if (session.Active == 0) session.PrivateDrained.TrySetResult();
+        }
+        session.Stop.Cancel();
+        using var deadline = new CancellationTokenSource(limits.Timeout, time);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, caller, deadline.Token);
+        try { await session.PrivateDrained.Task.WaitAsync(linked.Token).ConfigureAwait(false); }
+        catch (OperationCanceledException) when (!token.IsCancellationRequested && !caller.IsCancellationRequested) { }
+    }
+
+    private async Task<HttpResponseMessage> ReleaseDeniedNotificationDeleteChildren(Session session,
+        RoleFixtureJournal.Snapshot snapshot, CancellationToken token, CancellationToken caller)
+    {
+        Require(MatchesStatusDeniedNotificationDeleteOperation(session.Selector) && snapshot.Selector == session.Selector);
+        var parent = session.Plan ?? provisioner.OpenCleanupPlan(owner, session.Selector);
+        Require(RoleFixtureJournal.StatusDeniedNotificationDeleteRoot(snapshot) && snapshot.Closing &&
+            (snapshot.Idle || session.DeniedNotificationDeleteParentPending || session.DeniedNotificationDeleteChildPending) &&
+            provisioner.MatchesOwnedPlan(parent, snapshot));
+        session.Plan = parent;
+        if (snapshot.Resources.Any(r => r.SelectedAttempted) &&
+            (session.NotificationPlan is null || session.DeniedNotificationDeleteCleanupAuthority is not { } hot ||
+                !hot.Validate(provisioner.Journal, snapshot, parent, session.NotificationPlan)))
+            return Reply(ReleaseMeasurement(session, snapshot, 1));
+        if (session.Notifications is null)
+        {
+            if (notificationSource is null) return Reply(ReleaseMeasurement(session, snapshot));
+            session.Notifications = NotificationFixtureProvisioner.ForOwnedCleanup(provisioner, owner, session.Selector,
+                notificationSource.Setup, notificationSource.Observer, notificationSource.Limits, time);
+        }
+        string name = parent.OwnedNotificationNames.Single();
+        session.DeniedNotificationDeleteCleanupSnapshot = FreezeDeniedNotificationDelete(snapshot);
+        if (!session.DeniedNotificationDeleteParentPending)
+        {
+            session.DeniedNotificationDeleteChildPending = true;
+            using var child = await session.Notifications.ReleaseAsync(owner, session.Selector, name, token,
+                originalCallerToken: caller).ConfigureAwait(false);
+            snapshot = child.Journal;
+            session.DeniedNotificationDeleteCleanupSnapshot = FreezeDeniedNotificationDelete(snapshot);
+            if (!ChildCleanupReady(child)) return Reply(ReleaseMeasurement(session, snapshot));
+            session.DeniedNotificationDeleteChildPending = false;
+        }
+        // At most the three ordered parent stages; never retry a native mutation.
+        for (int stage = 0; stage < 3; stage++)
+        {
+            session.DeniedNotificationDeleteParentPending = true;
+            var result = await provisioner.ReleaseAsync(owner, session.Selector, purge: true,
+                cancellationToken: token, originalCallerToken: caller).ConfigureAwait(false);
+            snapshot = result.Journal;
+            session.DeniedNotificationDeleteCleanupSnapshot = FreezeDeniedNotificationDelete(snapshot);
+            if (!ParentCleanupReady(result)) return Reply(ReleaseMeasurement(session, snapshot));
+            session.DeniedNotificationDeleteParentPending = false;
+            if (result.State == VaultFixtureProvisioner.State.Released)
+            {
+                // No extra I/O after an exact final-absence retry. A later Release starts fresh.
+                if (session.Capture is not null) await capture.SealAsync(session.Capture).ConfigureAwait(false);
+                return Reply(ReleaseMeasurement(session, snapshot));
+            }
+            using var refreshed = await session.Notifications.ObserveAsync(owner, session.Selector, name, token,
+                originalCallerToken: caller).ConfigureAwait(false);
+            snapshot = refreshed.Journal;
+            if (!ChildCleanupReady(refreshed)) return Reply(ReleaseMeasurement(session, snapshot));
+        }
+        return Reply(ReleaseMeasurement(session, snapshot));
+    }
+
 
     private async Task<HttpResponseMessage> ReleaseStatusDeniedNotificationUpdate(FixtureSelector selector,
         CancellationToken token, CancellationToken caller)
@@ -16427,6 +17226,8 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
         Require(statusUnknownNotificationUpdateIndependentProfile == NotificationFixtureProvisioner.StatusUnknownNotificationUpdateIndependentSelector(selector));
         if (statusUnknownNotificationUpdateIndependentProfile) return await ReleaseStatusUnknownNotificationUpdateIndependent(selector, token, requestCancellation).ConfigureAwait(false);
 
+        Require(statusDeniedNotificationDeleteProfile == NotificationFixtureProvisioner.StatusDeniedNotificationDeleteSelector(selector));
+        if (statusDeniedNotificationDeleteProfile) return await ReleaseStatusDeniedNotificationDelete(selector, token, requestCancellation).ConfigureAwait(false);
         Require(statusDeniedNotificationUpdateProfile == NotificationFixtureProvisioner.StatusDeniedNotificationUpdateSelector(selector));
         Require(statusUnknownNotificationUpdateProfile == NotificationFixtureProvisioner.StatusUnknownNotificationUpdateSelector(selector));
         if (statusDeniedNotificationUpdateProfile) return await ReleaseStatusDeniedNotificationUpdate(selector, token, requestCancellation).ConfigureAwait(false);
@@ -16511,7 +17312,7 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
                 var seal = capture.SealAsync(session.Capture);
                 if (VaultFixtureProvisioner.StatusPrivateConnectionDeleteCancellationSelector(selector) ||
                     VaultFixtureProvisioner.StatusPrivateConnectionDeleteSelectedSelector(selector) ||
-                    statusPrivateDeleteIndependentProfile || statusPrivateUpdateIndependentProfile || statusUnknownNotificationUpdateCancellationProfile || statusUnknownNotificationUpdateIndependentProfile || statusDeniedNotificationUpdateProfile || statusUnknownNotificationUpdateProfile || statusNotificationUpdateIndependentProfile || statusNotificationCreateIndependentProfile ||
+                    statusPrivateDeleteIndependentProfile || statusPrivateUpdateIndependentProfile || statusUnknownNotificationUpdateCancellationProfile || statusUnknownNotificationUpdateIndependentProfile || statusDeniedNotificationDeleteProfile || statusDeniedNotificationUpdateProfile || statusUnknownNotificationUpdateProfile || statusNotificationUpdateIndependentProfile || statusNotificationCreateIndependentProfile ||
                     NotificationFixtureProvisioner.StatusNotificationUpdateCancellationSelector(selector) ||
                     NotificationFixtureProvisioner.StatusNotificationCreateCancellationSelector(selector))
                 {
@@ -16641,6 +17442,14 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
                     (r.CleanupOnly ? !r.CreateAttempted && !r.InvocationTerminated : r.CreateAttempted && r.InvocationTerminated)) &&
                 (selected || snapshot.Resources.Single(r => r.Id == child.ResourceId).InvocationTerminated));
 
+        if (statusDeniedNotificationDeleteProfile)
+            Require(MatchesStatusDeniedNotificationDeleteOperation(session.Selector) &&
+                (session.Binding is null || session.Binding.Selector == session.Selector &&
+                    session.Binding.Operation == ManagementMutation.DeleteNotification) &&
+                RoleFixtureJournal.StatusDeniedNotificationDeleteRoot(snapshot) &&
+                snapshot.Resources.Where(r => r.Id != child.ResourceId).All(r => !r.SelectedAttempted && !r.DeleteAttempted && !r.Absent &&
+                    (r.CleanupOnly ? !r.CreateAttempted && !r.InvocationTerminated : r.CreateAttempted && r.InvocationTerminated)) &&
+                (selected || snapshot.Resources.Single(r => r.Id == child.ResourceId).InvocationTerminated));
         if (statusDeniedNotificationUpdateProfile)
             Require(MatchesStatusDeniedNotificationOperation(session.Selector) &&
                 (session.Binding is null || session.Binding.Selector == session.Selector &&
@@ -16700,14 +17509,14 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
         }
         string name = parent.OwnedNotificationNames[0];
         using (var released = await session.Notifications.ReleaseAsync(owner, session.Selector, name, token,
-            originalCallerToken: statusUnknownNotificationUpdateCancellationProfile || statusUnknownNotificationUpdateIndependentProfile || statusDeniedNotificationUpdateProfile || statusUnknownNotificationUpdateProfile || statusNotificationUpdateIndependentProfile || statusNotificationCreateIndependentProfile ? requestCancellation : null).ConfigureAwait(false))
+            originalCallerToken: statusUnknownNotificationUpdateCancellationProfile || statusUnknownNotificationUpdateIndependentProfile || statusDeniedNotificationDeleteProfile || statusDeniedNotificationUpdateProfile || statusUnknownNotificationUpdateProfile || statusNotificationUpdateIndependentProfile || statusNotificationCreateIndependentProfile ? requestCancellation : null).ConfigureAwait(false))
         {
             snapshot = released.Journal;
             if (!ChildCleanupReady(released)) return Reply(ReleaseMeasurement(session, snapshot));
         }
         var parentResult = await provisioner.ReleaseAsync(owner, session.Selector, purge: true,
             cancellationToken: token,
-            originalCallerToken: statusUnknownNotificationUpdateCancellationProfile || statusUnknownNotificationUpdateIndependentProfile || statusDeniedNotificationUpdateProfile || statusUnknownNotificationUpdateProfile || statusNotificationUpdateIndependentProfile || statusNotificationCreateIndependentProfile ? requestCancellation : null).ConfigureAwait(false);
+            originalCallerToken: statusUnknownNotificationUpdateCancellationProfile || statusUnknownNotificationUpdateIndependentProfile || statusDeniedNotificationDeleteProfile || statusDeniedNotificationUpdateProfile || statusUnknownNotificationUpdateProfile || statusNotificationUpdateIndependentProfile || statusNotificationCreateIndependentProfile ? requestCancellation : null).ConfigureAwait(false);
         snapshot = parentResult.Journal;
         if (!ParentCleanupReady(parentResult)) return Reply(ReleaseMeasurement(session, snapshot));
         using (var refreshed = await session.Notifications.ObserveAsync(owner, session.Selector, name, token,
@@ -16742,6 +17551,11 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
 
     private ManagementMutation SelectionOperation(FixtureSelector selector)
     {
+        if (statusDeniedNotificationDeleteProfile || NotificationFixtureProvisioner.StatusDeniedNotificationDeleteSelector(selector))
+        {
+            Require(MatchesStatusDeniedNotificationDeleteOperation(selector));
+            return ManagementMutation.DeleteNotification;
+        }
         if (statusDeniedNotificationUpdateProfile || NotificationFixtureProvisioner.StatusDeniedNotificationUpdateSelector(selector))
         {
             Require(MatchesStatusDeniedNotificationOperation(selector));
@@ -16813,6 +17627,10 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
         Require(!disposed);
         Require(sessions.TryGetValue(nonce, out var session));
         Require(!session.Closed && session.Plan is not null && session.Lease is not null && session.Plan.LeaseId == lease);
+        if (statusDeniedNotificationDeleteProfile)
+            Require(MatchesStatusDeniedNotificationDeleteOperation(session.Selector) && session.Plan.Selector == session.Selector &&
+                (session.Binding is null || session.Binding.Selector == session.Selector &&
+                    session.Binding.Operation == ManagementMutation.DeleteNotification));
         if (statusDeniedNotificationUpdateProfile)
             Require(MatchesStatusDeniedNotificationOperation(session.Selector) && session.Plan.Selector == session.Selector &&
                 (session.Binding is null || session.Binding.Selector == session.Selector &&
@@ -16833,7 +17651,9 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
         }
         bool deniedPending = session.Pending?.DeniedProfile is not null &&
             (session.Pending.Persistence is not null || session.Plan is not null && provisioner.HasStatusDeniedPurgePersistence(session.Plan));
-        bool deniedUpdatePending = statusDeniedNotificationUpdateProfile &&
+        bool deniedUpdatePending = statusDeniedNotificationDeleteProfile &&
+            (session.DeniedNotificationDeleteParentPending || session.DeniedNotificationDeleteChildPending || session.DeniedNotificationDeletePending is not null) ||
+            statusDeniedNotificationUpdateProfile &&
             (session.DeniedNotificationUpdateParentPending || session.DeniedNotificationUpdateChildPending);
         bool unknownPending = statusUnknownNotificationUpdateProfile &&
             (session.UnknownNotificationUpdateParentPending || session.UnknownNotificationUpdateChildPending ||
@@ -16869,6 +17689,8 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
             new[] { selector.Scope, selector.Operation, selector.Variant, selector.Case }.All(v => Text(v, 512)) &&
             selector.Operation == E.Members[0].Operation &&
             statusDeniedVaultRecoverProfile == VaultFixtureProvisioner.StatusDeniedVaultRecoverSelector(selector) &&
+            statusDeniedNotificationDeleteProfile == NotificationFixtureProvisioner.StatusDeniedNotificationDeleteSelector(selector) &&
+            (!statusDeniedNotificationDeleteProfile || MatchesStatusDeniedNotificationDeleteOperation(selector)) &&
             statusDeniedVaultUpdateProfile == VaultFixtureProvisioner.StatusDeniedVaultUpdateSelector(selector) &&
             statusDeniedPrivateDeleteProfile == VaultFixtureProvisioner.StatusDeniedPrivateConnectionDeleteSelector(selector) &&
             (!VaultFixtureProvisioner.StatusDeniedPurgeSelector(selector) || deniedProfile is not null) &&
@@ -16880,7 +17702,8 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
 
             (!NotificationFixtureProvisioner.StatusDeniedNotificationUpdateSelector(selector) || MatchesStatusDeniedNotificationOperation(selector)) &&
             (!NotificationFixtureProvisioner.StatusUnknownNotificationUpdateSelector(selector) || statusUnknownNotificationUpdateProfile) &&
-            (statusDeniedVaultRecoverProfile ? VaultFixtureProvisioner.StatusDeniedVaultRecoverSelector(selector) :
+            (statusDeniedNotificationDeleteProfile ? MatchesStatusDeniedNotificationDeleteOperation(selector) :
+            statusDeniedVaultRecoverProfile ? VaultFixtureProvisioner.StatusDeniedVaultRecoverSelector(selector) :
             statusDeniedVaultUpdateProfile ? VaultFixtureProvisioner.StatusDeniedVaultUpdateSelector(selector) :
             statusDeniedPrivateDeleteProfile ? VaultFixtureProvisioner.StatusDeniedPrivateConnectionDeleteSelector(selector) :
             deniedProfile is not null ? VaultFixtureProvisioner.StatusDeniedPurgeSelector(selector) &&
@@ -16925,6 +17748,8 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
         Require(selector is not null && selector.Nonce != Guid.Empty &&
             new[] { selector.Scope, selector.Operation, selector.Variant, selector.Case }.All(v => Text(v, 512)) &&
             selector.Operation == E.Members[0].Operation &&
+            statusDeniedNotificationDeleteProfile == NotificationFixtureProvisioner.StatusDeniedNotificationDeleteSelector(selector) &&
+            (!statusDeniedNotificationDeleteProfile || MatchesStatusDeniedNotificationDeleteOperation(selector)) &&
             statusDeniedVaultRecoverProfile == VaultFixtureProvisioner.StatusDeniedVaultRecoverSelector(selector) &&
             statusDeniedVaultUpdateProfile == VaultFixtureProvisioner.StatusDeniedVaultUpdateSelector(selector) &&
             statusDeniedPrivateDeleteProfile == VaultFixtureProvisioner.StatusDeniedPrivateConnectionDeleteSelector(selector) &&
@@ -17043,6 +17868,10 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
                     }
                     catch (Exception) { deniedPrivateDeleteDisposePublicationFailed = true; }
                 }
+            if (statusDeniedNotificationDeleteProfile)
+                foreach (var session in sessions.Values.Where(s => s.Active == 0 && s.DeniedNotificationDeletePending is not null))
+                    try { RetryStatusDeniedNotificationDeletePersistence(session.Selector); }
+                    catch (Exception) { deniedPrivateDeleteDisposePublicationFailed = true; }
             disposed = true;
             completion = disposal = new(TaskCreationOptions.RunContinuationsAsynchronously);
             if (active == 0) drained.TrySetResult();
@@ -17072,6 +17901,11 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
                 if (statusUnknownNotificationUpdateCancellationProfile) RevokeUnknownNotificationUpdateCancellation(session);
                 if (statusUnknownNotificationUpdateIndependentProfile) RevokeUnknownNotificationUpdateIndependent(session);
 
+                if (statusDeniedNotificationDeleteProfile)
+                {
+                    RevokeDeniedNotificationDelete(session);
+                    session.DeniedNotificationDeleteCleanupLatch.Revoke();
+                }
                 if (statusDeniedNotificationUpdateProfile) RevokeDeniedNotificationUpdate(session);
                 if (statusUnknownNotificationUpdateProfile) RevokeUnknownNotificationUpdate(session);
                 if (statusNotificationUpdateIndependentProfile) RevokeNotificationUpdateIndependent(session);
@@ -17136,6 +17970,10 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
                     session.UnknownNotificationUpdateIndependentContinuity.Dispose();
                     RevokeUnknownNotificationUpdateIndependent(session);
 
+                    session.DeniedNotificationDeleteBaseline?.Configuration.Dispose();
+                    session.DeniedNotificationDeleteContinuity.Dispose();
+                    RevokeDeniedNotificationDelete(session);
+                    session.DeniedNotificationDeleteCleanupLatch.Revoke();
                     session.DeniedNotificationUpdateBaseline?.Configuration.Dispose();
                     session.DeniedNotificationUpdateObservedConfiguration?.Configuration.Dispose();
                     session.DeniedNotificationUpdateContinuity.Dispose();

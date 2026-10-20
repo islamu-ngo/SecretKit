@@ -1851,6 +1851,7 @@ public sealed partial class AzureManagementOperationNativeCaptureTests
         internal Task? UnknownCanceledTask;
         private readonly bool statusDeniedPurge;
         private readonly bool statusDeniedNotificationUpdate;
+        private readonly bool statusDeniedNotificationDelete;
         private readonly bool statusDeniedPrivateConnectionDelete;
         private readonly bool statusDeniedVaultUpdate;
         private readonly bool statusDeniedVaultRecover;
@@ -1871,11 +1872,12 @@ public sealed partial class AzureManagementOperationNativeCaptureTests
             bool statusPendingPurge = false, bool statusPendingPurgeIndependent = false, bool statusPendingPurgeCancellation = false, bool statusFailedPurge = false, bool statusFailedPurgeIndependent = false, bool statusFailedPurgeCancellation = false, bool statusCanceledPurge = false, bool statusCanceledPurgeIndependent = false, bool statusCanceledPurgeCancellation = false, bool statusUnknownNotificationUpdate = false, bool statusUnknownNotificationUpdateIndependent = false, bool statusUnknownNotificationUpdateCancellation = false,
             bool statusDeniedPurge = false, bool statusDeniedNotificationUpdate = false,
             bool statusDeniedPrivateConnectionDelete = false, bool statusDeniedVaultUpdate = false,
-            bool statusDeniedVaultRecover = false)
+            bool statusDeniedVaultRecover = false, bool statusDeniedNotificationDelete = false)
         {
             this.statusPrivateDeleteSelected = statusPrivateDeleteSelected;
             this.statusDeniedPurge = statusDeniedPurge;
             this.statusDeniedNotificationUpdate = statusDeniedNotificationUpdate;
+            this.statusDeniedNotificationDelete = statusDeniedNotificationDelete;
             this.statusDeniedPrivateConnectionDelete = statusDeniedPrivateConnectionDelete;
             this.statusDeniedVaultUpdate = statusDeniedVaultUpdate;
             this.statusDeniedVaultRecover = statusDeniedVaultRecover;
@@ -2017,6 +2019,15 @@ public sealed partial class AzureManagementOperationNativeCaptureTests
                 AsyncStart();
                 Backend.ExtraHeaders.Add(("x-ms-request-id", "controlled-private-delete-denied"));
             }
+            if (statusDeniedNotificationDelete)
+            {
+                Backend.StartStatus = 202;
+                Backend.StartBody = "";
+                Backend.StatusPath = new Uri(EventGridAsyncOperation).AbsolutePath;
+                Backend.Targets.Add(("Azure-AsyncOperation", EventGridAsyncOperation));
+                Backend.Targets.Add(("Location", EventGridLocation));
+                Backend.ExtraHeaders.Add(("x-ms-request-id", "controlled-notification-delete-denied"));
+            }
         }
         internal void AsyncStart()
         {
@@ -2074,6 +2085,8 @@ public sealed partial class AzureManagementOperationNativeCaptureTests
                 ? await Source.StartStatusDeniedPurgeAsync(Window, Binding.Selector, Client, Scope, Input, Receipt, token, retained)
                 : statusDeniedPrivateConnectionDelete
                 ? await Source.StartStatusDeniedPrivateConnectionDeleteAsync(Window, Binding.Selector, Client, Scope, Input, Receipt, token, retained)
+                : statusDeniedNotificationDelete
+                ? await Source.StartStatusDeniedNotificationDeleteAsync(Window, Binding.Selector, Client, Scope, Input, Receipt, token, retained)
                 : statusDeniedNotificationUpdate
                 ? await Source.StartStatusDeniedNotificationUpdateAsync(Window, Binding.Selector, Client, Scope, Input, Receipt, token, retained)
                 : statusUnknownNotificationUpdateCancellation
@@ -2139,6 +2152,8 @@ public sealed partial class AzureManagementOperationNativeCaptureTests
                 ? Source.CheckStatusDeniedPurgeAsync(Window, Binding.Selector, Handle!, token, retained).AsTask()
                 : statusDeniedPrivateConnectionDelete
                 ? Source.CheckStatusDeniedPrivateConnectionDeleteAsync(Window, Binding.Selector, Handle!, token, retained).AsTask()
+                : statusDeniedNotificationDelete
+                ? Source.CheckStatusDeniedNotificationDeleteAsync(Window, Binding.Selector, Handle!, token, retained).AsTask()
                 : statusDeniedNotificationUpdate
                 ? Source.CheckStatusDeniedNotificationUpdateAsync(Window, Binding.Selector, Handle!, token, retained).AsTask()
                 : statusUnknownNotificationUpdateCancellation

@@ -908,6 +908,44 @@ internal sealed class RoleFixtureJournal(string directory)
         }
     }
 
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<(string Owner, Guid Nonce), byte> invalidDeniedNotificationDeleteHistory = new();
+    private readonly Dictionary<(string Owner, Guid Nonce), (long Sequence, string Digest)> observedDeniedNotificationDeleteHistory = [];
+    private (string Owner, FixtureSelector Selector, long Revision)? deniedNotificationDeleteFlushFailure;
+    private bool deniedNotificationDeleteFlushFailureArmed;
+    internal sealed class StatusDeniedNotificationDeleteHistoryException : InvalidOperationException
+    {
+        internal StatusDeniedNotificationDeleteHistoryException() : base("fixture-journal-unavailable") { }
+    }
+    internal void FailStatusDeniedNotificationDeleteFlushOnce(string owner, FixtureSelector selector, long revision)
+    {
+        lock (gate)
+        {
+            Require(!string.IsNullOrWhiteSpace(owner) && owner.Length <= 128 &&
+                NotificationFixtureProvisioner.StatusDeniedNotificationDeleteSelector(selector) && selector.Nonce != Guid.Empty &&
+                revision > 0 && !deniedNotificationDeleteFlushFailureArmed);
+            deniedNotificationDeleteFlushFailureArmed = true;
+            deniedNotificationDeleteFlushFailure = (owner, selector with { }, revision);
+        }
+    }
+
+
+    private sealed record DeniedNotificationDeletePending(Snapshot? Before, Snapshot After, object? Candidate);
+    private readonly Dictionary<(string Owner, Guid Nonce), Snapshot> deniedNotificationDeletePreparations = [];
+    private readonly Dictionary<(string Owner, Guid Nonce), DeniedNotificationDeletePending> deniedNotificationDeleteUnflushed = [];
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<(string Owner, Guid Nonce, long Revision), Snapshot>
+        deniedNotificationDeleteImages = new();
+    internal bool IsStatusDeniedNotificationDeleteDescendant(Snapshot ancestor, Snapshot state) =>
+        !invalidDeniedNotificationDeleteHistory.ContainsKey((ancestor.Owner, ancestor.Selector.Nonce)) &&
+        ancestor.Owner == state.Owner && ancestor.Selector == state.Selector && ancestor.LeaseId == state.LeaseId &&
+        state.Revision >= ancestor.Revision &&
+        deniedNotificationDeleteImages.TryGetValue((ancestor.Owner, ancestor.Selector.Nonce, ancestor.Revision), out var original) &&
+        deniedNotificationDeleteImages.TryGetValue((state.Owner, state.Selector.Nonce, state.Revision), out var descendant) &&
+        SameStatusDeniedNotificationDeleteSnapshot(original, ancestor) && SameStatusDeniedNotificationDeleteSnapshot(descendant, state);
+    private static bool SameDeniedNotificationDeleteImage(Snapshot expected, Snapshot actual) =>
+        expected.Resources.SequenceEqual(actual.Resources) && (actual with { Resources = expected.Resources }) == expected;
+    private static Snapshot CopyDeniedNotificationDelete(Snapshot state) =>
+        state with { Selector = state.Selector with { }, Resources = state.Resources.Select(r => r with { }).ToArray() };
+
     private readonly HashSet<(string Owner, Guid Nonce)> invalidDeniedNotificationUpdateHistory = [];
     private readonly Dictionary<(string Owner, Guid Nonce), (long Sequence, string Digest)> observedDeniedNotificationUpdateHistory = [];
     private (string Owner, FixtureSelector Selector, long Revision)? deniedNotificationUpdateFlushFailure;
@@ -3753,6 +3791,31 @@ internal sealed class RoleFixtureJournal(string directory)
         VaultAdministrationEffects.Configuration? statusVaultRecoverCancellationBaseline = null,
         VaultAdministrationEffects.Configuration? statusVaultUpdateCancellationBaseline = null)
     {
+        if (NotificationFixtureProvisioner.StatusDeniedNotificationDeleteSelector(selector))
+        {
+            Require(privateEndpoint is null && settingsBaseline is null && deleteVaultBaseline is null &&
+                purgeDeletedVaultBaseline is null && createOrUpdateVaultBaseline is null && createOrUpdateVaultSelected is null &&
+                recoverVaultBaseline is null && recoverVaultSelected is null && privateConnectionUpdateBaseline is null &&
+                privateConnectionDeleteBaseline is null && statusVaultRecoverCancellationBaseline is null &&
+                statusVaultUpdateCancellationBaseline is null);
+            lock (gate)
+            {
+                RequireDeniedNotificationDeleteHistory(owner, selector);
+                if (!deniedNotificationDeletePreparations.TryGetValue((owner, selector.Nonce), out var prepared))
+                {
+                    prepared = CopyDeniedNotificationDelete(new(owner, selector, Guid.NewGuid(), false, resources) { Revision = 1 });
+                    int stage = 0;
+                    ValidateStatusDeniedNotificationDeleteState(prepared, null, ref stage);
+                    deniedNotificationDeletePreparations.Add((owner, selector.Nonce), prepared);
+                }
+                Require(prepared.Selector == selector && prepared.Resources.SequenceEqual(resources));
+                return Change(owner, selector, state =>
+                {
+                    Require(state is null || SameStatusDeniedNotificationDeleteSnapshot(prepared, state));
+                    return state ?? CopyDeniedNotificationDelete(prepared);
+                }, statusDeniedDelete: true, deniedNotificationDeleteCandidate: prepared);
+            }
+        }
         if (VaultFixtureProvisioner.StatusDeniedPrivateConnectionDeleteSelector(selector))
         {
             Require(privateEndpoint is not null && settingsBaseline is null && deleteVaultBaseline is null &&
@@ -3938,7 +4001,7 @@ internal sealed class RoleFixtureJournal(string directory)
                 new Frame(long.MaxValue, Convert.ToHexString(new byte[32]), maximum),
                 ManagementAdmission.Json).Length <= MaximumFrame);
             return prepared;
-        }, privateIndependent: true, statusDeniedUpdate: true, statusUnknown: true, statusUnknownCancellation: true, statusUnknownIndependent: true);
+        }, privateIndependent: true, statusDeniedDelete: true, statusDeniedUpdate: true, statusUnknown: true, statusUnknownCancellation: true, statusUnknownIndependent: true);
     }
 
     internal Snapshot Close(string owner, FixtureSelector selector, Func<Snapshot, bool>? validate = null) =>
@@ -3948,7 +4011,7 @@ internal sealed class RoleFixtureJournal(string directory)
             Require(validate is null || validate(VaultFixtureProvisioner.StatusDeniedVaultRecoverSelector(selector)
                 ? CopyStatusDeniedVaultRecoverSnapshot(state) : state));
             return state with { Closing = true };
-        }, privateIndependent: true, statusDeniedUpdate: true, statusDenied: true, statusPending: true, statusPendingIndependent: true, statusPendingCancellation: true, statusFailed: true, statusFailedIndependent: true, statusFailedCancellation: true, statusCanceled: true, statusCanceledIndependent: true, statusCanceledCancellation: true, statusUnknown: true, statusUnknownCancellation: true, statusUnknownIndependent: true, statusDeniedPrivateDelete: true, statusDeniedVaultUpdate: true, statusDeniedVaultRecover: true);
+        }, privateIndependent: true, statusDeniedDelete: true, statusDeniedUpdate: true, statusDenied: true, statusPending: true, statusPendingIndependent: true, statusPendingCancellation: true, statusFailed: true, statusFailedIndependent: true, statusFailedCancellation: true, statusCanceled: true, statusCanceledIndependent: true, statusCanceledCancellation: true, statusUnknown: true, statusUnknownCancellation: true, statusUnknownIndependent: true, statusDeniedPrivateDelete: true, statusDeniedVaultUpdate: true, statusDeniedVaultRecover: true);
 
     internal Guid BeginSelectedDispatch(string owner, FixtureSelector selector, string resourceId, bool delete) =>
         BeginSelectedDispatch(owner, selector, resourceId, delete, update: false);
@@ -7647,6 +7710,372 @@ internal sealed class RoleFixtureJournal(string directory)
             return state with { Resources = state.Resources.Select((r, i) => i == 1 ? r with { ActiveDispatch = Guid.Empty } : r).ToArray() };
         }, statusUnknown: true);
 
+    internal Snapshot BeginStatusDeniedNotificationDeleteInvocation(string owner, FixtureSelector selector, Guid leaseId,
+        ManagementOperationFixtureObserverService.StatusDeniedNotificationDeleteAdmission admission)
+    {
+        Guid dispatch = admission.Dispatch;
+        return Change(owner, selector, state =>
+        {
+            RequireDeniedNotificationDeleteHistory(owner, selector);
+            Require(state is not null && StatusDeniedNotificationDeleteRoot(state) && state.LeaseId == leaseId &&
+                !state.Closing && admission is not null);
+            if (admission.AcceptPostimage(this, state)) return state;
+            Require(state.Idle && admission.Validate(this, state) &&
+                state.Resources.All(r => !r.SelectedAttempted && !r.DeleteAttempted && !r.Absent &&
+                    (r.Borrowed || r.CleanupOnly ? !r.CreateAttempted && !r.InvocationTerminated :
+                        r.CreateAttempted && r.InvocationTerminated)));
+            var rows = state.Resources.ToArray();
+            int index = Index(rows, admission.ResourceId);
+            Require(rows[index].Id.Contains(VaultFixtureProvisioner.NotificationPrefix, StringComparison.Ordinal) &&
+                !rows[index].Borrowed && !rows[index].CleanupOnly);
+            rows[index] = rows[index] with { SelectedAttempted = true, InvocationTerminated = false, ActiveDispatch = dispatch };
+            return state with { Resources = rows };
+        }, statusDeniedDelete: true, deniedNotificationDeleteCandidate: admission);
+    }
+
+    internal Snapshot EndStatusDeniedNotificationDeleteStart(string owner, FixtureSelector selector, Guid leaseId, Guid dispatch,
+        ManagementOperationFixtureObserverService.StatusDeniedNotificationDeleteStartDrain drain) =>
+        Change(owner, selector, state =>
+        {
+            RequireDeniedNotificationDeleteHistory(owner, selector);
+            Require(state is not null && StatusDeniedNotificationDeleteRoot(state) && state.LeaseId == leaseId &&
+                !state.Closing && dispatch != Guid.Empty && drain is not null && drain.Dispatch == dispatch);
+            if (drain.AcceptPostimage(this, state)) return state;
+            Require(drain.Validate(this, state));
+            var rows = state.Resources.ToArray();
+            int index = Array.FindIndex(rows, r => r.ActiveDispatch == dispatch);
+            Require(index >= 0 && rows[index].SelectedAttempted && !rows[index].InvocationTerminated);
+            rows[index] = rows[index] with { InvocationTerminated = true };
+            return state with { Resources = rows };
+        }, statusDeniedDelete: true, deniedNotificationDeleteCandidate: drain);
+
+    internal Snapshot AdmitStatusDeniedNotificationDeleteRead(string owner, FixtureSelector selector, Guid leaseId, Guid dispatch,
+        ManagementOperationFixtureObserverService.StatusDeniedNotificationDeleteReadAdmission admission) =>
+        Change(owner, selector, state =>
+        {
+            RequireDeniedNotificationDeleteHistory(owner, selector);
+            Require(state is not null && StatusDeniedNotificationDeleteRoot(state) && state.LeaseId == leaseId &&
+                !state.Closing && dispatch != Guid.Empty && admission is not null && admission.Dispatch == dispatch);
+            if (admission.AcceptPostimage(this, state)) return state;
+            Require(admission.Validate(this, state));
+            var rows = state.Resources.ToArray();
+            int index = Array.FindIndex(rows, r => r.ActiveDispatch == dispatch);
+            Require(index >= 0 && rows[index].SelectedAttempted && rows[index].InvocationTerminated);
+            rows[index] = rows[index] with { InvocationTerminated = false };
+            return state with { Resources = rows };
+        }, statusDeniedDelete: true, deniedNotificationDeleteCandidate: admission);
+
+    internal Snapshot CompleteStatusDeniedNotificationDeleteRead(string owner, FixtureSelector selector, Guid leaseId, Guid dispatch,
+        ManagementOperationFixtureObserverService.StatusDeniedNotificationDeleteObservation completion) =>
+        Change(owner, selector, state =>
+        {
+            RequireDeniedNotificationDeleteHistory(owner, selector);
+            Require(state is not null && StatusDeniedNotificationDeleteRoot(state) && state.LeaseId == leaseId &&
+                !state.Closing && dispatch != Guid.Empty && completion is not null && completion.Dispatch == dispatch);
+            if (completion.AcceptPostimage(this, state)) return state;
+            Require(completion.Validate(this, state));
+            var rows = state.Resources.ToArray();
+            int index = Array.FindIndex(rows, r => r.ActiveDispatch == dispatch);
+            Require(index >= 0 && rows[index].SelectedAttempted && !rows[index].InvocationTerminated);
+            rows[index] = rows[index] with { InvocationTerminated = true, ActiveDispatch = Guid.Empty };
+            return state with { Resources = rows };
+        }, statusDeniedDelete: true, deniedNotificationDeleteCandidate: completion);
+
+    internal Snapshot BeginStatusDeniedNotificationDeleteFixtureDispatch(string owner, FixtureSelector selector, Guid leaseId,
+        NotificationFixtureProvisioner.StatusDeniedNotificationDeleteFixtureAdmission admission)
+    {
+        Guid dispatch = admission.Dispatch;
+        return Change(owner, selector, state =>
+        {
+            RequireDeniedNotificationDeleteHistory(owner, selector);
+            Require(state is not null && StatusDeniedNotificationDeleteRoot(state) && state.LeaseId == leaseId &&
+                admission is not null);
+            if (admission.AcceptPostimage(this, state)) return state;
+            Require(admission.Validate(this, state) &&
+                DeniedNotificationDeleteFixtureAllowed(state, admission.ResourceId, admission.Delete));
+            var rows = state.Resources.Select(r => r.Borrowed ? r : r with { Absent = false }).ToArray();
+            int index = Index(rows, admission.ResourceId);
+            rows[index] = rows[index] with
+            {
+                CreateAttempted = rows[index].CreateAttempted || !admission.Delete,
+                DeleteAttempted = rows[index].DeleteAttempted || admission.Delete,
+                InvocationTerminated = false,
+                ActiveDispatch = dispatch
+            };
+            return state with { Resources = rows };
+        }, statusDeniedDelete: true, deniedNotificationDeleteCandidate: admission);
+    }
+
+    internal Snapshot EndStatusDeniedNotificationDeleteFixtureDispatch(string owner, FixtureSelector selector, Guid leaseId,
+        NotificationFixtureProvisioner.StatusDeniedNotificationDeleteFixtureDrain drain) =>
+        Change(owner, selector, state =>
+        {
+            RequireDeniedNotificationDeleteHistory(owner, selector);
+            Require(state is not null && StatusDeniedNotificationDeleteRoot(state) && state.LeaseId == leaseId &&
+                drain is not null && drain.Dispatch != Guid.Empty);
+            if (drain.AcceptPostimage(this, state)) return state;
+            Require(drain.Validate(this, state));
+            var rows = state.Resources.ToArray();
+            int index = Index(rows, drain.ResourceId);
+            Require(rows[index].ActiveDispatch == drain.Dispatch && !rows[index].InvocationTerminated &&
+                (!rows[index].SelectedAttempted || state.Closing && rows[index].DeleteAttempted));
+            rows[index] = rows[index] with { InvocationTerminated = true, ActiveDispatch = drain.Settled ? Guid.Empty : drain.Dispatch };
+            return state with { Resources = rows };
+        }, statusDeniedDelete: true, deniedNotificationDeleteCandidate: drain);
+
+    internal Snapshot RecordStatusDeniedNotificationDeleteAbsence(string owner, FixtureSelector selector, Guid leaseId,
+        NotificationFixtureProvisioner.StatusDeniedNotificationDeleteAbsence absence) =>
+        Change(owner, selector, state =>
+        {
+            RequireDeniedNotificationDeleteHistory(owner, selector);
+            Require(state is not null && StatusDeniedNotificationDeleteRoot(state) && state.LeaseId == leaseId &&
+                state.Closing && state.Idle && absence is not null && !absence.Final);
+            if (absence.AcceptPostimage(this, state)) return state;
+            Require(absence.Validate(this, state) &&
+                state.Resources.Any(r => r.Id == absence.ResourceId && r.Id.Contains(VaultFixtureProvisioner.NotificationPrefix, StringComparison.Ordinal)));
+            var rows = state.Resources.Select(r => !r.Borrowed && (absence.Final || r.Id == absence.ResourceId)
+                ? r with { Absent = true } : r).ToArray();
+            if (rows.SequenceEqual(state.Resources)) return state;
+            return state with { Resources = rows };
+        }, statusDeniedDelete: true, deniedNotificationDeleteCandidate: absence);
+
+    internal Snapshot BeginStatusDeniedNotificationDeleteFixtureDispatch(string owner, FixtureSelector selector, Guid leaseId,
+        VaultFixtureProvisioner.StatusDeniedNotificationDeleteFixtureAdmission admission)
+    {
+        Guid dispatch = admission.Dispatch;
+        return Change(owner, selector, state =>
+        {
+            RequireDeniedNotificationDeleteHistory(owner, selector);
+            Require(state is not null && StatusDeniedNotificationDeleteRoot(state) && state.LeaseId == leaseId &&
+                admission is not null);
+            if (admission.AcceptPostimage(this, state)) return state;
+            Require(admission.Validate(this, state) &&
+                DeniedNotificationDeleteFixtureAllowed(state, admission.ResourceId, admission.Delete));
+            var rows = state.Resources.Select(r => r.Borrowed ? r : r with { Absent = false }).ToArray();
+            int index = Index(rows, admission.ResourceId);
+            rows[index] = rows[index] with
+            {
+                CreateAttempted = rows[index].CreateAttempted || !admission.Delete,
+                DeleteAttempted = rows[index].DeleteAttempted || admission.Delete,
+                InvocationTerminated = false,
+                ActiveDispatch = dispatch
+            };
+            return state with { Resources = rows };
+        }, statusDeniedDelete: true, deniedNotificationDeleteCandidate: admission);
+    }
+
+    internal Snapshot EndStatusDeniedNotificationDeleteFixtureDispatch(string owner, FixtureSelector selector, Guid leaseId,
+        VaultFixtureProvisioner.StatusDeniedNotificationDeleteFixtureDrain drain) =>
+        Change(owner, selector, state =>
+        {
+            RequireDeniedNotificationDeleteHistory(owner, selector);
+            Require(state is not null && StatusDeniedNotificationDeleteRoot(state) && state.LeaseId == leaseId &&
+                drain is not null && drain.Dispatch != Guid.Empty);
+            if (drain.AcceptPostimage(this, state)) return state;
+            Require(drain.Validate(this, state));
+            var rows = state.Resources.ToArray();
+            int index = Index(rows, drain.ResourceId);
+            Require(rows[index].ActiveDispatch == drain.Dispatch && !rows[index].InvocationTerminated &&
+                (!rows[index].SelectedAttempted || state.Closing && rows[index].DeleteAttempted));
+            rows[index] = rows[index] with { InvocationTerminated = true, ActiveDispatch = drain.Settled ? Guid.Empty : drain.Dispatch };
+            return state with { Resources = rows };
+        }, statusDeniedDelete: true, deniedNotificationDeleteCandidate: drain);
+
+    internal Snapshot RecordStatusDeniedNotificationDeleteAbsence(string owner, FixtureSelector selector, Guid leaseId,
+        VaultFixtureProvisioner.StatusDeniedNotificationDeleteAbsence absence) =>
+        Change(owner, selector, state =>
+        {
+            RequireDeniedNotificationDeleteHistory(owner, selector);
+            Require(state is not null && StatusDeniedNotificationDeleteRoot(state) && state.LeaseId == leaseId &&
+                state.Closing && state.Idle && absence is not null && absence.Final);
+            if (absence.AcceptPostimage(this, state)) return state;
+            Require((!state.Resources[1].SelectedAttempted ||
+                    state.Resources[0] is { CreateAttempted: true, DeleteAttempted: true, InvocationTerminated: true, ActiveDispatch: var parentDispatch } &&
+                    parentDispatch == Guid.Empty && state.Resources[3] is { DeleteAttempted: true, InvocationTerminated: true, ActiveDispatch: var purgeDispatch } &&
+                    purgeDispatch == Guid.Empty) && absence.Validate(this, state) &&
+                state.Resources.Single(r => r.Id.Contains(VaultFixtureProvisioner.NotificationPrefix, StringComparison.Ordinal)).Absent &&
+                state.Resources.Any(r => r.Id == absence.ResourceId && !r.CleanupOnly &&
+                    !r.Id.Contains(VaultFixtureProvisioner.NotificationPrefix, StringComparison.Ordinal)));
+            var rows = state.Resources.Select(r => !r.Borrowed && (absence.Final || r.Id == absence.ResourceId)
+                ? r with { Absent = true } : r).ToArray();
+            if (rows.SequenceEqual(state.Resources)) return state;
+            return state with { Resources = rows };
+        }, statusDeniedDelete: true, deniedNotificationDeleteCandidate: absence);
+
+    private static bool DeniedNotificationDeleteFixtureAllowed(Snapshot state, string id, bool delete)
+    {
+        if (!StatusDeniedNotificationDeleteRoot(state) || !state.Idle || state.Closing != delete) return false;
+        var child = state.Resources.Single(r => r.Id.Contains(VaultFixtureProvisioner.NotificationPrefix, StringComparison.Ordinal));
+        string vaultId = child.Id[..child.Id.IndexOf(VaultFixtureProvisioner.NotificationPrefix, StringComparison.Ordinal)];
+        var vault = state.Resources.Single(r => r.Id == vaultId);
+        var marker = state.Resources.Single(r => r.Id.Contains("/deletedVaults/", StringComparison.Ordinal));
+        var row = state.Resources.SingleOrDefault(r => r.Id == id);
+        if (row is null || row.Borrowed || row.Absent || row.ActiveDispatch != Guid.Empty) return false;
+        if (!delete)
+            return !state.Resources.Any(r => r.SelectedAttempted) && !row.CreateAttempted && !row.CleanupOnly &&
+                (id == vault.Id || id == child.Id && vault.CreateAttempted && vault.InvocationTerminated);
+        if (row.DeleteAttempted) return false;
+        if (id == child.Id) return child.CreateAttempted && !child.SelectedAttempted;
+        return child.Absent && child.ActiveDispatch == Guid.Empty &&
+            (id == vault.Id && vault.CreateAttempted || id == marker.Id &&
+                (!vault.CreateAttempted || vault.DeleteAttempted && vault.InvocationTerminated && vault.ActiveDispatch == Guid.Empty));
+    }
+
+    internal static bool SameStatusDeniedNotificationDeleteSnapshot(Snapshot expected, Snapshot actual) =>
+        expected is not null && actual is not null && StatusDeniedNotificationDeleteRoot(expected) &&
+        StatusDeniedNotificationDeleteRoot(actual) && expected.Resources.SequenceEqual(actual.Resources) &&
+        (actual with { Resources = expected.Resources }) == expected;
+
+    internal static bool StatusDeniedNotificationDeleteRoot(Snapshot state)
+    {
+        if (state is null || !NotificationFixtureProvisioner.StatusDeniedNotificationDeleteSelector(state.Selector) ||
+            state.LeaseId == Guid.Empty || state.Selector.Nonce == Guid.Empty || string.IsNullOrWhiteSpace(state.Owner) ||
+            string.IsNullOrWhiteSpace(state.Selector.Scope) || state.Resources is not { Length: 4 } ||
+            state.Resources.Any(r => r is null || string.IsNullOrEmpty(r.Id) || r.Borrowed) ||
+            state.PrivateEndpoint is not null || state.Settings is not null || state.DeleteVault is not null ||
+            state.PurgeDeletedVault is not null || state.CreateOrUpdateVault is not null || state.RecoverVault is not null ||
+            state.NotificationAbsentCreate is not null || state.StatusSucceededDeleteVault is not null ||
+            state.StatusVaultRecoverCancellationBaseline is not null || state.StatusVaultUpdateCancellationBaseline is not null ||
+            state.Resources.Select(r => r.Id).Distinct(StringComparer.OrdinalIgnoreCase).Count() != 4) return false;
+        var rows = state.Resources;
+        string[] vault = rows[0].Id.Split('/'), deleted = rows[3].Id.Split('/');
+        if (vault.Length != 9 || vault[0] != "" || vault[1] != "subscriptions" ||
+            !Guid.TryParseExact(vault[2], "D", out var subscription) || subscription == Guid.Empty ||
+            subscription.ToString("D") != vault[2] || vault[3] != "resourceGroups" || !IndependentSegment(vault[4], 90) ||
+            vault[5] != "providers" || vault[6] != "Microsoft.KeyVault" || vault[7] != "vaults" ||
+            vault[8].Length != 24 || !vault[8].StartsWith("skv", StringComparison.Ordinal) || !vault[8][3..].All(c => c is >= '0' and <= '9' or >= 'a' and <= 'f')) return false;
+        string prefix = rows[0].Id + VaultFixtureProvisioner.NotificationPrefix;
+        if (!rows[1].Id.StartsWith(prefix, StringComparison.Ordinal)) return false;
+        string name = rows[1].Id[prefix.Length..];
+        return name.Length == 36 && name.StartsWith("skn-", StringComparison.Ordinal) && name[4..].All(c => c is >= '0' and <= '9' or >= 'a' and <= 'f') &&
+            !rows[0].CleanupOnly && !rows[0].SelectedAttempted && !rows[1].CleanupOnly &&
+            rows[2].Id == rows[0].Id + "/secrets/" + VaultFixtureProvisioner.Canary && rows[2].CleanupOnly &&
+            !rows[2].CreateAttempted && !rows[2].DeleteAttempted && !rows[2].SelectedAttempted &&
+            !rows[2].InvocationTerminated && rows[2].ActiveDispatch == Guid.Empty &&
+            deleted.Length == 9 && deleted[0] == "" && deleted[1] == "subscriptions" && deleted[2] == vault[2] &&
+            deleted[3] == "providers" && deleted[4] == "Microsoft.KeyVault" && deleted[5] == "locations" &&
+            IndependentSegment(deleted[6], 50) && deleted[7] == "deletedVaults" && deleted[8] == vault[8] &&
+            rows[3].CleanupOnly && !rows[3].CreateAttempted && !rows[3].SelectedAttempted;
+    }
+
+    private void RequireDeniedNotificationDeleteHistory(string owner, FixtureSelector selector)
+    {
+        if (invalidDeniedNotificationDeleteHistory.ContainsKey((owner, selector.Nonce)))
+            throw new StatusDeniedNotificationDeleteHistoryException();
+    }
+
+    private static void ValidateStatusDeniedNotificationDeleteState(Snapshot state, Snapshot? previous, ref int stage)
+    {
+        if (!NotificationFixtureProvisioner.StatusDeniedNotificationDeleteSelector(state.Selector)) return;
+        Require(state.PrivateEndpoint is null && state.Settings is null && state.DeleteVault is null &&
+            state.PurgeDeletedVault is null && state.CreateOrUpdateVault is null && state.RecoverVault is null &&
+            state.NotificationAbsentCreate is null && state.StatusSucceededDeleteVault is null &&
+            state.StatusVaultRecoverCancellationBaseline is null && state.StatusVaultUpdateCancellationBaseline is null);
+        if (state.Resources.Length == 0)
+        {
+            Require(state.Closing && state.LeaseId == Guid.Empty && (previous is null || previous.Resources.Length == 0));
+            return;
+        }
+        Require(StatusDeniedNotificationDeleteRoot(state));
+        var child = state.Resources.Single(r => !r.Borrowed &&
+            r.Id.Contains(VaultFixtureProvisioner.NotificationPrefix, StringComparison.Ordinal));
+        string parentId = child.Id[..child.Id.IndexOf(VaultFixtureProvisioner.NotificationPrefix, StringComparison.Ordinal)];
+        var parent = state.Resources.Single(r => r.Id == parentId);
+        var secret = state.Resources.Single(r => r.Id == parentId + "/secrets/" + VaultFixtureProvisioner.Canary);
+        var marker = state.Resources.Single(r => r.Id.Contains("/deletedVaults/", StringComparison.Ordinal));
+        Require(state.Resources.Count(r => r.ActiveDispatch != Guid.Empty) <= 1 &&
+            state.Resources.All(r => (!r.Absent || state.Closing) && (r.ActiveDispatch == Guid.Empty || !r.Absent) &&
+                (!r.SelectedAttempted || r.Id == child.Id)) &&
+            !secret.CreateAttempted && !secret.DeleteAttempted && !secret.InvocationTerminated && secret.ActiveDispatch == Guid.Empty && !marker.CreateAttempted &&
+            (!child.SelectedAttempted || child.CreateAttempted && parent.CreateAttempted) &&
+            (!child.DeleteAttempted || state.Closing && child.CreateAttempted && !child.SelectedAttempted) &&
+            (!parent.DeleteAttempted || state.Closing && parent.CreateAttempted) &&
+            (!marker.DeleteAttempted || state.Closing && (!parent.CreateAttempted ||
+                parent.DeleteAttempted && parent.InvocationTerminated && parent.ActiveDispatch == Guid.Empty)));
+        if (previous is null)
+        {
+            Require(!state.Closing && state.Resources.All(r => !r.CreateAttempted && !r.DeleteAttempted &&
+                !r.SelectedAttempted && !r.InvocationTerminated && !r.Absent && r.ActiveDispatch == Guid.Empty));
+            return;
+        }
+        Require(StatusDeniedNotificationDeleteRoot(previous) && previous.Owner == state.Owner &&
+            previous.Selector == state.Selector && previous.LeaseId == state.LeaseId &&
+            (!previous.Closing || state.Closing) && previous.Resources.Select(r => r.Id).SequenceEqual(state.Resources.Select(r => r.Id)));
+        bool Rows(Resource[] expected) => expected.SequenceEqual(state.Resources);
+        if (Rows(previous.Resources)) return; // Close or a read-only transaction.
+        Require(previous.Closing == state.Closing);
+        var beforeChild = previous.Resources.Single(r => r.Id == child.Id);
+        if (!previous.Closing && !beforeChild.SelectedAttempted && child.SelectedAttempted)
+        {
+            Require(stage == 0 && previous.Idle && child.ActiveDispatch != Guid.Empty &&
+                previous.Resources.All(r => !r.DeleteAttempted && !r.SelectedAttempted && !r.Absent &&
+                    (r.Borrowed || r.CleanupOnly ? !r.CreateAttempted && !r.InvocationTerminated :
+                        r.CreateAttempted && r.InvocationTerminated)) &&
+                Rows(previous.Resources.Select(r => r.Id == child.Id ? r with
+                { SelectedAttempted = true, InvocationTerminated = false, ActiveDispatch = child.ActiveDispatch } : r).ToArray()));
+            stage = 1;
+            return;
+        }
+        if (beforeChild.SelectedAttempted && !beforeChild.DeleteAttempted && beforeChild.ActiveDispatch != Guid.Empty)
+        {
+            Require(previous.Resources.Where(r => r.Id != child.Id).SequenceEqual(state.Resources.Where(r => r.Id != child.Id)) &&
+                !parent.DeleteAttempted && !marker.DeleteAttempted && state.Resources.All(r => !r.Absent));
+            if (!beforeChild.InvocationTerminated && child == (beforeChild with { InvocationTerminated = true }))
+            {
+                Require(stage is 1 or 3);
+                stage = stage == 1 ? 2 : -1;
+                return;
+            }
+            if (beforeChild.InvocationTerminated && child == (beforeChild with { InvocationTerminated = false }))
+            {
+                Require(!state.Closing && stage == 2);
+                stage = 3;
+                return;
+            }
+            Require(!state.Closing && stage == 3 && !beforeChild.InvocationTerminated &&
+                child == (beforeChild with { InvocationTerminated = true, ActiveDispatch = Guid.Empty }));
+            stage = 4;
+            return;
+        }
+
+        if (previous.Idle)
+        {
+            var started = state.Resources.Where(r => r.ActiveDispatch != Guid.Empty).ToArray();
+            if (started is [var row])
+            {
+                bool delete = state.Closing;
+                Require(DeniedNotificationDeleteFixtureAllowed(previous, row.Id, delete) &&
+                    Rows(previous.Resources.Select(r => r.Borrowed ? r : r.Id == row.Id ? r with
+                    {
+                        Absent = false,
+                        CreateAttempted = r.CreateAttempted || !delete,
+                        DeleteAttempted = r.DeleteAttempted || delete,
+                        ActiveDispatch = row.ActiveDispatch,
+                        InvocationTerminated = false
+                    } : r with { Absent = false }).ToArray()));
+                return;
+            }
+            Require(state.Closing && state.Idle);
+            bool finalAbsence = Rows(previous.Resources.Select(r => r with { Absent = true }).ToArray());
+            if (finalAbsence && child.SelectedAttempted)
+                Require(parent.DeleteAttempted && parent.InvocationTerminated && marker.DeleteAttempted && marker.InvocationTerminated);
+            bool absent = Rows(previous.Resources.Select(r => r.Id == child.Id ? r with { Absent = true } : r).ToArray()) || finalAbsence;
+            bool present = previous.Resources.Where(r => !r.Borrowed && r.Absent).Any(row =>
+                Rows(previous.Resources.Select(r => r.Id == row.Id ? r with { Absent = false } : r).ToArray()));
+            bool revoked = Rows(previous.Resources.Select(r => r with { Absent = false }).ToArray());
+            Require(absent || present || revoked);
+            return;
+        }
+        var active = previous.Resources.Single(r => r.ActiveDispatch != Guid.Empty);
+        var ended = state.Resources.Single(r => r.Id == active.Id);
+        Require((!active.SelectedAttempted || previous.Closing && active.DeleteAttempted) && !active.InvocationTerminated && ended.InvocationTerminated &&
+            (ended.ActiveDispatch == Guid.Empty || ended.ActiveDispatch == active.ActiveDispatch) &&
+            Rows(previous.Resources.Select(r => r.Id == active.Id ? r with
+            { InvocationTerminated = true, ActiveDispatch = ended.ActiveDispatch } : r).ToArray()));
+    }
+
+
+
     internal Snapshot BeginStatusDeniedNotificationUpdateInvocation(string owner, FixtureSelector selector, Guid leaseId,
         ManagementOperationFixtureObserverService.StatusDeniedNotificationUpdateAdmission admission)
     {
@@ -9081,7 +9510,7 @@ internal sealed class RoleFixtureJournal(string directory)
                 !rows[index].SelectedAttempted);
             Require(!nativeSettled || state.PrivateEndpoint?.Declaration.EndpointId != rows[index].Id);
             if ((RoleFixtureProvisioner.StatusRoleDeleteIndependentSelector(selector) ||
-                (NotificationFixtureProvisioner.StatusUnknownNotificationUpdateCancellationSelector(selector) || NotificationFixtureProvisioner.StatusUnknownNotificationUpdateIndependentSelector(selector) || NotificationFixtureProvisioner.StatusDeniedNotificationUpdateSelector(selector) || NotificationFixtureProvisioner.StatusUnknownNotificationUpdateSelector(selector) || NotificationFixtureProvisioner.StatusNotificationUpdateIndependentSelector(selector) || NotificationFixtureProvisioner.StatusNotificationCreateIndependentSelector(selector))) && rows[index].InvocationTerminated)
+                (NotificationFixtureProvisioner.StatusUnknownNotificationUpdateCancellationSelector(selector) || NotificationFixtureProvisioner.StatusUnknownNotificationUpdateIndependentSelector(selector) || NotificationFixtureProvisioner.StatusDeniedNotificationDeleteSelector(selector) || NotificationFixtureProvisioner.StatusDeniedNotificationUpdateSelector(selector) || NotificationFixtureProvisioner.StatusUnknownNotificationUpdateSelector(selector) || NotificationFixtureProvisioner.StatusNotificationUpdateIndependentSelector(selector) || NotificationFixtureProvisioner.StatusNotificationCreateIndependentSelector(selector))) && rows[index].InvocationTerminated)
                 return state;
             rows[index] = rows[index] with
             {
@@ -9089,7 +9518,7 @@ internal sealed class RoleFixtureJournal(string directory)
                 InvocationTerminated = true
             };
             return state with { Resources = rows };
-        }, privateIndependent: !nativeSettled, statusDeniedUpdate: !nativeSettled, statusUnknown: !nativeSettled, statusUnknownCancellation: !nativeSettled, statusUnknownIndependent: !nativeSettled);
+        }, privateIndependent: !nativeSettled, statusDeniedDelete: !nativeSettled, statusDeniedUpdate: !nativeSettled, statusUnknown: !nativeSettled, statusUnknownCancellation: !nativeSettled, statusUnknownIndependent: !nativeSettled);
 
     // Native settlement is a separate observation after local invocation drain.
     // A process restart cannot infer either fact from an absent resource.
@@ -9318,7 +9747,7 @@ internal sealed class RoleFixtureJournal(string directory)
             Resource[] rows = state!.Resources.ToArray();
             int index = Index(rows, resourceId);
             Require(!rows[index].Borrowed);
-            if (NotificationFixtureProvisioner.StatusUnknownNotificationUpdateCancellationSelector(selector) || NotificationFixtureProvisioner.StatusUnknownNotificationUpdateIndependentSelector(selector) || NotificationFixtureProvisioner.StatusDeniedNotificationUpdateSelector(selector) || NotificationFixtureProvisioner.StatusUnknownNotificationUpdateSelector(selector) || PendingSelector(selector))
+            if (NotificationFixtureProvisioner.StatusUnknownNotificationUpdateCancellationSelector(selector) || NotificationFixtureProvisioner.StatusUnknownNotificationUpdateIndependentSelector(selector) || NotificationFixtureProvisioner.StatusDeniedNotificationDeleteSelector(selector) || NotificationFixtureProvisioner.StatusDeniedNotificationUpdateSelector(selector) || NotificationFixtureProvisioner.StatusUnknownNotificationUpdateSelector(selector) || PendingSelector(selector))
                 return rows.All(r => !r.Absent) ? state :
                     state with { Resources = rows.Select(r => r with { Absent = false }).ToArray() };
             if (!rows[index].Absent && (state.PrivateEndpoint is null ||
@@ -9335,7 +9764,7 @@ internal sealed class RoleFixtureJournal(string directory)
                     Connection = slot.Connection is null ? null : slot.Connection with { Absent = false }
                 }
             };
-        }, privateIndependent: true, statusDeniedUpdate: true, statusDenied: true, statusPending: true, statusPendingIndependent: true, statusPendingCancellation: true, statusFailed: true, statusFailedIndependent: true, statusFailedCancellation: true, statusCanceled: true, statusCanceledIndependent: true, statusCanceledCancellation: true, statusUnknown: true, statusUnknownCancellation: true, statusUnknownIndependent: true, statusDeniedPrivateDelete: true);
+        }, privateIndependent: true, statusDeniedDelete: true, statusDeniedUpdate: true, statusDenied: true, statusPending: true, statusPendingIndependent: true, statusPendingCancellation: true, statusFailed: true, statusFailedIndependent: true, statusFailedCancellation: true, statusCanceled: true, statusCanceledIndependent: true, statusCanceledCancellation: true, statusUnknown: true, statusUnknownCancellation: true, statusUnknownIndependent: true, statusDeniedPrivateDelete: true);
 
     // The only transition that settles the original endpoint creation. It also
     // records the provider-assigned child, without growing Resources membership.
@@ -9374,7 +9803,8 @@ internal sealed class RoleFixtureJournal(string directory)
         bool statusPendingCancellation = false, bool statusFailed = false, bool statusFailedIndependent = false, bool statusFailedCancellation = false, bool statusCanceled = false, bool statusCanceledIndependent = false, bool statusCanceledCancellation = false, bool statusUnknown = false, bool statusUnknownIndependent = false, bool statusUnknownCancellation = false, bool statusDenied = false, bool statusDeniedUpdate = false,
         bool statusDeniedPrivateDelete = false, bool deniedPrivateDeletePersistence = false,
         bool statusDeniedVaultUpdate = false, bool deniedVaultUpdatePersistence = false,
-        bool statusDeniedVaultRecover = false, bool deniedVaultRecoverPersistence = false)
+        bool statusDeniedVaultRecover = false, bool deniedVaultRecoverPersistence = false,
+        bool statusDeniedDelete = false, object? deniedNotificationDeleteCandidate = null)
     {
         Require(!VaultFixtureProvisioner.StatusDeniedVaultRecoverSelector(selector) || statusDeniedVaultRecover);
         Require(!VaultFixtureProvisioner.StatusDeniedVaultUpdateSelector(selector) || statusDeniedVaultUpdate);
@@ -9382,6 +9812,7 @@ internal sealed class RoleFixtureJournal(string directory)
         Require(!NotificationFixtureProvisioner.StatusUnknownNotificationUpdateCancellationSelector(selector) || statusUnknownCancellation);
         Require(!NotificationFixtureProvisioner.StatusUnknownNotificationUpdateIndependentSelector(selector) || statusUnknownIndependent);
 
+        Require(!NotificationFixtureProvisioner.StatusDeniedNotificationDeleteSelector(selector) || statusDeniedDelete);
         Require(!NotificationFixtureProvisioner.StatusDeniedNotificationUpdateSelector(selector) || statusDeniedUpdate);
         Require(!NotificationFixtureProvisioner.StatusUnknownNotificationUpdateSelector(selector) || statusUnknown);
         Require(!VaultFixtureProvisioner.StatusCanceledPurgeCancellationSelector(selector) || statusCanceledCancellation);
@@ -9395,18 +9826,19 @@ internal sealed class RoleFixtureJournal(string directory)
         Require(!VaultFixtureProvisioner.StatusFailedPurgeIndependentSelector(selector) || statusFailedIndependent);
         Require(!VaultFixtureProvisioner.StatusFailedPurgeCancellationSelector(selector) || statusFailedCancellation);
         Require(!VaultFixtureProvisioner.StatusDeniedPurgeSelector(selector) || statusDenied);
-        return Access(owner, selector, change, deniedPrivateDeletePersistence, deniedVaultUpdatePersistence, deniedVaultRecoverPersistence);
+        return Access(owner, selector, change, deniedPrivateDeletePersistence, deniedVaultUpdatePersistence, deniedVaultRecoverPersistence, deniedNotificationDeleteCandidate);
     }
 
     private Snapshot Access(string owner, FixtureSelector selector, Func<Snapshot?, Snapshot>? change,
         bool deniedPrivateDeletePersistence = false, bool deniedVaultUpdatePersistence = false,
-        bool deniedVaultRecoverPersistence = false)
+        bool deniedVaultRecoverPersistence = false, object? deniedNotificationDeleteCandidate = null)
     {
-        lock (gate) return AccessLocked(owner, selector, change, deniedPrivateDeletePersistence, deniedVaultUpdatePersistence, deniedVaultRecoverPersistence);
+        lock (gate) return AccessLocked(owner, selector, change, deniedPrivateDeletePersistence, deniedVaultUpdatePersistence, deniedVaultRecoverPersistence, deniedNotificationDeleteCandidate);
     }
 
     private Snapshot AccessLocked(string owner, FixtureSelector selector, Func<Snapshot?, Snapshot>? change,
-        bool deniedPrivateDeletePersistence, bool deniedVaultUpdatePersistence, bool deniedVaultRecoverPersistence)
+        bool deniedPrivateDeletePersistence, bool deniedVaultUpdatePersistence, bool deniedVaultRecoverPersistence,
+        object? deniedNotificationDeleteCandidate)
     {
         Require(owner.Length is > 0 and <= 128 && selector.Nonce != Guid.Empty &&
             new[] { selector.Scope, selector.Operation, selector.Variant, selector.Case }
@@ -9427,6 +9859,9 @@ internal sealed class RoleFixtureJournal(string directory)
         bool unknownNotificationUpdateIndependent = NotificationFixtureProvisioner.StatusUnknownNotificationUpdateIndependentSelector(selector);
         observedUnknownNotificationUpdateIndependentHistory.TryGetValue((owner, selector.Nonce), out var unknownIndependentObserved);
 
+        bool deniedNotificationDelete = NotificationFixtureProvisioner.StatusDeniedNotificationDeleteSelector(selector);
+        observedDeniedNotificationDeleteHistory.TryGetValue((owner, selector.Nonce), out var deniedDeleteObserved);
+        if (deniedNotificationDelete) RequireDeniedNotificationDeleteHistory(owner, selector);
         bool deniedNotificationUpdate = NotificationFixtureProvisioner.StatusDeniedNotificationUpdateSelector(selector);
         observedDeniedNotificationUpdateHistory.TryGetValue((owner, selector.Nonce), out var deniedUpdateObserved);
         bool unknownNotificationUpdate = NotificationFixtureProvisioner.StatusUnknownNotificationUpdateSelector(selector);
@@ -9470,6 +9905,7 @@ internal sealed class RoleFixtureJournal(string directory)
             if (unknownNotificationUpdateCancellation) Require(file.Length != 0 || unknownCancellationObserved.Sequence == 0);
             if (unknownNotificationUpdateIndependent) Require(file.Length != 0 || unknownIndependentObserved.Sequence == 0);
 
+            if (deniedNotificationDelete) Require(file.Length != 0 || deniedDeleteObserved.Sequence == 0);
             if (deniedNotificationUpdate) Require(file.Length != 0 || deniedUpdateObserved.Sequence == 0);
             if (unknownNotificationUpdate) Require(file.Length != 0 || unknownObserved.Sequence == 0);
             if (PendingSelector(selector))
@@ -9482,6 +9918,8 @@ internal sealed class RoleFixtureJournal(string directory)
             int unknownNotificationUpdateCancellationStage = 0;
             int unknownNotificationUpdateIndependentStage = 0;
 
+            int deniedNotificationDeleteStage = 0;
+            var deniedNotificationDeleteDispatches = new HashSet<Guid>();
             int deniedNotificationUpdateStage = 0;
             int unknownNotificationUpdateStage = 0;
             int notificationCreateIndependentStage = 0;
@@ -9504,6 +9942,7 @@ internal sealed class RoleFixtureJournal(string directory)
                 ValidateStatusUnknownNotificationUpdateCancellationFrame(payload, selector);
                 ValidateStatusUnknownNotificationUpdateIndependentFrame(payload, selector);
 
+                ValidateStatusDeniedNotificationDeleteFrame(payload, selector);
                 ValidateStatusDeniedNotificationUpdateFrame(payload, selector);
                 ValidateStatusUnknownNotificationUpdateFrame(payload, selector);
                 ValidateStatusPendingPurgeFrame(payload, selector);
@@ -9533,6 +9972,11 @@ internal sealed class RoleFixtureJournal(string directory)
                 ValidateStatusUnknownNotificationUpdateCancellationState(frame.State, state, ref unknownNotificationUpdateCancellationStage);
                 ValidateStatusUnknownNotificationUpdateIndependentState(frame.State, state, ref unknownNotificationUpdateIndependentStage);
 
+                ValidateStatusDeniedNotificationDeleteState(frame.State, state, ref deniedNotificationDeleteStage);
+                if (deniedNotificationDelete)
+                    foreach (var row in frame.State.Resources.Where(r => r.ActiveDispatch != Guid.Empty))
+                        if (state is null || !state.Resources.Any(r => r.Id == row.Id && r.ActiveDispatch == row.ActiveDispatch))
+                            Require(deniedNotificationDeleteDispatches.Add(row.ActiveDispatch));
                 ValidateStatusDeniedNotificationUpdateState(frame.State, state, ref deniedNotificationUpdateStage);
                 ValidateStatusUnknownNotificationUpdateState(frame.State, state, ref unknownNotificationUpdateStage);
                 ValidateStatusNotificationUpdateIndependentState(frame.State, state, ref notificationUpdateStage);
@@ -9556,6 +10000,13 @@ internal sealed class RoleFixtureJournal(string directory)
                 if (unknownNotificationUpdateIndependent && sequence == unknownIndependentObserved.Sequence)
                     Require(Convert.ToHexString(digest) == unknownIndependentObserved.Digest);
 
+                if (deniedNotificationDelete)
+                {
+                    if (sequence == deniedDeleteObserved.Sequence) Require(Convert.ToHexString(digest) == deniedDeleteObserved.Digest);
+                    // Replay proves legal descent, not acknowledgment. The retained
+                    // pending barrier still forbids every unrelated new write.
+                    deniedNotificationDeleteImages[(owner, selector.Nonce, sequence)] = CopyDeniedNotificationDelete(state);
+                }
                 if (deniedNotificationUpdate && sequence == deniedUpdateObserved.Sequence)
                     Require(Convert.ToHexString(digest) == deniedUpdateObserved.Digest);
                 if (unknownNotificationUpdate && sequence == unknownObserved.Sequence)
@@ -9605,6 +10056,11 @@ internal sealed class RoleFixtureJournal(string directory)
                 if (state is not null) observedUnknownNotificationUpdateIndependentHistory[(owner, selector.Nonce)] = (sequence, Convert.ToHexString(previous));
             }
 
+            if (deniedNotificationDelete)
+            {
+                Require(sequence >= deniedDeleteObserved.Sequence);
+                if (state is not null) observedDeniedNotificationDeleteHistory[(owner, selector.Nonce)] = (sequence, Convert.ToHexString(previous));
+            }
             if (deniedNotificationUpdate)
             {
                 Require(sequence >= deniedUpdateObserved.Sequence);
@@ -9632,6 +10088,10 @@ internal sealed class RoleFixtureJournal(string directory)
                 return CopyStatusRecoveryBaseline(state ?? throw Failure());
             }
             reading = false;
+            DeniedNotificationDeletePending? deniedDeletePending = null;
+            if (deniedNotificationDelete && deniedNotificationDeleteUnflushed.TryGetValue((owner, selector.Nonce), out deniedDeletePending) &&
+                !ReferenceEquals(deniedDeletePending.Candidate, deniedNotificationDeleteCandidate))
+                throw new IOException("fixture-journal-unavailable");
             bool deniedRecoverUnflushed = deniedVaultRecover && deniedVaultRecoverUnflushed.ContainsKey((owner, selector.Nonce));
             if (deniedRecoverUnflushed && deniedVaultRecoverUnflushedTyped.Contains((owner, selector.Nonce)) &&
                 !deniedVaultRecoverPersistence) throw new IOException("fixture-journal-unavailable");
@@ -9647,6 +10107,14 @@ internal sealed class RoleFixtureJournal(string directory)
                 !deniedPrivateDeletePersistence)
                 throw new IOException("fixture-journal-unavailable");
             Snapshot next = change(state);
+            if (deniedNotificationDelete && next != state) next = next with { Revision = sequence + 1 };
+            if (deniedDeletePending is not null)
+            {
+                Require(SameDeniedNotificationDeleteImage(deniedDeletePending.After, next));
+                if (state is not null && SameDeniedNotificationDeleteImage(deniedDeletePending.After, state)) next = state;
+                else Require(deniedDeletePending.Before is null ? state is null :
+                    state is not null && SameDeniedNotificationDeleteImage(deniedDeletePending.Before, state));
+            }
             if (deniedVaultRecover && next != state) next = next with { Revision = sequence + 1 };
             if (deniedRecoverUnflushed)
             {
@@ -9685,6 +10153,7 @@ internal sealed class RoleFixtureJournal(string directory)
             ValidateStatusUnknownNotificationUpdateCancellationState(next, state, ref unknownNotificationUpdateCancellationStage);
             ValidateStatusUnknownNotificationUpdateIndependentState(next, state, ref unknownNotificationUpdateIndependentStage);
 
+            ValidateStatusDeniedNotificationDeleteState(next, state, ref deniedNotificationDeleteStage);
             ValidateStatusDeniedNotificationUpdateState(next, state, ref deniedNotificationUpdateStage);
             ValidateStatusUnknownNotificationUpdateState(next, state, ref unknownNotificationUpdateStage);
             ValidateStatusNotificationUpdateIndependentState(next, state, ref notificationUpdateStage);
@@ -9704,6 +10173,14 @@ internal sealed class RoleFixtureJournal(string directory)
             ValidatePrivateConnectionDeleteState(next);
             if (next == state)
             {
+                if (deniedNotificationDelete)
+                {
+                    if (!deniedNotificationDeleteUnflushed.ContainsKey((owner, selector.Nonce)))
+                        deniedNotificationDeleteUnflushed.Add((owner, selector.Nonce), new(CopyDeniedNotificationDelete(next), CopyDeniedNotificationDelete(next), deniedNotificationDeleteCandidate));
+                    file.Flush(flushToDisk: true);
+                    deniedNotificationDeleteUnflushed.Remove((owner, selector.Nonce));
+                    deniedNotificationDeleteImages[(owner, selector.Nonce, next.Revision)] = CopyDeniedNotificationDelete(next);
+                }
                 if (deniedVaultRecover)
                 {
                     file.Flush(flushToDisk: true);
@@ -9732,6 +10209,7 @@ internal sealed class RoleFixtureJournal(string directory)
             ValidateStatusUnknownNotificationUpdateCancellationFrame(bytes, selector);
             ValidateStatusUnknownNotificationUpdateIndependentFrame(bytes, selector);
 
+            ValidateStatusDeniedNotificationDeleteFrame(bytes, selector);
             ValidateStatusDeniedNotificationUpdateFrame(bytes, selector);
             ValidateStatusUnknownNotificationUpdateFrame(bytes, selector);
             ValidateStatusPendingPurgeFrame(bytes, selector);
@@ -9752,10 +10230,24 @@ internal sealed class RoleFixtureJournal(string directory)
                     CopyStatusDeniedVaultRecoverSnapshot(next with { Revision = sequence + 1 });
                 if (deniedVaultRecoverPersistence) deniedVaultRecoverUnflushedTyped.Add((owner, selector.Nonce));
             }
+            if (deniedNotificationDelete)
+                deniedNotificationDeleteUnflushed[(owner, selector.Nonce)] = new(
+                    state is null ? null : CopyDeniedNotificationDelete(state), CopyDeniedNotificationDelete(next with { Revision = sequence + 1 }),
+                    deniedNotificationDeleteCandidate);
             file.Write(prefix);
             file.Write(bytes);
             byte[] nextDigest = SHA256.HashData(bytes);
             file.Write(nextDigest);
+            if (deniedNotificationDelete)
+            {
+                observedDeniedNotificationDeleteHistory[(owner, selector.Nonce)] = (sequence + 1, Convert.ToHexString(nextDigest));
+                if (deniedNotificationDeleteFlushFailure is { } notificationDeleteAppendFault && notificationDeleteAppendFault.Owner == owner && notificationDeleteAppendFault.Selector == selector &&
+                    notificationDeleteAppendFault.Revision == sequence + 1)
+                {
+                    deniedNotificationDeleteFlushFailure = null;
+                    throw new IOException("fixture-journal-unavailable");
+                }
+            }
             if (deniedVaultRecover)
             {
                 observedDeniedVaultRecoverHistory[(owner, selector.Nonce)] = (sequence + 1, Convert.ToHexString(nextDigest));
@@ -9889,6 +10381,11 @@ internal sealed class RoleFixtureJournal(string directory)
                 throw new IOException("fixture-journal-unavailable");
             }
             file.Flush(flushToDisk: true);
+            if (deniedNotificationDelete)
+            {
+                deniedNotificationDeleteUnflushed.Remove((owner, selector.Nonce));
+                deniedNotificationDeleteImages[(owner, selector.Nonce, sequence + 1)] = CopyDeniedNotificationDelete(next with { Revision = sequence + 1 });
+            }
             if (deniedVaultRecover)
             {
                 deniedVaultRecoverUnflushed.Remove((owner, selector.Nonce));
@@ -9907,6 +10404,10 @@ internal sealed class RoleFixtureJournal(string directory)
             }
             return CopyStatusRecoveryBaseline(next with { Revision = sequence + 1 });
         }
+        catch (Exception exception) when (reading && deniedNotificationDelete &&
+            exception is EndOfStreamException or InvalidOperationException or JsonException or ArgumentException or NullReferenceException)
+        { invalidDeniedNotificationDeleteHistory.TryAdd((owner, selector.Nonce), 0); throw new StatusDeniedNotificationDeleteHistoryException(); }
+        catch (IOException) when (deniedNotificationDelete) { throw; }
         catch (Exception exception) when (reading && deniedVaultRecover &&
             exception is EndOfStreamException or InvalidOperationException or JsonException or ArgumentException or NullReferenceException)
         { invalidDeniedVaultRecoverHistory.Add((owner, selector.Nonce)); throw new StatusDeniedVaultRecoverHistoryException(); }
@@ -10172,6 +10673,55 @@ internal sealed class RoleFixtureJournal(string directory)
             Guid.TryParseExact(node.GetString(), "D", out var value) && value.ToString("D") == node.GetString());
         static void Boolean(JsonElement node) => Require(node.ValueKind is JsonValueKind.True or JsonValueKind.False);
     }
+
+    private static void ValidateStatusDeniedNotificationDeleteFrame(byte[] payload, FixtureSelector requested)
+    {
+        if (!NotificationFixtureProvisioner.StatusDeniedNotificationDeleteSelector(requested)) return;
+        using var document = JsonDocument.Parse(payload);
+        var frame = document.RootElement;
+        Object(frame, ["sequence", "previous", "state"]);
+        Require(frame.GetProperty("sequence").TryGetInt64(out long sequence) && sequence > 0);
+        var previous = frame.GetProperty("previous");
+        Require(previous.ValueKind == JsonValueKind.String && previous.GetString() is { Length: 64 } digest &&
+            digest.All(c => c is >= '0' and <= '9' or >= 'A' and <= 'F'));
+        var state = frame.GetProperty("state");
+        string[] nulls = ["privateEndpoint", "settings", "deleteVault", "purgeDeletedVault", "createOrUpdateVault", "recoverVault",
+            "statusVaultRecoverCancellationBaseline", "statusVaultUpdateCancellationBaseline", "notificationAbsentCreate", "statusSucceededDeleteVault"];
+        Object(state, ["owner", "selector", "leaseId", "closing", "resources"], nulls);
+        foreach (var name in nulls) Require(!state.TryGetProperty(name, out var field) || field.ValueKind == JsonValueKind.Null);
+        String(state.GetProperty("owner")); GuidValue(state.GetProperty("leaseId")); Boolean(state.GetProperty("closing"));
+        var selector = state.GetProperty("selector");
+        Object(selector, ["scope", "operation", "variant", "case", "nonce"]);
+        foreach (string name in new[] { "scope", "operation", "variant", "case" }) String(selector.GetProperty(name));
+        GuidValue(selector.GetProperty("nonce"));
+        Require(selector.GetProperty("scope").GetString() == requested.Scope &&
+            selector.GetProperty("operation").GetString() == requested.Operation && selector.GetProperty("variant").GetString() == requested.Variant &&
+            selector.GetProperty("case").GetString() == requested.Case && selector.GetProperty("nonce").GetGuid() == requested.Nonce);
+        var rows = state.GetProperty("resources");
+        Require(rows.ValueKind == JsonValueKind.Array && rows.GetArrayLength() is 0 or 4);
+        foreach (var row in rows.EnumerateArray())
+        {
+            Object(row, ["id", "borrowed", "createAttempted", "deleteAttempted", "activeDispatch", "absent",
+                "cleanupOnly", "invocationTerminated", "selectedAttempted"]);
+            String(row.GetProperty("id")); GuidValue(row.GetProperty("activeDispatch"));
+            foreach (string name in new[] { "borrowed", "createAttempted", "deleteAttempted", "absent", "cleanupOnly", "invocationTerminated", "selectedAttempted" })
+                Boolean(row.GetProperty(name));
+        }
+        static void Object(JsonElement node, string[] required, string[]? optional = null)
+        {
+            Require(node.ValueKind == JsonValueKind.Object);
+            var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var property in node.EnumerateObject())
+                Require(names.Add(property.Name) && (required.Contains(property.Name, StringComparer.Ordinal) ||
+                    optional?.Contains(property.Name, StringComparer.Ordinal) == true));
+            Require(required.All(name => node.TryGetProperty(name, out _)));
+        }
+        static void String(JsonElement node) => Require(node.ValueKind == JsonValueKind.String && node.GetString() is { Length: > 0 and <= 2048 });
+        static void GuidValue(JsonElement node) => Require(node.ValueKind == JsonValueKind.String &&
+            Guid.TryParseExact(node.GetString(), "D", out var value) && value.ToString("D") == node.GetString());
+        static void Boolean(JsonElement node) => Require(node.ValueKind is JsonValueKind.True or JsonValueKind.False);
+    }
+
 
     private static void ValidateStatusDeniedNotificationUpdateFrame(byte[] payload, FixtureSelector requested)
     {
