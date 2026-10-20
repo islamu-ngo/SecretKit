@@ -442,7 +442,7 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
             session.After = after.ArmStatusDeniedVaultUpdate(session.Binding, expected, R.StatusDeniedVaultUpdateReadPhase.SelectedActive);
             session.CounterpartAfter = statusCounterpartAfterCollector!.ArmStatusDeniedVaultUpdate(session.CounterpartBinding!,
                 expected, R.StatusDeniedVaultUpdateReadPhase.SelectedDeletedAbsent);
-            var result = await capture.StartStatusDeniedVaultUpdateAsync(session.Capture, selector, client, originalScope, input,
+            var result = await capture.StartStatusDeniedVaultUpdateAsync(session.Capture, session.Selector, client, originalScope, input,
                 receipt, linked.Token, task => session.StartTask = task,
                 () => RequireDeniedVaultUpdateImage(session, run.Begun!)).ConfigureAwait(false);
             session.Handle = result.IsSuccess ? result.Value : null;
@@ -500,7 +500,7 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(
                 [.. run.Tokens, caller, lifetime.Token, session.Stop.Token, deadline.Token, run.Exclusion!.ContinuityToken]);
             TrackDeniedVaultUpdate(session, linked.Token);
-            var result = await capture.CheckStatusDeniedVaultUpdateAsync(session.Capture!, selector, handle, linked.Token,
+            var result = await capture.CheckStatusDeniedVaultUpdateAsync(session.Capture!, session.Selector, handle, linked.Token,
                 task => session.StatusTask = task, originalCallerToken: caller).ConfigureAwait(false);
             Require(result == SecretStatus.Denied && handle.State == NativeProvisioningState.Failed && session.Receipt!.Evidence == DispatchEvidence.Pending);
             Require(capture.TryGetStatusDeniedVaultUpdateDenied(session.Capture!, session.Binding!, session.Client!, session.ActualVaultScope!,
@@ -7883,9 +7883,8 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
             };
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
-        catch (Exception error)
+        catch (Exception)
         {
-            if (statusDeniedVaultUpdateProfile) Console.Error.WriteLine("VAULT_UPDATE_SOURCE_DIAGNOSTIC " + error);
             return Error(HttpStatusCode.ServiceUnavailable);
         }
         finally { Leave(null); }
