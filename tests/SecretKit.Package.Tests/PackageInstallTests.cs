@@ -53,10 +53,7 @@ public sealed class PackageInstallTests
         {
             await Assert.That(library.Value.GetProperty("type").GetString()).IsEqualTo("package");
             await Assert.That(library.Name.StartsWith("Infisical.Sdk/", StringComparison.OrdinalIgnoreCase)).IsFalse();
-            await Assert.That(library.Name.StartsWith("Microsoft.EntityFrameworkCore", StringComparison.Ordinal) ||
-                library.Name.StartsWith("Npgsql", StringComparison.Ordinal) ||
-                library.Name.StartsWith("MySql", StringComparison.Ordinal) ||
-                library.Name.StartsWith("Microsoft.AspNetCore", StringComparison.Ordinal)).IsFalse();
+            await Assert.That(ExcludedFromMinimalConsumer(library.Name)).IsFalse();
         }
 
         foreach (JsonProperty framework in assets.RootElement.GetProperty("project").GetProperty("frameworks").EnumerateObject())
@@ -67,6 +64,44 @@ public sealed class PackageInstallTests
         string sdkVersion = (await Run(root, ["--version"])).Trim();
         await PlatformInstallTests.ObserveAsync(candidate, sourceCommit!, startedAt, 0, 0, sdkVersion);
     }
+
+    [Test]
+    [Arguments("Microsoft.EntityFrameworkCore/10.0.0")]
+    [Arguments("Microsoft.AspNetCore.Example/10.0.0")]
+    [Arguments("Npgsql/10.0.0")]
+    [Arguments("MySqlConnector/2.4.0")]
+    [Arguments("MySql.Data/9.0.0")]
+    [Arguments("Microsoft.Data.SqlClient/6.0.0")]
+    [Arguments("System.Data.SqlClient/4.9.0")]
+    [Arguments("System.Data.Odbc/10.0.0")]
+    [Arguments("MariaDB.ExampleDriver/1.0.0")]
+    [Arguments("npgsql/10.0.0")]
+    [Arguments("mysqlconnector/2.4.0")]
+    [Arguments("system.data.odbc/10.0.0")]
+    public async Task KnownExcludedDependenciesCannotEnterMinimalConsumer(string library)
+    {
+        await Assert.That(ExcludedFromMinimalConsumer(library)).IsTrue();
+    }
+
+    [Test]
+    [Arguments("SecretKit.Core/0.1.0-preview.1")]
+    [Arguments("Azure.Core/1.49.0")]
+    [Arguments("Refit/10.0.1")]
+    [Arguments("System.Memory.Data/10.0.0")]
+    public async Task NonDatabaseDependenciesAreNotRejectedByNameAlone(string library)
+    {
+        await Assert.That(ExcludedFromMinimalConsumer(library)).IsFalse();
+    }
+
+    private static bool ExcludedFromMinimalConsumer(string library) =>
+        library.StartsWith("Microsoft.EntityFrameworkCore", StringComparison.OrdinalIgnoreCase) ||
+        library.StartsWith("Npgsql", StringComparison.OrdinalIgnoreCase) ||
+        library.StartsWith("MySql", StringComparison.OrdinalIgnoreCase) ||
+        library.StartsWith("Microsoft.Data.SqlClient", StringComparison.OrdinalIgnoreCase) ||
+        library.StartsWith("System.Data.SqlClient", StringComparison.OrdinalIgnoreCase) ||
+        library.StartsWith("System.Data.Odbc", StringComparison.OrdinalIgnoreCase) ||
+        library.StartsWith("MariaDB", StringComparison.OrdinalIgnoreCase) ||
+        library.StartsWith("Microsoft.AspNetCore", StringComparison.OrdinalIgnoreCase);
 
     private static async Task<string> Run(string root, string[] arguments)
     {
