@@ -21,6 +21,21 @@ The removed third-party connection/sync catalog is outside this product. Native
 SQL rotation and existing gateway/proxy administration remain; see the
 [accepted scope decision](connector-scope-decision.md).
 
+## Database credentials are provider API support
+
+Core returns credentials as opaque secret material and does not connect to
+databases. The Infisical packages expose documented subsets of Infisical's typed
+credential-generation and rotation APIs, including PostgreSQL, MySQL and SQL
+Server profiles, without database drivers in shipped packages. Optional
+database connections used to verify returned credentials belong only in
+nonpackable integration tests and fixtures.
+
+This is an Infisical API boundary, not a general database-support matrix.
+MySQL rotation API support does not establish MariaDB compatibility; that needs
+separate verification. The MSSQL/ODBC investigation concerned peripheral test
+infrastructure; no ODBC helper was implemented or database dependency added to
+shipped libraries. See the [database credential boundary](database-credentials.md).
+
 ## What the current evidence establishes
 
 The [shared provider suite](../../tests/SecretKit.ProviderContract.Tests/) runs

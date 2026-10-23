@@ -7,6 +7,7 @@ Choose the track for your task. SecretKit is an unpublished .NET SDK preview; pr
 - [Repository overview](../README.md): packages, quickstart, trust boundaries, and community.
 - [Current preview](public/current-preview.md): implemented subsets and verification limits.
 - [Current provider support](public/provider-support.md): package scope, executable offline evidence and unverified combinations.
+- [Database credential boundary](public/database-credentials.md): opaque secret material, typed Infisical APIs and separate optional database verification.
 - [Public design hub](public/README.md): adoption, configuration, compatibility, and intended behavior.
 - [Scope and future orchestration](public/scope-and-orchestration.md): retained two-provider access, optional administration and future Configurator responsibility.
 - [Connector scope decision](public/connector-scope-decision.md): accepted/applied catalog removal, retained support and local verification.

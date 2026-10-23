@@ -15,6 +15,15 @@ This checkout implements a limited read, generation and selected-write subset. I
 not implement the complete admitted operation inventory.
 The surrounding guides describe the larger design, not completed support.
 
+An earlier development checkpoint on 2026-10-22 passed locked restore, Release
+build, all 4,146 offline solution tests across twelve test projects, both offline
+samples and solution formatting. Seven fresh `0.1.0-preview.1` package originals
+were packed locally and consumed through the isolated package-only checks.
+These results are from CachyOS Linux x64 with SDK `10.0.302`, not the required
+Ubuntu/Windows same-run release matrix. They do not establish provider effects,
+hosted candidate approval, publication readiness or general database support;
+the [database credential boundary](database-credentials.md) remains unchanged.
+
 On 2026-10-10, the owned pinned Infisical v0.166.3 sandbox passed an installed
 package-only narrative with separate generated administrative, project-viewer
 runtime and denied machine identities. It verified selected/versioned reads,
@@ -52,6 +61,10 @@ expansion and version are explicit address/query choices. A returned key or
 selected-version mismatch fails closed. Material requires explicit
 `secretValueHidden: false`; withheld material is denied and missing/malformed
 visibility evidence is unknown. No other authentication principal is selected.
+Duplicate JSON property names in these read, inventory and static-mutation
+responses are rejected before projection, including escaped equivalent names.
+An ambiguous response after mutation dispatch leaves the receipt uncertain;
+the SDK does not replay the mutation.
 
 The current Infisical client accepts a host-owned `IInfisicalTokenSource`.
 The source returns independently owned token material and must honor
@@ -166,6 +179,51 @@ deadline, exposes material-free maintenance health and cancels/drains on Stop.
 Its renewal retry budget is zero: this contract has no established safe replay.
 The session/credential/transport remain host-owned. No general scheduler or
 application readiness policy is introduced.
+
+## Infisical identity operation scope
+
+Identity updates require an explicit identity ID and, for project operations,
+an explicit project ID. Missing coordinates are rejected before dispatch rather
+than selecting an organization route or a create action. Independent update
+approval-target helpers and project list/create targets enforce the same
+required null-coordinate boundary.
+
+Explicit create operations remain create operations; optional patch fields
+still retain their documented omission behavior. These guards do not establish
+remote membership, entitlements or administrative rights.
+
+The identity-coordinate checkpoint passed 4,175 offline solution tests and the
+separate controlled identity-family (19) and original permission-route (872)
+tests. Fresh installed originals, samples, build and formatting also passed.
+These results remain local development evidence, not native deployment or
+release qualification.
+
+## Infisical audit configuration
+
+Organization and project audit-setting writes require exactly one
+`Authentication` setting and one `Authorization` setting. Both boolean values
+are explicit because the request replaces the mutable settings. Null, missing,
+duplicate or permanent classes are rejected before transport; a null setter
+input cannot become a read request.
+Project audit getters and setters also reject a null project ID rather than
+selecting the organization route.
+
+`Management` and `DataAccess` remain valid audit read/filter classes, but are
+always recorded and cannot be changed by these setters. Enabling authorization
+logging still requires Infisical's new privilege system; the SDK neither enables
+that system nor infers administrative permission.
+
+Settings readback is configuration evidence, not proof of event production,
+persistence, suppression or immediate policy enforcement. Published settings
+changes may take up to ten minutes to propagate. Native audit conformance still
+needs the selected deployment's independent event evidence; no live verification
+or compatibility with the historical v0.166.3 sandbox follows from this local fix.
+
+After these audit request and project-scope repairs, the local checkpoint passed
+4,166 offline solution tests and 110 separate controlled governance tests, with
+fresh seven-package originals, installed consumers, both samples and formatting.
+These are development results on the same CachyOS host, not live audit-policy
+or Ubuntu/Windows release qualification.
 
 ## Evidence boundary
 

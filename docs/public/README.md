@@ -13,6 +13,7 @@ These pages describe intended behavior. The [current local preview](current-prev
 ## Read the design
 
 - [Current scope and future orchestration](scope-and-orchestration.md): core two-provider delivery, optional administration and Configurator setup.
+- [Database credential boundary](database-credentials.md): Infisical API support without shipped database drivers; optional integration tests stay separate.
 - [Adoption and value](adoption-and-value.md): where an in-process abstraction might help, alternatives, consumer ownership, and measurements needed to establish value.
 - [Configuration and runtime](configuration-and-runtime.md): selected authority, explicit plaintext export, generation ownership, bootstrap, optional integrations, and activation.
 - [Operations and compatibility](operations-and-compatibility.md): seven proposed packages, native capabilities, compatibility evidence, authentication maintenance, security, and release policy.

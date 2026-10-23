@@ -24,6 +24,14 @@ Applications own credential injection, access policy, validation, activation,
 persistence and readiness. Optional configuration export and explicitly started
 hosting support remain independently selectable.
 
+Database credentials remain opaque material at the Core boundary. Infisical's
+typed credential-generation and rotation APIs are legitimate provider features,
+not database-client implementations. No shipped SecretKit package carries a
+database driver. Optional tests may use separate database tools to verify
+returned credentials; they do not create a general database-support matrix or
+imply MariaDB compatibility from MySQL API support. See the
+[database credential boundary](database-credentials.md).
+
 ## Optional administration
 
 Project/environment setup, identity/access administration, native SQL rotation

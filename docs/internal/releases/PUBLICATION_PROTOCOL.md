@@ -681,6 +681,15 @@ successful disposable results are released before cancellation assertion failure
 The adapter does not provision the external service or establish recipient policy
 contracts that remain unproven in the native inventory.
 
+When an original share ID was acknowledged, cleanup also requires an Observer
+`GetShare` of that exact ID to return absent. Name absence alone cannot certify
+removal of a renamed original share. Contradictory observations leave cleanup
+incomplete; they do not authorize deleting a replacement. Final removal is
+checked against the exact deleted ID as well as the owned-name source.
+Unknown-ID recovery after a lost creation response still requires an independently
+established original-call ownership and settlement source; native list traversal
+is not that source and does not prove absence or snapshot uniqueness.
+
 Azure management mutations require an independent pre-dispatch snapshot after
 subscription, before the SDK request. `vault/observe`, `notification/observe` and
 `operation/observe` accept the `baseline-before-dispatch` purpose;
@@ -2745,6 +2754,32 @@ inside the existing nonce/identity/time-bound envelope. Missing, incomplete,
 foreign or substituted inventory cannot establish ownership. Both planned roles
 must be absent before any provider fixture is created.
 
+Alternatively, the family root can explicitly select `postgresRoleCatalog` for
+this username inventory only. Its required fields are `host`, `port`, `database`,
+`username`, `password`, `timeoutSeconds` (1–60) and `rootCertificate` (an absolute
+path to the host-selected CA file). The engine must be PostgreSQL and the
+requested host/port/database must exactly match this profile. Unknown, missing
+or null fields fail selection; selected native failures never fall back to the
+remote username endpoint. The existing `observer` remains required for
+`dynamic/measure` and its separate authentication/action/expiry evidence.
+
+The native source requires the host's `psql`/libpq 16 or later, uses verified TLS
+and SCRAM channel binding, and runs one fixed read-only `pg_catalog.pg_roles`
+query. At most 64 distinct requested names (63 UTF-8 bytes each) are admitted.
+Requested names enter SQL as encoded JSON data over stdin, not identifiers or
+command-line arguments. Credentials are explicitly injected; an isolated
+temporary client home excludes ambient password files and client certificates.
+The exact session user and all ordered Boolean result rows must match before
+the source returns a complete presence result. Process failure, truncated or
+ambiguous output is unavailable, not absence. The process and its streams drain
+before the temporary home is removed. No PostgreSQL binary or driver is shipped
+in the SecretKit packages.
+
+These observations establish role presence at the query, not role ownership,
+exclusive ingress, causal creation, lease settlement or future non-recreation.
+Actual client/server, CA, catalog principal and deployment qualification remain
+required; controlled process responses do not certify PostgreSQL behavior.
+
 Actual issuance must return the selected literal and independently authenticate
 with expected actions and expiry. UPDATE verifies the baseline credential after
 the mutation. Success/lost response keeps A active while issuing B, then verifies
@@ -2752,8 +2787,9 @@ A still authenticates. Denial/cancellation first verifies A still works, then
 revokes it and requires fresh authentication rejection and cluster-role absence
 before reissuing A; strict role creation cannot issue A twice concurrently.
 Cleanup reconciles all owned leases, freshly rejects every captured credential,
-and checks both intended roles absent. This is a fixture-service contract, not
-a supplied PostgreSQL driver or service. Null clearing, expression expansion,
+and checks both intended roles absent. Authentication/action/expiry collection
+still requires its selected fixture service; the optional native catalog is not
+a supplied PostgreSQL driver or complete lifecycle service. Null clearing, expression expansion,
 default naming and other engines remain unverified.
 
 Dynamic validation credential trials belong to `C08-IR-ValidationPolicies`.
@@ -2823,7 +2859,7 @@ the external owner/measurement services.
 
 The account client can bind explicit `rotationTrial.profile` selections for
 `PostgresCredentials` (the default), `MysqlCredentials`, or `MssqlCredentials`.
-Non-PG ownership requires the separate observer's `rotation/identity-catalog`
+Non-PG ownership requires the observer's `rotation/identity-catalog`
 channel. Its facts bind the original coordinate and both requested names, with
 exactly one matching `mysql` or `mssql` branch. Missing catalog authority stops
 before claim. Invalid or incomplete post-claim facts still release only the
@@ -2837,6 +2873,38 @@ LOW-policy implementation permitting the closed generation shapes. The measured
 policy is pinned before claim and must remain compatible and unchanged afterward.
 The client never installs, disables or rewrites borrowed server policy.
 
+The family root can explicitly select `mysqlIdentityCatalog` for native Oracle
+MySQL account/policy collection instead of the remote catalog terminal. Its exact
+private fields are `host`, `port`, `database`, `username`, `password`,
+`principal`, `rootCertificate`, and `timeoutSeconds`. The first three bind the
+server/database; each observation binds the exact requested rotation coordinate
+and account names, including nonce-owned names generated after selection.
+The subject account never selects a different server/database or reader.
+`principal` binds the observed `CURRENT_USER()`,
+including its Host. Use an independently authorized catalog reader, not either
+account being rotated. The host supplies `mysql`; no database package is shipped.
+The client uses explicit TCP/VERIFY_IDENTITY TLS, the selected absolute CA path,
+isolated client-home/default-file authority, bounded stdin/output and actual
+process drain. Passwords do not enter arguments, SQL or returned diagnostics.
+
+One fixed query inventories requested usernames across all Hosts in `mysql.user`,
+active password-validation plugins, registered components in `mysql.component`,
+and effective global validation variables. Unknown components/validators or
+missing/duplicate/null settings fail closed rather than imply no enforcement.
+This source currently accepts no registered components except the known password
+validation component. Thus even unrelated registered components need a reviewed
+extension before this collector can qualify that environment.
+Selection errors and collection failures never fall back to remote catalog facts.
+All other observer terminals, including authentication and ownership settlement,
+remain independently required.
+
+Controlled integration does not qualify a native MySQL installation. Actual
+client/server version, complete read privileges, TLS/principal binding, absence
+of unenumerated/custom policy hooks, and policy stability remain native
+prerequisites. The query is not an atomic snapshot across grant tables and
+dynamic plugin/component/global-variable state. Neither one absent inventory nor
+process completion fences future or late account creation.
+
 MSSQL observations require both complete server-principal and selected-database
 principal catalogs. Claimed subjects must be enabled SQL logins with measured
 policy/expiration checks disabled, and instance-authenticated SQL users whose
@@ -2845,11 +2913,118 @@ SID; equal bytes, not array object identity, establish mapping. Non-SQL and
 contained-user collisions cannot be filtered out of preflight absence evidence.
 Final cleanup requires neither owned name in either catalog.
 
+An explicit family-root `mssqlIdentityCatalog` selects native SQL Server catalog
+collection. Its exact private fields are `host`, `port`, `database`, `username`,
+`password`, `serverIdentity`, and `timeoutSeconds`. Server/port/database and the
+enrolled reader stay fixed; nonce-owned subject accounts bind to each request,
+not configuration. MySQL and MSSQL native selectors can coexist: the requested
+rotation profile selects the matching source. A selected native source never
+falls back to HTTP; a profile without a matching source in that native selection
+fails closed.
+
+The selected host tool is Linux x64 ODBC
+`/opt/mssql-tools18/bin/sqlcmd`, with mssql-tools18 and Microsoft ODBC Driver
+18.7.1.1 as the qualification contract. No executable/PATH/Go fallback or
+installation is performed. The actual binary, driver and version must be
+qualified separately; controlled process output does not attest them.
+Explicit TCP, SQL login and mandatory certificate-validated encryption use the
+host trust store without `-C`, alternate certificate hostname or trust changes.
+The password enters only the selected child environment, never arguments or SQL.
+Startup/variable authority is cleared; fixed stdin SQL uses encoded name data.
+
+The source separately observes `master` and the selected database. Both must
+report the expected server, original/current reader login and equal nonempty
+login SIDs, database user `dbo`, traditional SQL Server edition and sysadmin
+membership exactly one. This deliberately narrow observer authority prevents
+ordinary metadata-filtered reads from falsely certifying absence. It grants no
+permission to provision a server, modify its policy or use a fallback identity.
+Native principal-name column collations must agree with each context's observed
+catalog collation. Equivalent requested names or returned equivalent spellings
+outside the exact request invalidate collection rather than disappear from it.
+
+All matching server/database principal types are retained. SQL-login flags
+remain nullable; SID null invalidates the observation, while empty SID remains
+measured data that cannot establish owned SQL-login/user mapping. One bounded
+scalar JSON document per context carries hexadecimal text/SIDs; incomplete,
+duplicate, malformed, overflowing or failed output never becomes complete absence.
+The two observations are not an atomic cross-catalog snapshot.
+
+Actual native TLS positive/negative cases, long-output framing, unrestricted
+catalog visibility and collation fixtures remain qualification prerequisites.
+This source supplies neither the account-owner service nor authentication,
+effective permissions, expiry, late-claim fencing or remote settlement.
+
+For the prepared `C08-IR-InfisicalRotationClient` consumer-read branch, explicit
+`mysqlConsumerAuthentication` can select an accepted-session source. Its ten
+private fields are `host`, `port`, `database`, `account`, `username1`, `username2`,
+`accountHost1`, `accountHost2`, `rootCertificate`, and `timeoutSeconds`. They must
+match the prepared backend and two account names, not a later validation-trial
+nonce. Material- and mutation-specific authentication terminals stay separate.
+
+This source may report `Accepted` only after a fresh host-owned Oracle MySQL8.4
+Linux client returns the exact authenticated `CURRENT_USER()` and database over
+certificate/hostname-validated TLS, with complete output and custody cleanup.
+It does not report `Rejected`: exit status, including a CLI 1045 diagnostic,
+does not attest the original error's authenticated TLS stage. Every failed,
+ambiguous, unsupported or mismatched attempt remains unavailable. Authoritative
+refusal is still an open source requirement; negative qualification is not waived.
+
+Both borrowed credentials use clearable exports and an invocation-owned0600
+option file in a directory created0700 before protected writes. Neither credential
+enters argv or environment. The first argument selects that exclusive file;
+login-path/default authority is isolated, and dynamic authentication plugins
+cannot load from an ambient directory. The initial representable domain is
+printable ASCII, preserving spaces, quotes and backslashes; unsupported encoding
+is unavailable before launch, not a failed-password claim.
+
+Bounded stdout binding and stderr scratch remain clearable, not diagnostic
+strings. Actual process and reader tasks must drain before overwrite/flush,
+close/delete and buffer clearing. Cleanup failure cannot report acceptance.
+This is logical live-invocation custody, not forensic or crash-recovery erasure.
+Native client/build, TLS negatives, option round trips, plugin behavior, output
+framing and protected temporary storage remain qualification prerequisites.
+
+The prepared consumer-read branch also accepts an explicit
+`postgresConsumerAuthentication` selector with eight private fields: `host`,
+`port`, `database`, `account`, `username1`, `username2`, `rootCertificate`, and
+`timeoutSeconds`. PostgreSQL and MySQL sources may coexist; the requested profile
+selects its native source, and no selected native failure falls back remotely.
+The PostgreSQL source requires a trusted host-owned `/usr/bin/psql` with the
+PostgreSQL18/libpq18 contract on Linux. Native binary/library qualification is
+separate from controlled process-seam tests.
+
+Both delivered PostgreSQL credentials remain in clearable exports and private
+files: a service file holds the username and an exact-match passfile holds the
+password. Restrictive modes apply before writes; retained handles support
+overwrite/flush/delete after actual child and reader drain. No protected value
+enters argv, environment or output strings. Inherited service, password, startup,
+certificate, GSS, OAuth, loader and OpenSSL configuration authority is isolated.
+TLS verify-full, explicit CA, SCRAM-SHA-256 and required channel binding precede
+a fixed read-only query of session/effective principal and database.
+
+Only one complete, bounded, exactly bound three-field hex row with no diagnostic
+and successful custody may become `Accepted`. All failures stay unavailable,
+including psql refusal-like errors: broad exit codes do not establish an
+authenticated rejection stage. Authoritative refusal, native TLS/SCRAM/channel
+binding, service/passfile parsing, defaults and protected storage remain open
+qualification obligations. The bounded ASCII source domain does not remove
+unsupported credential variants from admission.
+
 The typed catalog channel and profile-bound owner are local infrastructure.
 The trial helper uses native typed creation/read/deletion for all three SQL
 profiles. The owner service must journal its nonce-owned
 identities and settle or fence a late claim before reporting cleanup; a client
 nonce and an empty current catalog cannot establish that guarantee.
+
+For `C08-IM-Governance`, audit-setting requests contain exactly the mutable
+`Authentication` and `Authorization` pair. `Management` and `DataAccess` remain
+read/filter classes and permanent logging classes; their setter variants are
+explicit local precondition rejections, not provider-side suppression, denial,
+cancellation or lost-response evidence. All original admission labels remain.
+Legal write cases retain the original independent event/persistence witnesses,
+and configuration readback alone never proves effective policy. Authorization
+logging requires the native new-privilege system; published propagation may take
+up to ten minutes. Missing producer or propagation authority stays unavailable.
 
 Rotation-validation trials also belong to `C08-IR-ValidationPolicies`. Their
 private `rotationTrial` requires `organizationId`, a UUID `connectionId`, `host`,
@@ -3192,6 +3367,14 @@ required report artifact's actual `expires_at` against
 with a shorter horizon still fails admission. Requested workflow retention and
 the earlier pre-upload report check do not establish final candidate retention.
 
+Before mutation dispatch, the persisted unknown-state checkpoint must also have
+an independently fetched actual `expires_at` at or beyond
+`ProducerCompletedAt + 90 days`. Equality is accepted; missing, malformed or
+shorter expiry fails closed even when the artifact is currently unexpired and
+its ID, digest, execution and source bindings are correct. This preserves the
+original recovery horizon rather than renewing it at each action. The requested
+120-day workflow setting is not evidence that the host actually retained it.
+
 Dispatch inputs name `mode` (`initial-admission`, `read-only-recovery`, or
 `publish-one`), the exact producer run/artifact, reviewed manifest hash, and
 the journal run/artifact for recovery or publication. `package_id` selects one
@@ -3294,7 +3477,7 @@ verifies signatures and compares the reconstructed original hashes. A mismatch
 blocks the family; an unresolved unknown is never converted to pending after
 a 404. Accepted-but-not-visible packages also remain non-replayable. Only still
 pending members may subsequently be dispatched. If checkpoints expire (the
-workflow retains them for 90 days), preserve a trusted external copy before
+workflow requests 120 days), preserve a trusted external copy before
 expiration. Missing history is a manual recovery blocker, not permission to
 set the head back to `new`.
 

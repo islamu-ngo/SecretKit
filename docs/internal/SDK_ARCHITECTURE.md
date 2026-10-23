@@ -33,6 +33,23 @@ Core would not reference a provider SDK, Microsoft.Extensions, ASP.NET shared fr
 
 Separating management packages would keep administrative dependencies out of ordinary runtime readers. It would not confer, revoke or prove authorization: credentials and remote provider policy would still govern each operation. A runtime identity could be overprivileged despite its package selection, and a management identity might not be allowed to read material.
 
+### Database credential boundary
+
+The no-database-driver boundary applies to every shipped SecretKit package,
+not only Core. Core reads and returns opaque secret material; it does not open
+database connections. Typed Infisical credential-generation and rotation APIs
+for PostgreSQL, MySQL and SQL Server remain provider API functionality without
+database drivers.
+
+Optional integration tests may use database clients or native tools to verify
+returned credentials and downstream effects. Those dependencies stay in
+nonpackable test projects/fixtures, never in shipped packages. The support
+boundary is the Infisical API, not a general database-support matrix; MariaDB
+needs separate verification. MSSQL/ODBC research concerned this peripheral test
+infrastructure, and no ODBC helper was implemented or database dependency added
+to shipped libraries. The [database credential guide](../public/database-credentials.md)
+records the current boundary and research status.
+
 ## Deliberately Small Core
 
 The proposed common surface would cover only semantics demonstrated by both selected providers:
