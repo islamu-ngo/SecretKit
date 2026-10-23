@@ -270,6 +270,31 @@ public sealed class InfisicalReadTests
     }
 
     [Test]
+    [Arguments("\"secretKey\":\"test-key\",\"version\":7,\"secretValueHidden\":true,\"secretValueHidden\":false")]
+    [Arguments("\"secretKey\":\"test-key\",\"version\":7,\"secretValueHidden\":true,\"secretValue\\u0048idden\":false")]
+    [Arguments("\"secretValueHidden\":false,\"version\":7,\"secretKey\":\"other-key\",\"secretKey\":\"test-key\"")]
+    [Arguments("\"secretValueHidden\":false,\"secretKey\":\"test-key\",\"version\":3,\"version\":7")]
+    public async Task DuplicateResponsePropertiesCannotPublishMaterial(string conflictingFields)
+    {
+        string canary = NewMaterial();
+        string body = $$$"""
+            {"secret":{"secretValue":"{{{canary}}}",{{{conflictingFields}}}}}
+            """;
+        await using InfisicalClient client = Client(new WireHandler((_, _) => Task.FromResult(
+            new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(body, Encoding.UTF8, "application/json")
+            })));
+
+        SecretOutcome<SecretRead> outcome = await client.ReadAsync(Reference(client, version: 7));
+        using SecretRead? read = outcome.IsSuccess ? outcome.Value : null;
+
+        await Assert.That(outcome.Status).IsEqualTo(SecretStatus.Invalid);
+        await Assert.That(() => outcome.Value).Throws<InvalidOperationException>();
+        await Assert.That(JsonSerializer.Serialize(outcome).Contains(canary, StringComparison.Ordinal)).IsFalse();
+    }
+
+    [Test]
     public async Task CancelledTokenAcquisitionStillDisposesAcquiredCopy()
     {
         using var cancellation = new CancellationTokenSource();

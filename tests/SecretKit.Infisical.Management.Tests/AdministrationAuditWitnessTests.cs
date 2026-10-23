@@ -66,18 +66,21 @@ public sealed class AdministrationAuditWitnessTests
     [Arguments(false, "equal")]
     [Arguments(false, "class")]
     [Arguments(false, "order")]
+    [Arguments(false, "value")]
     [Arguments(false, "length")]
     [Arguments(true, "equal")]
     [Arguments(true, "class")]
     [Arguments(true, "order")]
+    [Arguments(true, "value")]
     [Arguments(true, "length")]
     public async Task AuditSettingClassesOrderAndCardinalityHaveIndependentApproval(bool projectScope, string change)
     {
-        AuditClassSetting[] trusted = [new(AuditEventClass.Management, true), new(AuditEventClass.Authentication, false)];
+        AuditClassSetting[] trusted = [new(AuditEventClass.Authentication, true), new(AuditEventClass.Authorization, false)];
         AuditClassSetting[] incoming = change switch
         {
-            "class" => [new(AuditEventClass.Authorization, true), new(AuditEventClass.Authentication, false)],
+            "class" => [new(AuditEventClass.Management, true), trusted[1]],
             "order" => [trusted[1], trusted[0]],
+            "value" => [new(AuditEventClass.Authentication, false), trusted[1]],
             "length" => [trusted[0]],
             _ => trusted.ToArray()
         };
@@ -89,6 +92,19 @@ public sealed class AdministrationAuditWitnessTests
         var client = new ManagementClient(transport);
         string? project = projectScope ? ProjectId : null;
         var authority = new ManagementAuthority(client.Authority, tokens, "org", project);
+        if (change is "class" or "length")
+        {
+            await Assert.That(() => GovernanceOperations.AuditSettingsTarget("org", incoming, project))
+                .Throws<ArgumentException>();
+            await Assert.That(() =>
+            {
+                using var rejected = projectScope ? GovernanceOperations.SetProjectAuditSettings("org", ProjectId, incoming) :
+                    GovernanceOperations.SetOrganizationAuditSettings("org", incoming);
+            }).Throws<ArgumentException>();
+            await Assert.That(tokens.Acquired).IsFalse();
+            await Assert.That(wire.Dispatched).IsFalse();
+            return;
+        }
         var target = GovernanceOperations.AuditSettingsTarget("org", trusted, project);
         using var request = projectScope ? GovernanceOperations.SetProjectAuditSettings("org", ProjectId, incoming) :
             GovernanceOperations.SetOrganizationAuditSettings("org", incoming);

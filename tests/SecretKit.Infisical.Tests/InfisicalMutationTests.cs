@@ -57,6 +57,31 @@ public sealed class InfisicalMutationTests
     }
 
     [Test]
+    public async Task DuplicateMutationResponseRetainsUncertaintyWithoutReplay()
+    {
+        var backend = new Backend { AmbiguousResponse = true };
+        await using InfisicalClient client = Client(backend);
+        SecretReference target = Target(client);
+        var receipt = new MutationReceipt(target);
+        using SecretMaterial material = SecretMaterial.FromText(Material());
+
+        SecretOutcome<InfisicalStaticChange> result = await client.CreateAsync(target, material, receipt);
+
+        await Assert.That(result.Status).IsEqualTo(SecretStatus.Unknown);
+        await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.PossiblyDispatched);
+        await Assert.That(() => result.Value).Throws<InvalidOperationException>();
+        using SecretRead observed = (await client.ReadAsync(target)).Value;
+        await Assert.That(observed.Material.Reveal()).IsEqualTo(material.Reveal());
+        await Assert.That(observed.Observation.Version).IsEqualTo("1");
+
+        SecretOutcome<InfisicalStaticChange> replay = await client.CreateAsync(target, material, receipt);
+
+        await Assert.That(replay.Status).IsEqualTo(SecretStatus.Invalid);
+        using SecretRead unchanged = (await client.ReadAsync(target)).Value;
+        await Assert.That(unchanged.Observation.Version).IsEqualTo("1");
+    }
+
+    [Test]
     public async Task SubmittedApprovalIsNotAppliedMaterial()
     {
         var backend = new Backend { Approval = true };
@@ -149,6 +174,7 @@ public sealed class InfisicalMutationTests
         public bool DropResponse { get; init; }
         public bool Approval { get; init; }
         public bool HoldResponse { get; init; }
+        public bool AmbiguousResponse { get; init; }
         public TaskCompletionSource Committed { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly TaskCompletionSource _never = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -187,6 +213,16 @@ public sealed class InfisicalMutationTests
             if (DropResponse)
             {
                 throw new HttpRequestException("Fixture response lost after commit.");
+            }
+
+            if (AmbiguousResponse)
+            {
+                return new(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(
+                        """{"secret":{"secretKey":"other-key","secretKey":"key","workspace":"project","environment":"env","version":1}}""",
+                        Encoding.UTF8, "application/json")
+                };
             }
 
             return Json(200, new

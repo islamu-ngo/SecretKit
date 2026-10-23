@@ -43,7 +43,8 @@ public sealed class ManagementUuidFormatTests
             "project-group-update" => MembershipOperations.UpdateProjectGroupRoles(Org, Id, coordinate, Id, [new("member")]),
             "project-group-delete" => MembershipOperations.RemoveProjectGroup(Org, Id, coordinate),
             "project-audit-get" => GovernanceOperations.GetProjectAuditSettings(Org, coordinate),
-            "project-audit-update" => GovernanceOperations.SetProjectAuditSettings(Org, coordinate, [new(AuditEventClass.Management, true)]),
+            "project-audit-update" => GovernanceOperations.SetProjectAuditSettings(Org, coordinate,
+                [new(AuditEventClass.Authentication, true), new(AuditEventClass.Authorization, false)]),
             _ => ProjectOperations.GetProjectRole(Org, Id, coordinate)
         };
     }

@@ -130,7 +130,8 @@ public static class IdentityOperations
 
     public static ManagementRequest<IdentitySummary> UpdateOrganizationIdentity(string organizationId, string identityId,
         string? name = null, string? role = null, bool? deleteProtection = null, IReadOnlyList<IdentityAttribute>? metadata = null) =>
-        IdentityChange(organizationId, null, identityId, name, role, deleteProtection, metadata);
+        IdentityChange(organizationId, null, identityId ?? throw new ArgumentNullException(nameof(identityId)),
+            name, role, deleteProtection, metadata);
 
     /// <summary>Independently approved complete organization identity creation body.</summary>
     public static ManagementTarget OrganizationIdentityCreateTarget(string organizationId, string name,
@@ -141,7 +142,7 @@ public static class IdentityOperations
     /// <summary>Independently approved complete change, preserving omitted fields and empty metadata.</summary>
     public static ManagementTarget OrganizationIdentityUpdateTarget(string organizationId, string identityId,
         string? name = null, string? role = null, bool? deleteProtection = null, IReadOnlyList<IdentityAttribute>? metadata = null) =>
-        MembershipRoleWire.Intent(organizationId, null, identityId,
+        MembershipRoleWire.Intent(organizationId, null, identityId ?? throw new ArgumentNullException(nameof(identityId)),
             IdentityChangeBody(organizationId, null, identityId, name, role, deleteProtection, metadata));
 
     public static ManagementRequest<IdentitySummary> DeleteOrganizationIdentity(string organizationId, string identityId) =>
@@ -169,7 +170,8 @@ public static class IdentityOperations
     /// <summary>Independently selected complete inventory intent, including paging and omitted search.</summary>
     public static ManagementTarget ProjectIdentityListTarget(string organizationId, string projectId,
         int offset = 0, int limit = 100, string? search = null) =>
-        InventorySelectorWire.Intent(organizationId, projectId, ProjectIdentityQuery(offset, limit, search));
+        InventorySelectorWire.Intent(organizationId, projectId ?? throw new ArgumentNullException(nameof(projectId)),
+            ProjectIdentityQuery(offset, limit, search));
 
     private static string ProjectIdentityQuery(int offset, int limit, string? search)
     {
@@ -200,7 +202,7 @@ public static class IdentityOperations
     public static ManagementTarget ProjectIdentityCreateTarget(string organizationId, string projectId,
         string name, IReadOnlyList<MembershipRole>? roles = null, bool deleteProtection = false,
         IReadOnlyList<IdentityAttribute>? metadata = null) =>
-        MembershipRoleWire.Intent(organizationId, projectId, name,
+        MembershipRoleWire.Intent(organizationId, projectId ?? throw new ArgumentNullException(nameof(projectId)), name,
             ProjectIdentityCreateBody(name, roles, deleteProtection, metadata));
 
     private static Action<Utf8JsonWriter> ProjectIdentityCreateBody(string name, IReadOnlyList<MembershipRole>? roles,
@@ -235,12 +237,14 @@ public static class IdentityOperations
 
     public static ManagementRequest<IdentitySummary> UpdateProjectIdentity(string organizationId, string projectId,
         string identityId, string? name = null, bool? deleteProtection = null, IReadOnlyList<IdentityAttribute>? metadata = null) =>
-        IdentityChange(organizationId, projectId, identityId, name, null, deleteProtection, metadata);
+        IdentityChange(organizationId, projectId ?? throw new ArgumentNullException(nameof(projectId)),
+            identityId ?? throw new ArgumentNullException(nameof(identityId)), name, null, deleteProtection, metadata);
 
     /// <summary>Independently approved complete project identity change.</summary>
     public static ManagementTarget ProjectIdentityUpdateTarget(string organizationId, string projectId,
         string identityId, string? name = null, bool? deleteProtection = null, IReadOnlyList<IdentityAttribute>? metadata = null) =>
-        MembershipRoleWire.Intent(organizationId, projectId, identityId,
+        MembershipRoleWire.Intent(organizationId, projectId ?? throw new ArgumentNullException(nameof(projectId)),
+            identityId ?? throw new ArgumentNullException(nameof(identityId)),
             IdentityChangeBody(organizationId, projectId, identityId, name, null, deleteProtection, metadata));
 
     public static ManagementRequest<IdentitySummary> DeleteProjectIdentity(string organizationId, string projectId, string identityId) =>

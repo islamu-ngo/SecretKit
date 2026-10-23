@@ -81,7 +81,7 @@ public sealed class RefitRouteTests
         await Verify(transport, MembershipOperations.UpdateOrganizationGroupRoles("org", Group, roles), "PATCH", "/api/v1/organizations/memberships/groups/" + Group);
         await Verify(transport, MembershipOperations.ListOrganizationGroups("org"), "GET", "/api/v1/organizations/memberships/groups");
 
-        AuditClassSetting[] settings = [new(AuditEventClass.Management, true)];
+        AuditClassSetting[] settings = [new(AuditEventClass.Authentication, true), new(AuditEventClass.Authorization, false)];
         await Verify(transport, GovernanceOperations.GetOrganizationAuditSettings("org"), "GET", "/api/v1/organization/audit-log-settings");
         await Verify(transport, GovernanceOperations.SetOrganizationAuditSettings("org", settings), "PUT", "/api/v1/organization/audit-log-settings");
         await Verify(transport, GovernanceOperations.GetProjectAuditSettings("org", AuditProject), "GET", "/api/v1/projects/" + AuditProject + "/audit-log-settings");

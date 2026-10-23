@@ -23,8 +23,8 @@ public sealed class GovernanceGrantTests
         var client = new ManagementClient(transport);
         string? project = selection == "project" ? ProjectId : null;
         var authority = new ManagementAuthority(client.Authority, tokens, "org", project);
-        AuditClassSetting[] trusted = [new(AuditEventClass.Management, true)];
-        AuditClassSetting[] incoming = [new(AuditEventClass.Management, !changed)];
+        AuditClassSetting[] trusted = [new(AuditEventClass.Authentication, true), new(AuditEventClass.Authorization, false)];
+        AuditClassSetting[] incoming = [new(AuditEventClass.Authentication, !changed), new(AuditEventClass.Authorization, false)];
         using var proof = SecretMaterial.FromText(changed ? "other-proof" : "private-proof");
         using var approved = SecretMaterial.FromText("private-proof");
         switch (selection)
@@ -73,7 +73,7 @@ public sealed class GovernanceGrantTests
         var client = new ManagementClient(transport);
         var authority = new ManagementAuthority(client.Authority, tokens, "org", selection == "project" ? ProjectId : null);
         using var proof = SecretMaterial.FromText("private-proof");
-        AuditClassSetting[] settings = [new(AuditEventClass.Management, true)];
+        AuditClassSetting[] settings = [new(AuditEventClass.Authentication, true), new(AuditEventClass.Authorization, false)];
         switch (selection)
         {
             case "organization":

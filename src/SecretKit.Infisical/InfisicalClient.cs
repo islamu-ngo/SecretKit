@@ -318,7 +318,7 @@ public sealed partial class InfisicalClient : ISecretReader, ISecretInventory, I
                 cancellationToken.ThrowIfCancellationRequested();
                 collected.Position = 0;
                 return SecretOutcome<JsonDocument>.Success(await JsonDocument.ParseAsync(collected,
-                    new JsonDocumentOptions { MaxDepth = 32 }, cancellationToken).ConfigureAwait(false));
+                    new JsonDocumentOptions { MaxDepth = 32, AllowDuplicateProperties = false }, cancellationToken).ConfigureAwait(false));
             }
             finally
             {

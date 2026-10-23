@@ -71,7 +71,7 @@ public sealed class GovernanceAuditWitnessTests
         using var transport = Transport(root);
         var client = new ManagementClient(transport);
         var authority = new ManagementAuthority(client.Authority, new Tokens(), Org, route >= 2 ? Project : null);
-        AuditClassSetting[] input = [new(AuditEventClass.Management, false)];
+        AuditClassSetting[] input = [new(AuditEventClass.Authentication, false), new(AuditEventClass.Authorization, false)];
         using var request = route switch
         {
             0 => GovernanceOperations.GetOrganizationAuditSettings(Org),

@@ -50,11 +50,11 @@
     },
     {
       "file": "src/SecretKit.Infisical.Management/Governance.cs",
-      "sha256": "71a63f95fe8340b1a6504f31669bfcb8f6bdc2e1df3a85598b6ca5d550023d67"
+      "sha256": "3e3a01c70f324d6cce9d9e3af1ed911d26cd89da4696e526303dd7007e48a84d"
     },
     {
       "file": "src/SecretKit.Infisical.Management/Identities.cs",
-      "sha256": "979da1c8b913052cd379d3fd368aab9dcb77029e13bf42ce0893849a2c53acfe"
+      "sha256": "73229def6d255fbb9e8e80522474af77f318308599545a6fe76036e13953e79c"
     },
     {
       "file": "src/SecretKit.Infisical.Management/IdentityAuthentication.cs",
@@ -262,7 +262,7 @@
     },
     {
       "file": "src/SecretKit.Infisical/InfisicalClient.cs",
-      "sha256": "772f15f2176c1ce440765d83ae0e1f64d5cc14944510facbde2633c78cf96e27"
+      "sha256": "636943b0314a6021f0ccb38a1322e10fb7365ee080041588d5c1a2b8e9e9fd5f"
     },
     {
       "file": "src/SecretKit.Infisical/InfisicalContractAvailability.cs",

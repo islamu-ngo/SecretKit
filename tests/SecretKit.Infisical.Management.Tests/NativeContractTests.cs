@@ -316,15 +316,20 @@ public sealed class NativeContractTests
     [Test]
     public async Task AuditSettingsUseNativeDiscriminatorsAndCopyInputs()
     {
-        var settings = new[] { new AuditClassSetting(AuditEventClass.DataAccess, true) };
+        var settings = new[] { new AuditClassSetting(AuditEventClass.Authentication, true),
+            new AuditClassSetting(AuditEventClass.Authorization, false) };
         using var request = GovernanceOperations.SetProjectAuditSettings(OrgId, ProjectId, settings);
-        settings[0] = new AuditClassSetting(AuditEventClass.Management, false);
+        settings[0] = new AuditClassSetting(AuditEventClass.Authorization, true);
         byte[] bytes = request.CopyBody()!;
         try
         {
             using JsonDocument body = JsonDocument.Parse(bytes);
             await Assert.That(body.RootElement.GetProperty("eventClasses")[0].GetProperty("eventClass").GetString())
-                .IsEqualTo("data-access");
+                .IsEqualTo("authentication");
+            await Assert.That(body.RootElement.GetProperty("eventClasses")[0].GetProperty("isEnabled").GetBoolean()).IsTrue();
+            await Assert.That(body.RootElement.GetProperty("eventClasses")[1].GetProperty("eventClass").GetString())
+                .IsEqualTo("authorization");
+            await Assert.That(body.RootElement.GetProperty("eventClasses")[1].GetProperty("isEnabled").GetBoolean()).IsFalse();
         }
         finally { Array.Clear(bytes); }
         var result = await Execute(request, """{"auditLogSettings":{"eventClasses":[{"eventClass":"data-access","isEnabled":true}],"shouldUseNewPrivilegeSystem":true}}""");

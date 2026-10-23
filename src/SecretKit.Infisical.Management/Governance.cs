@@ -98,13 +98,16 @@ public static class GovernanceOperations
         AuditConfiguration(organizationId, null, null);
 
     public static ManagementRequest<AuditSettings> SetOrganizationAuditSettings(string organizationId,
-        IReadOnlyList<AuditClassSetting> settings) => AuditConfiguration(organizationId, null, settings);
+        IReadOnlyList<AuditClassSetting> settings) =>
+        AuditConfiguration(organizationId, null, settings ?? throw new ArgumentNullException(nameof(settings)));
 
     public static ManagementRequest<AuditSettings> GetProjectAuditSettings(string organizationId, string projectId) =>
-        AuditConfiguration(organizationId, projectId, null);
+        AuditConfiguration(organizationId, projectId ?? throw new ArgumentNullException(nameof(projectId)), null);
 
     public static ManagementRequest<AuditSettings> SetProjectAuditSettings(string organizationId, string projectId,
-        IReadOnlyList<AuditClassSetting> settings) => AuditConfiguration(organizationId, projectId, settings);
+        IReadOnlyList<AuditClassSetting> settings) =>
+        AuditConfiguration(organizationId, projectId ?? throw new ArgumentNullException(nameof(projectId)),
+            settings ?? throw new ArgumentNullException(nameof(settings)));
 
     public static ManagementTarget AuditSettingsTarget(string organizationId,
         IReadOnlyList<AuditClassSetting> settings, string? projectId = null)
@@ -177,11 +180,12 @@ public static class GovernanceOperations
         IReadOnlyList<AuditClassSetting>? settings)
     {
         if (project is not null) ManagementJson.UuidInput(project);
-        AuditClassSetting[]? copy = settings?.Take(5).ToArray();
-        if (copy is not null && (copy.Length is < 1 or > 4 || copy.Any(item => item is null) ||
+        AuditClassSetting[]? copy = settings?.Take(3).ToArray();
+        if (copy is not null && (copy.Length != 2 ||
+            copy.Any(item => item is null || item.EventClass is not (AuditEventClass.Authentication or AuditEventClass.Authorization)) ||
             copy.Select(item => item.EventClass).Distinct().Count() != copy.Length))
         {
-            throw new ArgumentException("One to four distinct audit class settings are required.");
+            throw new ArgumentException("Authentication and authorization audit settings are each required exactly once.", nameof(settings));
         }
         string kind = project is null ? "organization" : "projects.by.projectId";
         string route = project is null ? "/api/v1/organization" : "/api/v1/projects/" + ManagementJson.Escape(project);

@@ -39,7 +39,7 @@ public sealed class GovernanceRowWitnessTests
     [Arguments(12, true)]
     public async Task EveryRemainingCallableRowParsesItsOwnClosedFixture(int route, bool malformed)
     {
-        AuditClassSetting[] settings = [new(AuditEventClass.Management, true)];
+        AuditClassSetting[] settings = [new(AuditEventClass.Authentication, true), new(AuditEventClass.Authorization, false)];
         const string audit = """{"auditLogSettings":{"eventClasses":[{"eventClass":"management","isEnabled":true}],"shouldUseNewPrivilegeSystem":false}}""";
         const string share = $$$$"""{"id":"share","orgId":"{{{{OrgId}}}}","name":"private-share","expiresAt":"2026-10-11T00:00:00Z","createdAt":"2026-10-10T00:00:00Z","updatedAt":"2026-10-10T00:00:00Z"}""";
         string privilege = route == 11
