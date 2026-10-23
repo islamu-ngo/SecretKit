@@ -7,7 +7,8 @@ internal static class OwnedProcess
 {
     internal static async Task<(int ExitCode, string Output)> RunAsync(string executable,
         IReadOnlyList<string> arguments, string workingDirectory,
-        IReadOnlyDictionary<string, string>? injection = null, CancellationToken cancellationToken = default)
+        IReadOnlyDictionary<string, string>? injection = null, CancellationToken cancellationToken = default,
+        string? standardInput = null)
     {
         using var process = new Process
         {
@@ -16,6 +17,7 @@ internal static class OwnedProcess
                 WorkingDirectory = workingDirectory,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
+                RedirectStandardInput = standardInput is not null,
                 UseShellExecute = false
             },
             EnableRaisingEvents = true
@@ -33,9 +35,11 @@ internal static class OwnedProcess
         process.Start();
         Task<string> output = CaptureAsync(process.StandardOutput, true, cancellationToken);
         Task<string> error = CaptureAsync(process.StandardError, false, cancellationToken);
+        Task input = standardInput is null ? Task.CompletedTask : WriteInputAsync(process, standardInput, cancellationToken);
         try
         {
             await exited.Task.WaitAsync(TimeSpan.FromMinutes(2), cancellationToken);
+            await input;
             string captured = await output;
             _ = await error; // Child diagnostics may contain protected values; never publish them.
             return (process.ExitCode, captured);
@@ -47,8 +51,19 @@ internal static class OwnedProcess
                 process.Kill(entireProcessTree: true);
                 await process.WaitForExitAsync(CancellationToken.None);
             }
+            // An aborted child can fault any redirected pipe. Drain all of them
+            // before disposal while retaining the original failing outcome.
+            try { await Task.WhenAll(input, output, error); }
+            catch (Exception) { }
             throw;
         }
+    }
+
+    private static async Task WriteInputAsync(Process process, string input, CancellationToken token)
+    {
+        await process.StandardInput.WriteAsync(input.AsMemory(), token);
+        await process.StandardInput.FlushAsync(token);
+        process.StandardInput.Close();
     }
 
     private static async Task<string> CaptureAsync(StreamReader reader, bool retain, CancellationToken cancellationToken)
