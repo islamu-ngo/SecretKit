@@ -182,7 +182,7 @@ public static class Program
                 "checkpoint-not-persisted");
             ValidateCheckpointMetadata(Required("SECRETKIT_CHECKPOINT_METADATA_FILE"), checkpoint,
                 Required("SECRETKIT_CHECKPOINT_ARTIFACT_DIGEST"), Number("GITHUB_RUN_ID"),
-                Required("GITHUB_RUN_ATTEMPT"), Required("GITHUB_SHA"));
+                Required("GITHUB_RUN_ATTEMPT"), Required("GITHUB_SHA"), original);
             await publication.DispatchAsync(args[3], attempt, deadline.Token);
             PrintState(journal);
             return 0;
@@ -201,7 +201,7 @@ public static class Program
     }
 
     public static void ValidateCheckpointMetadata(string path, long artifactId, string digest,
-        long executionRun, string executionAttempt, string workflowCommit)
+        long executionRun, string executionAttempt, string workflowCommit, OriginalAdmission original)
     {
         string full = Path.GetFullPath(path);
         var metadata = Manifest.Parse<JsonElement>(Manifest.ReadFile(Path.GetDirectoryName(full)!,
@@ -214,6 +214,9 @@ public static class Program
             metadata.GetProperty("workflow_run").GetProperty("id").GetInt64() == executionRun &&
             metadata.GetProperty("workflow_run").GetProperty("head_sha").GetString() == workflowCommit,
             "checkpoint-artifact-provenance");
+        Guard.Require(metadata.TryGetProperty("expires_at", out JsonElement expiry) &&
+            expiry.ValueKind == JsonValueKind.String && expiry.TryGetDateTimeOffset(out DateTimeOffset expiresAt) &&
+            expiresAt >= original.ProducerCompletedAt.AddDays(90), "checkpoint-retention-window");
     }
 
     public static void VerifyArtifactMetadata(string bundle, Approval approval)

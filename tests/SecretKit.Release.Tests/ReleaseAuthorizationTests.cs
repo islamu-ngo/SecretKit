@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using SecretKit.Release;
 
 namespace SecretKit.Release.Tests;
@@ -179,6 +180,8 @@ public sealed class ReleaseAuthorizationTests
     [Arguments("attempt")]
     [Arguments("source")]
     [Arguments("id")]
+    [Arguments("retention")]
+    [Arguments("retention-boundary")]
     public async Task PersistedCheckpointMustBelongToTheExactUninterruptedExecution(string fault)
     {
         using var bundle = new TestBundle();
@@ -186,6 +189,8 @@ public sealed class ReleaseAuthorizationTests
         {
             id = fault == "id" ? 35 : 34,
             expired = fault == "expired",
+            expires_at = fault == "retention" ? Now.AddDays(90).AddTicks(-1) :
+                fault == "retention-boundary" ? Now.AddDays(90) : Now.AddDays(120),
             digest = "sha256:" + (fault == "digest" ? Head : Hash),
             name = fault == "attempt" ? "publication-checkpoint-12-2-before" : "publication-checkpoint-12-1-before",
             workflow_run = new
@@ -195,11 +200,63 @@ public sealed class ReleaseAuthorizationTests
             }
         });
         Action check = () => Program.ValidateCheckpointMetadata(
-            Path.Combine(bundle.OracleRoot, "checkpoint.json"), 34, Hash, 12, "1", TestBundle.Commit);
-        if (fault == "valid")
+            Path.Combine(bundle.OracleRoot, "checkpoint.json"), 34, Hash, 12, "1", TestBundle.Commit, Original(TimeSpan.Zero));
+        if (fault is "valid" or "retention-boundary")
             check();
         else
             await Assert.That(check).Throws<ReleaseException>();
+    }
+
+    [Test]
+    [Arguments(0, false)]
+    [Arguments(0, true)]
+    [Arguments(89, false)]
+    [Arguments(89, true)]
+    public async Task CheckpointRetentionUsesOriginalCompletionWithoutRenewingRecovery(int ageDays, bool shorter)
+    {
+        using var bundle = new TestBundle();
+        OriginalAdmission original = Original(TimeSpan.FromDays(ageDays));
+        bundle.WriteOracle("checkpoint.json", new
+        {
+            id = 34,
+            expired = false,
+            expires_at = original.ProducerCompletedAt.AddDays(90).AddTicks(shorter ? -1 : 0),
+            digest = "sha256:" + Hash,
+            name = "publication-checkpoint-12-1-before",
+            workflow_run = new { id = 12, head_sha = TestBundle.Commit }
+        });
+
+        Action check = () => Program.ValidateCheckpointMetadata(
+            Path.Combine(bundle.OracleRoot, "checkpoint.json"), 34, Hash, 12, "1", TestBundle.Commit, original);
+
+        if (shorter)
+            await Assert.That(check).Throws<ReleaseException>().WithMessage("checkpoint-retention-window");
+        else
+            check();
+    }
+
+    [Test]
+    [Arguments("missing")]
+    [Arguments("malformed")]
+    [Arguments("wrong-type")]
+    public async Task CheckpointWithoutValidRetentionEvidenceFailsClosed(string fault)
+    {
+        using var bundle = new TestBundle();
+        var metadata = new JsonObject
+        {
+            ["id"] = 34,
+            ["expired"] = false,
+            ["digest"] = "sha256:" + Hash,
+            ["name"] = "publication-checkpoint-12-1-before",
+            ["workflow_run"] = new JsonObject { ["id"] = 12, ["head_sha"] = TestBundle.Commit }
+        };
+        if (fault == "malformed") metadata["expires_at"] = "not-a-timestamp";
+        if (fault == "wrong-type") metadata["expires_at"] = 12;
+        bundle.WriteOracle("checkpoint.json", metadata);
+
+        await Assert.That(() => Program.ValidateCheckpointMetadata(
+            Path.Combine(bundle.OracleRoot, "checkpoint.json"), 34, Hash, 12, "1", TestBundle.Commit, Original(TimeSpan.Zero)))
+            .Throws<ReleaseException>().WithMessage("checkpoint-retention-window");
     }
 
     [Test]
