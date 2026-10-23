@@ -16,6 +16,204 @@ public sealed class InfisicalRotationCredentialHistoryTests
     };
 
     [Test]
+    [Arguments("GetAsync", "good", "observed")]
+    [Arguments("RotateSecretsAsync", "good", "observed")]
+    [Arguments("RotateSecretsAsync", "bad-delivery", "observer-unavailable")]
+    [Arguments("RotateSecretsAsync", "appended-password", "observer-unavailable")]
+    [Arguments("RotateSecretsAsync", "foreign-principal", "observer-unavailable")]
+    public async Task IntendedSdkConsumerUsesProtectedNativeSessionBinding(string method, string mode, string reason)
+    {
+        var input = Input(InfisicalRotationProfile.MysqlCredentials);
+        var store = new CredentialStore(input.Backend, input.Username1, input.Username2);
+        using var wire = new RotationWire(store, false, 1);
+        await using var reads = new StaticReadBackend(store, wire, mode == "bad-delivery", mode == "appended-password");
+        var admission = InfisicalLifecycleFamilies.Catalog.Single(a =>
+            a.Operation == "i.runtime.InfisicalRotationClient." + method);
+        var row = new NativeCaseDefinition(new("Infisical", admission.Operation,
+            method == "GetAsync" ? "selector.exact" : "profile.MysqlCredentials",
+            "owned-consumer-auth", "independent-effect"), admission.Member);
+        var mysqlProfile = new JsonObject
+        {
+            ["host"] = input.Backend.Host,
+            ["port"] = input.Backend.Port,
+            ["database"] = input.Backend.Database,
+            ["account"] = input.Backend.Account,
+            ["username1"] = input.Username1,
+            ["username2"] = input.Username2,
+            ["accountHost1"] = "%",
+            ["accountHost2"] = "%",
+            ["rootCertificate"] = Path.Combine(Path.GetTempPath(), "selected-ca.pem"),
+            ["timeoutSeconds"] = 10
+        };
+        var postgresProfile = (JsonObject)mysqlProfile.DeepClone();
+        postgresProfile.Remove("accountHost1");
+        postgresProfile.Remove("accountHost2");
+        using var env = Environment(row, input, mysqlProfile, postgresProfile);
+        bool native = false, postgres = false;
+        var observer = InfisicalLifecycleObservers.FromInputs(env, InfisicalRotationClientEffects.Family,
+            mysqlAuthenticationProcess: async (arguments, _, consume, token) =>
+            {
+                native = true;
+                string path = arguments.Single(a => a.StartsWith("--defaults-file=", StringComparison.Ordinal))["--defaults-file=".Length..];
+                byte[] options = await File.ReadAllBytesAsync(path, token);
+                var active = store.Active;
+                byte[] expectedOptions = Encoding.ASCII.GetBytes(
+                    "[client]\nuser=\"" + active.User.Replace("\\", "\\\\").Replace("\"", "\\\"") +
+                    "\"\npassword=\"" + active.Password.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"\n");
+                bool matches = options.AsSpan().SequenceEqual(expectedOptions);
+                byte[] output = matches ? Encoding.ASCII.GetBytes(
+                    Convert.ToHexString(Encoding.UTF8.GetBytes(mode == "foreign-principal" ? "foreign@%" : active.User + "@%")) +
+                    "\t" + Convert.ToHexString(Encoding.UTF8.GetBytes(input.Backend.Database)) + "\n") : [];
+                byte[] error = matches ? [] : "ERROR 1045 (28000): fixture refusal\n"u8.ToArray();
+                try
+                {
+                    using var stdout = new MemoryStream(output, writable: false);
+                    using var stderr = new MemoryStream(error, writable: false);
+                    await consume(stdout, stderr, token);
+                    return matches ? 0 : 1;
+                }
+                finally
+                {
+                    Array.Clear(options);
+                    Array.Clear(expectedOptions);
+                    Array.Clear(output);
+                    Array.Clear(error);
+                }
+            }, postgresAuthenticationProcess: (_, _, _, _) =>
+            {
+                postgres = true;
+                throw new InvalidOperationException("wrong-native-profile");
+            })!;
+        var registry = new NativeCaseRegistry();
+        InfisicalRotationClientEffects.Register(registry, env, [row], new RotationFactory(wire, store),
+            new NativeConsumerBackend(store, observer), wire,
+            selected => new InfisicalClient(reads.Origin, selected.Tokens(NativeIdentityRole.Runtime),
+                new InfisicalNetworkOptions { AllowLoopbackDevelopmentHttp = true }));
+
+        var result = (await NativeCaseRunner.RunAsync(registry, [row], default)).Single();
+
+        await reads.Delivered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await Assert.That(result.ReasonCode).IsEqualTo(reason);
+        await Assert.That(native).IsTrue();
+        await Assert.That(postgres).IsFalse();
+        await Assert.That(reads.CompletedReads).IsEqualTo(2);
+        await Assert.That(store.LiveAccounts).IsEqualTo(0);
+        await Assert.That(store.Subscriptions).IsEqualTo(0);
+    }
+
+    [Test]
+    [Arguments("GetAsync", "good", "observed")]
+    [Arguments("RotateSecretsAsync", "good", "observed")]
+    [Arguments("RotateSecretsAsync", "bad-delivery", "observer-unavailable")]
+    [Arguments("RotateSecretsAsync", "appended-password", "observer-unavailable")]
+    [Arguments("RotateSecretsAsync", "foreign-session", "observer-unavailable")]
+    [Arguments("RotateSecretsAsync", "foreign-effective", "observer-unavailable")]
+    [Arguments("RotateSecretsAsync", "foreign-database", "observer-unavailable")]
+    public async Task IntendedSdkConsumerUsesProtectedPostgresSessionBinding(string method, string mode, string reason)
+    {
+        var input = Input(InfisicalRotationProfile.PostgresCredentials);
+        var store = new CredentialStore(input.Backend, input.Username1, input.Username2);
+        using var wire = new RotationWire(store, false, 1);
+        await using var reads = new StaticReadBackend(store, wire, mode == "bad-delivery", mode == "appended-password");
+        var admission = InfisicalLifecycleFamilies.Catalog.Single(a =>
+            a.Operation == "i.runtime.InfisicalRotationClient." + method);
+        var row = new NativeCaseDefinition(new("Infisical", admission.Operation,
+            method == "GetAsync" ? "selector.exact" : "profile.PostgresCredentials",
+            "owned-postgres-consumer-auth", "independent-effect"), admission.Member);
+        var profile = new JsonObject
+        {
+            ["host"] = input.Backend.Host,
+            ["port"] = input.Backend.Port,
+            ["database"] = input.Backend.Database,
+            ["account"] = input.Backend.Account,
+            ["username1"] = input.Username1,
+            ["username2"] = input.Username2,
+            ["rootCertificate"] = Path.Combine(Path.GetTempPath(), "selected-ca.pem"),
+            ["timeoutSeconds"] = 10
+        };
+        var mysqlProfile = (JsonObject)profile.DeepClone();
+        mysqlProfile["accountHost1"] = "%";
+        mysqlProfile["accountHost2"] = "%";
+        using var env = Environment(row, input, mysqlProfile, profile);
+        using var remote = new UnexpectedObserverTransport();
+        bool native = false, mysql = false;
+        var observer = InfisicalLifecycleObservers.FromInputs(env, InfisicalRotationClientEffects.Family, remote,
+            mysqlAuthenticationProcess: (_, _, _, _) => { mysql = true; throw new InvalidOperationException("wrong-native-profile"); },
+            postgresAuthenticationProcess: async (_, environment, consume, token) =>
+            {
+                native = true;
+                byte[] service = await File.ReadAllBytesAsync(environment["PGSERVICEFILE"], token);
+                byte[] passfile = await File.ReadAllBytesAsync(environment["PGPASSFILE"], token);
+                var active = store.Active;
+                byte[] expectedService = Encoding.ASCII.GetBytes("[secretkit]\nuser=" + active.User + "\n");
+                byte[] expectedPassfile = Encoding.ASCII.GetBytes(input.Backend.Host + ":" + input.Backend.Port + ":" +
+                    input.Backend.Database + ":" + active.User + ":" +
+                    active.Password.Replace("\\", "\\\\").Replace(":", "\\:") + "\n");
+                bool matches = service.AsSpan().SequenceEqual(expectedService) && passfile.AsSpan().SequenceEqual(expectedPassfile);
+                byte[] output = matches ? Encoding.ASCII.GetBytes(
+                    Convert.ToHexString(Encoding.UTF8.GetBytes(mode == "foreign-session" ? "foreign" : active.User)).ToLowerInvariant() +
+                    "\t" + Convert.ToHexString(Encoding.UTF8.GetBytes(mode == "foreign-effective" ? "foreign" : active.User)).ToLowerInvariant() +
+                    "\t" + Convert.ToHexString(Encoding.UTF8.GetBytes(mode == "foreign-database" ? "foreign" : input.Backend.Database)).ToLowerInvariant() +
+                    "\n") : [];
+                byte[] error = matches ? [] : "fixture refusal\n"u8.ToArray();
+                try
+                {
+                    using var stdout = new MemoryStream(output, writable: false);
+                    using var stderr = new MemoryStream(error, writable: false);
+                    await consume(stdout, stderr, token);
+                    return matches ? 0 : 1;
+                }
+                finally
+                {
+                    Array.Clear(service);
+                    Array.Clear(passfile);
+                    Array.Clear(expectedService);
+                    Array.Clear(expectedPassfile);
+                    Array.Clear(output);
+                    Array.Clear(error);
+                }
+            })!;
+        var registry = new NativeCaseRegistry();
+        InfisicalRotationClientEffects.Register(registry, env, [row], new RotationFactory(wire, store),
+            new NativeConsumerBackend(store, observer), wire,
+            selected => new InfisicalClient(reads.Origin, selected.Tokens(NativeIdentityRole.Runtime),
+                new InfisicalNetworkOptions { AllowLoopbackDevelopmentHttp = true }));
+
+        var result = (await NativeCaseRunner.RunAsync(registry, [row], default)).Single();
+
+        await reads.Delivered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await Assert.That(result.ReasonCode).IsEqualTo(reason);
+        await Assert.That(native).IsTrue();
+        await Assert.That(mysql).IsFalse();
+        await Assert.That(remote.Requests).IsEqualTo(0);
+        await Assert.That(reads.CompletedReads).IsEqualTo(2);
+        await Assert.That(store.LiveAccounts).IsEqualTo(0);
+        await Assert.That(store.Subscriptions).IsEqualTo(0);
+    }
+
+    private sealed class UnexpectedObserverTransport : HttpMessageHandler
+    {
+        internal int Requests { get; private set; }
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Requests++;
+            throw new InvalidOperationException("unexpected-observer-request");
+        }
+    }
+
+    private sealed class NativeConsumerBackend(CredentialStore store, InfisicalLifecycleObservers observer)
+        : IInfisicalRotationBackendObserver
+    {
+        public ValueTask<RotationBackendFacts> MeasureAsync(RotationBackendCoordinate coordinate, CancellationToken token) =>
+            store.MeasureAsync(coordinate, token);
+        public ValueTask<IInfisicalRotationBackendSubscription> SubscribeAsync(RotationBackendCoordinate coordinate, CancellationToken token) =>
+            store.SubscribeAsync(coordinate, token);
+        public ValueTask<BackendAuthentication> AuthenticateAsync(RotationBackendCoordinate coordinate,
+            SecretMaterial username, SecretMaterial password, CancellationToken token) =>
+            observer.AuthenticateAsync(coordinate, username, password, token);
+    }
+
+    [Test]
     [Arguments(InfisicalRotationProfile.PostgresCredentials, false, 1, "observed")]
     [Arguments(InfisicalRotationProfile.MysqlCredentials, false, 1, "observed")]
     [Arguments(InfisicalRotationProfile.MssqlCredentials, false, 1, "observed")]
@@ -109,8 +307,38 @@ public sealed class InfisicalRotationCredentialHistoryTests
             "owned-a", "owned-b", null, 1, false, 128, ["select"], ["write"]);
 
     private static NativeEnvironment Environment(NativeCaseDefinition row,
-        InfisicalRotationClientEffects.RotationInput input) => NativeEnvironment.Create(
-        JsonSerializer.SerializeToElement(new
+        InfisicalRotationClientEffects.RotationInput input, JsonObject? nativeAuthentication = null,
+        JsonObject? postgresAuthentication = null)
+    {
+        var family = new JsonObject
+        {
+            ["scopes"] = new JsonObject
+            {
+                [row.Key.Scope] = new JsonObject
+                {
+                    [row.Key.Operation] = new JsonObject
+                    {
+                        [row.Key.Variant] = new JsonObject
+                        {
+                            [row.Key.Case] = JsonSerializer.SerializeToNode(input, InputJson)
+                        }
+                    }
+                }
+            }
+        };
+        if (nativeAuthentication is not null) family["mysqlConsumerAuthentication"] = nativeAuthentication;
+        if (postgresAuthentication is not null) family["postgresConsumerAuthentication"] = postgresAuthentication;
+        if (nativeAuthentication is not null || postgresAuthentication is not null)
+        {
+            family["observer"] = new JsonObject
+            {
+                ["endpoint"] = "https://observer.invalid/owned/",
+                ["token"] = "private-observer-token",
+                ["identity"] = "independent-service",
+                ["timeoutSeconds"] = 10
+            };
+        }
+        return NativeEnvironment.Create(JsonSerializer.SerializeToElement(new
         {
             origin = "https://rotation.invalid/",
             setup = "setup",
@@ -120,24 +348,10 @@ public sealed class InfisicalRotationCredentialHistoryTests
             observer = "observer",
             families = new JsonObject
             {
-                [InfisicalRotationClientEffects.Family] = new JsonObject
-                {
-                    ["scopes"] = new JsonObject
-                    {
-                        [row.Key.Scope] = new JsonObject
-                        {
-                            [row.Key.Operation] = new JsonObject
-                            {
-                                [row.Key.Variant] = new JsonObject
-                                {
-                                    [row.Key.Case] = JsonSerializer.SerializeToNode(input, InputJson)
-                                }
-                            }
-                        }
-                    }
-                }
+                [InfisicalRotationClientEffects.Family] = family
             }
         }, InputJson));
+    }
 
     private sealed class CredentialStore(RotationBackendCoordinate coordinate, string accountA, string accountB)
         : IInfisicalRotationBackendObserver
@@ -303,6 +517,8 @@ public sealed class InfisicalRotationCredentialHistoryTests
     {
         private readonly CredentialStore store;
         private readonly RotationWire wire;
+        private readonly bool corruptPassword;
+        private readonly bool appendPassword;
         private readonly TcpListener listener = new(IPAddress.Loopback, 0);
         private readonly CancellationTokenSource shutdown = new();
         private readonly List<Task> connections = [];
@@ -311,10 +527,12 @@ public sealed class InfisicalRotationCredentialHistoryTests
         private int completedReads;
         internal int CompletedReads => Volatile.Read(ref completedReads);
         internal TaskCompletionSource Delivered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        internal StaticReadBackend(CredentialStore store, RotationWire wire)
+        internal StaticReadBackend(CredentialStore store, RotationWire wire, bool corruptPassword = false, bool appendPassword = false)
         {
             this.store = store;
             this.wire = wire;
+            this.corruptPassword = corruptPassword;
+            this.appendPassword = appendPassword;
             listener.Start();
             Origin = new($"http://127.0.0.1:{((IPEndPoint)listener.LocalEndpoint).Port}/");
             accept = AcceptAsync();
@@ -368,7 +586,8 @@ public sealed class InfisicalRotationCredentialHistoryTests
                     secret = new
                     {
                         secretKey = key,
-                        secretValue = key == "owned-user" ? active.User : active.Password,
+                        secretValue = key == "owned-user" ? active.User : corruptPassword ? "wrong-password" :
+                            appendPassword ? active.Password + "-corrupt" : active.Password,
                         secretValueHidden = false,
                         version = store.Generation + 1
                     }

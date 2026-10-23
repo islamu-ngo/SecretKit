@@ -218,6 +218,28 @@ public sealed class InfisicalRotationValidationWitnessTests
     }
 
     [Test]
+    [Arguments("good", "observed")]
+    [Arguments("catalog-other-host", "cleanup-incomplete")]
+    [Arguments("policy-incompatible", "cleanup-incomplete")]
+    public async Task NativeMysqlCatalogParticipatesInOriginalRotationWitness(string mode, string reason)
+    {
+        await using var wire = new RotationValidationWire(mode, InfisicalRotationProfile.MysqlCredentials)
+        {
+            NativeMysqlCatalog = true
+        };
+
+        var result = await RunAsync(wire, "CreateValidationRuleAsync",
+            input: Input("CreateValidationRuleAsync", profile: InfisicalRotationProfile.MysqlCredentials));
+
+        await Assert.That(result.ReasonCode).IsEqualTo(reason);
+        await Assert.That(wire.CatalogReads).IsGreaterThan(0);
+        await Assert.That(wire.OwnerCreates).IsEqualTo(wire.OwnerDisposals);
+        await Assert.That(wire.BorrowedConnectionRetained && wire.UnownedRoleRetained).IsTrue();
+        if (mode != "good") await Assert.That(wire.RotationCreates + wire.ManualRotations).IsEqualTo(0);
+        else await Assert.That(wire.ManualRotations).IsEqualTo(2);
+    }
+
+    [Test]
     [Arguments(InfisicalRotationProfile.MysqlCredentials, "ignored-regex", "regex")]
     [Arguments(InfisicalRotationProfile.MssqlCredentials, "ignored-regex", "regex")]
     [Arguments(InfisicalRotationProfile.MysqlCredentials, "wrongcase", "regex")]
@@ -1028,6 +1050,7 @@ public sealed class InfisicalRotationValidationWitnessTests
         internal int ManualRotations { get; private set; }
         internal int RuntimeMappedReads { get; private set; }
         internal int CatalogReads { get; private set; }
+        internal bool NativeMysqlCatalog { get; init; }
         internal bool ProjectInventoryBeforeOwnership { get; private set; }
         internal bool ProjectInventoriesOnly { get; private set; } = true;
         internal bool AdminManualRotationsOnly { get; private set; } = true;
@@ -1605,6 +1628,43 @@ public sealed class InfisicalRotationValidationWitnessTests
                     usernames.SequenceEqual(OwnedNames) &&
                     (mysql is { Accounts.Length: 0 } ||
                         mssql is { ServerPrincipals.Length: 0, DatabasePrincipals.Length: 0 });
+                if (NativeMysqlCatalog)
+                {
+                    using JsonDocument selected = JsonDocument.Parse(JsonSerializer.Serialize(new
+                    {
+                        host = Coordinate.Host,
+                        port = Coordinate.Port,
+                        database = Coordinate.Database,
+                        username = "catalog",
+                        password = "private-catalog-password",
+                        principal = "catalog@%",
+                        rootCertificate = Path.Combine(Path.GetTempPath(), "selected-ca.pem"),
+                        timeoutSeconds = 10
+                    }));
+                    MysqlPasswordPolicyFacts policy = mysql!.PasswordPolicy;
+                    var variables = new[]
+                    {
+                        new { name = "validate_password_policy", value = policy.Policy!.Value.ToString(System.Globalization.CultureInfo.InvariantCulture) },
+                        new { name = "validate_password_length", value = policy.MinimumLength!.Value.ToString(System.Globalization.CultureInfo.InvariantCulture) },
+                        new { name = "validate_password_check_user_name", value = policy.CheckUserName == true ? "ON" : "OFF" },
+                        new { name = "validate_password_mixed_case_count", value = policy.MixedCaseCount!.Value.ToString(System.Globalization.CultureInfo.InvariantCulture) },
+                        new { name = "validate_password_number_count", value = policy.NumberCount!.Value.ToString(System.Globalization.CultureInfo.InvariantCulture) },
+                        new { name = "validate_password_special_char_count", value = policy.SpecialCharCount!.Value.ToString(System.Globalization.CultureInfo.InvariantCulture) },
+                        new { name = "validate_password_dictionary_file", value = policy.DictionaryFile! }
+                    };
+                    string output = JsonSerializer.Serialize(new
+                    {
+                        principal = "catalog@%",
+                        database = mysql.Database,
+                        accounts = mysql.Accounts,
+                        plugins = policy.ActiveValidationPlugins,
+                        components = policy.InstalledValidationComponents,
+                        variables
+                    }, Options);
+                    var native = new InfisicalMysqlIdentityCatalog(selected.RootElement,
+                        (_, _, _, _) => Task.FromResult((0, output)));
+                    return native.InspectIdentityCatalogAsync(coordinate, usernames, token);
+                }
                 return ValueTask.FromResult(new RotationIdentityCatalogFacts(observedCoordinate, usernames.ToArray(), mysql, mssql));
             }
         }

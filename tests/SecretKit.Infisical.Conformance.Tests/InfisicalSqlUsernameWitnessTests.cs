@@ -31,6 +31,27 @@ public sealed class InfisicalSqlUsernameWitnessTests
     }
 
     [Test]
+    [Arguments("good", "observed")]
+    [Arguments("preexisting-a", "missing-prerequisite")]
+    [Arguments("retain-b", "cleanup-incomplete")]
+    public async Task SelectedNativeCatalogProtectsOriginalOwnershipAndCleanup(string mode, string reason)
+    {
+        await using var wire = new UsernameWire(mode);
+
+        var result = await RunAsync(wire, "CreateDefinitionAsync", nativeCatalog: true);
+
+        await Assert.That(result.ReasonCode).IsEqualTo(reason);
+        await Assert.That(wire.InventoryReads).IsGreaterThan(0);
+        await Assert.That(wire.RoleCount).IsEqualTo(mode == "good" ? 0 : 1);
+        if (mode == "preexisting-a")
+        {
+            await Assert.That(wire.ProviderMutations).IsEqualTo(0);
+            await Assert.That(wire.Issued.Count).IsEqualTo(0);
+        }
+        else await Assert.That(wire.Issued.Count).IsEqualTo(1);
+    }
+
+    [Test]
     [Arguments("CreateDefinitionAsync", "independent-effect")]
     [Arguments("CreateDefinitionAsync", "selected-contract")]
     [Arguments("CreateDefinitionAsync", "denied-authority")]
@@ -195,7 +216,7 @@ public sealed class InfisicalSqlUsernameWitnessTests
             60, 300, 120, B, [], ["select"], ["write"], BaselineUsernameTemplate: A), Options)!.AsObject();
 
     private static async Task<NativeCaseResult> RunAsync(UsernameWire wire, string method,
-        string boundary = "independent-effect", JsonObject? input = null)
+        string boundary = "independent-effect", JsonObject? input = null, bool nativeCatalog = false)
     {
         var admission = InfisicalLifecycleFamilies.Catalog.Single(a =>
             a.Operation == "i.runtime.InfisicalDynamicClient." + method);
@@ -217,6 +238,22 @@ public sealed class InfisicalSqlUsernameWitnessTests
                 }
             }
         };
+        if (nativeCatalog)
+        {
+            var family = families[InfisicalDynamicClientEffects.Family]!.AsObject();
+            family["observer"] = JsonSerializer.SerializeToNode(new InfisicalLifecycleObservers.Settings(
+                new("https://observer.invalid/owned/"), "service-token", "independent-service", 10), Options);
+            family["postgresRoleCatalog"] = new JsonObject
+            {
+                ["host"] = "backend.invalid",
+                ["port"] = 5432,
+                ["database"] = "database",
+                ["username"] = "catalog",
+                ["password"] = "private-catalog-password",
+                ["timeoutSeconds"] = 10,
+                ["rootCertificate"] = Path.Combine(Path.GetTempPath(), "selected-ca.pem")
+            };
+        }
         using var environment = NativeEnvironment.Create(JsonSerializer.SerializeToElement(new
         {
             origin = wire.Origin.AbsoluteUri,
@@ -229,8 +266,51 @@ public sealed class InfisicalSqlUsernameWitnessTests
             families
         }, Options));
         var registry = new NativeCaseRegistry();
-        InfisicalDynamicClientEffects.Register(registry, environment, [row], wire);
+        using var channel = nativeCatalog ? new CatalogMeasurementHandler(wire) : null;
+        IInfisicalDynamicBackendObserver backend = wire;
+        if (nativeCatalog)
+            backend = InfisicalLifecycleObservers.FromInputs(environment, InfisicalDynamicClientEffects.Family, channel,
+                async (query, injected, token) =>
+                {
+                    string hex = query.Split("decode('", StringSplitOptions.None)[1].Split('\'')[0];
+                    string[] names = JsonSerializer.Deserialize<string[]>(Convert.FromHexString(hex))!;
+                    var coordinate = new DynamicUsernameCoordinate(NativeSqlEngine.Postgres, injected["PGHOST"],
+                        int.Parse(injected["PGPORT"], System.Globalization.CultureInfo.InvariantCulture), injected["PGDATABASE"]);
+                    var inventory = await wire.InspectUsernamesAsync(coordinate, names, token);
+                    return (0, JsonSerializer.Serialize(new
+                    {
+                        user = injected["PGUSER"],
+                        rows = names.Select(name => new { name, exists = inventory.ExistingUsernames.Contains(name, StringComparer.Ordinal) })
+                    }, Options));
+                })!;
+        InfisicalDynamicClientEffects.Register(registry, environment, [row], backend);
         return (await NativeCaseRunner.RunAsync(registry, [row], CancellationToken.None)).Single();
+    }
+
+    private sealed class CatalogMeasurementHandler(UsernameWire wire) : HttpMessageHandler
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
+        {
+            if (request.RequestUri!.AbsolutePath != "/owned/dynamic/measure")
+                throw new InvalidOperationException("Remote username fallback reached the measurement channel.");
+            using var body = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(token));
+            var root = body.RootElement;
+            using var username = SecretMaterial.FromText(root.GetProperty("username").GetString()!);
+            using var password = SecretMaterial.FromText(root.GetProperty("password").GetString()!);
+            var facts = await wire.MeasureAsync(root.GetProperty("coordinate").Deserialize<DynamicBackendCoordinate>(Options)!,
+                username, password, token);
+            return new(HttpStatusCode.OK)
+            {
+                Content = new StringContent(JsonSerializer.Serialize(new
+                {
+                    schemaVersion = 1,
+                    nonce = root.GetProperty("nonce").GetString(),
+                    observerIdentity = "independent-service",
+                    observedAt = DateTimeOffset.UtcNow,
+                    facts
+                }, Options), Encoding.UTF8, "application/json")
+            };
+        }
     }
 
     // Roles and immutable issuance history are downstream state, not derived from

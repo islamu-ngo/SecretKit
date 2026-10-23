@@ -166,11 +166,27 @@ public sealed class InfisicalGovernanceFamilyTests
     }
 
     [Test]
+    [Arguments("CreateShare", "password.value", "share-renamed")]
+    [Arguments("GetShare", "selector.exact", "share-renamed")]
+    [Arguments("GetShare", "selector.exact", "share-delete-renamed")]
+    public async Task RenamedAcknowledgedShareCannotBeCertifiedAsCleaned(string operation, string variant, string mode)
+    {
+        await using var backend = new Backend(mode);
+        using NativeEnvironment environment = Environment(backend.Origin);
+
+        NativeCaseResult result = await RunAsync(environment,
+            Definition("SharingOperations." + operation, variant), backend.Observers);
+
+        await Assert.That(result.ReasonCode).IsEqualTo("cleanup-incomplete");
+        await Assert.That(backend.ShareCount).IsEqualTo(1);
+    }
+
+    [Test]
     [Arguments("SetOrganizationAuditSettings", "isEnabled.false", "selected-contract")]
-    [Arguments("SetProjectAuditSettings", "eventClass.DataAccess", "selected-contract")]
-    [Arguments("SetProjectAuditSettings", "eventClass.Management", "denied-authority")]
-    [Arguments("SetProjectAuditSettings", "eventClass.Management", "cancellation-boundary")]
-    [Arguments("SetProjectAuditSettings", "eventClass.Management", "lost-response-no-replay")]
+    [Arguments("SetProjectAuditSettings", "eventClass.Authorization", "selected-contract")]
+    [Arguments("SetProjectAuditSettings", "eventClass.Authentication", "denied-authority")]
+    [Arguments("SetProjectAuditSettings", "eventClass.Authentication", "cancellation-boundary")]
+    [Arguments("SetProjectAuditSettings", "eventClass.Authentication", "lost-response-no-replay")]
     [Arguments("GetOrganizationAuditSettings", "eventClass.Authentication", "selected-contract")]
     [Arguments("ReadAudit", "eventClass.array.values", "selected-contract")]
     [Arguments("ReadAudit", "eventType.array.catalog-values", "selected-contract")]
@@ -184,6 +200,29 @@ public sealed class InfisicalGovernanceFamilyTests
         await Assert.That(result.ReasonCode).IsEqualTo("observed");
         await Assert.That(backend.ProducedEvents).IsEqualTo(1);
         await Assert.That(backend.AuditScopeCount).IsEqualTo(0);
+    }
+
+    [Test]
+    [Arguments("SetOrganizationAuditSettings", "eventClass.Management")]
+    [Arguments("SetOrganizationAuditSettings", "eventClass.DataAccess")]
+    [Arguments("SetProjectAuditSettings", "eventClass.Management")]
+    [Arguments("SetProjectAuditSettings", "eventClass.DataAccess")]
+    public async Task PermanentAuditClassWritesRejectBeforeOwnedSetupOrProducer(string operation, string variant)
+    {
+        foreach (string caseName in new[] { "selected-contract", "independent-effect", "denied-authority",
+            "cancellation-boundary", "lost-response-no-replay" })
+        {
+            await using var backend = new Backend("good");
+            using NativeEnvironment environment = Environment(backend.Origin);
+            var result = await RunAsync(environment, Definition("GovernanceOperations." + operation, variant, caseName),
+                backend.Observers);
+
+            await Assert.That(result.ReasonCode).IsEqualTo("observed");
+            await Assert.That(backend.AuditProvisions).IsEqualTo(0);
+            await Assert.That(backend.ProducedEvents).IsEqualTo(0);
+            await Assert.That(backend.AdministrativeMutations).IsEqualTo(0);
+            await Assert.That(backend.AuditScopeCount).IsEqualTo(0);
+        }
     }
 
     [Test]
@@ -239,7 +278,7 @@ public sealed class InfisicalGovernanceFamilyTests
         using NativeEnvironment environment = Environment(backend.Origin);
         NativeCaseDefinition definition = fault.StartsWith("proxy", StringComparison.Ordinal) ?
             Definition("ProxiedServiceAdministrationOperations.Create", "credential.surface.Path", "independent-effect") :
-            fault == "audit-event" ? Definition("GovernanceOperations.SetProjectAuditSettings", "eventClass.Management", "independent-effect") :
+            fault == "audit-event" ? Definition("GovernanceOperations.SetProjectAuditSettings", "eventClass.Authentication", "independent-effect") :
             Definition("SharingOperations.CreateShare", "password.value", "independent-effect");
         NativeCaseResult result = await RunAsync(environment, definition, backend.Observers);
         await Assert.That(result.ReasonCode).IsEqualTo("effect-mismatch");
@@ -308,7 +347,7 @@ public sealed class InfisicalGovernanceFamilyTests
         await using var backend = new Backend("duplicate-audit");
         using NativeEnvironment environment = Environment(backend.Origin);
         var result = await RunAsync(environment, Definition("GovernanceOperations.SetProjectAuditSettings",
-            "eventClass.Management"), backend.Observers);
+            "eventClass.Authentication"), backend.Observers);
         await Assert.That(result.ReasonCode).IsEqualTo("effect-mismatch");
     }
 
@@ -476,6 +515,7 @@ public sealed class InfisicalGovernanceFamilyTests
         public int ProjectCount { get { lock (gate) return projects.Count; } }
         public int ProxyCount { get { lock (gate) return services.Count; } }
         public int AuditScopeCount { get { lock (gate) return auditSettings.Count; } }
+        public int AuditProvisions { get; private set; }
 
         public Backend(string mode)
         {
@@ -596,8 +636,9 @@ public sealed class InfisicalGovernanceFamilyTests
             {
                 string scope = p[2] == "organization" ? "organization" : p[3];
                 if (method == "PUT")
-                    auditSettings[scope] = body["eventClasses"]!.AsArray().Select(n =>
-                        new AuditClassSetting(ParseClass(Text(n!.AsObject(), "eventClass")), n["isEnabled"]!.GetValue<bool>())).ToList();
+                    auditSettings[scope] = [new(AuditEventClass.Management, true), new(AuditEventClass.DataAccess, true),
+                        .. body["eventClasses"]!.AsArray().Select(n =>
+                            new AuditClassSetting(ParseClass(Text(n!.AsObject(), "eventClass")), n["isEnabled"]!.GetValue<bool>()))];
                 return (200, new()
                 {
                     ["auditLogSettings"] = new JsonObject
@@ -702,7 +743,11 @@ public sealed class InfisicalGovernanceFamilyTests
                 share["expiresAfterViews"]?.GetValue<int>() is { } maximum && views[p[3]] >= maximum)
                 return (403, new());
             JsonObject result = ShareMetadata(share, method == "GET");
-            if (method == "DELETE") { shares.Remove(p[3]); shareValues.Remove(p[3]); }
+            if (method == "DELETE")
+            {
+                if (mode == "share-delete-renamed") share["name"] = "renamed-original";
+                else { shares.Remove(p[3]); shareValues.Remove(p[3]); }
+            }
             else if (p.Length > 4)
             {
                 views[p[3]]++;
@@ -1002,6 +1047,10 @@ public sealed class InfisicalGovernanceFamilyTests
                 var facts = new ShareDeliveryFacts(shareId, received.Status, refused.Status, before, after,
                     expiry, expiry, expired.Status, material, audience, maximumViews, external, emails, limit);
                 material = null;
+                if (mode == "share-renamed")
+                {
+                    lock (gate) shares[shareId]["name"] = "renamed-original";
+                }
                 return facts;
             }
             finally { material?.Dispose(); }
@@ -1014,8 +1063,11 @@ public sealed class InfisicalGovernanceFamilyTests
             var scope = new OwnedAuditScope(Guid.NewGuid().ToString(), projectScope ? Guid.NewGuid().ToString() : null, ownedName);
             lock (gate)
             {
+                AuditProvisions++;
                 auditScopes[ownedName] = scope;
-                auditSettings[scope.ProjectId ?? "organization"] = [new(AuditEventClass.Management, true)];
+                auditSettings[scope.ProjectId ?? "organization"] = [new(AuditEventClass.Management, true),
+                    new(AuditEventClass.DataAccess, true), new(AuditEventClass.Authentication, false),
+                    new(AuditEventClass.Authorization, false)];
             }
             return ValueTask.FromResult(scope);
         }

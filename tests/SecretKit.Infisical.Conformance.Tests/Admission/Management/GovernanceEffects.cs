@@ -108,36 +108,59 @@ internal static class GovernanceEffects
 
     private static async ValueTask AuditAsync(ProjectFamilyContext c, IAuditEventObserver observer, CancellationToken token)
     {
+        bool setting = c.Operation.StartsWith("Set", StringComparison.Ordinal);
+        bool project = c.Operation.Contains("Project", StringComparison.Ordinal) ||
+            c.Operation == "ReadAudit" && c.Variant is not ("projectId.omitted" or "selector.organization");
+        AuditEventClass eventClass = c.Variant switch
+        {
+            "eventClass.Management" => AuditEventClass.Management,
+            "eventClass.Authentication" => AuditEventClass.Authentication,
+            "eventClass.Authorization" => AuditEventClass.Authorization,
+            "eventClass.DataAccess" => AuditEventClass.DataAccess,
+            _ => setting ? AuditEventClass.Authentication : AuditEventClass.Management
+        };
+        if (setting && eventClass is AuditEventClass.Management or AuditEventClass.DataAccess)
+        {
+            bool rejected = false;
+            try
+            {
+                AuditClassSetting[] invalid = [new(eventClass, true), new(AuditEventClass.Authorization, false)];
+                using var request = project ?
+                    GovernanceOperations.SetProjectAuditSettings(c.OrganizationId, Guid.NewGuid().ToString("D"), invalid) :
+                    GovernanceOperations.SetOrganizationAuditSettings(c.OrganizationId, invalid);
+            }
+            catch (ArgumentException error) when (error.ParamName == "settings") { rejected = true; }
+            c.Probe.Contract(rejected, NativeFailure.ContractMismatch);
+            // This variant is a local input rejection, not an observed native policy effect.
+            c.Probe.Effect(NativeObservation.Matched);
+            return;
+        }
         string name = ProjectFamilyContext.FreshName();
         c.Cleanup(async ct =>
         {
             AuditCleanupFacts facts = await observer.RemoveOwnedAsync(name, c.Environment.Tokens(NativeIdentityRole.Setup), ct);
             return facts.OwnedName == name && facts.RemainingOrganizations == 0 && facts.RemainingProjects == 0;
         });
-        bool project = c.Operation.Contains("Project", StringComparison.Ordinal) ||
-            c.Operation == "ReadAudit" && c.Variant is not ("projectId.omitted" or "selector.organization");
         OwnedAuditScope scope = await observer.ProvisionAsync(name, project,
             c.Environment.Tokens(NativeIdentityRole.Setup), c.Environment.Tokens(NativeIdentityRole.Administrative),
             c.Environment.Tokens(NativeIdentityRole.Observer), token);
         c.Probe.Contract(scope.OwnedName == name && !string.IsNullOrWhiteSpace(scope.OrganizationId) &&
             project == (scope.ProjectId is not null), NativeFailure.MissingPrerequisite);
-        AuditEventClass eventClass = c.Variant switch
-        {
-            "eventClass.Authentication" => AuditEventClass.Authentication,
-            "eventClass.Authorization" => AuditEventClass.Authorization,
-            "eventClass.DataAccess" => AuditEventClass.DataAccess,
-            _ => AuditEventClass.Management
-        };
+        bool permanent = eventClass is AuditEventClass.Management or AuditEventClass.DataAccess;
         bool enabled = c.Variant != "isEnabled.false";
         Func<ManagementRequest<AuditSettings>> get = () => scope.ProjectId is null ?
             GovernanceOperations.GetOrganizationAuditSettings(scope.OrganizationId) :
             GovernanceOperations.GetProjectAuditSettings(scope.OrganizationId, scope.ProjectId);
         Func<bool, ManagementRequest<AuditSettings>> set = state => scope.ProjectId is null ?
-            GovernanceOperations.SetOrganizationAuditSettings(scope.OrganizationId, [new(eventClass, state)]) :
-            GovernanceOperations.SetProjectAuditSettings(scope.OrganizationId, scope.ProjectId, [new(eventClass, state)]);
+            GovernanceOperations.SetOrganizationAuditSettings(scope.OrganizationId,
+                [new(AuditEventClass.Authentication, eventClass == AuditEventClass.Authentication && state),
+                    new(AuditEventClass.Authorization, eventClass == AuditEventClass.Authorization && state)]) :
+            GovernanceOperations.SetProjectAuditSettings(scope.OrganizationId, scope.ProjectId,
+                [new(AuditEventClass.Authentication, eventClass == AuditEventClass.Authentication && state),
+                    new(AuditEventClass.Authorization, eventClass == AuditEventClass.Authorization && state)]);
         // Force an opposite baseline for writes so no-effect denial/cancellation is observable.
-        bool setting = c.Operation.StartsWith("Set", StringComparison.Ordinal);
-        await c.NeedAsync(() => set(setting ? !enabled : true), NativeIdentityRole.Setup, token);
+        if (!permanent)
+            await c.NeedAsync(() => set(setting ? !enabled : true), NativeIdentityRole.Setup, token);
         bool Match(AuditSettings value, bool expected) =>
             value.Classes.Count(s => s.EventClass == eventClass && s.IsEnabled == expected) == 1;
         async ValueTask<bool> Observe(bool applied, CancellationToken ct)
@@ -273,14 +296,18 @@ internal static class GovernanceEffects
         {
             SecretOutcome<SharedSecretMetadata> found = await observer.FindOwnedAsync(c.OrganizationId, name,
                 c.Environment.Tokens(NativeIdentityRole.Observer), ct);
-            if (found.Status == SecretStatus.Absent) return true;
+            if (found.Status == SecretStatus.Absent)
+                return id is null || (await c.ExecuteAsync(
+                    () => SharingOperations.GetShare(c.OrganizationId, id), NativeIdentityRole.Observer, ct)).Status == SecretStatus.Absent;
             if (!found.IsSuccess) return false;
             if (id is not null && found.Value.Id != id) return false;
             SecretOutcome<SharedSecretMetadata> removed = await c.ExecuteAsync(
                 () => SharingOperations.DeleteShare(c.OrganizationId, found.Value.Id), NativeIdentityRole.Setup, ct);
             SecretOutcome<SharedSecretMetadata> absent = await observer.FindOwnedAsync(c.OrganizationId, name,
                 c.Environment.Tokens(NativeIdentityRole.Observer), ct);
-            return removed.IsSuccess && absent.Status == SecretStatus.Absent;
+            return removed.IsSuccess && absent.Status == SecretStatus.Absent &&
+                (await c.ExecuteAsync(() => SharingOperations.GetShare(c.OrganizationId, found.Value.Id),
+                    NativeIdentityRole.Observer, ct)).Status == SecretStatus.Absent;
         });
         Func<ManagementRequest<CreatedShare>> create = () => SharingOperations.CreateShare(c.OrganizationId, name,
             material, 5, audience, views, password, external, emails);

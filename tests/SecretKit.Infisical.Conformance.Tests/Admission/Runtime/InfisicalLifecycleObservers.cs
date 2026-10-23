@@ -18,6 +18,11 @@ internal sealed class InfisicalLifecycleObservers :
     private readonly Settings settings;
     private readonly HttpMessageHandler? transport;
     private readonly Func<int, byte[]> allocate;
+    private readonly InfisicalPostgresRoleCatalog? roleCatalog;
+    private readonly InfisicalMysqlIdentityCatalog? mysqlCatalog;
+    private readonly InfisicalMssqlIdentityCatalog? mssqlCatalog;
+    private readonly InfisicalMysqlConsumerAuthentication? mysqlConsumerAuthentication;
+    private readonly InfisicalPostgresConsumerAuthentication? postgresConsumerAuthentication;
 
     internal sealed record Settings(Uri Endpoint, string Token, string Identity, int TimeoutSeconds)
     {
@@ -25,7 +30,10 @@ internal sealed class InfisicalLifecycleObservers :
     }
 
     internal InfisicalLifecycleObservers(Settings settings, HttpMessageHandler? transport = null,
-        Func<int, byte[]>? allocate = null)
+        Func<int, byte[]>? allocate = null, InfisicalPostgresRoleCatalog? roleCatalog = null,
+        InfisicalMysqlIdentityCatalog? mysqlCatalog = null, InfisicalMssqlIdentityCatalog? mssqlCatalog = null,
+        InfisicalMysqlConsumerAuthentication? mysqlConsumerAuthentication = null,
+        InfisicalPostgresConsumerAuthentication? postgresConsumerAuthentication = null)
     {
         if (!settings.Endpoint.IsAbsoluteUri || settings.Endpoint.Scheme != Uri.UriSchemeHttps ||
             settings.Endpoint.UserInfo.Length != 0 || settings.Endpoint.Query.Length != 0 ||
@@ -37,17 +45,41 @@ internal sealed class InfisicalLifecycleObservers :
         this.settings = settings;
         this.transport = transport;
         this.allocate = allocate ?? (static length => new byte[length]);
+        this.roleCatalog = roleCatalog;
+        this.mysqlCatalog = mysqlCatalog;
+        this.mssqlCatalog = mssqlCatalog;
+        this.mysqlConsumerAuthentication = mysqlConsumerAuthentication;
+        this.postgresConsumerAuthentication = postgresConsumerAuthentication;
     }
 
-    internal static InfisicalLifecycleObservers? FromInputs(NativeEnvironment environment, string family)
+    internal static InfisicalLifecycleObservers? FromInputs(NativeEnvironment environment, string family,
+        HttpMessageHandler? transport = null, InfisicalPostgresRoleCatalog.QueryProcess? process = null,
+        InfisicalMysqlIdentityCatalog.QueryProcess? mysqlProcess = null,
+        InfisicalMssqlIdentityCatalog.QueryProcess? mssqlProcess = null,
+        InfisicalMysqlConsumerAuthentication.AuthenticationProcess? mysqlAuthenticationProcess = null,
+        InfisicalPostgresConsumerAuthentication.AuthenticationProcess? postgresAuthenticationProcess = null)
     {
         JsonElement input = environment.RequireFamilyInput(family);
-        if (!input.TryGetProperty("observer", out JsonElement observer)) return null;
+        bool native = input.TryGetProperty("postgresRoleCatalog", out JsonElement catalog);
+        bool mysql = input.TryGetProperty("mysqlIdentityCatalog", out JsonElement mysqlInput);
+        bool mssql = input.TryGetProperty("mssqlIdentityCatalog", out JsonElement mssqlInput);
+        bool mysqlAuthentication = input.TryGetProperty("mysqlConsumerAuthentication", out JsonElement authenticationInput);
+        bool postgresAuthentication = input.TryGetProperty("postgresConsumerAuthentication", out JsonElement postgresAuthenticationInput);
+        if (!input.TryGetProperty("observer", out JsonElement observer))
+        {
+            if (native || mysql || mssql || mysqlAuthentication || postgresAuthentication)
+                throw new NativeCaseFailureException("missing-input");
+            return null;
+        }
         try
         {
             Settings settings = observer.Deserialize<Settings>(InfisicalLifecycleFamilies.Options)
                 ?? throw new NativeCaseFailureException("missing-input");
-            return new(settings);
+            return new(settings, transport, roleCatalog: native ? new(catalog, process) : null,
+                mysqlCatalog: mysql ? new(mysqlInput, mysqlProcess) : null,
+                mssqlCatalog: mssql ? new(mssqlInput, mssqlProcess) : null,
+                mysqlConsumerAuthentication: mysqlAuthentication ? new(authenticationInput, mysqlAuthenticationProcess) : null,
+                postgresConsumerAuthentication: postgresAuthentication ? new(postgresAuthenticationInput, postgresAuthenticationProcess) : null);
         }
         catch (JsonException) { throw new NativeCaseFailureException("missing-input"); }
     }
@@ -64,6 +96,8 @@ internal sealed class InfisicalLifecycleObservers :
     public async ValueTask<DynamicUsernameFacts> InspectUsernamesAsync(DynamicUsernameCoordinate coordinate,
         IReadOnlyList<string> usernames, CancellationToken token)
     {
+        if (roleCatalog is not null)
+            return await roleCatalog.InspectUsernamesAsync(coordinate, usernames, token).ConfigureAwait(false);
         DynamicUsernameFacts facts = await PostAsync<DynamicUsernameFacts>("dynamic/usernames", writer =>
         {
             Write(writer, "coordinate", coordinate);
@@ -101,6 +135,14 @@ internal sealed class InfisicalLifecycleObservers :
     public async ValueTask<RotationIdentityCatalogFacts> InspectIdentityCatalogAsync(RotationBackendCoordinate coordinate,
         IReadOnlyList<string> usernames, CancellationToken token)
     {
+        token.ThrowIfCancellationRequested();
+        if (coordinate is null) throw new NativeCaseFailureException("observer-unavailable");
+        if (coordinate.Profile == InfisicalRotationProfile.MysqlCredentials && mysqlCatalog is not null)
+            return await mysqlCatalog.InspectIdentityCatalogAsync(coordinate, usernames, token).ConfigureAwait(false);
+        if (coordinate.Profile == InfisicalRotationProfile.MssqlCredentials && mssqlCatalog is not null)
+            return await mssqlCatalog.InspectIdentityCatalogAsync(coordinate, usernames, token).ConfigureAwait(false);
+        if (mysqlCatalog is not null || mssqlCatalog is not null)
+            throw new NativeCaseFailureException("observer-unavailable");
         RotationIdentityCatalogFacts facts = await PostAsync<RotationIdentityCatalogFacts>("rotation/identity-catalog", writer =>
         {
             Write(writer, "coordinate", coordinate);
@@ -114,6 +156,13 @@ internal sealed class InfisicalLifecycleObservers :
     public async ValueTask<BackendAuthentication> AuthenticateAsync(RotationBackendCoordinate coordinate,
         SecretMaterial username, SecretMaterial password, CancellationToken token)
     {
+        token.ThrowIfCancellationRequested();
+        if (coordinate.Profile == InfisicalRotationProfile.PostgresCredentials && postgresConsumerAuthentication is not null)
+            return await postgresConsumerAuthentication.AuthenticateAsync(coordinate, username, password, token).ConfigureAwait(false);
+        if (coordinate.Profile == InfisicalRotationProfile.MysqlCredentials && mysqlConsumerAuthentication is not null)
+            return await mysqlConsumerAuthentication.AuthenticateAsync(coordinate, username, password, token).ConfigureAwait(false);
+        if (postgresConsumerAuthentication is not null || mysqlConsumerAuthentication is not null)
+            return BackendAuthentication.Unavailable;
         Authentication facts = await PostAsync<Authentication>("rotation/authenticate", writer =>
         {
             Write(writer, "coordinate", coordinate);
