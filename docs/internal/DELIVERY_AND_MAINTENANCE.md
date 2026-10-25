@@ -1,12 +1,35 @@
 # SecretKit Delivery And Maintenance
 
 > Audience: SDK maintainers, implementers, reviewers and release owners
-> Status: Proposed / unimplemented
+> Status: Delivery requirements with an implemented public publisher and planned local profile
 > Owner: SecretKit delivery maintainer
 > Last Verified: 2026-10-09, bounded design evidence and local links only
 > Source Anchors: [overview](README.md), [architecture](SDK_ARCHITECTURE.md), [runtime contracts](RUNTIME_CONTRACTS.md), [historical research](RESEARCH_EVIDENCE.md)
 
 This proposal puts documentation and early adopting-consumer evidence before comprehensive feature expansion, with an honest declared-coverage release gate.
+
+## Current delivery direction
+
+The [runtime adoption security contract](RUNTIME_ADOPTION_SECURITY.md) adds
+explicit installed-app and causal-evidence obligations. Keep partial setup
+cleanup, unavailable cases and exact candidate bindings visible; no new support
+claim follows until its corresponding checks are observed.
+
+The accepted 2026-10-23 goal is
+[Infisical-first local qualification](INFISICAL_LOCAL_READINESS.md). Documentation
+is updated before the library implementation plan. The next implementation
+must separate a four-package local application profile from the existing
+seven-package/two-provider `complete-live` public publisher. It must preserve
+unfinished provider work, source-owned admission inventories and public
+approval authority.
+
+Local qualification is complete only for named package bytes, native members,
+scenarios, identities and platforms. It is not package-wide certification,
+Event acceptance or publication approval. No public-publishing or application
+repository implementation phase belongs to this workstream. The
+[local profile ADR](adr/ADR-002-infisical-local-qualification.md) records this
+decision; the sequence below is historical broader delivery context where it
+requires both providers, both application workflows or public publication.
 
 The [accepted 2026-10-11 decision](../public/connector-scope-decision.md)
 supersedes comprehensive connector delivery: the third-party app-connection/
@@ -48,7 +71,9 @@ Missing UI-feature programmable contracts would remain future vendor gates, with
 
 ## Proposed Dependency-Ordered Delivery
 
-These are intended outcomes, not executed milestones or authorization to implement.
+These are historical broader intended outcomes, not the current local-readiness
+phase sequence or authorization to implement. Follow the
+[current local contract](INFISICAL_LOCAL_READINESS.md) for the immediate goal.
 
 | Sequence | Proposed result and exit evidence |
 | --- | --- |

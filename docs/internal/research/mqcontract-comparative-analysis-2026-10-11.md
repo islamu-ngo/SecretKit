@@ -4,6 +4,12 @@
 
 **Purpose:** An extensive comparative engineering report, not an implementation plan or a product-readiness certification.
 
+**Current-scope note (2026-10-23):** This report retains its dated comparison
+and recommendations. The accepted [Infisical local-readiness direction](../INFISICAL_LOCAL_READINESS.md)
+supersedes simultaneous provider completion and public publication as the
+immediate goal; historical stage recommendations below do not add those phases
+to the current workstream.
+
 **MQContract examined:** `roger-castaldo/MQContract`, commit `fcd14d6103a743b4d0688a2633a1ffcf788c6261`.
 
 **SecretKit examined:** commit `f7b1f7aec9f312fc2cbc54d1ea797d02824512ad`.

@@ -7,6 +7,11 @@ Retained native secret features and selected administration remain in scope;
 local post-removal verification passed. The proposal below is preserved as history,
 not current catalog admission or an instruction to restore deleted APIs.
 
+The later [ADR-002](ADR-002-infisical-local-qualification.md) prioritizes
+Infisical-first local qualification without changing public publication
+authority. That decision supersedes this historical proposal's simultaneous
+provider and publishing sequence, not its still-applicable ownership boundaries.
+
 > Audience: SDK maintainers and architecture/security reviewers
 > Status: Proposed / unimplemented; not an accepted or executed decision
 > Owner: SecretKit architecture maintainer

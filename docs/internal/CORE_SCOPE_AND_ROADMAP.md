@@ -1,5 +1,19 @@
 # Core delivery scope and deferred orchestration
 
+## Current priority: local Infisical adoption
+
+The user's 2026-10-23 direction supersedes simultaneous two-provider completion
+as the immediate delivery goal. Build and qualify reusable Infisical access
+through local packages; public publication and changes to Event or Configurator
+are outside this workstream. Preserve Azure, selected administration, unfinished
+provider work and the existing public release protocol.
+
+The [local readiness contract](INFISICAL_LOCAL_READINESS.md) owns current
+behavioral gaps, package/evidence boundaries and implementation sequencing.
+The [public local guide](../public/local-packages.md) owns adopter evaluation.
+The removal decision and historical evidence below remain valid in their dated
+scope; they are not a new local qualification result.
+
 Decision: accepted user scope correction on 2026-10-11, applied to local source.
 It supersedes both comprehensive R6 connector delivery and the intermediate
 keep/preserve requests. The broad third-party Infisical app-connection and
@@ -10,6 +24,13 @@ boundary; [scope and orchestration](../public/scope-and-orchestration.md)
 distinguishes secret access, optional administration and Configurator.
 
 ## Retained scope
+
+The [package-only demo guide](../public/demos-and-recovery.md) owns practical
+startup, activation, request lease, shutdown and recovery guidance, with bounded
+measurement/compatibility evidence. Another backend follows the
+[provider admission decision](PROVIDER_ADMISSION.md), not a catalog-completion
+goal. Unavailable native qualification does not itself prohibit authorized
+implementation, and authorized authoring does not establish native support.
 
 - BCL-only Core with `ISecretReader`, `ISecretInventory`, references, owned
   material and explicit outcomes.

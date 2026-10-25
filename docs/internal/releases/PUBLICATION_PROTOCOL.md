@@ -3,6 +3,14 @@
 Status: local infrastructure, not an authorized or completed release.
 Execution owner: the appointed SecretKit release maintainer.
 
+The accepted 2026-10-23
+[Infisical-first local-readiness direction](../INFISICAL_LOCAL_READINESS.md)
+does not change this public protocol. A planned four-package local qualification
+profile must have a distinct record kind and cannot create a `VerifiedRelease`,
+approval, journal or publication authority. Public NuGet publication and
+completion of this protocol are outside that workstream. Existing seven-package
+and complete-live evidence requirements below remain intact.
+
 Scope note (2026-10-12): the
 [accepted catalog-removal decision](../../public/connector-scope-decision.md)
 supersedes the earlier comprehensive Infisical admission goal. The frozen

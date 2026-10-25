@@ -1,12 +1,20 @@
 # SecretKit SDK Architecture
 
 > Audience: SDK implementers, reviewers and future consumer integrators
-> Status: Proposed / unimplemented
+> Status: Implemented package boundaries with proposed local-readiness changes
 > Owner: SecretKit architecture maintainer
-> Last Verified: 2026-10-09, bounded design evidence and local links only
+> Scope Reviewed: 2026-10-23; current implementation evidence is in current-preview
 > Source Anchors: [internal overview](README.md), [historical research](RESEARCH_EVIDENCE.md), [runtime contracts](RUNTIME_CONTRACTS.md), [ADR-001](adr/ADR-001-capability-aware-secret-sdk.md)
 
 This proposal separates a proven portable read contract from provider-native functionality, configuration export and optional host lifecycle.
+
+The [Infisical local readiness contract](INFISICAL_LOCAL_READINESS.md) now owns
+immediate delivery requirements. Seven packages exist, but the planned local
+application profile selects Core, Infisical and optional configuration/hosting.
+Azure and management remain retained work. No Event-specific binding, bootstrap,
+Data Protection admission or activation service belongs in shipped packages.
+The [local profile decision](adr/ADR-002-infisical-local-qualification.md)
+separates that goal from public publication.
 
 Current scope follows the [accepted catalog-removal decision](../public/connector-scope-decision.md).
 Broad third-party app-connection/sync administration is removed from local
@@ -16,6 +24,11 @@ administration remain; local post-removal verification passed. Other proposed
 behavior below is design, not post-removal verification.
 
 ## Seven Packages And Dependency Direction
+
+The [runtime adoption contract](RUNTIME_ADOPTION_SECURITY.md) and
+[ADR-003](adr/ADR-003-runtime-adoption-security-evidence.md) govern the next
+installed console/worker/web consumers. They do not move application activation
+or ASP.NET dependencies into shipped libraries.
 
 | Proposed package | Responsibility | Proposed dependency boundary |
 | --- | --- | --- |
@@ -84,9 +97,16 @@ The [admission policy and populated registry](DELIVERY_AND_MAINTENANCE.md) are d
 
 ## SDK Reuse And Infisical Transport Decision
 
-Official supported SDKs would be reused where their coverage, license, deployment behavior, cancellation, retries, diagnostics and ownership could satisfy these contracts. Azure's official secret SDK is the preferred candidate, not a completed dependency approval.
+Infisical uses independently handwritten typed Refit/HttpClient contracts.
+Azure uses its selected official SDK dependencies. This workstream preserves
+those existing transport choices rather than reopening SDK selection or adding
+a second Infisical stack.
 
-Managed Infisical REST would be selected only after a documented assessment of official SDK coverage and FFI/native deployment constraints. R4's observed Event self-hosted/native concerns would justify focused investigation, not prove that every current SDK deployment fails. The assessment would identify exact missing operations or unsupported deployment/control seams, test the relevant risk, and explain why configuration or wrapping could not solve it. It would also account for the cost of owning pagination, authentication, response limits and vendor changes.
+Historical Event self-hosted/FFI observations do not establish failure of every
+vendor SDK deployment. Local readiness instead qualifies the existing managed
+transport's current origin, cancellation, limits, ownership and diagnostics
+controls against the selected deployment. Private CA/proxy and DNS behavior are
+explicit test inputs, not reasons for TLS bypass or global networking changes.
 
 The decision would avoid parallel SDK and REST stacks for the same operation merely to preserve Event behavior. If different admitted families needed different transports, their boundary and common security behavior would be explicit and verified. No dependency or generated client would be admitted without compatible approved provenance. No expressive vendor schema/source would be ingested as a design blueprint.
 
@@ -118,4 +138,7 @@ Configurator would own definitions, review UX, intended-identity selection, appl
 - [Infisical dynamic secrets](https://infisical.com/docs/documentation/platform/dynamic-secrets/overview) and [rotation](https://infisical.com/docs/documentation/platform/secret-rotation/overview) ground native side-effect distinctions.
 - [Infisical API overview](https://infisical.com/docs/api-reference/overview/introduction) grounds per-family protocol selection, not a universal version floor.
 
-These sources were cited through bounded R4 evidence, not newly tested. All package surfaces, examples and enforcement described here remain proposed.
+These sources were cited through bounded R4 evidence, not newly tested here.
+Existing surfaces and evidence are recorded in the
+[current preview](../public/current-preview.md); future-tense requirements are
+not an assertion that every existing package or example is unimplemented.

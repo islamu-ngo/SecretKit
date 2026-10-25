@@ -262,7 +262,7 @@
     },
     {
       "file": "src/SecretKit.Infisical/InfisicalClient.cs",
-      "sha256": "636943b0314a6021f0ccb38a1322e10fb7365ee080041588d5c1a2b8e9e9fd5f"
+      "sha256": "2818843c8ea8258c9edef6c49e0b2fd061f91ac237341910e156e6e8469c8c96"
     },
     {
       "file": "src/SecretKit.Infisical/InfisicalContractAvailability.cs",
@@ -290,7 +290,7 @@
     },
     {
       "file": "src/SecretKit.Infisical/InfisicalPeriodicTokenSession.cs",
-      "sha256": "076bbfe944eb6b4ca5cf144b234285f690b6dcca980b735872a4b8edc6afd688"
+      "sha256": "465170507fcfd6e009284b96fc20aab452b5301cf5122959406498c74cee417c"
     },
     {
       "file": "src/SecretKit.Infisical/InfisicalProofAuthentication.cs",
@@ -313,6 +313,14 @@
       "sha256": "ed427d7d65cc6980f5f4f8ef88dbddfc02798166baccfbd2b9cadab1e1397d2c"
     },
     {
+      "file": "src/SecretKit.Infisical/InfisicalSecretRead.cs",
+      "sha256": "e9b22829ccd7b1956c8d2ed6c17820a5d1da923710391089e465611af43342fe"
+    },
+    {
+      "file": "src/SecretKit.Infisical/InfisicalSecretRevision.cs",
+      "sha256": "14a747b309011fb54c8569969713bde53e1624a0d1e01e923e83a7af14b138db"
+    },
+    {
       "file": "src/SecretKit.Infisical/InfisicalStaticChanges.cs",
       "sha256": "a5c38eab7f5d60c9eaec54f37b572a504fc21411e47ec852d85d9920899a2c93"
     },
@@ -326,7 +334,7 @@
     },
     {
       "file": "src/SecretKit.Infisical/InfisicalUniversalAuthentication.cs",
-      "sha256": "169d176b106af148d61e93caf614b5f0d7288da1df2358db8406e984bbca2709"
+      "sha256": "a2c7c555f77eaa906b86a8b8423e4eeee308a074a14c89823a0dada957525541"
     },
     {
       "file": "src/SecretKit.Infisical/NativeAuthority.cs",
@@ -1042,6 +1050,30 @@
         "denied-authority",
         "cancellation-boundary",
         "independent-effect"
+      ],
+      "prerequisites": [
+        "owned-origin-api-revision",
+        "selected-runtime-identity",
+        "separate-observer-identity",
+        "approved-sandbox-cleanup"
+      ]
+    },
+    {
+      "id": "i.runtime.InfisicalClient.ReadNativeAsync",
+      "member": "SecretKit.Infisical.InfisicalClient.ReadNativeAsync(SecretKit.Core.SecretReference,System.Threading.CancellationToken)",
+      "variants": [
+        "latest.Raw.direct",
+        "version.Raw.direct"
+      ],
+      "contract": "implemented-subset",
+      "effect": "Qualify raw non-imported material against returned resource identity, positive version and exact namespace; a resource revision does not describe resolved material or transfer client authority.",
+      "requiredCases": [
+        "selected-contract",
+        "denied-authority",
+        "cancellation-boundary",
+        "independent-effect",
+        "resource-recreation",
+        "missing-provenance"
       ],
       "prerequisites": [
         "owned-origin-api-revision",

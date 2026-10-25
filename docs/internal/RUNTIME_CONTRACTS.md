@@ -1,14 +1,41 @@
 # SecretKit Runtime Contracts
 
 > Audience: SDK implementers, security reviewers and consumer integrators
-> Status: Proposed / unimplemented
+> Status: Runtime requirements with implemented subsets and planned local-readiness refinements
 > Owner: SecretKit runtime and security maintainers
-> Last Verified: 2026-10-09, bounded design evidence and local links only
-> Source Anchors: [architecture](SDK_ARCHITECTURE.md), [delivery](DELIVERY_AND_MAINTENANCE.md), [R4 evidence](../../dev/active/secretkit-sdk/research-evidence.md)
+> Scope Reviewed: 2026-10-23; this documentation update runs no product checks
+> Source Anchors: [architecture](SDK_ARCHITECTURE.md), [delivery](DELIVERY_AND_MAINTENANCE.md), [historical evidence](RESEARCH_EVIDENCE.md)
 
 This proposal defines observable ownership and failure behavior without claiming a remote transaction, replay guarantee or process-wide plaintext protection.
 
+The [local readiness contract](INFISICAL_LOCAL_READINESS.md) distinguishes
+common read/version behavior from qualified native identity/revision.
+`InfisicalClient.ReadNativeAsync` now provides independently owned raw,
+non-imported material and an opaque native revision. Core remains portable and opaque; Infisical-specific revision and
+authentication semantics remain typed in the provider package.
+
+Qualified revisions bind trusted origin, returned resource `id`, namespace and
+positive version, never client identity, observation time or a material hash.
+Returned v4 `workspace`, `environment`, `secretPath`, `type` and `secretKey`
+must agree with the selection. Missing required evidence is Unknown,
+contradictory evidence Invalid and explicit hidden material Denied. No `_id`
+alternate or request-to-observation substitution is admitted. Common reads
+share acquisition/parsing and reject returned coordinate contradictions without
+claiming a qualified revision for resolved/imported material. Inventory never
+delivers material and rejects duplicate names or contradictory returned scope.
+
+Application cache policy, tenant bindings, required/optional grouping, client
+activation, Data Protection admission and replica convergence remain outside
+the SDK. The current all-required generation loader is not a general optional
+settings engine or a remote snapshot. The current token-renewal session has no
+implicit bootstrap callback or re-login policy.
+
 ## Material Ownership And Disposal
+
+The next [runtime adoption increment](RUNTIME_ADOPTION_SECURITY.md) requires
+observable asynchronous app-client retirement outside locks and tests before
+behavior changes. This is nonpackable consumer policy, not a new Core lifetime
+or remote transaction guarantee.
 
 Each successful material acquisition would return an independent caller-owned disposable copy. Two reads or two callers would never receive the same mutable/disposable material owner. Disposing one copy would clear its owned buffer and make further access fail; it would not invalidate another caller's copy or mutate cached storage. Explicit reveal/copy/export operations would delimit plaintext access. Generated record formatting, default serialization and exceptions would not expose material.
 
