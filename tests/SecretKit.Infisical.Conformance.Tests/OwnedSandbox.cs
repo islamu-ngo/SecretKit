@@ -31,23 +31,29 @@ internal sealed class OwnedSandbox : IDisposable
     [JsonIgnore] internal Uri Origin { get; }
     [JsonIgnore] internal string Owner { get; }
     [JsonIgnore] internal string OrganizationId { get; }
+    [JsonIgnore] internal bool Verified { get; private set; }
     internal SecretMaterial CopySetupToken() => _setupToken.Copy();
 
     internal async Task VerifyAsync(string workingDirectory, CancellationToken cancellationToken)
     {
         var pod = await OwnedProcess.RunAsync("podman",
             ["pod", "inspect", Owner, "--format", "{{json .Labels}}"], workingDirectory, cancellationToken: cancellationToken);
-        using var labels = JsonDocument.Parse(pod.Output);
-        if (pod.ExitCode != 0 || !labels.RootElement.TryGetProperty("secretkit-sdk-owned", out var owned) ||
-            owned.GetString() != "true")
-            throw new InvalidOperationException("Sandbox ownership was not established.");
         var image = await OwnedProcess.RunAsync("podman", ["inspect", Owner + "-app", "--format", "{{.ImageDigest}}"],
             workingDirectory, cancellationToken: cancellationToken);
         var ports = await OwnedProcess.RunAsync("podman", ["port", Owner + "-app"],
             workingDirectory, cancellationToken: cancellationToken);
-        if (image.ExitCode != 0 || image.Output.Trim() != AppDigest || ports.ExitCode != 0 ||
-            ports.Output.Trim() != $"8080/tcp -> 127.0.0.1:{Origin.Port}")
+        if (pod.ExitCode != 0 || image.ExitCode != 0 || ports.ExitCode != 0)
             throw new InvalidOperationException("The pinned sandbox image or loopback ingress did not match.");
+        ObserveInspection(pod.Output, image.Output, ports.Output);
+    }
+
+    internal void ObserveInspection(string podLabels, string digest, string ingress)
+    {
+        using var labels = JsonDocument.Parse(podLabels);
+        if (!labels.RootElement.TryGetProperty("secretkit-sdk-owned", out var owned) || owned.GetString() != "true" ||
+            digest.Trim() != AppDigest || ingress.Trim() != $"8080/tcp -> 127.0.0.1:{Origin.Port}")
+            throw new InvalidOperationException("Sandbox ownership was not established.");
+        Verified = true;
     }
 
     public void Dispose() => _setupToken.Dispose();
