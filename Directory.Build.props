@@ -16,7 +16,7 @@
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <PackageReleaseNotes>Development preview. See the declared operation registry for implemented and verified depth.</PackageReleaseNotes>
+    <PackageReleaseNotes>In development. Not ready for production. APIs may change without backward compatibility. See the declared operation registry for implemented and verified depth.</PackageReleaseNotes>
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     <IsPackable Condition="'$(IsPackable)' == ''">false</IsPackable>
