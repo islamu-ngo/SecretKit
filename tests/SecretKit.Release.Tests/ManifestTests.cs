@@ -5,6 +5,21 @@ namespace SecretKit.Release.Tests;
 public sealed class ManifestTests
 {
     [Test]
+    public async Task LocalQualificationCannotBecomePublicCandidateOrVerifiedRelease()
+    {
+        using var local = new LocalQualificationTests.LocalFixture();
+        await Assert.That(await Program.Main(["local-prepare", local.Source, local.Packages, local.Output]))
+            .IsEqualTo(0);
+        using var bundle = new TestBundle();
+        byte[] bytes = File.ReadAllBytes(local.RecordPath);
+        File.WriteAllBytes(Path.Combine(bundle.Root, "manifest.json"), bytes);
+        await Assert.That(bundle.Verify).Throws<ReleaseException>();
+        await Assert.That(() => Manifest.CheckCandidate(bundle.Root, new IndependentEvidence(bundle.OracleRoot)))
+            .Throws<ReleaseException>();
+        await Assert.That(Directory.Exists(bundle.JournalPath)).IsFalse();
+    }
+
+    [Test]
     [Arguments("runtime")]
     [Arguments("observer")]
     [Arguments("setup")]

@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "kind": "local-profile",
+  "id": "infisical-runtime",
+  "version": "0.1.0-local.20261024.1",
+  "nativeReadPolicy": "Raw IncludeImports=false",
+  "packageIds": [
+    "SecretKit.Core",
+    "SecretKit.Infisical",
+    "SecretKit.Extensions.Configuration",
+    "SecretKit.Extensions.Hosting"
+  ],
+  "operations": [
+    {
+      "id": "read",
+      "member": "SecretKit.Infisical.InfisicalClient.ReadAsync(SecretKit.Core.SecretReference,System.Threading.CancellationToken)"
+    },
+    {
+      "id": "inspect",
+      "member": "SecretKit.Infisical.InfisicalClient.InspectAsync(SecretKit.Core.SecretInventoryScope,System.Threading.CancellationToken)"
+    },
+    {
+      "id": "create",
+      "member": "SecretKit.Infisical.InfisicalClient.CreateAsync(SecretKit.Core.SecretReference,SecretKit.Core.SecretMaterial,SecretKit.Core.MutationReceipt,System.Threading.CancellationToken)"
+    },
+    {
+      "id": "update-value",
+      "member": "SecretKit.Infisical.InfisicalClient.UpdateValueAsync(SecretKit.Core.SecretReference,SecretKit.Core.SecretMaterial,SecretKit.Core.MutationReceipt,System.Threading.CancellationToken)"
+    },
+    {
+      "id": "universal-login",
+      "member": "SecretKit.Infisical.InfisicalUniversalAuthentication.LoginAsync(System.String,SecretKit.Core.SecretMaterial,SecretKit.Infisical.InfisicalUniversalLoginReceipt,System.String,System.Threading.CancellationToken)"
+    },
+    {
+      "id": "get-token",
+      "member": "SecretKit.Infisical.InfisicalPeriodicTokenSession.GetTokenAsync(System.Threading.CancellationToken)"
+    },
+    {
+      "id": "renew-token",
+      "member": "SecretKit.Infisical.InfisicalPeriodicTokenSession.RenewAsync(System.Threading.CancellationToken)"
+    },
+    {
+      "id": "read-native",
+      "member": "SecretKit.Infisical.InfisicalClient.ReadNativeAsync(SecretKit.Core.SecretReference,System.Threading.CancellationToken)"
+    }
+  ],
+  "scenarios": [
+    "S01", "S02", "S03", "S04", "S05", "S06", "S07", "S08",
+    "S09", "S10", "S11", "S12", "S13", "S14", "S15", "S16"
+  ]
+}

@@ -10,6 +10,42 @@ public static class Program
     {
         try
         {
+            if (args is ["local-demo-prepare", string demoSource, string demoOriginals,
+                string demoQualification, string demoOutput, string demoCommit, string demoRun,
+                string demoAttempt, string demoSdk])
+            {
+                await DemoInputs.PrepareAsync(demoSource, demoOriginals, demoQualification, demoOutput,
+                    demoCommit, long.Parse(demoRun, NumberStyles.None, CultureInfo.InvariantCulture),
+                    int.Parse(demoAttempt, NumberStyles.None, CultureInfo.InvariantCulture), demoSdk);
+                Console.WriteLine("ci-temporary-demo-inputs-prepared-not-native-qualified");
+                return 0;
+            }
+
+            if (args is ["local-demo-check", string demoCheckSource, string demoDirectory,
+                string checkCommit, string checkRun, string checkAttempt, string checkSdk])
+            {
+                _ = DemoInputs.Check(demoCheckSource, demoDirectory, checkCommit,
+                    long.Parse(checkRun, NumberStyles.None, CultureInfo.InvariantCulture),
+                    int.Parse(checkAttempt, NumberStyles.None, CultureInfo.InvariantCulture), checkSdk);
+                await DemoInputs.RequireSdkAsync(demoCheckSource, checkSdk);
+                Console.WriteLine("ci-temporary-demo-inputs-consistent-not-native-qualified");
+                return 0;
+            }
+
+            if (args is ["local-prepare", string localSource, string localOriginals, string localOutput])
+            {
+                LocalQualification.Prepare(localSource, localOriginals, localOutput);
+                Console.WriteLine("local-prepared-not-native-qualified");
+                return 0;
+            }
+
+            if (args is ["local-check", string checkSource, string checkOriginals, string localRecord])
+            {
+                LocalQualification.Check(checkSource, checkOriginals, localRecord);
+                Console.WriteLine("local-content-consistent-not-native-qualified");
+                return 0;
+            }
+
             if (args is ["workflow-check", string workflow])
             {
                 WorkflowPolicy.Validate(File.ReadAllBytes(workflow));
