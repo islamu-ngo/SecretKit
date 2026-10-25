@@ -10,6 +10,82 @@ namespace SecretKit.Infisical.Tests;
 public sealed class InfisicalReadTests
 {
     [Test]
+    [Arguments("workspace", "foreign-project")]
+    [Arguments("environment", "foreign-environment")]
+    [Arguments("secretPath", "/foreign")]
+    [Arguments("type", "personal")]
+    public async Task ReturnedScopeContradictionsNeverPublishCommonMaterial(string field, string foreign)
+    {
+        var secret = new Dictionary<string, object>
+        {
+            ["id"] = "resource-one",
+            ["workspace"] = "project",
+            ["environment"] = "test",
+            ["secretPath"] = "/",
+            ["type"] = "shared",
+            ["secretKey"] = "test-key",
+            ["version"] = 1,
+            ["secretValue"] = NewMaterial(),
+            ["secretValueHidden"] = false
+        };
+        secret[field] = foreign;
+        await using InfisicalClient client = Client(new WireHandler((_, _) =>
+            Task.FromResult(Json(new { secret }))));
+
+        SecretOutcome<SecretRead> outcome = await client.ReadAsync(Reference(client));
+        using SecretRead? read = outcome.IsSuccess ? outcome.Value : null;
+
+        await Assert.That(outcome.Status).IsEqualTo(SecretStatus.Invalid);
+        await Assert.That(() => outcome.Value).Throws<InvalidOperationException>();
+    }
+
+    [Test]
+    public async Task DuplicateInventoryRowsCannotBecomeCompleteFolderEvidence()
+    {
+        await using InfisicalClient client = Client(new WireHandler((_, _) =>
+            Task.FromResult(Json(new
+            {
+                secrets = new[]
+                {
+                    new { secretKey = "duplicate", version = 1 },
+                    new { secretKey = "duplicate", version = 1 }
+                }
+            }))));
+
+        SecretOutcome<SecretInventory> outcome = await client.InspectAsync(
+            new InfisicalInventoryScope(client.Authority, "project", "test", "/"));
+
+        await Assert.That(outcome.Status).IsEqualTo(SecretStatus.Invalid);
+        await Assert.That(() => outcome.Value).Throws<InvalidOperationException>();
+    }
+
+    [Test]
+    [Arguments("workspace", "foreign-project")]
+    [Arguments("environment", "foreign-environment")]
+    [Arguments("secretPath", "/foreign")]
+    [Arguments("type", "personal")]
+    public async Task ForeignInventoryRowsCannotBeRelabeledAsSelectedFolder(string field, string foreign)
+    {
+        var row = new Dictionary<string, object>
+        {
+            ["workspace"] = "project",
+            ["environment"] = "test",
+            ["secretPath"] = "/",
+            ["type"] = "shared",
+            ["secretKey"] = "one",
+            ["version"] = 1,
+            ["secretValue"] = "inventory-material-canary"
+        };
+        row[field] = foreign;
+        await using InfisicalClient client = Client(new WireHandler((_, _) =>
+            Task.FromResult(Json(new { secrets = new[] { row } }))));
+        var result = await client.InspectAsync(new InfisicalInventoryScope(client.Authority, "project", "test", "/"));
+        await Assert.That(result.Status).IsEqualTo(SecretStatus.Invalid);
+        await Assert.That(() => result.Value).Throws<InvalidOperationException>();
+        await Assert.That(JsonSerializer.Serialize(result).Contains("canary", StringComparison.Ordinal)).IsFalse();
+    }
+
+    [Test]
     public async Task NativeReadPreservesBytesAndExplicitVersion()
     {
         string value = NewMaterial() + "\r\n \n";

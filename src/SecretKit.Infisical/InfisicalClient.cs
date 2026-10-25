@@ -10,7 +10,7 @@ namespace SecretKit.Infisical;
 
 /// <summary>
 /// Native v4 reads through one immutable origin and host-selected identity.
-/// Owns its HTTP transport; the supplied token source remains host-owned.
+/// Owns its default transport; supplied token sources and transports remain host-owned.
 /// </summary>
 public sealed partial class InfisicalClient : ISecretReader, ISecretInventory, IAsyncDisposable
 {
@@ -30,12 +30,26 @@ public sealed partial class InfisicalClient : ISecretReader, ISecretInventory, I
 
     public InfisicalClient(Uri origin, IInfisicalTokenSource tokens,
         InfisicalNetworkOptions? network = null, TimeProvider? timeProvider = null)
-        : this(origin, tokens, network ?? new InfisicalNetworkOptions(), timeProvider, null)
+        : this(origin, tokens, network ?? new InfisicalNetworkOptions(), timeProvider, null, true)
+    {
+    }
+
+    /// <summary>The validated supplied transport remains host-owned.</summary>
+    public InfisicalClient(Uri origin, SocketsHttpHandler hostTransport, IInfisicalTokenSource tokens,
+        InfisicalNetworkOptions? network = null, TimeProvider? timeProvider = null)
+        : this(origin, tokens, network ?? new(), timeProvider, ValidateReadTransport(hostTransport), false)
     {
     }
 
     internal InfisicalClient(Uri origin, IInfisicalTokenSource tokens,
         InfisicalNetworkOptions network, TimeProvider? timeProvider, HttpMessageHandler? testHandler)
+        : this(origin, tokens, network, timeProvider, testHandler, true)
+    {
+    }
+
+    private InfisicalClient(Uri origin, IInfisicalTokenSource tokens,
+        InfisicalNetworkOptions network, TimeProvider? timeProvider, HttpMessageHandler? testHandler,
+        bool ownsHandler)
     {
         ArgumentNullException.ThrowIfNull(origin);
         ArgumentNullException.ThrowIfNull(tokens);
@@ -66,9 +80,23 @@ public sealed partial class InfisicalClient : ISecretReader, ISecretInventory, I
             UseCookies = false,
             Proxy = network.Proxy,
             ActivityHeadersPropagator = null
-        }, disposeHandler: true)
+        }, disposeHandler: ownsHandler)
         { Timeout = Timeout.InfiniteTimeSpan, BaseAddress = _origin };
         _staticWire = RestService.For<IInfisicalStaticWire>(_http);
+    }
+
+    private static SocketsHttpHandler ValidateReadTransport(SocketsHttpHandler handler)
+    {
+        ArgumentNullException.ThrowIfNull(handler);
+        if (handler.AllowAutoRedirect || handler.UseCookies || handler.ActivityHeadersPropagator is not null ||
+            handler.SslOptions.RemoteCertificateValidationCallback is not null ||
+            handler.SslOptions.CertificateChainPolicy is
+            {
+                VerificationFlags: not
+                System.Security.Cryptography.X509Certificates.X509VerificationFlags.NoFlag
+            })
+            throw new ArgumentException("Transport must preserve TLS validation and disable redirects, cookies and activity propagation.");
+        return handler;
     }
 
     public SecretAuthority Authority { get; } = new();
@@ -76,11 +104,37 @@ public sealed partial class InfisicalClient : ISecretReader, ISecretInventory, I
     public async ValueTask<SecretOutcome<SecretRead>> ReadAsync(
         SecretReference reference, CancellationToken cancellationToken = default)
     {
+        SecretOutcome<AcquiredRead> outcome = await AcquireReadAsync(reference, false, cancellationToken)
+            .ConfigureAwait(false);
+        return outcome.IsSuccess
+            ? SecretOutcome<SecretRead>.Success(new SecretRead(outcome.Value.Material, outcome.Value.Observation))
+            : SecretOutcome<SecretRead>.Failure(outcome.Status, outcome.RetryAfter);
+    }
+
+    /// <summary>Qualifies only raw, non-imported reads; resolved material has no resource-only revision.</summary>
+    public async ValueTask<SecretOutcome<InfisicalSecretRead>> ReadNativeAsync(
+        SecretReference reference, CancellationToken cancellationToken = default)
+    {
+        SecretOutcome<AcquiredRead> outcome = await AcquireReadAsync(reference, true, cancellationToken)
+            .ConfigureAwait(false);
+        return outcome.IsSuccess
+            ? SecretOutcome<InfisicalSecretRead>.Success(new InfisicalSecretRead(
+                outcome.Value.Material, outcome.Value.Observation, outcome.Value.Revision!))
+            : SecretOutcome<InfisicalSecretRead>.Failure(outcome.Status, outcome.RetryAfter);
+    }
+
+    private sealed record AcquiredRead(SecretMaterial Material, SecretObservation Observation,
+        InfisicalSecretRevision? Revision);
+
+    private async ValueTask<SecretOutcome<AcquiredRead>> AcquireReadAsync(
+        SecretReference reference, bool qualifyRevision, CancellationToken cancellationToken)
+    {
         ArgumentNullException.ThrowIfNull(reference);
         cancellationToken.ThrowIfCancellationRequested();
-        if (!reference.BelongsTo(Authority) || reference.Address is not InfisicalSecretAddress address)
+        if (!reference.BelongsTo(Authority) || reference.Address is not InfisicalSecretAddress address ||
+            qualifyRevision && (address.Resolution != InfisicalResolution.Raw || address.IncludeImports))
         {
-            return SecretOutcome<SecretRead>.Failure(SecretStatus.Invalid);
+            return SecretOutcome<AcquiredRead>.Failure(SecretStatus.Invalid);
         }
 
         BeginOperation();
@@ -94,7 +148,7 @@ public sealed partial class InfisicalClient : ISecretReader, ISecretInventory, I
             SecretOutcome<JsonDocument> outcome = await ReadDocumentAsync(request, linked.Token).ConfigureAwait(false);
             if (!outcome.IsSuccess)
             {
-                return SecretOutcome<SecretRead>.Failure(outcome.Status, outcome.RetryAfter);
+                return SecretOutcome<AcquiredRead>.Failure(outcome.Status, outcome.RetryAfter);
             }
 
             using JsonDocument document = outcome.Value;
@@ -104,43 +158,60 @@ public sealed partial class InfisicalClient : ISecretReader, ISecretInventory, I
                 !secret.TryGetProperty("secretValue", out JsonElement value) ||
                 value.ValueKind != JsonValueKind.String)
             {
-                return SecretOutcome<SecretRead>.Failure(SecretStatus.Unknown);
+                return SecretOutcome<AcquiredRead>.Failure(SecretStatus.Unknown);
             }
 
             if (!secret.TryGetProperty("secretKey", out JsonElement returnedKey) ||
                 returnedKey.ValueKind != JsonValueKind.String)
             {
-                return SecretOutcome<SecretRead>.Failure(SecretStatus.Unknown);
+                return SecretOutcome<AcquiredRead>.Failure(SecretStatus.Unknown);
             }
 
             if (!string.Equals(returnedKey.GetString(), address.Key, StringComparison.Ordinal))
             {
-                return SecretOutcome<SecretRead>.Failure(SecretStatus.Invalid);
+                return SecretOutcome<AcquiredRead>.Failure(SecretStatus.Invalid);
             }
 
             if (!secret.TryGetProperty("secretValueHidden", out JsonElement hidden) ||
                 hidden.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
             {
-                return SecretOutcome<SecretRead>.Failure(SecretStatus.Unknown);
+                return SecretOutcome<AcquiredRead>.Failure(SecretStatus.Unknown);
             }
 
             if (hidden.GetBoolean())
             {
-                return SecretOutcome<SecretRead>.Failure(SecretStatus.Denied);
+                return SecretOutcome<AcquiredRead>.Failure(SecretStatus.Denied);
             }
+
+            SecretStatus provenance = ReadScope(secret, address.ProjectId, address.Environment,
+                address.Folder, qualifyRevision);
+            if (provenance != SecretStatus.Success)
+                return SecretOutcome<AcquiredRead>.Failure(provenance);
 
             linked.Token.ThrowIfCancellationRequested();
             string? observedVersion = Version(secret);
             if (address.Version is { } requestedVersion &&
                 observedVersion != requestedVersion.ToString(CultureInfo.InvariantCulture))
             {
-                return SecretOutcome<SecretRead>.Failure(observedVersion is null
+                return SecretOutcome<AcquiredRead>.Failure(observedVersion is null
                     ? SecretStatus.Unknown : SecretStatus.Invalid);
             }
 
+            InfisicalSecretRevision? revision = null;
+            if (qualifyRevision)
+            {
+                string? resource = NativeString(secret, "id");
+                if (string.IsNullOrWhiteSpace(resource) || resource.Length > 1024 ||
+                    resource.Any(char.IsControl) || !secret.TryGetProperty("version", out JsonElement nativeVersion) ||
+                    nativeVersion.ValueKind != JsonValueKind.Number ||
+                    !nativeVersion.TryGetInt32(out int version) || version <= 0)
+                    return SecretOutcome<AcquiredRead>.Failure(SecretStatus.Unknown);
+                revision = new(_origin, address.ProjectId, address.Environment, address.Folder, resource, version);
+            }
+
             var observation = new SecretObservation(reference, observedVersion, _time.GetUtcNow(), SecretValidity.Valid);
-            return SecretOutcome<SecretRead>.Success(new SecretRead(
-                SecretMaterial.FromText(value.GetString()!), observation));
+            return SecretOutcome<AcquiredRead>.Success(new(
+                SecretMaterial.FromText(value.GetString()!), observation, revision));
         }
         finally
         {
@@ -181,6 +252,7 @@ public sealed partial class InfisicalClient : ISecretReader, ISecretInventory, I
             }
 
             var observations = new List<SecretObservation>();
+            var names = new HashSet<string>(StringComparer.Ordinal);
             foreach (JsonElement secret in secrets.EnumerateArray())
             {
                 linked.Token.ThrowIfCancellationRequested();
@@ -200,6 +272,11 @@ public sealed partial class InfisicalClient : ISecretReader, ISecretInventory, I
                 {
                     return SecretOutcome<SecretInventory>.Failure(SecretStatus.Unknown);
                 }
+
+                SecretStatus provenance = ReadScope(secret, folder.ProjectId, folder.Environment, folder.Folder, false);
+                if (provenance != SecretStatus.Success || !names.Add(name))
+                    return SecretOutcome<SecretInventory>.Failure(
+                        provenance == SecretStatus.Success ? SecretStatus.Invalid : provenance);
 
                 var address = new InfisicalSecretAddress(folder.ProjectId, folder.Environment, folder.Folder, name);
                 observations.Add(new SecretObservation(new SecretReference(Authority, address), Version(secret),
@@ -368,6 +445,25 @@ public sealed partial class InfisicalClient : ISecretReader, ISecretInventory, I
         secret.TryGetProperty("version", out JsonElement version) && version.ValueKind == JsonValueKind.Number &&
             version.TryGetInt32(out int number)
             ? number.ToString(CultureInfo.InvariantCulture) : null;
+
+    private static SecretStatus ReadScope(JsonElement secret, string project, string environment,
+        string folder, bool required)
+    {
+        foreach ((string field, string expected) in new[]
+        {
+            ("workspace", project), ("environment", environment), ("secretPath", folder), ("type", "shared")
+        })
+        {
+            if (!secret.TryGetProperty(field, out JsonElement value))
+            {
+                if (required) return SecretStatus.Unknown;
+                continue;
+            }
+            if (value.ValueKind != JsonValueKind.String) return SecretStatus.Unknown;
+            if (!string.Equals(value.GetString(), expected, StringComparison.Ordinal)) return SecretStatus.Invalid;
+        }
+        return SecretStatus.Success;
+    }
 
     private static string Boolean(bool value) => value ? "true" : "false";
 

@@ -100,6 +100,30 @@ public sealed class InfisicalMutationTests
     }
 
     [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task DefiniteRejectionIsNotAnUnknownWriteAndCannotReuseItsReceipt(bool update)
+    {
+        var backend = new Backend { Reject = true };
+        await using InfisicalClient client = Client(backend);
+        SecretReference target = Target(client);
+        var receipt = new MutationReceipt(target);
+        using SecretMaterial material = SecretMaterial.FromText(Material());
+
+        SecretOutcome<InfisicalStaticChange> result = update
+            ? await client.UpdateValueAsync(target, material, receipt)
+            : await client.CreateAsync(target, material, receipt);
+
+        await Assert.That(result.Status).IsEqualTo(SecretStatus.Denied);
+        await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.Rejected);
+        await Assert.That(() => result.Value).Throws<InvalidOperationException>();
+        await Assert.That((await client.ReadAsync(target)).Status).IsEqualTo(SecretStatus.Absent);
+        SecretOutcome<InfisicalStaticChange> replay = await client.CreateAsync(target, material, receipt);
+        await Assert.That(replay.Status).IsEqualTo(SecretStatus.Invalid);
+        await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.Rejected);
+    }
+
+    [Test]
     public async Task CancelBeforeDispatchDoesNotAcquireCredentialsOrChangeState()
     {
         var backend = new Backend();
@@ -134,6 +158,12 @@ public sealed class InfisicalMutationTests
         await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.PossiblyDispatched);
         using SecretRead observed = (await client.ReadAsync(target)).Value;
         await Assert.That(observed.Observation.Version).IsEqualTo("1");
+        await Assert.That(observed.Material.Reveal()).IsEqualTo(material.Reveal());
+        SecretOutcome<InfisicalStaticChange> replay = await client.CreateAsync(target, material, receipt);
+        await Assert.That(replay.Status).IsEqualTo(SecretStatus.Invalid);
+        await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.PossiblyDispatched);
+        using SecretRead unchanged = (await client.ReadAsync(target)).Value;
+        await Assert.That(unchanged.Observation.Version).IsEqualTo("1");
     }
 
     [Test]
@@ -175,6 +205,7 @@ public sealed class InfisicalMutationTests
         public bool Approval { get; init; }
         public bool HoldResponse { get; init; }
         public bool AmbiguousResponse { get; init; }
+        public bool Reject { get; init; }
         public TaskCompletionSource Committed { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly TaskCompletionSource _never = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -195,6 +226,11 @@ public sealed class InfisicalMutationTests
                 !body.RootElement.GetProperty("skipMultilineEncoding").GetBoolean())
             {
                 return Json(400, new { });
+            }
+
+            if (Reject)
+            {
+                return Json(403, new { });
             }
 
             if (Approval)
