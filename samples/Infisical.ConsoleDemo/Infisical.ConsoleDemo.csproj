@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>14.0</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <Deterministic>true</Deterministic>
+    <IsPackable>false</IsPackable>
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../Infisical.Demos/DemoInput.cs" Link="DemoInput.cs" />
+    <Compile Include="../Infisical.Demos/DemoInputReader.cs" Link="DemoInputReader.cs" />
+    <Compile Include="../Infisical.Demos/MutationInput.cs" Link="MutationInput.cs" />
+    <Compile Include="../Infisical.Demos/DemoTokenSource.cs" Link="DemoTokenSource.cs" />
+    <Compile Include="../Infisical.Demos/DemoOutput.cs" Link="DemoOutput.cs" />
+    <PackageReference Include="SecretKit.Core" Version="[$(SecretKitCandidateVersion)]" />
+    <PackageReference Include="SecretKit.Infisical" Version="[$(SecretKitCandidateVersion)]" />
+  </ItemGroup>
+  <Target Name="RequireCandidate" BeforeTargets="CollectPackageReferences;PrepareForBuild">
+    <Error Condition="'$(SecretKitCandidateVersion)' == ''" Text="SecretKitCandidateVersion is required." />
+  </Target>
+</Project>
