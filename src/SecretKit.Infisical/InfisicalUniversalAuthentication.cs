@@ -154,7 +154,8 @@ public sealed class InfisicalUniversalAuthentication : IDisposable
             if (text.Length is < 1 or > 16384 || text.Any(c => c <= ' ' || c >= 127))
                 return SecretOutcome<InfisicalUniversalLogin>.Failure(SecretStatus.Unknown);
             DateTimeOffset expiresAt = sentAt.AddSeconds(seconds);
-            var result = new InfisicalUniversalLogin(new(SecretMaterial.FromText(text), expiresAt), seconds, max);
+            var result = new InfisicalUniversalLogin(new(SecretMaterial.FromText(text), expiresAt),
+                seconds, max, _origin, sentAt, _time);
             receipt.Record(DispatchEvidence.Applied);
             if (cancellationToken.IsCancellationRequested)
             {
@@ -211,15 +212,48 @@ internal interface IInfisicalUniversalAuthenticationApi
 /// <summary>Reported expiry only, never an inferred original finite ceiling.</summary>
 public sealed class InfisicalUniversalLogin : IDisposable
 {
-    internal InfisicalUniversalLogin(InfisicalAccessToken token, double expiresIn, double maximum)
+    internal InfisicalUniversalLogin(InfisicalAccessToken token, double expiresIn, double maximum,
+        Uri origin, DateTimeOffset requestStartedAt, TimeProvider timeProvider)
     {
         Token = token;
         ExpiresIn = expiresIn;
         AccessTokenMaxTTL = maximum;
+        Origin = origin;
+        RequestStartedAt = requestStartedAt;
+        TimeProvider = timeProvider;
     }
+    internal Uri Origin { get; }
+    internal TimeProvider TimeProvider { get; }
     [JsonIgnore] public InfisicalAccessToken Token { get; }
     public double ExpiresIn { get; }
     public double AccessTokenMaxTTL { get; }
+    /// <summary>A conservative caller-observed bound, not proof of server issuance time.</summary>
+    public DateTimeOffset RequestStartedAt { get; }
+
+    /// <summary>
+    /// Binds the host's independently verified token/deployment policy to this exact login.
+    /// Preserves reported expiry and original timing; does not verify the policy itself.
+    /// </summary>
+    public InfisicalTokenLifetimeEvidence BindLifetimeEvidence(InfisicalTokenLifetimeEvidence verifiedEvidence)
+    {
+        ArgumentNullException.ThrowIfNull(verifiedEvidence);
+        if (verifiedEvidence.Login is not null && !ReferenceEquals(verifiedEvidence.Login, this) ||
+            verifiedEvidence.ExpiresAt != Token.ExpiresAt ||
+            verifiedEvidence.OriginalIssuedAt > RequestStartedAt ||
+            verifiedEvidence.ReportedMaximumTtl.TotalSeconds != AccessTokenMaxTTL)
+            throw new ArgumentException("Lifetime evidence does not match this login.", nameof(verifiedEvidence));
+        return new InfisicalTokenLifetimeEvidence
+        {
+            Login = this,
+            OriginalIssuedAt = verifiedEvidence.OriginalIssuedAt,
+            ExpiresAt = verifiedEvidence.ExpiresAt,
+            Lifetime = verifiedEvidence.Lifetime,
+            ReportedMaximumTtl = verifiedEvidence.ReportedMaximumTtl,
+            Period = verifiedEvidence.Period,
+            AbsoluteLifetimeLimit = verifiedEvidence.AbsoluteLifetimeLimit
+        };
+    }
+
     public void Dispose() => Token.Dispose();
     public override string ToString() => "[InfisicalUniversalLogin]";
 }

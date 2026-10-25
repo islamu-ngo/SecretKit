@@ -17,12 +17,15 @@ public enum InfisicalTokenLifetime
 }
 
 /// <summary>
-/// Host-verified facts for this token and deployment, not defaults inferred from a login.
+/// Host-asserted facts for this token and deployment, not defaults inferred from a login.
 /// A finite ceiling is always measured from OriginalIssuedAt, including on renewal.
+/// OriginalIssuedAt is verified original timing or an explicitly conservative lower bound;
+/// a caller-observed request timestamp is not proof of server issuance.
 /// Periodic semantics must have been independently verified; zero MaxTTL alone proves nothing.
 /// </summary>
 public sealed class InfisicalTokenLifetimeEvidence
 {
+    internal InfisicalUniversalLogin? Login { get; init; }
     public required DateTimeOffset OriginalIssuedAt { get; init; }
     public required DateTimeOffset ExpiresAt { get; init; }
     public required InfisicalTokenLifetime Lifetime { get; init; }
@@ -84,6 +87,40 @@ public sealed class InfisicalPeriodicTokenSession : IInfisicalTokenSource, IAsyn
     private Task? _stopTask;
     private Task? _disposeTask;
 
+    /// <summary>
+    /// Copies this login's token using evidence bound by BindLifetimeEvidence. The login
+    /// and session own independent material; disposing the login does not stop the session.
+    /// </summary>
+    public InfisicalPeriodicTokenSession(InfisicalUniversalLogin login,
+        InfisicalTokenLifetimeEvidence verifiedEvidence, TimeSpan renewBefore,
+        TimeSpan requestTimeout, InfisicalNetworkOptions? network = null, TimeProvider? timeProvider = null)
+        : this((login ?? throw new ArgumentNullException(nameof(login))).Origin,
+            login.Token.Material, ValidateLoginEvidence(login, verifiedEvidence),
+            renewBefore, requestTimeout, network ?? new(), timeProvider ?? login.TimeProvider, null, true)
+    {
+    }
+
+    /// <summary>The validated supplied transport remains host-owned.</summary>
+    public InfisicalPeriodicTokenSession(InfisicalUniversalLogin login,
+        InfisicalTokenLifetimeEvidence verifiedEvidence, TimeSpan renewBefore,
+        TimeSpan requestTimeout, SocketsHttpHandler hostTransport,
+        InfisicalNetworkOptions? network = null, TimeProvider? timeProvider = null)
+        : this((login ?? throw new ArgumentNullException(nameof(login))).Origin,
+            login.Token.Material, ValidateLoginEvidence(login, verifiedEvidence),
+            renewBefore, requestTimeout, network ?? new(), timeProvider ?? login.TimeProvider,
+            ValidateHostTransport(hostTransport), false)
+    {
+    }
+
+    private static InfisicalTokenLifetimeEvidence ValidateLoginEvidence(InfisicalUniversalLogin login,
+        InfisicalTokenLifetimeEvidence evidence)
+    {
+        ArgumentNullException.ThrowIfNull(evidence);
+        if (!ReferenceEquals(evidence.Login, login))
+            throw new ArgumentException("Lifetime evidence must be bound to this login.", nameof(evidence));
+        return evidence;
+    }
+
     public InfisicalPeriodicTokenSession(Uri origin, SecretMaterial? existingToken,
         InfisicalTokenLifetimeEvidence verifiedEvidence, TimeSpan renewBefore,
         TimeSpan requestTimeout, InfisicalNetworkOptions? network = null, TimeProvider? timeProvider = null)
@@ -113,6 +150,9 @@ public sealed class InfisicalPeriodicTokenSession : IInfisicalTokenSource, IAsyn
         ArgumentNullException.ThrowIfNull(origin);
         ArgumentNullException.ThrowIfNull(verifiedEvidence);
         ArgumentNullException.ThrowIfNull(network);
+        if (verifiedEvidence.Login is { } login &&
+            (!ReferenceEquals(existingToken, login.Token.Material) || origin != login.Origin))
+            throw new ArgumentException("Lifetime evidence cannot authorize another token or origin.", nameof(verifiedEvidence));
         bool development = origin.IsAbsoluteUri && origin.IsLoopback &&
             origin.Scheme == Uri.UriSchemeHttp && network.AllowLoopbackDevelopmentHttp;
         if (!origin.IsAbsoluteUri || (origin.Scheme != Uri.UriSchemeHttps && !development) ||
@@ -186,7 +226,7 @@ public sealed class InfisicalPeriodicTokenSession : IInfisicalTokenSource, IAsyn
         else
             return false;
         return (LifetimeLimit is not { } limit || (_expiresAt <= limit && limit > now)) &&
-            _expiresAt - now > _renewBefore;
+            _expiresAt > now;
     }
 
     public TimeProvider TimeProvider => _time;

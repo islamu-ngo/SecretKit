@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Diagnostics.Metrics;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -11,6 +13,24 @@ namespace SecretKit.Hosting.Tests;
 public sealed class TokenMaintenanceTests
 {
     private static readonly DateTimeOffset Epoch = new(2040, 1, 1, 0, 0, 0, TimeSpan.Zero);
+
+    [Test]
+    public async Task ValidTokenHandedOffInsideRenewalWindowRemainsUsableAndCanRenew()
+    {
+        var time = new ManualTime(Epoch.AddSeconds(55));
+        await using var session = Session(time, new Wire((_, _) => Task.FromResult(Json("renewed"))));
+
+        var initial = await session.GetTokenAsync(CancellationToken.None);
+        using var token = initial.IsSuccess ? initial.Value : null;
+        await Assert.That(initial.Status).IsEqualTo(SecretStatus.Success);
+        await Assert.That(token!.ExpiresAt).IsEqualTo(Epoch.AddSeconds(60));
+        await Assert.That(session.State).IsEqualTo(InfisicalTokenSessionState.RenewalDue);
+        await Assert.That(session.LastRenewal).IsNull();
+
+        await Assert.That(await session.RenewAsync()).IsEqualTo(SecretStatus.Success);
+        using var renewed = (await session.GetTokenAsync(CancellationToken.None)).Value;
+        await Assert.That(renewed.Material.Reveal()).IsEqualTo("renewed");
+    }
 
     [Test]
     public async Task ConcurrentRenewalUsesNativeBodyAndIndependentWaiterCancellation()
@@ -429,6 +449,75 @@ public sealed class TokenMaintenanceTests
         Lifetime = InfisicalTokenLifetime.Finite,
         ReportedMaximumTtl = TimeSpan.FromSeconds(120)
     };
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task ScheduledRenewalPublishesOnlyAcknowledgedMaterialAndNeverReplays(bool loseResponse)
+    {
+        const string canary = "hosted-renewal-protected-71c2";
+        var captured = new System.Collections.Concurrent.ConcurrentQueue<string>();
+        using var activities = new ActivityListener
+        {
+            ShouldListenTo = _ => true,
+            Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllDataAndRecorded,
+            ActivityStopped = activity =>
+            {
+                foreach (var tag in activity.TagObjects) captured.Enqueue($"{tag.Key}:{tag.Value}");
+                foreach (var item in activity.Events)
+                    foreach (var tag in item.Tags) captured.Enqueue($"{tag.Key}:{tag.Value}");
+            }
+        };
+        ActivitySource.AddActivityListener(activities);
+        using var metrics = new MeterListener
+        {
+            InstrumentPublished = (instrument, listener) => listener.EnableMeasurementEvents(instrument)
+        };
+        metrics.SetMeasurementEventCallback<long>((_, _, tags, _) =>
+        {
+            foreach (var tag in tags) captured.Enqueue($"{tag.Key}:{tag.Value}");
+        });
+        metrics.Start();
+        var time = new ManualTime(Epoch);
+        var entered = Signal();
+        var release = new TaskCompletionSource<HttpResponseMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var wire = new Wire(async (_, token) =>
+        {
+            if (!entered.TrySetResult()) throw new InvalidOperationException("Unexpected renewal replay.");
+            return await release.Task.WaitAsync(token);
+        });
+        await using var session = Session(time, wire);
+        await using var helper = new InfisicalAuthenticationMaintenance(session, TimeSpan.FromSeconds(5));
+        Task timer = time.WatchTimer(Epoch.AddSeconds(50));
+        await helper.StartAsync(CancellationToken.None);
+        await timer.WaitAsync(TimeSpan.FromSeconds(5));
+
+        time.Advance(TimeSpan.FromSeconds(50));
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Task<SecretStatus> join = session.RenewAsync().AsTask();
+        if (loseResponse) release.SetException(new HttpRequestException(canary));
+        else release.SetResult(Json(canary));
+        SecretStatus outcome = await join.WaitAsync(TimeSpan.FromSeconds(5));
+
+        await Assert.That(outcome).IsEqualTo(loseResponse ? SecretStatus.RecoveryRequired : SecretStatus.Success);
+        var receipt = session.LastRenewal!;
+        await Assert.That(receipt.Evidence).IsEqualTo(loseResponse
+            ? InfisicalRenewalEvidence.PossiblyDispatched : InfisicalRenewalEvidence.Applied);
+        if (loseResponse)
+        {
+            await Assert.That(await session.RenewAsync()).IsEqualTo(SecretStatus.RecoveryRequired);
+            await Assert.That(session.LastRenewal).IsSameReferenceAs(receipt);
+        }
+        else
+        {
+            using var token = (await session.GetTokenAsync(CancellationToken.None)).Value;
+            await Assert.That(token.Material.Reveal()).IsEqualTo(canary);
+            await Assert.That(token.ExpiresAt).IsEqualTo(Epoch.AddSeconds(110));
+        }
+        await helper.StopAsync(CancellationToken.None);
+        await Assert.That(wire.Disposed).IsFalse();
+        await Assert.That(captured.Any(item => item.Contains(canary, StringComparison.Ordinal))).IsFalse();
+    }
 
     internal static TaskCompletionSource Signal() => new(TaskCreationOptions.RunContinuationsAsynchronously);
     internal static HttpResponseMessage Json(string token, double expiry = 60, double maximum = 120) =>

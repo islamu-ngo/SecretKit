@@ -8,6 +8,114 @@ namespace SecretKit.Infisical.Tests;
 public sealed class UniversalAuthenticationTests
 {
     [Test]
+    public async Task LoginHandoffPreservesRequestBoundAndExpiryAfterLoginDisposal()
+    {
+        var clock = new Clock();
+        DateTimeOffset requestStarted = clock.GetUtcNow();
+        using var client = new InfisicalUniversalAuthentication(new("https://auth.test"),
+            new Wire(onResponse: () => clock.Now = requestStarted.AddSeconds(20)), timeProvider: clock);
+        using var secret = SecretMaterial.FromText("bootstrap-canary");
+        using var login = (await client.LoginAsync("client-canary", secret, client.CreateReceipt())).Value;
+        var evidence = login.BindLifetimeEvidence(PeriodicEvidence(login));
+        clock.Now = requestStarted.AddSeconds(115);
+
+        await using var session = new InfisicalPeriodicTokenSession(login, evidence,
+            TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(5));
+        login.Dispose();
+        secret.Dispose();
+        using var token = (await session.GetTokenAsync(CancellationToken.None)).Value;
+
+        await Assert.That(login.RequestStartedAt).IsEqualTo(requestStarted);
+        await Assert.That(evidence.OriginalIssuedAt).IsEqualTo(requestStarted);
+        await Assert.That(token.ExpiresAt).IsEqualTo(requestStarted.AddSeconds(120));
+        await Assert.That(token.Material.Reveal()).IsEqualTo("issued-canary");
+        await Assert.That(session.State).IsEqualTo(InfisicalTokenSessionState.RenewalDue);
+        await Assert.That(session.LastRenewal).IsNull();
+        clock.Now = requestStarted.AddSeconds(120);
+        await Assert.That((await session.GetTokenAsync(CancellationToken.None)).Status)
+            .IsEqualTo(SecretStatus.RecoveryRequired);
+        await Assert.That(token.Material.Reveal()).IsEqualTo("issued-canary");
+    }
+
+    [Test]
+    public async Task BoundPolicyCannotBeCrossWiredAcrossLoginsTokensOrOrigins()
+    {
+        var clock = new Clock();
+        using var client = new InfisicalUniversalAuthentication(new("https://auth.test"), new Wire(), timeProvider: clock);
+        using var secret = SecretMaterial.FromText("bootstrap-canary");
+        using var first = (await client.LoginAsync("client-canary", secret, client.CreateReceipt())).Value;
+        using var second = (await client.LoginAsync("client-canary", secret, client.CreateReceipt())).Value;
+        var bound = first.BindLifetimeEvidence(PeriodicEvidence(first));
+
+        await Assert.That(() => new InfisicalPeriodicTokenSession(second, bound,
+            TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(5))).Throws<ArgumentException>();
+        await Assert.That(() => second.BindLifetimeEvidence(bound)).Throws<ArgumentException>();
+        await Assert.That(() => new InfisicalPeriodicTokenSession(first, PeriodicEvidence(first),
+            TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(5))).Throws<ArgumentException>();
+        using var foreign = SecretMaterial.FromText("other-token");
+        await Assert.That(() => new InfisicalPeriodicTokenSession(new("https://auth.test"), foreign, bound,
+            TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(5))).Throws<ArgumentException>();
+        await Assert.That(() => new InfisicalPeriodicTokenSession(new("https://other.test"), first.Token.Material, bound,
+            TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(5))).Throws<ArgumentException>();
+    }
+
+    [Test]
+    [Arguments("expiry")]
+    [Arguments("issue")]
+    [Arguments("maximum")]
+    public async Task HandoffCannotReplaceReportedExpiryOrResetOriginalTiming(string mismatch)
+    {
+        var clock = new Clock();
+        using var client = new InfisicalUniversalAuthentication(new("https://auth.test"), new Wire(), timeProvider: clock);
+        using var secret = SecretMaterial.FromText("bootstrap-canary");
+        using var login = (await client.LoginAsync("client-canary", secret, client.CreateReceipt())).Value;
+        var evidence = new InfisicalTokenLifetimeEvidence
+        {
+            OriginalIssuedAt = login.RequestStartedAt.AddSeconds(mismatch == "issue" ? 1 : 0),
+            ExpiresAt = login.Token.ExpiresAt!.Value.AddSeconds(mismatch == "expiry" ? 1 : 0),
+            Lifetime = InfisicalTokenLifetime.Periodic,
+            Period = TimeSpan.FromSeconds(120),
+            ReportedMaximumTtl = TimeSpan.FromSeconds(mismatch == "maximum" ? 31 : 30)
+        };
+
+        await Assert.That(() => login.BindLifetimeEvidence(evidence)).Throws<ArgumentException>();
+    }
+
+    [Test]
+    [Arguments(InfisicalTokenLifetime.Unknown)]
+    [Arguments(InfisicalTokenLifetime.Finite)]
+    public async Task HandoffNeverInfersPeriodicPolicyFromMaximumTtl(InfisicalTokenLifetime lifetime)
+    {
+        var clock = new Clock();
+        using var client = new InfisicalUniversalAuthentication(new("https://auth.test"), new Wire(), timeProvider: clock);
+        using var secret = SecretMaterial.FromText("bootstrap-canary");
+        using var login = (await client.LoginAsync("client-canary", secret, client.CreateReceipt())).Value;
+        var evidence = login.BindLifetimeEvidence(new InfisicalTokenLifetimeEvidence
+        {
+            OriginalIssuedAt = login.RequestStartedAt,
+            ExpiresAt = login.Token.ExpiresAt!.Value,
+            Lifetime = lifetime,
+            ReportedMaximumTtl = TimeSpan.FromSeconds(login.AccessTokenMaxTTL)
+        });
+        await using var session = new InfisicalPeriodicTokenSession(login, evidence,
+            TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(5));
+
+        await Assert.That((await session.GetTokenAsync(CancellationToken.None)).Status)
+            .IsEqualTo(SecretStatus.RecoveryRequired);
+        await Assert.That(await session.RenewAsync()).IsEqualTo(SecretStatus.RecoveryRequired);
+        await Assert.That(session.LastRenewal).IsNull();
+    }
+
+    private static InfisicalTokenLifetimeEvidence PeriodicEvidence(InfisicalUniversalLogin login) => new()
+    {
+        OriginalIssuedAt = login.RequestStartedAt,
+        ExpiresAt = login.Token.ExpiresAt!.Value,
+        Lifetime = InfisicalTokenLifetime.Periodic,
+        Period = TimeSpan.FromSeconds(120),
+        ReportedMaximumTtl = TimeSpan.FromSeconds(login.AccessTokenMaxTTL)
+    };
+
+    [Test]
     public async Task ExplicitLoginProtectsMaterialAndPreservesReportedExpiryWithoutFiniteCap()
     {
         var handler = new Wire();
@@ -122,10 +230,11 @@ public sealed class UniversalAuthenticationTests
 
     private sealed class Clock : TimeProvider
     {
-        public override DateTimeOffset GetUtcNow() => new(2026, 10, 10, 12, 0, 0, TimeSpan.Zero);
+        public DateTimeOffset Now { get; set; } = new(2026, 10, 10, 12, 0, 0, TimeSpan.Zero);
+        public override DateTimeOffset GetUtcNow() => Now;
     }
 
-    private sealed class Wire(string mode = "success") : HttpMessageHandler
+    private sealed class Wire(string mode = "success", Action? onResponse = null) : HttpMessageHandler
     {
         public bool Observed { get; private set; }
         public int Requests { get; private set; }
@@ -143,6 +252,7 @@ public sealed class UniversalAuthenticationTests
                 await Assert.That(slug.GetString()).IsEqualTo("selected-org");
             Observed = true;
             if (mode == "lost") throw new HttpRequestException("private-canary");
+            onResponse?.Invoke();
             string response = mode switch
             {
                 "malformed" => """{"accessToken":"issued-canary","expiresIn":0,"accessTokenMaxTTL":30,"tokenType":"Bearer"}""",
