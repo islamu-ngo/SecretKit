@@ -17,19 +17,19 @@ public static class WorkflowPolicy
             "routine-permissions");
         JsonElement jobs = root.GetProperty("jobs");
         Manifest.ExactSet(jobs.EnumerateObject().Select(p => p.Name),
-            ["format", "offline", "install", "prerequisites", "native", "compatibility", "archive_evidence", "candidate"],
+            ["format", "offline", "install", "demos", "prerequisites", "native", "compatibility", "archive_evidence", "candidate"],
             "routine-jobs");
-        foreach (JsonProperty job in jobs.EnumerateObject().Where(p => p.Name is "format" or "offline" or "install"))
+        foreach (JsonProperty job in jobs.EnumerateObject().Where(p => p.Name is "format" or "offline" or "install" or "demos"))
         {
             Guard.Require(!job.Value.GetRawText().Contains("secrets.", StringComparison.Ordinal) &&
                 !job.Value.GetRawText().Contains("github.token", StringComparison.Ordinal), "routine-credentials");
             Guard.Require(job.Value.GetProperty("runs-on").GetString() ==
-                (job.Name == "install" ? "${{ matrix.runner }}" : "ubuntu-24.04") &&
+                (job.Name is "install" or "demos" ? "${{ matrix.runner }}" : "ubuntu-24.04") &&
                 job.Value.GetProperty("timeout-minutes").GetInt32() is > 0 and <= 45 &&
                 !job.Value.TryGetProperty("permissions", out _) &&
                 !job.Value.TryGetProperty("environment", out _) &&
                 !job.Value.TryGetProperty("continue-on-error", out _) &&
-                (job.Name == "install" || !job.Value.TryGetProperty("needs", out _)), "routine-job-authority");
+                (job.Name is "install" or "demos" || !job.Value.TryGetProperty("needs", out _)), "routine-job-authority");
             foreach (JsonElement step in job.Value.GetProperty("steps").EnumerateArray())
             {
                 Guard.Require(!step.TryGetProperty("continue-on-error", out _), "routine-ignored-failure");
@@ -103,7 +103,84 @@ public static class WorkflowPolicy
             installationSteps.Where(p => p.TryGetProperty("run", out _)).All(p =>
                 !p.GetProperty("run").GetString()!.Contains("dotnet pack", StringComparison.Ordinal)),
             "install-no-repack");
+        ValidateDemos(jobs);
         ValidateProducer(bytes);
+    }
+
+    private static void ValidateDemos(JsonElement jobs)
+    {
+        JsonElement offline = jobs.GetProperty("offline");
+        JsonElement[] producer = offline.GetProperty("steps").EnumerateArray().ToArray();
+        int local = Array.FindIndex(producer, s => s.TryGetProperty("id", out JsonElement id) && id.GetString() == "local_install");
+        int prepare = Array.FindIndex(producer, s => s.TryGetProperty("id", out JsonElement id) && id.GetString() == "demo_inputs");
+        int upload = Array.FindIndex(producer, s => s.TryGetProperty("id", out JsonElement id) && id.GetString() == "demo_bundle");
+        int tests = Array.FindIndex(producer, s => s.TryGetProperty("id", out JsonElement id) && id.GetString() == "demo_tests");
+        Guard.Require(local >= 0 && prepare > local && upload > prepare && tests > upload,
+            "demo-producer-order");
+        const string context = "\"$GITHUB_SHA\" \"$GITHUB_RUN_ID\" \"$GITHUB_RUN_ATTEMPT\" 10.0.302";
+        string preparation = producer[prepare].GetProperty("run").GetString()!;
+        Guard.Require(!producer[prepare].TryGetProperty("if", out _) &&
+            !producer[upload].TryGetProperty("if", out _) && !producer[tests].TryGetProperty("if", out _) &&
+            preparation.Contains("local-demo-prepare . artifacts/local-originals artifacts/verification/local/qualification artifacts/demo-inputs " + context, StringComparison.Ordinal) &&
+            preparation.Contains("local-demo-check . artifacts/demo-inputs " + context, StringComparison.Ordinal),
+            "demo-producer-binding");
+        JsonElement artifact = producer[upload].GetProperty("with");
+        Guard.Require(artifact.GetProperty("name").GetString() ==
+            "demo-inputs-${{ github.run_id }}-${{ github.run_attempt }}" &&
+            artifact.GetProperty("path").GetString() == "artifacts/demo-inputs" &&
+            artifact.GetProperty("if-no-files-found").GetString() == "error" &&
+            !artifact.TryGetProperty("overwrite", out _), "demo-original-artifact");
+        JsonElement demos = jobs.GetProperty("demos");
+        Manifest.ExactSet(demos.GetProperty("needs").EnumerateArray().Select(v => v.GetString()!),
+            ["offline"], "demo-producer");
+        Guard.Require(!demos.TryGetProperty("if", out _) &&
+            !demos.GetProperty("strategy").GetProperty("fail-fast").GetBoolean(), "demo-required-matrix");
+        Manifest.ExactSet(demos.GetProperty("strategy").GetProperty("matrix").GetProperty("include")
+            .EnumerateArray().Select(p => $"{p.GetProperty("runner").GetString()}/{p.GetProperty("platform").GetString()}"),
+            ["ubuntu-24.04/linux-x64-net10.0", "windows-2025/windows-x64-net10.0"], "demo-platforms");
+        JsonElement[] consumers = demos.GetProperty("steps").EnumerateArray().ToArray();
+        JsonElement download = consumers.Single(s => s.TryGetProperty("uses", out JsonElement action) &&
+            action.GetString()!.StartsWith("actions/download-artifact@", StringComparison.Ordinal));
+        Guard.Require(download.GetProperty("with").GetProperty("name").GetString() ==
+            artifact.GetProperty("name").GetString() &&
+            download.GetProperty("with").GetProperty("path").GetString() == "artifacts/demo-inputs" &&
+            !download.GetProperty("with").TryGetProperty("run-id", out _) &&
+            !download.GetProperty("with").TryGetProperty("repository", out _), "demo-same-originals");
+        string check = Step(consumers, "check").GetProperty("run").GetString()!;
+        Guard.Require(check == "dotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll local-demo-check . artifacts/demo-inputs " + context &&
+            Array.IndexOf(consumers, Step(consumers, "check")) < Array.IndexOf(consumers, Step(consumers, "test")) &&
+            consumers.Where(s => s.TryGetProperty("run", out _)).All(s =>
+                !s.GetProperty("run").GetString()!.Contains("dotnet pack", StringComparison.Ordinal) &&
+                !s.GetProperty("run").GetString()!.Contains("local-demo-prepare", StringComparison.Ordinal)) &&
+            consumers.Where(s => s.TryGetProperty("id", out _)).All(s => !s.TryGetProperty("if", out _)),
+            "demo-frozen-consumer");
+        foreach (JsonElement environment in new[] { demos.GetProperty("env"), producer[tests].GetProperty("env") })
+        {
+            Guard.Require(environment.GetProperty("SECRETKIT_DEMO_CANDIDATE_VERSION").GetString() == "0.1.0-local.20261024.1" &&
+                environment.GetProperty("SECRETKIT_DEMO_CANDIDATE_DIRECTORY").GetString() ==
+                    "${{ github.workspace }}/artifacts/demo-inputs/originals" &&
+                environment.GetProperty("SECRETKIT_DEMO_STAGED_LOCK_DIRECTORY").GetString() ==
+                    "${{ github.workspace }}/artifacts/demo-inputs" &&
+                environment.GetProperty("SECRETKIT_DEMO_SDK").GetString() == "10.0.302",
+                "demo-selectors");
+        }
+        foreach (JsonElement step in new[] { producer[tests], Step(consumers, "test") })
+        {
+            string script = step.GetProperty("run").GetString()!;
+            Guard.Require(script.Contains("SecretKit.Demo.Tests.dll --minimum-expected-tests 65 --zero-tests-policy strict", StringComparison.Ordinal) &&
+                !script.Contains("--treenode-filter", StringComparison.Ordinal) &&
+                !script.Contains("||", StringComparison.Ordinal), "demo-complete-discovery");
+        }
+        foreach (JsonElement job in new[] { offline, demos })
+        {
+            JsonElement checkout = job.GetProperty("steps").EnumerateArray().Single(s =>
+                s.TryGetProperty("uses", out JsonElement action) &&
+                action.GetString()!.StartsWith("actions/checkout@", StringComparison.Ordinal));
+            JsonElement configuration = checkout.GetProperty("env");
+            Guard.Require(configuration.GetProperty("GIT_CONFIG_COUNT").GetString() == "1" &&
+                configuration.GetProperty("GIT_CONFIG_KEY_0").GetString() == "core.autocrlf" &&
+                configuration.GetProperty("GIT_CONFIG_VALUE_0").GetString() == "false", "demo-source-bytes");
+        }
     }
 
     public static void ValidateProducer(byte[] bytes)

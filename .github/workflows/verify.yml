@@ -39,6 +39,7 @@
       "steps": [
         {
           "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "env": { "GIT_CONFIG_COUNT": "1", "GIT_CONFIG_KEY_0": "core.autocrlf", "GIT_CONFIG_VALUE_0": "false" },
           "with": { "ref": "${{ github.sha }}", "persist-credentials": false }
         },
         {
@@ -97,6 +98,44 @@
             "if-no-files-found": "error",
             "retention-days": 120
           }
+        },
+        {
+          "run": "mkdir -p artifacts/verification/local"
+        },
+        {
+          "id": "local_install",
+          "env": {
+            "SECRETKIT_LOCAL_CANDIDATE_VERSION": "0.1.0-local.20261024.1",
+            "SECRETKIT_LOCAL_CANDIDATE_DIRECTORY": "${{ github.workspace }}/artifacts/local-originals",
+            "SECRETKIT_LOCAL_QUALIFICATION_DIRECTORY": "${{ github.workspace }}/artifacts/verification/local/qualification",
+            "SECRETKIT_LOCAL_INSTALL_REPORTS": "${{ github.workspace }}/artifacts/verification/local/installations"
+          },
+          "run": "dotnet build SecretKit.slnx --configuration Release --no-restore -p:Version=\"$SECRETKIT_LOCAL_CANDIDATE_VERSION\"\ntest ! -e artifacts/local-seven-originals\ndotnet pack SecretKit.slnx --configuration Release --no-build -p:Version=\"$SECRETKIT_LOCAL_CANDIDATE_VERSION\" --output artifacts/local-seven-originals\ntest \"$(find artifacts/local-seven-originals -maxdepth 1 -name '*.nupkg' | wc -l)\" -eq 7\ntest ! -e \"$SECRETKIT_LOCAL_CANDIDATE_DIRECTORY\"\nmkdir -p \"$SECRETKIT_LOCAL_CANDIDATE_DIRECTORY\"\nfor id in SecretKit.Core SecretKit.Infisical SecretKit.Extensions.Configuration SecretKit.Extensions.Hosting; do\n  name=\"$id.$SECRETKIT_LOCAL_CANDIDATE_VERSION.nupkg\"\n  original=\"artifacts/local-seven-originals/$name\"\n  cp \"$original\" \"$SECRETKIT_LOCAL_CANDIDATE_DIRECTORY/$name\"\n  cmp \"$original\" \"$SECRETKIT_LOCAL_CANDIDATE_DIRECTORY/$name\"\ndone\ndotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll local-prepare . \"$SECRETKIT_LOCAL_CANDIDATE_DIRECTORY\" \"$SECRETKIT_LOCAL_QUALIFICATION_DIRECTORY\"\ndotnet tests/SecretKit.Package.Tests/bin/Release/net10.0/SecretKit.Package.Tests.dll --treenode-filter '/*/*/LocalInfisicalInstallTests/*' --minimum-expected-tests 25 --zero-tests-policy strict --report-trx --results-directory artifacts/verification/local/tests\ndotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll local-check . \"$SECRETKIT_LOCAL_CANDIDATE_DIRECTORY\" \"$SECRETKIT_LOCAL_QUALIFICATION_DIRECTORY\""
+        },
+        {
+          "id": "demo_inputs",
+          "run": "dotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll local-demo-prepare . artifacts/local-originals artifacts/verification/local/qualification artifacts/demo-inputs \"$GITHUB_SHA\" \"$GITHUB_RUN_ID\" \"$GITHUB_RUN_ATTEMPT\" 10.0.302\ndotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll local-demo-check . artifacts/demo-inputs \"$GITHUB_SHA\" \"$GITHUB_RUN_ID\" \"$GITHUB_RUN_ATTEMPT\" 10.0.302"
+        },
+        {
+          "id": "demo_bundle",
+          "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
+          "with": {
+            "name": "demo-inputs-${{ github.run_id }}-${{ github.run_attempt }}",
+            "path": "artifacts/demo-inputs",
+            "if-no-files-found": "error",
+            "retention-days": 14
+          }
+        },
+        {
+          "id": "demo_tests",
+          "env": {
+            "SECRETKIT_DEMO_CANDIDATE_VERSION": "0.1.0-local.20261024.1",
+            "SECRETKIT_DEMO_CANDIDATE_DIRECTORY": "${{ github.workspace }}/artifacts/demo-inputs/originals",
+            "SECRETKIT_DEMO_STAGED_LOCK_DIRECTORY": "${{ github.workspace }}/artifacts/demo-inputs",
+            "SECRETKIT_DEMO_SDK": "10.0.302",
+            "SECRETKIT_DEMO_INSTALL_REPORTS": "${{ github.workspace }}/artifacts/verification/local/demos"
+          },
+          "run": "dotnet tests/SecretKit.Demo.Tests/bin/Release/net10.0/SecretKit.Demo.Tests.dll --minimum-expected-tests 65 --zero-tests-policy strict --report-trx --results-directory artifacts/verification/local/demo-tests"
         },
         {
           "id": "metadata",
@@ -178,6 +217,66 @@
           "with": {
             "name": "offline-install-${{ matrix.platform }}-${{ github.run_id }}-${{ github.run_attempt }}",
             "path": "artifacts/verification",
+            "if-no-files-found": "error",
+            "retention-days": 14
+          }
+        }
+      ]
+    },
+    "demos": {
+      "needs": ["offline"],
+      "runs-on": "${{ matrix.runner }}",
+      "timeout-minutes": 45,
+      "defaults": { "run": { "shell": "bash" } },
+      "strategy": {
+        "fail-fast": false,
+        "matrix": { "include": [
+          { "runner": "ubuntu-24.04", "platform": "linux-x64-net10.0" },
+          { "runner": "windows-2025", "platform": "windows-x64-net10.0" }
+        ] }
+      },
+      "env": {
+        "SECRETKIT_DEMO_CANDIDATE_VERSION": "0.1.0-local.20261024.1",
+        "SECRETKIT_DEMO_CANDIDATE_DIRECTORY": "${{ github.workspace }}/artifacts/demo-inputs/originals",
+        "SECRETKIT_DEMO_STAGED_LOCK_DIRECTORY": "${{ github.workspace }}/artifacts/demo-inputs",
+        "SECRETKIT_DEMO_SDK": "10.0.302",
+        "SECRETKIT_DEMO_INSTALL_REPORTS": "${{ github.workspace }}/artifacts/verification/demos/${{ matrix.platform }}/installations"
+      },
+      "steps": [
+        {
+          "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "env": { "GIT_CONFIG_COUNT": "1", "GIT_CONFIG_KEY_0": "core.autocrlf", "GIT_CONFIG_VALUE_0": "false" },
+          "with": { "ref": "${{ github.sha }}", "persist-credentials": false }
+        },
+        {
+          "uses": "actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9",
+          "with": { "dotnet-version": "10.0.302" }
+        },
+        {
+          "uses": "actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333",
+          "with": {
+            "name": "demo-inputs-${{ github.run_id }}-${{ github.run_attempt }}",
+            "path": "artifacts/demo-inputs"
+          }
+        },
+        {
+          "id": "build",
+          "run": "dotnet restore tools/SecretKit.Release/SecretKit.Release.csproj --locked-mode\ndotnet build tools/SecretKit.Release/SecretKit.Release.csproj --configuration Release --no-restore\ndotnet restore tests/SecretKit.Demo.Tests/SecretKit.Demo.Tests.csproj --locked-mode\ndotnet build tests/SecretKit.Demo.Tests/SecretKit.Demo.Tests.csproj --configuration Release --no-restore"
+        },
+        {
+          "id": "check",
+          "run": "dotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll local-demo-check . artifacts/demo-inputs \"$GITHUB_SHA\" \"$GITHUB_RUN_ID\" \"$GITHUB_RUN_ATTEMPT\" 10.0.302"
+        },
+        {
+          "id": "test",
+          "run": "dotnet tests/SecretKit.Demo.Tests/bin/Release/net10.0/SecretKit.Demo.Tests.dll --minimum-expected-tests 65 --zero-tests-policy strict --report-trx --results-directory \"artifacts/verification/demos/${{ matrix.platform }}/tests\"\ndotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll local-demo-check . artifacts/demo-inputs \"$GITHUB_SHA\" \"$GITHUB_RUN_ID\" \"$GITHUB_RUN_ATTEMPT\" 10.0.302"
+        },
+        {
+          "if": "${{ always() }}",
+          "uses": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
+          "with": {
+            "name": "demo-observations-${{ matrix.platform }}-${{ github.run_id }}-${{ github.run_attempt }}",
+            "path": "artifacts/verification/demos",
             "if-no-files-found": "error",
             "retention-days": 14
           }

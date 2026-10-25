@@ -20,7 +20,9 @@ public sealed class WorkflowTests
         string root = RepositoryRoot();
         return XDocument.Load(Path.Combine(root, "SecretKit.slnx")).Descendants("Project")
             .Select(p => p.Attribute("Path")!.Value)
-            .Where(p => p.StartsWith("tests/", StringComparison.Ordinal))
+            .Where(p => p.StartsWith("tests/", StringComparison.Ordinal) &&
+                !p.StartsWith("tests/fixtures/", StringComparison.Ordinal) &&
+                p != "tests/SecretKit.Demo.Tests/SecretKit.Demo.Tests.csproj")
             .Select(Path.GetFileNameWithoutExtension).Select(p => p!).ToArray();
     }
 
