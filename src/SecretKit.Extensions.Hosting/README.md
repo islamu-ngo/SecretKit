@@ -1,5 +1,11 @@
 # Explicit Infisical authentication maintenance
 
+This package is optional in the
+[Infisical-first local adoption profile](../../docs/public/local-packages.md).
+Lifecycle composition preserves explicit startup, selected-principal recovery
+and the no-replay/no-implicit-login boundary. It does not create an application
+readiness engine or fleet scheduler.
+
 See [current support](../../docs/public/provider-support.md) for current
 offline evidence and the separate native renewal/entitlement limits.
 
@@ -73,6 +79,31 @@ token/session. A null input token explicitly represents a restart with lost
 in-memory material and reports recovery-required without dispatch. A consumed
 bootstrap credential cannot be reused by this package;
 there is no bootstrap callback, token persistence or automatic recovery.
+
+For an explicit fresh Universal Auth login, call
+`login.BindLifetimeEvidence(verifiedEvidence)` and construct
+`InfisicalPeriodicTokenSession(login, boundEvidence, renewBefore, requestTimeout)`.
+The bound handoff rejects evidence associated with another login and preserves
+the original expiry and timing. `RequestStartedAt` is a conservative
+caller-observed lower bound for a fresh login, not server issuance evidence.
+It must never become a later handoff timestamp or proof of periodic policy.
+The session owns a copy, so disposing the login does not invalidate it.
+A still-valid token already inside its renewal window starts RenewalDue.
+
+The RuntimeConfiguration sample demonstrates explicit startup, renewal,
+uncertain-response recovery and separately authorized replacement under the
+same selected principal. No automatic recovery callback is installed.
+
+The package-only [Generic Host worker](../../samples/Infisical.WorkerDemo/)
+awaits a required selected read before constructing/starting its actual host,
+registers pre-created application-owned instances, and opts into this helper
+only with `run --maintain`. Its worker performs selected reads, exposes bounded
+stdin work/renew/stop controls, and drains work before stopping maintenance and
+disposing owned resources. Fixed output categories replace default exception
+logging. The application's Generic Host dependency stays app-only.
+Controlled scheduled-renewal/response-loss/stop tests and injected-time tests
+are offline evidence; supplied lifetime metadata remains explicitly host-asserted,
+not genuine issuance or live longevity qualification.
 
 Focused local verification (from the repository root):
 

@@ -1,5 +1,14 @@
 # SecretKit.Extensions.Configuration
 
+For [Infisical-first local adoption](../../docs/public/local-packages.md), this
+package is optional. All selections in one loader are required; compose optional
+features separately. Application key naming, tenant bindings, cache/refresh
+policy, Data Protection admission and activation remain outside the package.
+Installed-consumer qualification does not add those policies to the runtime
+library. The RuntimeConfiguration sample composes separate required and
+optional groups; capability checks and explicit client activation remain
+application-owned decisions.
+
 See [current support](../../docs/public/provider-support.md) for package
 boundaries and observed offline evidence.
 

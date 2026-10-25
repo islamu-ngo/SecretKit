@@ -1,16 +1,35 @@
 # Configuration and runtime
 
 > **Audience:** Application developers and operators
-> **Status:** PROPOSED DESIGN
+> **Status:** Implemented primitives with proposed application-composition requirements
 > **Owner:** SecretKit maintainers
-> **Source facts checked:** 2026-10-09; no runtime verification
+> **Scope reviewed:** 2026-10-23; current behavior is recorded separately
 > **Source anchors:** Official references below
 
 SecretKit proposes asynchronous selected-authority reads and protected local generations; the host would own startup, readiness, activation, and live-client replacement.
 
-Nothing described here is implemented, published, or tested SecretKit behavior. Names describe intended contracts rather than a finalized callable API.
+The [configuration package guide](../../src/SecretKit.Extensions.Configuration/README.md)
+records the callable generation/export primitives, and the
+[current preview](current-preview.md) records their evidence. Future-tense
+application workflows below are design requirements, not completed integrations.
+The immediate goal is [local Infisical adoption](local-packages.md), with no
+Event implementation or public-publishing phase.
+
+The current loader treats every supplied selection as required. Keep optional
+feature groups separate; do not infer an optional-selection API from this
+design. No SDK cache, scheduler, tenant-binding system or live-client registry
+is added by the local-readiness direction.
 
 ## Select one authority
+
+The RuntimeConfiguration executable now demonstrates required collection,
+separate optional checks and explicit enable, authority-only export and a
+pinned generation across refresh. Its measured offline workload uses seven
+serial selected reads: two required keys collected twice, then one optional
+key checked absent, checked available and explicitly enabled. An observed
+14.113 ms local run is composition overhead, not remote-provider latency or
+an SLA. Fresh capability checks cannot activate or replace a live client;
+application-owned `EnableAsync` performs handover after current-intent checks.
 
 The host would register installed adapters and select an immutable provider instance with a trusted endpoint, explicit identity, namespace boundary, and credential source. Selection would not install packages or discover arbitrary plugins. A provider reference would retain its instance identity and typed native address; a secret path would not be allowed to introduce another endpoint.
 
@@ -81,6 +100,20 @@ For a concurrent disable, candidate installation would compare against the curre
 Durable notifications would carry no secret values, tokens, plaintext configuration, or raw provider payloads. The consumer would own notification persistence, authorization, deduplication, and the safe revision identifiers used to prompt reconciliation. SecretKit would not supply a fleet coordinator, transactional outbox, tenant activation model, or application database.
 
 ## Authentication maintenance boundary
+
+Implemented Universal Auth handoff is explicit: retain the login receipt,
+bind independently verified lifetime policy using `login.BindLifetimeEvidence`,
+then construct a token session from that login and the bound evidence.
+Dispose the login after the session takes its independent copy. The original
+expiry and conservative request-time bound survive handoff; a later handoff
+timestamp cannot extend lifetime, and numeric maximum TTL is not periodic proof.
+Expired, lost or uncertain authority requires a separately authorized replacement
+under the selected principal rather than bootstrap replay or fallback.
+
+The reviewed-change sample now retains `InfisicalChange` alongside its bounded
+status and caller-held receipt. Applied resource versions, provider approval
+handles and SubmittedForApproval remain distinct. A failed downstream
+invalidation cannot turn a confirmed source write into safe replay.
 
 The optional hosting package could help a host schedule explicitly selected authentication maintenance, coordinate cancellation/shutdown, and expose safe maintenance status. It would not perform business-secret rotation or consumer activation. [Infisical Universal Auth](https://infisical.com/docs/documentation/platform/identities/universal-auth) documents periodic-token renewal and bootstrap credentials that can become unusable; the [operations page](operations-and-compatibility.md) describes the proposed recovery constraints.
 

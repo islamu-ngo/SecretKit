@@ -7,6 +7,10 @@ tests, formatting, seven packages and fresh installed consumers. The installed
 consumer checks that connector types are absent. This is not a public release
 or complete live-provider certification.
 
+The later [Infisical-first local adoption direction](scope-and-orchestration.md#immediate-delivery-priority)
+changes delivery priority, not this accepted catalog-removal boundary or the
+dated evidence below.
+
 ## Accepted decision
 
 **SecretKit gets and manages secrets through Infisical and Azure Key Vault.

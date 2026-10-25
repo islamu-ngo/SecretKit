@@ -1,5 +1,61 @@
 # Current local preview
 
+**In development. Not ready for production. APIs may change without backward
+compatibility.** The current local candidate is `0.1.0-local.20261024.1`.
+The [local recipe](local-packages.md) prepares a relocatable repository feed,
+without listed or unlisted publication. Offline installed-package evidence,
+17-case deployment-functional acceptance and complete 21-case native
+qualification remain separate. Functional acceptance cannot promote unproven
+identity/policy/deployment bindings or grant public-release authority.
+Run-specific evidence belongs to the exact frozen candidate's local records;
+the commands and authored tests described here are not a claim of a native pass.
+
+## Infisical-first local adoption direction
+
+The [runtime adoption security contract](../internal/RUNTIME_ADOPTION_SECURITY.md)
+defines requirements for installed console/worker/web apps, causal native
+proof and setup cleanup. The three app entrypoints and controlled proof/lifetime
+protocols have offline process/HTTP evidence; this does not qualify the final
+local archives, a deployment, Windows, or full native cleanup. The
+[adoption and recovery guide](demos-and-recovery.md) records the measured scope
+and unqualified trim/AOT profiles. SecretKit is not ready for production.
+
+Accepted on 2026-10-23: prioritize qualified local Infisical packages, with no
+public NuGet publication or Event repository integration phase. Azure and
+selected administration remain retained work. The [local package guide](local-packages.md)
+describes existing evaluation commands; the
+[engineering contract](../internal/INFISICAL_LOCAL_READINESS.md) identifies the
+planned revision/provenance, authentication, consumer and qualification work.
+The local profile tooling, qualified raw native read/revision API, explicit
+token-bound handoff, host-owned read transport and generic consumer composition
+are now implemented. The minimal installed fixture has separate Core+Infisical,
+Configuration, Hosting and full modes. These remain offline implementation
+claims; the exact local native profile is not live-qualified.
+
+The dedicated [local native compatibility ledger](../internal/compatibility/infisical-local-profile.md)
+retains missing provider authority and unestablished deployment/principal/policy
+binding as open gates. Declared versions, actor IDs and policy digests do not
+become independently observed native facts. S15 cannot pass from offline
+protocol responses or a declaration-only native input.
+
+The preceding readiness assessment on 2026-10-23 passed a Release solution build,
+all 4,175 offline solution tests using freshly packed package originals, locked
+restore, both offline samples and formatting. Its dependency vulnerability query
+reported no vulnerable packages. Packages were evaluated on CachyOS Linux x64
+with SDK `10.0.302`; the source was initially uncommitted and was committed as
+`e635985239a3146228f1bb75d65a3f13c84a292c` during that assessment. Those
+development artifacts are not a protected source-bound release candidate.
+No checks were rerun for this documentation-only update. The native conformance
+projects are separate from the ordinary solution's passing test count.
+
+Common reads project an optional numeric version. The implemented
+`ReadNativeAsync` additionally qualifies raw, non-imported reads with exact
+returned coordinates, resource `id` and positive version. Its opaque revision
+compares across clients but does not transfer client authority or describe
+expanded/imported material. Offline protocol tests are not native deployment
+qualification. A four-package local profile remains separate. A functioning
+generic consumer is not proof of Event acceptance or complete Infisical support.
+
 The [current provider support view](provider-support.md) records the 2026-10-12
 offline foundation and its explicit live/platform limits. Dated narratives below
 retain their original scope; they are not complete current admission.

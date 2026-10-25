@@ -33,4 +33,11 @@ Exact implemented behavior is described in the [current preview](docs/public/cur
 
 Use least-privilege runtime and administrative identities, protect credential injection, review host diagnostics, and dispose owned material after use. Review configuration debug views, logs, exception sinks, and downstream clients before exporting plaintext. SecretKit is not a vault, process-isolation boundary, or forensic-erasure guarantee.
 
+Default-surface capture does not authorize recording complete requests,
+authorization headers, exported values or process memory. Explicit host
+instrumentation and downstream plaintext copies remain host responsibilities.
+The nonpackable demo diagnostic observer is a test fixture, not a production
+redaction component. See the [runtime adoption security contract](docs/internal/RUNTIME_ADOPTION_SECURITY.md)
+for the tested surfaces and unqualified combinations.
+
 Report a reproducible failure of the SDK's stated boundaries even when it requires a particular host configuration. Provider service vulnerabilities belong with the provider as well; explain SecretKit's role without assuming a remote service issue is an SDK defect.

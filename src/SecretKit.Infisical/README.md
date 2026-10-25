@@ -1,4 +1,14 @@
-# Native Infisical organization and import preview
+# SecretKit.Infisical
+
+The immediate priority is [Infisical-first local-package readiness](../../docs/public/local-packages.md):
+selected reads, native revision/provenance, explicit authentication lifetime,
+selected mutations and reusable .NET composition. Qualified native revision
+reads are implemented and offline-tested; local-profile evidence remains
+separate from deployment qualification.
+Azure, management and every native family below are not prerequisites for that
+local goal. No Event-specific models or compatibility interfaces are introduced.
+
+The existing native organization/import and lifecycle preview follows.
 
 This is an implemented, offline-exercised subset, not full Infisical support
 or remote conformance. Handwritten internal Refit 16.3.0 interfaces build native
@@ -13,6 +23,15 @@ their existing behavior.
 offline evidence from the dated native narratives and historical counts below.
 
 ## R6 authentication and definition inputs
+
+Universal login exposes `RequestStartedAt` as a conservative caller-observed
+bound, not a server issuance timestamp. `BindLifetimeEvidence` binds independently
+verified host policy to the exact login. The login-based token-session
+constructor rejects cross-wired evidence, retains expiry/original timing and
+owns an independent material copy. Disposing the login cannot invalidate the
+session; handoff and renewal never reset a finite lifetime ceiling.
+See the RuntimeConfiguration authentication example for explicit same-principal
+startup, renewal and authorized replacement after uncertainty.
 
 `InfisicalUniversalAuthentication` performs one explicit native login exchange
 using caller-selected client ID and protected client secret. A caller-held
@@ -74,6 +93,48 @@ certificates cannot be treated as revoked merely because a lease is deleted.
 
 ## Authority and ownership
 
+### Qualified raw reads
+
+`ReadNativeAsync(reference, cancellationToken)` returns an independently owned
+`InfisicalSecretRead`. Dispose it after using `Material`. Its opaque `Revision`
+compares the trusted origin, project/environment/folder namespace, returned
+resource `id` and positive integral version. Equality survives a new client
+instance; deletion/recreation changes resource identity even at version 1.
+Equal revisions never make authority-bound references interchangeable.
+
+Only `InfisicalResolution.Raw` with `IncludeImports=false` is qualified.
+Expansion/imports can change delivered material without changing the selected
+resource version; use the common `ReadAsync` for those explicit provider modes,
+without interpreting its numeric observation as a qualified resolved revision.
+
+Native qualification requires returned `workspace`, `environment`, `secretPath`,
+`type`, `secretKey`, `id` and positive `version`, plus explicit material visibility.
+Missing/malformed required evidence is Unknown, contradictory scope/key evidence
+is Invalid, and hidden material is Denied. There is no `_id` fallback or request
+coordinate substitution. Common and native reads share one request/parser and
+acquire one material owner per call. Common reads reject returned coordinate
+contradictions but do not promise complete native identity evidence.
+
+Inventory remains value-free metadata. Returned foreign scope and duplicate
+names are rejected rather than relabeled as complete selected-folder evidence.
+Raw parser strings and explicit exports remain ordinary managed plaintext.
+
+### Host-owned networking and deadlines
+
+The `InfisicalClient(origin, hostTransport, tokens, network, timeProvider)`
+overload accepts a host-owned `SocketsHttpHandler`; disposal closes only the
+SDK's HttpClient wrapper and drains accepted work. The handler must disable
+redirects, cookies and activity propagation. Certificate-validation callbacks
+and chain-policy verification bypass flags are rejected before token acquisition.
+Configure private trust through standard trust stores or a validating custom
+root chain policy. Keep supplied handler configuration stable while in use;
+host proxy, DNS and instrumentation remain host responsibilities.
+
+The caller supplies an operation deadline with its cancellation token. It
+applies through credential acquisition, send and body reads. No read retry,
+IPv4 override, implicit login or mutation replay is added. Default transports
+use `network.Proxy`; supplied handlers retain their own proxy configuration.
+
 Bind every native address to the client's `SecretAuthority` through a
 `SecretReference`. Native mutations also require an independently supplied
 `InfisicalNativeAuthority` and a new, target-bound `MutationReceipt`. The authority
@@ -101,11 +162,13 @@ applied. Batch subsets leave missing rows uncertain, not failed or rolled back.
 
 ## Exact operation status
 
-The admitted registry is
+The historical research snapshot is
 [`docs/internal/providers/infisical-operations.json`](../../docs/internal/providers/infisical-operations.json),
 observed 2026-10-09, method/path snapshot
 `ae441902d9e0c8a32c4032ea0ef71422cd4aa681ced65dc9ee62c511018b8183`.
-The table exhaustively maps the 44 Phase 5 routes, not all 1,566 admitted routes.
+It is `ContractResearchOnly`, not current admission. The current retained
+inventory is [infisical.json](../../docs/internal/releases/admission/infisical.json).
+The table exhaustively maps the 44 historical Phase 5 routes, not all researched routes.
 Every row below is implemented as a typed, bounded native subset with offline
 wire-seam tests; **none is live verified or claimed fully supported**.
 Project/identity/role/grant administration belongs to separate management work.

@@ -6,10 +6,12 @@ Choose the track for your task. SecretKit is an unpublished .NET SDK preview; pr
 
 - [Repository overview](../README.md): packages, quickstart, trust boundaries, and community.
 - [Current preview](public/current-preview.md): implemented subsets and verification limits.
+- [Local Infisical packages](public/local-packages.md): current evaluation commands, planned qualification profile, and application-owned boundaries.
+- [Demos and recovery](public/demos-and-recovery.md): package-only console/worker/web operation, controlled measurements and selected trim/AOT evidence.
 - [Current provider support](public/provider-support.md): package scope, executable offline evidence and unverified combinations.
 - [Database credential boundary](public/database-credentials.md): opaque secret material, typed Infisical APIs and separate optional database verification.
 - [Public design hub](public/README.md): adoption, configuration, compatibility, and intended behavior.
-- [Scope and future orchestration](public/scope-and-orchestration.md): retained two-provider access, optional administration and future Configurator responsibility.
+- [Scope and future orchestration](public/scope-and-orchestration.md): Infisical-first local readiness, retained provider work, optional administration and future Configurator responsibility.
 - [Connector scope decision](public/connector-scope-decision.md): accepted/applied catalog removal, retained support and local verification.
 - [Package guides](../src/): package-specific entry points and responsibilities.
 
@@ -19,7 +21,9 @@ Choose the track for your task. SecretKit is an unpublished .NET SDK preview; pr
 - [Project map](../PROJECTS.md): source owners, tests, samples, and tools.
 - [Agent contract](../AGENTS.md): SDK invariants and verification baseline.
 - [Internal documentation hub](internal/README.md): architecture, runtime contracts, provider inventories, and evidence.
+- [Infisical local readiness contract](internal/INFISICAL_LOCAL_READINESS.md): accepted direction, existing gaps, reusable contracts, and qualification boundaries.
 - [Provider onboarding](internal/PROVIDER_ONBOARDING.md): setup, ownership and evidence requirements for both current providers.
+- [Provider admission](internal/PROVIDER_ADMISSION.md): demand, contract, ownership and qualification requirements before another backend.
 - [Dependency provenance](../THIRD-PARTY-NOTICES.md): notices and distribution gates.
 
 ## Private reports and community conduct

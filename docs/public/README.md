@@ -8,11 +8,18 @@
 
 SecretKit is a proposed in-process .NET library family for applications whose operators select among explicitly installed secret-provider adapters.
 
+The accepted 2026-10-23 delivery priority is Infisical-first local-package
+readiness. Existing implementation and historical design must be read
+separately: the new qualification profile is planned, not completed. Azure and
+management remain retained work, not prerequisites for this local goal.
+
 These pages describe intended behavior. The [current local preview](current-preview.md) records implemented read, selected-write and native subsets and their limits; it is not a published or completed release. The [accepted scope decision](connector-scope-decision.md) removes broad third-party app-connection/sync administration from local source. Local post-removal verification passed; broader design is not completed support.
 
 ## Read the design
 
-- [Current scope and future orchestration](scope-and-orchestration.md): core two-provider delivery, optional administration and Configurator setup.
+- [Local package evaluation](local-packages.md): evaluate existing packages before public publication and understand the planned local qualification profile.
+- [Demos and recovery](demos-and-recovery.md): operate the implemented console, worker and loopback HTTP apps; reproduce bounded measurements and selected compatibility analysis.
+- [Current scope and future orchestration](scope-and-orchestration.md): Infisical-first local readiness, optional administration and Configurator setup.
 - [Database credential boundary](database-credentials.md): Infisical API support without shipped database drivers; optional integration tests stay separate.
 - [Adoption and value](adoption-and-value.md): where an in-process abstraction might help, alternatives, consumer ownership, and measurements needed to establish value.
 - [Configuration and runtime](configuration-and-runtime.md): selected authority, explicit plaintext export, generation ownership, bootstrap, optional integrations, and activation.
@@ -40,7 +47,9 @@ Standalone samples are proposed to illustrate database bootstrap and optional in
 
 The package split is not permission to use administrative authority, a dependency approval, or a claim of feature availability. Specialized recovery, backup, lease, and rotation semantics would remain provider-native until a shared contract is proven. No speculative common approval interface is proposed.
 
-`net10.0` is the proposed starting target. OS, architecture, Native AOT, and trimming support would be claimed only after verification of the relevant package and dependency combination.
+Existing projects target `net10.0` and remain unpublished. OS, architecture,
+Native AOT, and trimming support would be claimed only after verification of
+the relevant package and dependency combination.
 
 ## Release meaning
 
@@ -52,6 +61,11 @@ third-party catalog rather than deferring comprehensive connector delivery.
 Frozen Infisical research is `ContractResearchOnly`, not current admission.
 Neither historical counts nor design breadth authorize publication.
 See [current scope and future orchestration](scope-and-orchestration.md).
+
+The 2026-10-23 direction now prioritizes qualified local Infisical packages,
+without an Event implementation or public-publishing phase. It changes delivery
+order, not the truth of retained evidence or the authority of the existing
+public publisher. See [local evaluation](local-packages.md).
 
 Product features without an established supported programmable contract would be reported as `ContractNotEstablished`. That status distinguishes missing SDK contract evidence from absence of the vendor feature. It would not ship a placeholder module or count as working support. Imports and other admitted operations can still encounter provider approval rules or downstream effects even when approval-administration endpoints are not admitted.
 

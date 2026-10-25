@@ -1,5 +1,19 @@
 # Secret access, optional administration and deployment orchestration
 
+## Immediate delivery priority
+
+Accepted direction, 2026-10-23: make Infisical access useful to .NET applications
+through qualified local packages before public NuGet publication. Event is a
+requirements reference, not a repository edited by this workstream or a source
+of SDK-specific models. Breaking redesign is permitted during development.
+
+Azure and optional administration remain in the repository. Their completion,
+all Infisical native families, and Configurator orchestration are not local
+adoption prerequisites. Existing tests and unfinished work remain preserved.
+The [local evaluation guide](local-packages.md) distinguishes existing commands
+from the planned profile; the [engineering contract](../internal/INFISICAL_LOCAL_READINESS.md)
+defines acceptance without claiming those changes are already implemented.
+
 The [accepted catalog-removal decision](connector-scope-decision.md) defines the
 current boundary. Broad Infisical third-party app-connection and secret-sync
 administration has been removed from local source, not retained for a later

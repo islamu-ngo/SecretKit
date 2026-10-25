@@ -1,10 +1,11 @@
 # Contributing to ISLAMU SecretKit
 
-Help improve the two-provider SDK with focused changes, reproducible evidence, and clear support boundaries. Participation follows [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+Help improve the SDK with focused changes, reproducible evidence, and clear support boundaries. The immediate priority is [Infisical-first local readiness](docs/internal/INFISICAL_LOCAL_READINESS.md); Azure and selected administration remain retained work. Participation follows [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
 ## Before you start
 
 - Read the [current preview](docs/public/current-preview.md) and [scope](docs/public/scope-and-orchestration.md). Planned native operations are not all implemented or live-verified.
+- Use the [local package guide](docs/public/local-packages.md) for evaluation before public publication. Keep application policy and application-specific contracts outside shipped packages; no Event integration is implied.
 - Follow the [accepted catalog-removal decision](docs/public/connector-scope-decision.md). Third-party app-connection/sync administration is outside current product scope; legitimate retained administration and native SQL rotation features are not removed merely because they reference connections. Frozen Infisical research is not current admission. Local removal checks passed; see the accepted scope decision for evidence.
 - Use [issues](https://github.com/islamu-ngo/SecretKit/issues/new/choose) for ordinary bugs and proposals. Discuss package/API changes, new dependencies, and broad refactors before investing in them.
 - Report security vulnerabilities privately through [SECURITY.md](SECURITY.md), including fixes discovered in forks.

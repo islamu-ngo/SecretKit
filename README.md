@@ -10,7 +10,7 @@ Open-source .NET secret-management libraries for Infisical and Azure Key Vault.
 
 One small common read contract, typed provider-native operations, and explicit application-owned authority.
 
-> 🚧 **Active Pre-Release Development:** SecretKit is an unpublished development preview. Local packages and selected provider checks exist; they do not establish complete API coverage, production readiness, or a public NuGet release. Start with the [current preview](docs/public/current-preview.md).
+> 🚧 **In development. Not ready for production. APIs may change without backward compatibility.** SecretKit is an unpublished development preview. Local packages and selected provider checks do not establish complete API coverage or a public NuGet release. Start with the [current preview](docs/public/current-preview.md).
 
 [![GitHub License][github-license-shield]][license-link]
 [![GitHub Repo Stars][github-stars-shield]][github-stars-link]
@@ -30,7 +30,7 @@ SecretKit is an in-process **.NET 10 SDK** for applications that explicitly sele
 
 The consuming application owns credential injection, permissions, configuration meaning, client activation, and persistence. Installing a package does not grant provider access. SecretKit has no dependency on Event or Configurator applications.
 
-The current priority is the two-provider SDK. Broader administration and guided Configurator deployment are separate outcomes; see [scope and future orchestration](docs/public/scope-and-orchestration.md).
+The immediate priority is **Infisical-first local-package readiness**: a reusable library boundary that applications can evaluate before any public NuGet release. Azure and selected administration remain in the repository, but their completion is not a prerequisite for this local adoption goal. See [local package evaluation](docs/public/local-packages.md) and [scope and future orchestration](docs/public/scope-and-orchestration.md).
 
 ## ✨ Who It Serves
 
@@ -73,6 +73,16 @@ SecretKit runs inside your application. Choose the packages that match its respo
 
 These packages are present in the checkout, with bounded implemented subsets. Package existence is not complete native-operation support. Local installation evidence, offline tests, and live provider conformance have different scopes; consult the [current preview](docs/public/current-preview.md) before selecting an operation.
 
+For Infisical application access, start with `SecretKit.Infisical` and its
+`SecretKit.Core` dependency. Configuration export and hosting are optional.
+Management and Azure packages are not required for ordinary Infisical runtime
+access. The implemented local qualification profile separates these choices from
+the existing seven-package public publication protocol. Offline installation
+evidence and owned native qualification remain distinct.
+
+Explore the package-only console, worker and loopback HTTP examples through
+[demos and recovery](docs/public/demos-and-recovery.md).
+
 ## 🎨 Application-Owned Configuration
 
 Your application selects its provider, origin, credentials, and key mapping. Optional snapshots publish a complete local generation; they do not promise a remote transaction or activate your application clients for you.
@@ -95,7 +105,7 @@ See [SECURITY.md](SECURITY.md), [runtime contracts](docs/internal/RUNTIME_CONTRA
 
 ### Is SecretKit ready for production or available on NuGet?
 
-This checkout is an unpublished preview. You can build local packages and evaluate supported slices, but no public package availability or production support policy is established. Azure live verification, broader provider coverage, and publication gates remain explicit limits in the [current preview](docs/public/current-preview.md).
+This checkout is an unpublished preview. The current goal is qualified local Infisical packages, not public publication. Local packages can support integration experiments before NuGet publication, but successful packing does not establish complete application compatibility. The existing public publisher still has broader gates; see [local evaluation and its limits](docs/public/local-packages.md) and the [current preview](docs/public/current-preview.md).
 
 ### Does SecretKit replace my secret provider?
 
@@ -121,7 +131,7 @@ Ordinary Infisical or direct Azure Key Vault access does not require a connectio
 
 ## Roadmap
 
-The [repository scope](docs/public/scope-and-orchestration.md) describes the current two-provider priority and future orchestration. The wider ISLAMU [roadmap][roadmap-link] provides ecosystem context. Propose SecretKit changes through [issues][github-issues-link]; a roadmap entry is not an implemented support claim.
+The [repository scope](docs/public/scope-and-orchestration.md) describes Infisical-first local readiness, retained provider work, and future orchestration. The wider ISLAMU [roadmap][roadmap-link] provides ecosystem context. Propose SecretKit changes through [issues][github-issues-link]; a roadmap entry is not an implemented support claim.
 
 ## 🤝 Contributing
 
@@ -174,6 +184,7 @@ The [documentation hub][docs-link] routes readers to the correct track. Design d
 | Guide | Reader Question |
 | --- | --- |
 | [Current Preview](docs/public/current-preview.md) | What is implemented and what remains unverified? |
+| [Local Packages](docs/public/local-packages.md) | How can I evaluate Infisical without public NuGet publication? |
 | [Adoption and Value](docs/public/adoption-and-value.md) | Where might this SDK help my application? |
 | [Configuration and Runtime](docs/public/configuration-and-runtime.md) | Who owns secrets, generations, and activation? |
 | [Operations and Compatibility](docs/public/operations-and-compatibility.md) | How are native support and compatibility bounded? |

@@ -1,5 +1,46 @@
 # Current provider support
 
+## Immediate delivery priority
+
+The [runtime adoption contract](../internal/RUNTIME_ADOPTION_SECURITY.md)
+separates implemented offline app/security slices from final qualification.
+The console, worker and loopback web entrypoints have controlled installed
+process evidence; causal proof and lifetime protocols have controlled HTTP/
+injected-time evidence. This does not upgrade native/provider/platform coverage.
+See [adoption and recovery](demos-and-recovery.md). SecretKit remains in
+development, not ready for production.
+
+The 2026-10-23 direction prioritizes
+[Infisical-first local package evaluation](local-packages.md), without public
+publication or an Event implementation phase. Azure and management remain
+available only to their documented implemented/evidence scope; completion of
+those tracks is not a local adoption prerequisite.
+
+The isolated four-package local profile and raw native revision/provenance API
+are implemented with offline evidence. Native revisions qualify only Raw,
+non-imported responses with exact returned scope, resource identity and positive
+version. The exact current local archives still require installed-consumer and
+owned deployment evidence before a live-ready claim. The source/evidence requirements are in the
+[local readiness contract](../internal/INFISICAL_LOCAL_READINESS.md). The dated
+support narratives below retain their original scope and do not qualify every
+public method in an installed assembly.
+
+The local version is `0.1.0-local.20261024.1`; its eight selected members and
+S01-S16 denominator are declared in
+[the local profile](../internal/local/infisical-runtime.json).
+Local preparation verifies source-content and original-archive identities but
+does not qualify S15 or create public-release authority. Typed native revision,
+token-bound handoff and host-owned read transport remain Infisical mechanisms;
+Core and independently optional extensions retain their existing boundaries.
+
+The local handoff also supplies a relative folder feed and archive hashes,
+tested after relocation with independent caches. The separately selected
+functional gate requires 17 observed cases, Applied create evidence and
+confirmed cleanup. Its no-approval pilot leaves pending approval unobserved;
+three binding proofs stay unavailable in the full 21-entry report. Neither a
+functional pass nor the portable feed establishes production readiness,
+principal identity, complete policy conformance or Event acceptance.
+
 Status: implemented/offline scope, reviewed 2026-10-12 against baseline
 `f7b1f7aec9f312fc2cbc54d1ea797d02824512ad` and the uncommitted
 provider-engineering changes. Packages target .NET 10. This is not release

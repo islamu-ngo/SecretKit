@@ -6,7 +6,10 @@
 > **Source facts checked:** 2026-10-09; no comparative benchmark
 > **Source anchors:** Official references below
 
-SecretKit proposes a reusable in-process boundary for operator-selectable provider access; its value must be measured rather than assumed.
+SecretKit provides implemented subsets of a reusable in-process provider
+boundary; its value must be measured rather than assumed. The immediate goal is
+[Infisical-first local-package readiness](local-packages.md), not simultaneous
+provider completion or public publication.
 
 The [accepted scope decision](connector-scope-decision.md) removes the broad
 Infisical third-party app-connection/sync catalog while retaining optional
@@ -15,7 +18,10 @@ use `ISecretReader` and `ISecretInventory` through Infisical or direct Azure
 access, without an external connector. Broader integration administration can
 be legitimate, but is outside the current product choice. Local removal checks passed; the evaluation below is not comparative or live evidence.
 
-No SecretKit package, integration, publication, or provider conformance test is claimed here. The choices below are design alternatives, not superiority claims or recommendations obtained through outreach.
+The [current preview](current-preview.md) records existing packages, offline
+checks and scoped historical native evidence. This page claims no completed
+application integration or superiority over alternatives. The choices below
+are design alternatives, not recommendations obtained through outreach.
 
 ## When the abstraction might help
 
@@ -38,6 +44,13 @@ For an application committed to one provider, the direct SDK may be the simpler 
 Microsoft documents an [Azure Key Vault configuration provider](https://learn.microsoft.com/en-us/aspnet/core/security/key-vault-configuration?view=aspnetcore-10.0). Dapr documents a [secrets building block](https://docs.dapr.io/developing-applications/building-blocks/secrets/secrets-overview/) for retrieval from configured stores; that architecture does not require a SecretKit adapter. Infisical documents an [external agent](https://infisical.com/docs/integrations/platforms/infisical-agent). These facts identify alternatives, not evidence that one is faster, safer, or cheaper.
 
 ## Proposed evaluation
+
+For implemented package-only console/worker/web workflows, recovery ownership,
+and the fixed local-overhead workload, see [demos and recovery](demos-and-recovery.md).
+Those measurements cover synthetic in-process preparation/export and application
+generation lifetimes, not remote latency, integration hours or comparative value.
+New providers require the [admission decision](../internal/PROVIDER_ADMISSION.md);
+the third-provider research measure below is not automatic admission.
 
 Use equivalent standalone sample requirements, identity privileges, required-key sets, failure cases, and provider environments. Record setup separately from steady-state operation, and include unfamiliar-adapter learning time rather than comparing a mature SDK integration with a prepared SecretKit demo.
 
@@ -62,6 +75,11 @@ Consumers would also own desired and observed revisions, durable notifications w
 
 Install only the required approved packages; the seven-package proposal does not imply an umbrella dependency or automatic administrative registration. Use separate least-privilege runtime and management identities. Decide whether consumers need owned material or deliberately exported `IConfiguration` strings before selecting the optional configuration package.
 
-Start with standalone samples and inspect the [runtime design](configuration-and-runtime.md) and [compatibility gates](operations-and-compatibility.md). Actual Event or Configurator migration would require a separate authorized workstream after a suitable SecretKit release.
+Start with standalone samples and inspect the [runtime design](configuration-and-runtime.md)
+and [compatibility gates](operations-and-compatibility.md). An independently
+authorized application workstream can evaluate exact local package originals
+before public publication. Event and Configurator integration remain outside
+this library workstream; neither application's contracts are preserved as SDK
+compatibility shims.
 
 [Public design overview](README.md)

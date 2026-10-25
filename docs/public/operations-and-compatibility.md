@@ -1,7 +1,7 @@
 # Operations and compatibility
 
 > **Audience:** Operators, maintainers, and package reviewers
-> **Status:** PROPOSED DESIGN
+> **Status:** Operational requirements; implemented evidence is recorded separately
 > **Owner:** SecretKit maintainers
 > **Source facts checked:** 2026-10-09; provider conformance unverified
 > **Source anchors:** Primary published documentation linked below
@@ -9,6 +9,13 @@
 SecretKit proposes explicit capability admission and evidence-based support claims across seven separately installable packages.
 
 This page defines intended operational and release policy. It does not describe implemented, published, or tested SDK behavior. Official vendor documentation establishes vendor facts, not SecretKit conformance.
+
+The accepted 2026-10-23 immediate goal is
+[Infisical-first local evaluation](local-packages.md). A planned local
+qualification profile is separate from the existing seven-package/two-provider
+public publisher. Public publication, Azure completion and management
+completion are not phases of this local goal. Existing release checks are not
+weakened or satisfied by calling a local package install successful.
 
 Current product scope is the [accepted catalog-removal decision](connector-scope-decision.md).
 Broad third-party app-connection/sync administration has been removed from local
@@ -20,7 +27,7 @@ Historical release goals below do not override that scope.
 
 | Proposed package | Intended boundary |
 | --- | --- |
-| `SecretKit.Core` | BCL-only, minimal proven read contracts, typed references, bounded outcomes, independent owned material, and acquired immutable generations; no vendor SDK, host framework, database, or application policy |
+| `SecretKit.Core` | BCL-only portable read/inventory contracts, references, bounded outcomes and independently owned material; no vendor SDK, host framework, database, application policy or generation loader |
 | `SecretKit.Infisical` | Runtime identity/authentication and basic secret data-plane operations, with explicit native address and reference semantics |
 | `SecretKit.Infisical.Management` | Separately authorized selected project/identity/access administration, native SQL rotation configuration and existing gateway/proxy administration; no broad third-party connection/sync catalog |
 | `SecretKit.AzureKeyVault` | Secret data plane, including admitted native versions and lifecycle operations |
@@ -48,6 +55,12 @@ Admission would still account for approval and downstream effects on supported o
 
 ## Compatibility evidence
 
+The [demo operations and recovery guide](demos-and-recovery.md) records the
+implemented entrypoints, selected Linux console trim/AOT attempts and fixed
+controlled measurements. Analysis failure remains not-qualified. A successful
+demo path would not establish library-wide trimming/AOT support, other app
+profiles, native deployment qualification or Windows portability.
+
 The support registry would keep these dimensions separate:
 
 | Dimension | Intended meaning | Current SecretKit evidence |
@@ -59,9 +72,25 @@ The support registry would keep these dimensions separate:
 
 A future matrix would record provider release/version, cloud or self-hosted deployment, edition, API version by family, authentication method, permission model, region/sovereign cloud, operation, selected dependencies, OS/architecture, and evidence date. This design page establishes no verified combination. Scoped historical evidence is in the [current preview](current-preview.md); it does not verify the removal. A passing read in one vault would not establish all Azure clouds or management/audit operations; one Infisical edition would not establish other native features or entitlements.
 
-`net10.0` is proposed, not a shipped compatibility guarantee. Native AOT, trimming, OS/architecture portability, and other framework targets would be advertised only after packed-consumer verification of that exact package and dependency path. Assembly compilation alone would not establish platform support.
+The existing projects target `net10.0`; they are unpublished. Native AOT,
+trimming, OS/architecture portability, and other framework targets would be
+advertised only after packed-consumer verification of that exact package and
+dependency path. Assembly compilation alone would not establish platform support.
 
 ## Endpoints, proxy, CA, and bounded operations
+
+Implemented Infisical read transport: the `SocketsHttpHandler` constructor
+overload keeps the handler host-owned and rejects redirects, cookies, activity
+propagation, custom certificate-validation callbacks and chain verification
+bypass flags. Standard trust stores and validating custom-root chain policies
+remain available. Keep supplied-handler configuration stable while in use;
+proxy, DNS and instrumentation remain host responsibilities.
+
+Controlled loopback tests exercise handler reuse after SDK shutdown, redirect
+rejection and caller/shutdown cancellation through token and response-body
+boundaries. Deployment DNS, proxy and private-CA acceptance remain unqualified.
+Pass a bounded caller cancellation token to every read; there is no implicit
+read timeout, retry stack, fallback principal or global IP-family override.
 
 The operator would select a trusted endpoint/cloud and explicit identity through host policy. Proxy configuration and private CA trust would use approved transport/OS mechanisms. Certificate and hostname verification, Azure challenge-resource validation, and trusted origin restrictions would remain enabled. There would be no TLS bypass, accept-all certificate callback, automatic endpoint guessing, or bearer-token forwarding to an untrusted redirect or pagination origin.
 

@@ -2,6 +2,11 @@
 
 Current delivery priority: [core scope and deferred orchestration](CORE_SCOPE_AND_ROADMAP.md).
 
+The accepted 2026-10-23 priority is
+[Infisical-first local readiness](INFISICAL_LOCAL_READINESS.md), before public
+publication and without an Event repository implementation phase. Retained
+Azure/management work and its evidence are not removed or relabeled.
+
 The [accepted 2026-10-11 scope decision](../public/connector-scope-decision.md)
 has removed broad third-party app-connection/sync administration from local
 source while retaining selected administration, native SQL rotation and
@@ -28,12 +33,21 @@ or establishes complete live compatibility. R4's bounded research and
 [review traceability](REVIEW_TRACEABILITY.md) map is not current admission.
 Official links preserve provenance, not remotely tested SDK behavior.
 
-R5 supersedes the five-package/speculative-capability/late-pilot portions of R4. The single active triad, public/internal guides, research/review map and I-VSD assessment share the revised design. This alignment is documentation evidence, not implementation approval.
+R5 supersedes the five-package/speculative-capability/late-pilot portions of R4.
+Those historical planning claims do not establish the current local-readiness
+implementation or approval. Tracked engineering contracts remain independent
+of private task paths.
 
 ## Reading Map
 
+The next increment is governed by the
+[runtime adoption security contract](RUNTIME_ADOPTION_SECURITY.md) and
+[ADR-003](adr/ADR-003-runtime-adoption-security-evidence.md). These distinguish
+required new demos/proof producers from existing SDK implementation.
+
 | Page | Design responsibility |
 | --- | --- |
+| [Infisical local readiness](INFISICAL_LOCAL_READINESS.md) | Current delivery direction, package profile, reusable behavior and acceptance boundaries |
 | [SDK architecture](SDK_ARCHITECTURE.md) | Seven packages, dependency direction, narrow Core, native features, consumer boundaries |
 | [Runtime contracts](RUNTIME_CONTRACTS.md) | Material ownership, generations, receipts, cancellation, authentication, transports, bulk operations |
 | [Delivery and maintenance](DELIVERY_AND_MAINTENANCE.md) | Admission policy versus registry, early pilots, evidence gates, compatibility, release and ongoing ownership |
