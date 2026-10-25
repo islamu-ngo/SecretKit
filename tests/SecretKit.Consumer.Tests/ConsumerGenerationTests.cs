@@ -1,11 +1,20 @@
 using System.Security.Cryptography;
 using SecretKit.Core;
 using SecretKit.Extensions.Configuration;
+using SecretKit.Samples.RuntimeConfiguration;
 
 namespace SecretKit.Consumer.Tests;
 
 public sealed class ConsumerGenerationTests
 {
+    [Test]
+    public async Task SerialCompositionWorkloadReadsOnlySelectedRequiredAndOptionalGroups()
+    {
+        CompositionMeasurement measured = await BootstrapScenario.RunCompositionAsync();
+
+        await Assert.That(measured.SelectedReads).IsEqualTo(7);
+    }
+
     [Test]
     public async Task LogicalDatabaseOperationKeepsOneGenerationDuringRefresh()
     {

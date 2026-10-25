@@ -14,10 +14,11 @@ public sealed record RuntimeActivationObservation(
 
 /// <summary>
 /// Caller-driven consumer policy. Use an intended, uncached runtime reader; readers remain host-owned.
-/// Every Check again/Enable creates a fresh loader collection. The app validator owns acceptance,
+/// Every Check again/Enable creates a fresh loader collection; only Enable activates a client.
+/// The app validator owns acceptance,
 /// constructs a new independent client, and must not retain the borrowed candidate handle.
 /// </summary>
-public sealed class RuntimeIntegrationCoordinator : IDisposable
+public sealed class RuntimeIntegrationCoordinator : IAsyncDisposable
 {
     private readonly object _gate = new();
     private readonly SecretSelection[] _selections;
@@ -31,6 +32,10 @@ public sealed class RuntimeIntegrationCoordinator : IDisposable
     private long _observedRevision;
     private bool _enabled;
     private bool _disposed;
+    private bool _retirementFailed;
+    private readonly HashSet<RuntimeClientGeneration> _generations = [];
+    private readonly HashSet<Task> _collections = [];
+    private TaskCompletionSource? _disposal;
     private SecretStatus _lastStatus = SecretStatus.Absent;
 
     public RuntimeIntegrationCoordinator(ISecretReader intendedReader,
@@ -61,16 +66,22 @@ public sealed class RuntimeIntegrationCoordinator : IDisposable
     public ValueTask<RuntimeActivationObservation> CheckAgainAsync(CancellationToken cancellationToken = default) =>
         CollectAsync(enable: false, cancellationToken);
 
-    public RuntimeActivationObservation Disable()
+    public async ValueTask<RuntimeActivationObservation> DisableAsync()
     {
+        RuntimeClientGeneration? retired;
+        RuntimeActivationObservation observation;
         lock (_gate)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             _enabled = false;
             _observedRevision = ++_desiredRevision;
-            Retire();
-            return ObserveLocked();
+            retired = Detach();
+            observation = ObserveLocked();
         }
+        // Reserve the state before yielding; replica callers may hold their revision gate.
+        await Task.Yield();
+        if (retired is not null) await retired.ReleaseAsync().ConfigureAwait(false);
+        return observation;
     }
 
     public RuntimeActivationObservation Observe()
@@ -96,19 +107,26 @@ public sealed class RuntimeIntegrationCoordinator : IDisposable
     private async ValueTask<RuntimeActivationObservation> CollectAsync(bool enable, CancellationToken cancellationToken)
     {
         long revision;
+        var finished = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         lock (_gate)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             cancellationToken.ThrowIfCancellationRequested();
             if (enable) _enabled = true;
             revision = ++_desiredRevision;
+            _collections.Add(finished.Task);
         }
+        // Application readers/validators/disposers must not run under a caller's revision gate.
+        await Task.Yield();
         IRuntimeIntegrationClient? client = null;
+        RuntimeClientGeneration? retired = null;
         SecretStatus status = SecretStatus.Unknown;
         DateTimeOffset collected = default;
         DateTimeOffset deadline = default;
         try
         {
+            lock (_gate)
+                if (_disposed || revision != _desiredRevision) return ObserveLocked();
             using var loader = new SecretSnapshotLoader(_selections, _time);
             SecretOutcome<long> collection = await loader.RefreshAsync(cancellationToken).ConfigureAwait(false);
             status = collection.Status;
@@ -131,20 +149,25 @@ public sealed class RuntimeIntegrationCoordinator : IDisposable
             }
             lock (_gate)
             {
-                if (_disposed || revision != _desiredRevision)
-                    return ObserveLocked();
-                _lastStatus = status;
-                if (status == SecretStatus.Success && _enabled)
+                if (!_disposed && revision == _desiredRevision)
                 {
-                    RuntimeClientGeneration? previous = _current;
-                    _current = new RuntimeClientGeneration(client!, revision, collected, deadline, _time);
-                    client = null;
-                    _observedRevision = revision;
-                    previous?.Release();
+                    _lastStatus = status;
+                    if (status == SecretStatus.Success && enable && _enabled)
+                    {
+                        RuntimeClientGeneration? previous = _current;
+                        _current = new RuntimeClientGeneration(client!, revision, collected, deadline, _time,
+                            ObserveRetirement);
+                        _generations.Add(_current);
+                        client = null;
+                        _observedRevision = revision;
+                        retired = previous;
+                    }
+                    else if (status != SecretStatus.Success && _policy == RuntimeStalePolicy.FailClosed) retired = Detach();
                 }
-                else if (_policy == RuntimeStalePolicy.FailClosed) Retire();
-                return ObserveLocked();
             }
+            RuntimeClientGeneration? release = retired;
+            retired = null;
+            if (release is not null) await release.ReleaseAsync().ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -153,9 +176,10 @@ public sealed class RuntimeIntegrationCoordinator : IDisposable
                 if (!_disposed && revision == _desiredRevision)
                 {
                     _lastStatus = SecretStatus.Unknown;
-                    if (_policy == RuntimeStalePolicy.FailClosed) Retire();
+                    if (_policy == RuntimeStalePolicy.FailClosed) retired = Detach();
                 }
             }
+            if (retired is not null) await retired.ReleaseAsync().ConfigureAwait(false);
             throw;
         }
         catch (Exception)
@@ -165,12 +189,29 @@ public sealed class RuntimeIntegrationCoordinator : IDisposable
                 if (!_disposed && revision == _desiredRevision)
                 {
                     _lastStatus = SecretStatus.Unknown;
-                    if (_policy == RuntimeStalePolicy.FailClosed) Retire();
+                    if (_policy == RuntimeStalePolicy.FailClosed) retired = Detach();
                 }
-                return ObserveLocked();
+            }
+            if (retired is not null) await retired.ReleaseAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            try
+            {
+                if (client is not null) await client.DisposeAsync().ConfigureAwait(false);
+            }
+            catch (Exception)
+            {
+                lock (_gate) { _retirementFailed = true; _lastStatus = SecretStatus.Unknown; }
+            }
+            finally
+            {
+                lock (_gate) _collections.Remove(finished.Task);
+                finished.TrySetResult();
             }
         }
-        finally { client?.Dispose(); }
+        // Rejected-candidate cleanup can change health; do not return a pre-cleanup snapshot.
+        lock (_gate) return ObserveLocked();
     }
 
     private RuntimeActivationObservation ObserveLocked()
@@ -179,26 +220,65 @@ public sealed class RuntimeIntegrationCoordinator : IDisposable
             _time.GetUtcNow() >= _current.Deadline ? RuntimeFreshness.DeadlineElapsed :
             _lastStatus == SecretStatus.Success ? RuntimeFreshness.Fresh : RuntimeFreshness.Stale;
         return new(_desiredRevision, _observedRevision, _enabled,
-            _enabled && _current is not null && freshness != RuntimeFreshness.DeadlineElapsed,
+            _enabled && !_retirementFailed && _current is not null && freshness != RuntimeFreshness.DeadlineElapsed,
             _lastStatus, freshness, _current?.CollectedAt, _current?.Deadline);
     }
 
-    private void Retire()
+    private RuntimeClientGeneration? Detach()
     {
         RuntimeClientGeneration? previous = _current;
         _current = null;
-        previous?.Release();
+        return previous;
     }
 
-    public void Dispose()
+    private void ObserveRetirement(RuntimeClientGeneration generation, bool failed)
     {
         lock (_gate)
         {
-            if (_disposed) return;
-            _disposed = true;
-            _enabled = false;
-            ++_desiredRevision;
-            Retire();
+            _generations.Remove(generation);
+            if (failed) { _retirementFailed = true; _lastStatus = SecretStatus.Unknown; }
         }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        TaskCompletionSource completion;
+        Task[] pending;
+        RuntimeClientGeneration? retired = null;
+        bool ownsDisposal;
+        lock (_gate)
+        {
+            ownsDisposal = _disposal is null;
+            completion = _disposal ??= new(TaskCreationOptions.RunContinuationsAsynchronously);
+            if (!ownsDisposal) pending = [];
+            else
+            {
+                _disposed = true;
+                _enabled = false;
+                ++_desiredRevision;
+                retired = Detach();
+                pending = _collections.Concat(_generations.Select(generation => generation.Completion)).ToArray();
+            }
+        }
+        if (ownsDisposal)
+        {
+            await Task.Yield();
+            try
+            {
+                Task release = retired?.ReleaseAsync().AsTask() ?? Task.CompletedTask;
+                await Task.WhenAll(pending.Append(release)).ConfigureAwait(false);
+                lock (_gate)
+                {
+                    if (_retirementFailed)
+                        throw new InvalidOperationException("Application client retirement failed.");
+                }
+                completion.TrySetResult();
+            }
+            catch (Exception)
+            {
+                completion.TrySetException(new InvalidOperationException("Application client retirement failed."));
+            }
+        }
+        await completion.Task.ConfigureAwait(false);
     }
 }

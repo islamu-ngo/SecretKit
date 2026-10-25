@@ -29,18 +29,19 @@ public sealed class ReplicaRevisionScenario(string replica, RuntimeIntegrationCo
             _enabled = desired.Enabled;
             if (!desired.Enabled)
             {
-                coordinator.Disable();
-                _observed = desired.Revision;
-                return Acknowledge();
+                activation = coordinator.DisableAsync();
             }
-            // Reserve the coordinator revision before a later disable can enter this gate.
-            activation = coordinator.EnableAsync(cancellationToken);
+            else
+            {
+                // Reserve the coordinator revision before a later disable can enter this gate.
+                activation = coordinator.EnableAsync(cancellationToken);
+            }
         }
         RuntimeActivationObservation local = await activation.ConfigureAwait(false);
         lock (_gate)
         {
-            if (_desired == desired.Revision && _enabled && local.Active &&
-                local.ObservedRevision == local.DesiredRevision)
+            if (_desired == desired.Revision && _enabled == desired.Enabled &&
+                (!desired.Enabled || local.Active && local.ObservedRevision == local.DesiredRevision))
                 _observed = desired.Revision;
             return Acknowledge();
         }

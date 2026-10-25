@@ -9,6 +9,31 @@ namespace SecretKit.Configuration.Tests;
 public sealed class ConfigurationTests
 {
     [Test]
+    public async Task DedicatedAuthorityExportNeverResolvesUnselectedLocalDefaults()
+    {
+        var reader = new ControlledReader();
+        using var loader = CreateLoader(reader);
+        await loader.RefreshAsync();
+        using var handle = loader.Acquire();
+        using var export = SecretConfigurationExport.CreateAcknowledgingManagedStrings(
+            handle, [new("first", "Service:User"), new("second", "Service:Password")]);
+        IConfigurationRoot authorityOnly = new ConfigurationBuilder().Add(export).Build();
+        using var configurationLifetime = (IDisposable)authorityOnly;
+        IConfigurationRoot local = new ConfigurationBuilder().AddInMemoryCollection(
+            new Dictionary<string, string?>
+            {
+                ["Service:Password"] = "local-must-not-repair-authority",
+                ["Service:Unselected"] = "local-only"
+            }).Build();
+        using var localLifetime = (IDisposable)local;
+
+        await Assert.That(authorityOnly["Service:Password"]).IsEqualTo(reader.Value);
+        await Assert.That(authorityOnly["Service:Unselected"]).IsNull();
+        await Assert.That(authorityOnly.AsEnumerable().Count(pair => pair.Value is not null)).IsEqualTo(2);
+        await Assert.That(local["Service:Unselected"]).IsEqualTo("local-only");
+    }
+
+    [Test]
     public async Task AcquiredGenerationAndCopiesSurviveReplacementAndOwnerDisposal()
     {
         var reader = new ControlledReader();

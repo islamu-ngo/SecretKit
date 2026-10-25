@@ -8,6 +8,22 @@ namespace SecretKit.Consumer.Tests;
 public sealed class BootstrapAuthorityTests
 {
     [Test]
+    [Arguments(SecretValidity.Unknown, SecretStatus.Invalid)]
+    [Arguments(SecretValidity.Expired, SecretStatus.Expired)]
+    public async Task UnprovenRequiredMaterialCannotBecomeBootstrapCandidate(
+        SecretValidity validity, SecretStatus expected)
+    {
+        var reader = new Reader((reference, _) => ValueTask.FromResult(
+            SecretOutcome<SecretRead>.Success(new(SecretMaterial.FromText(Material()),
+                new(reference, null, DateTimeOffset.UnixEpoch, validity)))));
+
+        SecretOutcome<BootstrapCandidate> result = await BootstrapScenario.PrepareAsync(reader, Bindings(reader));
+        if (result.IsSuccess) result.Value.Dispose();
+
+        await Assert.That(result.Status).IsEqualTo(expected);
+    }
+
+    [Test]
     [Arguments(SecretStatus.Absent)]
     [Arguments(SecretStatus.Denied)]
     [Arguments(SecretStatus.Unavailable)]
@@ -19,6 +35,29 @@ public sealed class BootstrapAuthorityTests
 
         await Assert.That(result.Status).IsEqualTo(failure);
         await Assert.That(() => result.Value).Throws<InvalidOperationException>();
+    }
+
+    [Test]
+    [Arguments(SecretStatus.Absent)]
+    [Arguments(SecretStatus.Denied)]
+    public async Task IndependentOptionalFailureLeavesRequiredConsumerUsable(SecretStatus failure)
+    {
+        var reader = new Reader((reference, _) => ValueTask.FromResult(Success(reference, "required")));
+        using BootstrapCandidate required = (await BootstrapScenario.PrepareAsync(reader, Bindings(reader))).Value;
+        var optionalReader = new Reader((_, _) =>
+            ValueTask.FromResult(SecretOutcome<SecretRead>.Failure(failure)));
+        await using var optional = new RuntimeIntegrationCoordinator(optionalReader, Bindings(optionalReader),
+            (_, _) => throw new InvalidOperationException("Incomplete optional group reached construction."),
+            RuntimeStalePolicy.FailClosed, TimeSpan.FromMinutes(1), TimeProvider.System);
+
+        RuntimeActivationObservation checkedAgain = await optional.CheckAgainAsync();
+
+        using SecretRead username = required.Read("Database:Username");
+        using SecretRead password = required.Read("Database:Password");
+        await Assert.That(username.Material.Reveal()).IsEqualTo("required");
+        await Assert.That(password.Material.Reveal()).IsEqualTo("required");
+        await Assert.That(checkedAgain.LastStatus).IsEqualTo(failure);
+        await Assert.That(optional.Acquire()).IsNull();
     }
 
     [Test]

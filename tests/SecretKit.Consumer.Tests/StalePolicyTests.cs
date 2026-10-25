@@ -6,10 +6,41 @@ namespace SecretKit.Consumer.Tests;
 public sealed class StalePolicyTests
 {
     [Test]
+    [Arguments(RuntimeStalePolicy.FailClosed)]
+    [Arguments(RuntimeStalePolicy.BoundedLastKnown)]
+    public async Task CancelledExplicitRefreshFollowsStalePolicyWithoutReplacingPinnedClient(RuntimeStalePolicy policy)
+    {
+        var fixture = new RuntimeFixture { Value = "test-pinned" };
+        await using var coordinator = fixture.Create(policy);
+        RuntimeActivationObservation initial = await coordinator.EnableAsync();
+        await using RuntimeGenerationLease pinned = coordinator.Acquire()!;
+        var entered = RuntimeFixture.Signal();
+        var release = RuntimeFixture.Signal();
+        fixture.Reader.BeforeRead = async token =>
+        {
+            entered.SetResult();
+            await release.Task.WaitAsync(token);
+        };
+        using var cancellation = new CancellationTokenSource();
+        Task<RuntimeActivationObservation> refresh = coordinator.EnableAsync(cancellation.Token).AsTask();
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        cancellation.Cancel();
+        await Assert.That(async () => await refresh.WaitAsync(TimeSpan.FromSeconds(10)))
+            .Throws<OperationCanceledException>();
+
+        RuntimeActivationObservation current = coordinator.Observe();
+        await Assert.That(current.Active).IsEqualTo(policy == RuntimeStalePolicy.BoundedLastKnown);
+        await Assert.That(current.ObservedRevision).IsEqualTo(initial.ObservedRevision);
+        await Assert.That(await pinned.ExecuteAsync()).IsEqualTo("test-pinned");
+        await Assert.That(fixture.Clients.Count).IsEqualTo(1);
+    }
+
+    [Test]
     public async Task FailClosedRetiresClientAfterRefreshFailure()
     {
         var fixture = new RuntimeFixture { Value = "test-known" };
-        using var coordinator = fixture.Create();
+        await using var coordinator = fixture.Create();
         await coordinator.EnableAsync();
         fixture.Failure = SecretStatus.Denied;
         RuntimeActivationObservation denied = await coordinator.CheckAgainAsync();
@@ -22,14 +53,14 @@ public sealed class StalePolicyTests
     public async Task BoundedStaleDeadlineDoesNotSlideOnAcquisitionOrFailedRefresh()
     {
         var fixture = new RuntimeFixture { Value = "test-known" };
-        using var coordinator = fixture.Create(RuntimeStalePolicy.BoundedLastKnown);
+        await using var coordinator = fixture.Create(RuntimeStalePolicy.BoundedLastKnown);
         RuntimeActivationObservation initial = await coordinator.EnableAsync();
         fixture.Time.Now += TimeSpan.FromMinutes(4);
         fixture.Failure = SecretStatus.Unavailable;
         RuntimeActivationObservation stale = await coordinator.CheckAgainAsync();
         await Assert.That(stale.Freshness).IsEqualTo(RuntimeFreshness.Stale);
         await Assert.That(stale.UsableUntil).IsEqualTo(initial.UsableUntil);
-        using RuntimeGenerationLease pinned = coordinator.Acquire()!;
+        await using RuntimeGenerationLease pinned = coordinator.Acquire()!;
         await Assert.That(await pinned.ExecuteAsync()).IsEqualTo("test-known");
         fixture.Time.Now += TimeSpan.FromMinutes(1);
         await Assert.That(coordinator.Acquire()).IsNull();
@@ -42,10 +73,10 @@ public sealed class StalePolicyTests
     {
         var fixture = new RuntimeFixture { Value = "test-expiring" };
         fixture.Expiry = fixture.Time.Now + TimeSpan.FromSeconds(30);
-        using var coordinator = fixture.Create(RuntimeStalePolicy.BoundedLastKnown);
+        await using var coordinator = fixture.Create(RuntimeStalePolicy.BoundedLastKnown);
         RuntimeActivationObservation initial = await coordinator.EnableAsync();
         await Assert.That(initial.UsableUntil).IsEqualTo(fixture.Expiry);
-        using RuntimeGenerationLease lease = coordinator.Acquire()!;
+        await using RuntimeGenerationLease lease = coordinator.Acquire()!;
         fixture.Time.Now = fixture.Expiry.Value;
         await Assert.That(coordinator.Acquire()).IsNull();
         await Assert.That(async () => await lease.ExecuteAsync()).Throws<InvalidOperationException>();
@@ -61,7 +92,7 @@ public sealed class StalePolicyTests
             fixture.Time.Now = fixture.Expiry.Value;
             return Task.CompletedTask;
         };
-        using var coordinator = fixture.Create();
+        await using var coordinator = fixture.Create();
         RuntimeActivationObservation expired = await coordinator.EnableAsync();
         await Assert.That(expired.LastStatus).IsEqualTo(SecretStatus.Expired);
         await Assert.That(coordinator.Acquire()).IsNull();
@@ -72,18 +103,18 @@ public sealed class StalePolicyTests
     public async Task FreshSuccessReplacesStaleClientAndDeadline()
     {
         var fixture = new RuntimeFixture { Value = "test-first" };
-        using var coordinator = fixture.Create(RuntimeStalePolicy.BoundedLastKnown);
+        await using var coordinator = fixture.Create(RuntimeStalePolicy.BoundedLastKnown);
         RuntimeActivationObservation first = await coordinator.EnableAsync();
         fixture.Time.Now += TimeSpan.FromMinutes(4);
         fixture.Failure = SecretStatus.Unknown;
         await coordinator.CheckAgainAsync();
         fixture.Failure = null;
         fixture.Value = "test-fresh";
-        RuntimeActivationObservation fresh = await coordinator.CheckAgainAsync();
+        RuntimeActivationObservation fresh = await coordinator.EnableAsync();
         await Assert.That(fresh.Freshness).IsEqualTo(RuntimeFreshness.Fresh);
         await Assert.That(fresh.UsableUntil > first.UsableUntil).IsTrue();
         await Assert.That(fixture.Clients.First().Disposed).IsTrue();
-        using RuntimeGenerationLease lease = coordinator.Acquire()!;
+        await using RuntimeGenerationLease lease = coordinator.Acquire()!;
         await Assert.That(await lease.ExecuteAsync()).IsEqualTo("test-fresh");
     }
 }

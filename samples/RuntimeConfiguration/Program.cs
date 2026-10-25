@@ -4,6 +4,8 @@ using SecretKit.Extensions.Configuration;
 using SecretKit.Samples.RuntimeConfiguration;
 
 // The executable runs an offline workflow, not a database or a real secret provider.
+await AuthenticationScenario.RunAsync();
+await BootstrapScenario.RunCompositionAsync();
 var selected = new DemonstrationReader();
 var required = new Dictionary<string, SecretReference>
 {
