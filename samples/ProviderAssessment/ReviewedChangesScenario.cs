@@ -76,18 +76,20 @@ public sealed class ReviewedChange
 
     internal SecretMaterial CopyMaterial() => _material.Copy();
 
-    internal async ValueTask<SecretStatus> DispatchAsync(SecretMaterial material,
+    internal async ValueTask<(SecretStatus Status, InfisicalStaticChange? InfisicalChange)> DispatchAsync(SecretMaterial material,
         MutationReceipt receipt, CancellationToken cancellationToken)
     {
         switch (Operation)
         {
             case ReviewedChangeOperation.InfisicalCreate:
-                return (await _infisical!.CreateAsync(Target, material, receipt, cancellationToken)).Status;
             case ReviewedChangeOperation.InfisicalUpdateValue:
-                return (await _infisical!.UpdateValueAsync(Target, material, receipt, cancellationToken)).Status;
+                SecretOutcome<InfisicalStaticChange> outcome = Operation == ReviewedChangeOperation.InfisicalCreate
+                    ? await _infisical!.CreateAsync(Target, material, receipt, cancellationToken)
+                    : await _infisical!.UpdateValueAsync(Target, material, receipt, cancellationToken);
+                return (outcome.Status, outcome.IsSuccess ? outcome.Value : null);
             case ReviewedChangeOperation.AzureSet:
-                return (await _azure!.SetSecretAsync(new AzureSetSecretRequest(Target, material),
-                    receipt, cancellationToken)).Status;
+                return ((await _azure!.SetSecretAsync(new AzureSetSecretRequest(Target, material),
+                    receipt, cancellationToken)).Status, null);
             default:
                 throw new InvalidOperationException("Unknown reviewed operation.");
         }
@@ -108,6 +110,7 @@ public sealed class ReviewedChangeResult
 {
     private readonly object _gate = new();
     private SecretStatus? _status;
+    private InfisicalStaticChange? _infisicalChange;
     private ReviewedChangeProgress _progress;
 
     internal ReviewedChangeResult(int index, SecretReference target)
@@ -121,13 +124,15 @@ public sealed class ReviewedChangeResult
     public MutationReceipt Receipt { get; }
     public DispatchEvidence Evidence => Receipt.Evidence;
     public SecretStatus? Status { get { lock (_gate) { return _status; } } }
+    public InfisicalStaticChange? InfisicalChange { get { lock (_gate) { return _infisicalChange; } } }
     public ReviewedChangeProgress Progress { get { lock (_gate) { return _progress; } } }
 
-    internal void Complete(SecretStatus status)
+    internal void Complete(SecretStatus status, InfisicalStaticChange? infisicalChange = null)
     {
         lock (_gate)
         {
             _status = Evidence == DispatchEvidence.Pending ? SecretStatus.Pending : status;
+            _infisicalChange = infisicalChange;
             _progress = ReviewedChangeProgress.Completed;
         }
     }
@@ -254,8 +259,9 @@ public sealed class ReviewedChangesScenario
                     try
                     {
                         cancellationToken.ThrowIfCancellationRequested();
-                        Results[index].Complete(await _items[index].DispatchAsync(
-                            owned, Results[index].Receipt, cancellationToken));
+                        var outcome = await _items[index].DispatchAsync(
+                            owned, Results[index].Receipt, cancellationToken);
+                        Results[index].Complete(outcome.Status, outcome.InfisicalChange);
                     }
                     catch (OperationCanceledException)
                     {

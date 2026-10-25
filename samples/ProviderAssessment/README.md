@@ -30,6 +30,14 @@ provider write, network request, activation, email or business action is involve
    Optional failures disable only that feature (`CanEnable` is false).
    This is sample consumer policy, not SDK activation or application validation.
 
+Keep required startup keys and optional capability keys in separate
+`FeatureRequirement` groups. All keys within each group are required for that
+group; there is no optional-key relaxation inside a loader. A successful fresh
+`CheckAsync` only returns evidence. The application must independently choose
+activation and construct/validate its consumer. The RuntimeConfiguration sample
+demonstrates that separate activation boundary, authority-only export, and
+generation pinning without a network client or database driver.
+
 Pass native addresses without normalization: Azure `AzureSecretAddress` retains
 the selected name/version; Infisical `InfisicalSecretAddress` retains explicit
 version, `Raw`/`ExpandedReferences`, and `includeImports` choices. Runtime references
