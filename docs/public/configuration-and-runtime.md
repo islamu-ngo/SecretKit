@@ -1,122 +1,241 @@
 # Configuration and runtime
 
-> **Audience:** Application developers and operators
-> **Status:** Implemented primitives with proposed application-composition requirements
+> **Audience:** .NET application developers, operators and AI coding assistants
+> **Status:** Implemented composition APIs; in development, not ready for production
 > **Owner:** SecretKit maintainers
-> **Scope reviewed:** 2026-10-23; current behavior is recorded separately
-> **Source anchors:** Official references below
+> **Last verified:** 2026-10-25 against source and tests; no checks rerun
+> **Source anchors:** [Loader](../../src/SecretKit.Extensions.Configuration/SecretSnapshotLoader.cs), [selection](../../src/SecretKit.Extensions.Configuration/SecretSelection.cs), [handle](../../src/SecretKit.Extensions.Configuration/SecretSnapshotHandle.cs), [export](../../src/SecretKit.Extensions.Configuration/SecretConfigurationExport.cs)
 
-SecretKit proposes asynchronous selected-authority reads and protected local generations; the host would own startup, readiness, activation, and live-client replacement.
+Use `SecretKit.Extensions.Configuration` to collect required values asynchronously
+and pin one local generation for a multi-key operation. Export to `IConfiguration`
+only when ordinary plaintext strings are acceptable. The package does not choose
+an identity, install refresh policy, start a worker or activate application clients.
+Core/provider reads do not require this optional package.
 
-The [configuration package guide](../../src/SecretKit.Extensions.Configuration/README.md)
-records the callable generation/export primitives, and the
-[current preview](current-preview.md) records their evidence. Future-tense
-application workflows below are design requirements, not completed integrations.
-The immediate goal is [local Infisical adoption](local-packages.md), with no
-Event implementation or public-publishing phase.
+## Select required groups explicitly
 
-The current loader treats every supplied selection as required. Keep optional
-feature groups separate; do not infer an optional-selection API from this
-design. No SDK cache, scheduler, tenant-binding system or live-client registry
-is added by the local-readiness direction.
+Each `SecretSelection(consumerKey, reader, reference)` binds an application key to
+one `ISecretReader` and a `SecretReference` belonging to that reader's authority.
+An authority mismatch throws during selection construction. A loader requires
+at least one selection, copies the selection list and rejects duplicate consumer
+keys with **ordinal, case-sensitive** comparison. `Password` and `password` are
+different consumer keys; reads through a handle require the exact spelling.
 
-## Select one authority
+Every selection in a loader is required. There is no optional flag, fallback
+principal or local-default rescue path. Put startup-required settings in one
+loader and each independent optional feature's required settings in another.
+Failure of an optional group can leave that feature disabled without invalidating
+the already prepared startup group. This is application policy, not a different
+loader mode.
 
-The RuntimeConfiguration executable now demonstrates required collection,
-separate optional checks and explicit enable, authority-only export and a
-pinned generation across refresh. Its measured offline workload uses seven
-serial selected reads: two required keys collected twice, then one optional
-key checked absent, checked available and explicitly enabled. An observed
-14.113 ms local run is composition overhead, not remote-provider latency or
-an SLA. Fresh capability checks cannot activate or replace a live client;
-application-owned `EnableAsync` performs handover after current-intent checks.
+Use references and readers selected by trusted application configuration. An
+administrative read does not prove delivery to the intended runtime identity.
+The [provider guides](providers/infisical.md) describe native references;
+[Azure Key Vault](providers/azure-key-vault.md) and
+[management](providers/management.md) have distinct identity boundaries.
 
-The host would register installed adapters and select an immutable provider instance with a trusted endpoint, explicit identity, namespace boundary, and credential source. Selection would not install packages or discover arbitrary plugins. A provider reference would retain its instance identity and typed native address; a secret path would not be allowed to introduce another endpoint.
+## Await collection before constructing dependent services
 
-A required provider read would not silently fall back to an environment variable, a file, another identity, or another vendor. External environment/file delivery could be an explicitly selected consumer authority, but not a rescue path concealed behind a failed remote read. Application-specific tenant and binding policy would remain outside SecretKit.
+`RefreshAsync(CancellationToken)` performs the selected reads serially and
+serializes concurrent collections on the same loader. It returns
+`SecretOutcome<long>`: success contains the newly published local generation
+number; failure contains `Status` and optional `RetryAfter`.
 
-Azure administration and secret delivery are distinct permission boundaries according to the [Azure access-plane documentation](https://learn.microsoft.com/en-us/azure/key-vault/general/rbac-guide). An administrative inspection would not prove that the intended runtime identity can retrieve material.
+This fragment accepts an already selected reader and two authority-bound
+references. It returns a caller-owned handle; disposing the temporary loader
+does not invalidate that acquired generation.
 
-## Protected material and acquired generations
+```csharp
+using SecretKit.Core;
+using SecretKit.Extensions.Configuration;
 
-The protected read API would return typed, independent, disposable material copies. A cache hit would copy from owned storage, not hand a caller the cache's disposable object or shared writable buffer. Disposing or modifying one returned copy would not invalidate another caller or mutate the cached value. Explicit reveal or copy operations would make plaintext access deliberate; redacted formatting would be the default.
+static async Task<SecretSnapshotHandle> PrepareRequiredAsync(
+    ISecretReader reader,
+    SecretReference username,
+    SecretReference password,
+    CancellationToken cancellationToken)
+{
+    using var loader = new SecretSnapshotLoader(
+    [
+        new SecretSelection("username", reader, username),
+        new SecretSelection("password", reader, password)
+    ]);
+    SecretOutcome<long> result = await loader.RefreshAsync(cancellationToken);
+    if (!result.IsSuccess)
+        throw new InvalidOperationException($"Required settings: {result.Status}.");
+    return loader.Acquire();
+}
+```
 
-For a multi-key logical operation, such as constructing one database client from several settings, the caller would acquire one immutable generation handle and obtain every required value through that handle. Repeated reads against a mutable current-generation pointer could otherwise mix old and new values during refresh.
+Await this method before registering or starting services that need those values.
+For example, within an async startup method with the inputs above:
 
-Publishing a replacement generation would not free storage still retained by readers. Internal generation handles would keep the retired generation's storage alive until all readers release it. Each material result would still be an independent disposable copy. The design would clear owned buffers when their ownership ends; it could not promise removal of all managed strings created by upstream transports or by callers.
+```csharp
+using SecretSnapshotHandle generation = await PrepareRequiredAsync(
+    reader, username, password, cancellationToken);
+using SecretRead user = generation.Read("username");
+using SecretRead credential = generation.Read("password");
+// Validate and construct the application dependency here, from this one handle.
+// Reveal() is deliberate plaintext access, not required for protected copies.
+```
 
-A prepared generation would carry a local generation identifier, collection start/end times, freshness information, and per-key observed provider versions where available. It would distinguish unavailable version evidence rather than fabricate it from secret bytes. Immutability would describe the local collected set, not a remote transaction: provider values might change during the collection window. Related credentials could require provider-native version pinning or consumer coordination beyond a locally coherent generation.
+Use a longer-lived loader when the application needs further refreshes. Call
+`RefreshAsync` explicitly, inspect its outcome, then `Acquire()` the current
+generation. Before the first successful collection, `Acquire()` throws
+`InvalidOperationException`; a failed first attempt creates no usable generation.
 
-Refresh would prepare and validate a candidate before replacing the current generation. An incomplete required-key set would not be published as a successful replacement. Cancellation and typed failures would remain observable. Existing readers could finish under the host's bounded stale policy; new consumers would not silently accept indefinite stale data.
+### Failure and cancellation
 
-## Plaintext configuration is a separate opt-in
+Publication requires every read to succeed with `SecretValidity.Valid`. Unknown
+or other non-valid validity becomes `Invalid`; expired validity becomes `Expired`.
+The loader checks returned authority and rechecks all supplied expiry deadlines
+at collection completion. A partial candidate is disposed, never published.
 
-`SecretKit.Extensions.Configuration` would expose prepared snapshots and an **explicit plaintext export opt-in** to `IConfiguration`. The protected material API would not implicitly stringify secrets into the configuration tree. Adopters using only protected reads would not need the export package.
+A failed refresh preserves the previous generation. An unexpected reader
+exception becomes `Unavailable` without exposing its message or inner exception.
+`LastAttempt` records bounded collection timing, status, retry timing and
+cancellation evidence, not values, keys or provider exception text. `RetryAfter`
+is evidence for host policy, not an automatic retry instruction.
 
-The host would await remote preparation before attaching a snapshot. Synchronous configuration loading would perform no hidden network operation or sync-over-async wait. Explicit key mappings would be collision-checked; provider naming constraints would not be repaired by silently changing secret names.
+Cancellation propagates as `OperationCanceledException`, disposes candidate
+material and preserves the previous generation. Cancelling a queued collection
+does not cancel the one already running; a cancellation before entering collection
+does not create a new attempt record. Give remote reads a caller-controlled
+deadline. Loader disposal prevents publication and future acquisition, but does
+not itself cancel reader I/O or dispose supplied readers/transports.
 
-Microsoft's [configuration documentation](https://learn.microsoft.com/en-us/aspnet/core/fundamentals/configuration/?view=aspnetcore-10.0) describes ordered providers and last-provider precedence. For controlled secret keys, the host would either compose an authority-only view or ensure the selected snapshot takes precedence and reject conflicting overrides. A later environment, command-line, or JSON provider must not accidentally replace a controlled key. Ordinary non-secret configuration could retain a different host-selected precedence.
+## Pin one generation, then release each owner
 
-Export would create plaintext managed strings and broaden who can observe values. Configuration debugging and debug views, options binding, serializers, exception formatting, and logging could disclose them. Options instances and live clients could retain previous values beyond snapshot replacement. Disposing protected buffers would not clear exported immutable strings or all options copies; garbage collection is not a deterministic erasure guarantee. The host would decide whether that trade-off is acceptable, prohibit unsafe configuration dumps, and bound retained options/client lifetimes. Reload notifications would not prove clients rebound or replicas converged.
+`Acquire()` pins the current generation. `handle.Read(consumerKey)` returns a
+`SecretRead` with an independent `SecretMaterial` copy and the actual
+`SecretObservation`; dispose every returned read. A key not selected in that
+generation throws `ArgumentException`.
 
-The configuration package would not start background workers, own readiness, or manage application lifecycle. Optional hosting integration would be a separate package.
+Replacing or disposing the loader releases its ownership of the old storage,
+but handles keep it alive. Disposing a handle is idempotent and prevents further
+reads through that handle; copies already returned remain valid until their own
+disposal. Dispose handles promptly rather than retaining retired generations
+indefinitely. SDK-owned character buffers clear on final release; this cannot
+erase upstream parser strings or caller-created plaintext.
 
-## Bootstrap before database services
+`Generation`, `CollectionStartedAt`, `CollectionCompletedAt` and `Count` describe
+the local collected set. Each read retains its observed provider version,
+reference and validity metadata. Unknown provider versions remain unknown.
+`RemoteSnapshotGuaranteed` is always `false`: serial reads may observe different
+remote moments. A local generation is not a provider transaction, native resource
+revision or proof that related credentials changed together.
 
-The proposed standalone database sample would:
+Acquisition and handle reads do not perform fresh remote reads or revalidate age
+and expiry. Retaining a previous generation is not permission to use stale
+credentials indefinitely. The application must enforce its own age, expiry,
+failure and readiness budgets, including during long-running operations.
 
-1. Select the authority and intended identity from host-approved non-secret configuration and injected credential sources.
-2. Await a complete required-key generation before registering or constructing database-dependent services.
-3. Validate the application's consumption requirements without logging values.
-4. Construct the database configuration/client from one acquired generation, using protected material or deliberately opted-in plaintext export.
-5. Publish startup readiness only after the required preparation and bounded connectivity evidence succeed.
+## Opt into plaintext IConfiguration separately
 
-A required missing, denied, malformed, or unavailable setting would fail startup or keep readiness false. A previously prepared generation could be used only within an explicitly configured age and failure budget; never indefinitely or through an implicit alternate authority. The host would distinguish startup-required settings from later optional integrations.
+`SecretConfigurationMapping(consumerKey, configurationKey)` names each exported
+key explicitly. Destination keys use **ordinal, case-insensitive** collision
+checks before any material is read. Mapping `username` to `Service:User` and
+`password` to `service:user` therefore fails even though the consumer keys differ.
+There is no automatic secret-name conversion.
 
-A missing optional mail integration at startup would not fail the whole application. Its observed state would remain unavailable or disabled until configured and checked. Required database authority failure and optional integration absence are different policies, not one global all-secrets rule.
+Given an acquired `generation` containing the two keys above:
 
-## Runtime setup and activation
+```csharp
+using Microsoft.Extensions.Configuration;
+using SecretKit.Extensions.Configuration;
 
-An operator entering an existing provider reference and an operator provisioning a new provider resource would use separate flows.
+using var export = SecretConfigurationExport.CreateAcknowledgingManagedStrings(
+    generation,
+    [new("username", "Service:Username"), new("password", "Service:Password")]);
+IConfigurationRoot authorityOnly = new ConfigurationBuilder().Add(export).Build();
+using var configurationLifetime = (IDisposable)authorityOnly;
+// Only explicitly mapped values are present; no environment/file fallback.
+```
 
-**Provider-entry flow:** collect and validate a trusted provider/reference selection, save the intended configuration under consumer authorization, then force a fresh read using the intended runtime identity. An administrator's successful read, cached value, or entered credential alone would not satisfy delivery verification.
+Preparation happens before attaching the source. `Build`, synchronous `Load`
+and `IConfigurationRoot.Reload()` do not call the reader or refresh the loader.
+The export owns strings, not the supplied handle; it neither retains nor disposes
+that handle. The provider is read-only: setting configuration values throws
+`NotSupportedException`.
 
-**Provisioning flow:** obtain separately authorized management identity and explicit approval for the selected native changes. Preserve existing values and provider prerequisites. Record effects, save the resulting intended reference, then perform the same fresh runtime-identity read. Provisioning would not automatically grant runtime permissions or enable the application integration.
+For explicit replacement, keep the loader, export and root alive:
 
-Runtime **enable** and **check again** would force fresh reads rather than accept cached success. They would prepare a candidate generation and consumer client, validate required material, and perform a bounded connection check. Only a still-current enable intent with adequate readiness evidence could install the candidate. Check again would refresh evidence without silently enabling a disabled integration.
+```csharp
+SecretOutcome<long> refreshed = await loader.RefreshAsync(cancellationToken);
+if (refreshed.IsSuccess)
+{
+    using SecretSnapshotHandle next = loader.Acquire();
+    export.ReplaceAcknowledgingManagedStrings(next);
+}
+// On failure, apply the application's stale-use/readiness policy.
+```
 
-Checks would have explicit cancellation, timeout, network/endpoint boundaries, and safe result handling. A connection check would not place an order, write business data, send a normal notification, or acquire dynamic credentials as an unnoticed probe. A test email would be a separately explicit action with a selected recipient and disclosed external effect; successful credential retrieval would not imply successful mail delivery.
+Replacement prepares every original mapping, atomically swaps the provider's
+string dictionary and signals reload. Missing keys, a disposed handle or another
+preparation failure leave previous strings and the reload token unchanged.
+Separate indexer reads can cross a reload and mix generations. Use one handle
+or construct a consumer-owned immutable settings object from one handle when
+multi-key coherence matters.
 
-## Effects, revisions, and races
+The dedicated root above avoids competing sources. If using a shared root,
+deliberately control source order: later providers can override earlier ones.
+Do not let environment, command-line or JSON defaults silently replace
+authority-controlled keys.
 
-Native writes could finish synchronously, remain pending, partially apply, or leave effects unknown after a timeout. Resource creation would not mean downstream application is complete. In particular, the published [Infisical import-create contract](https://infisical.com/docs/api-reference/endpoints/secret-imports/create) describes replication that can create approval requests in the destination. An import resource could exist while destination application remains pending approval. That remains relevant even if approval-administration APIs are `ContractNotEstablished` for SecretKit.
+`GetRedactedDebugView()` exposes only a count. Standard configuration debug views,
+enumeration, options binding, serializers, logs and dumps can disclose exported
+values and coordinates. Disposal of the export or configuration root drops the
+provider's dictionary references; it does not erase strings, old options or
+consumer fields. A disposed provider cannot be republished. Reload is not proof
+that an options consumer or client switched credentials.
 
-A retry after an unknown effect would require reconciliation using supported native evidence and consumer policy, not blind replay. A failed candidate or failed runtime read would not trigger destructive provider rollback, deletion, revocation, or rotation. Any corrective native operation would be separately authorized and its consequences recorded.
+## Application activation is a separate step
 
-The consumer would persist the desired revision independently from the observed configuration revision, active material generation, client generation, and readiness evidence. A provider save acknowledgement would not collapse those states into "enabled." Each replica would acquire and activate its own generation; the consumer would own acknowledgement, convergence deadlines, routing/readiness, durable retries, and failure recovery.
+A published generation is collected material, not an enabled integration.
+The application validates its requirements, constructs a candidate dependency
+from one handle, performs any authorized bounded connectivity check, then
+installs it only if the enable intent is still current. A later disable must
+win over an older successful check. Retire old clients after their in-flight
+work drains; refresh alone does not replace them.
 
-For a concurrent disable, candidate installation would compare against the current desired revision and enabled state. A late successful enable/check result could not overwrite a newer disable. Disposal of retired clients and draining in-flight operations would be host policy, not a provider operation.
+The executable [bootstrap scenario](../../samples/RuntimeConfiguration/BootstrapScenario.cs)
+shows separate required and optional groups, an authority-only export and a
+pinned handle across refresh. Its
+[RuntimeIntegrationCoordinator](../../samples/RuntimeConfiguration/RuntimeIntegrationCoordinator.cs)
+and [generation lease](../../samples/RuntimeConfiguration/RuntimeGenerationLease.cs)
+are **sample/application code, not shipped SDK APIs**. They demonstrate fresh
+`CheckAgainAsync` without activation, explicit `EnableAsync`, revision-checked
+handover, fail-closed or bounded-last-known policy and lease-based retirement.
+They do not supply a durable tenant model, persistence or fleet coordination.
 
-Durable notifications would carry no secret values, tokens, plaintext configuration, or raw provider payloads. The consumer would own notification persistence, authorization, deduplication, and the safe revision identifiers used to prompt reconciliation. SecretKit would not supply a fleet coordinator, transactional outbox, tenant activation model, or application database.
+A provider write acknowledgement, a collected generation, an active application
+client and readiness evidence are different states. Keep administrative
+provisioning separately authorized; neither collection failure nor downstream
+activation failure makes a confirmed provider mutation safe to replay or undo.
 
-## Authentication maintenance boundary
+## Evidence and next steps
 
-Implemented Universal Auth handoff is explicit: retain the login receipt,
-bind independently verified lifetime policy using `login.BindLifetimeEvidence`,
-then construct a token session from that login and the bound evidence.
-Dispose the login after the session takes its independent copy. The original
-expiry and conservative request-time bound survive handoff; a later handoff
-timestamp cannot extend lifetime, and numeric maximum TTL is not periodic proof.
-Expired, lost or uncertain authority requires a separately authorized replacement
-under the selected principal rather than bootstrap replay or fallback.
+Mechanics above are grounded in the linked implementation and these inspectable
+tests:
 
-The reviewed-change sample now retains `InfisicalChange` alongside its bounded
-status and caller-held receipt. Applied resource versions, provider approval
-handles and SubmittedForApproval remain distinct. A failed downstream
-invalidation cannot turn a confirmed source write into safe replay.
+- [ConfigurationTests](../../tests/SecretKit.Configuration.Tests/ConfigurationTests.cs):
+  `AcquiredGenerationAndCopiesSurviveReplacementAndOwnerDisposal`,
+  `PartialCollectionNeverPublishesAndPreservesBoundedFailure`,
+  `QueuedCollectionCancellationCannotReplaceInFlightGeneration`,
+  `ValidityDeadlineReachedDuringCollectionFailsClosed`,
+  `ExportRejectsCaseInsensitiveMappingCollisionsBeforeReveal`,
+  `FailedExportReplacementKeepsPreviousStringsAndDoesNotSignalReload` and
+  `SynchronousLoadCannotCollectAndDisposedConfigurationCannotBeRepublished`.
+- [BootstrapAuthorityTests](../../tests/SecretKit.Consumer.Tests/BootstrapAuthorityTests.cs):
+  required failure prevents construction; independent optional failure leaves
+  the required consumer usable.
+- [ActivationRevisionTests](../../tests/SecretKit.Consumer.Tests/ActivationRevisionTests.cs):
+  a check does not enable a disabled feature; disable during a read or validation
+  prevents late activation.
 
-The optional hosting package could help a host schedule explicitly selected authentication maintenance, coordinate cancellation/shutdown, and expose safe maintenance status. It would not perform business-secret rotation or consumer activation. [Infisical Universal Auth](https://infisical.com/docs/documentation/platform/identities/universal-auth) documents periodic-token renewal and bootstrap credentials that can become unusable; the [operations page](operations-and-compatibility.md) describes the proposed recovery constraints.
-
-Standalone samples would demonstrate these flows only inside SecretKit. Event and Configurator retain their meaning, activation, tenant, and persistence policies; no edits or migrations are included.
-
-[Public design overview](README.md) | [Adoption and value](adoption-and-value.md) | [Operations and compatibility](operations-and-compatibility.md)
+These are implementation/offline contract evidence, not new test-run results or
+remote snapshot, downstream connectivity, deployment or production qualification.
+See [current preview](current-preview.md) for dated evidence and open gates.
+Next, compose [authentication and hosting](authentication-and-hosting.md), or
+follow the installed [worker](../../samples/Infisical.WorkerDemo/README.md) and
+[web](../../samples/Infisical.WebDemo/README.md) examples.
