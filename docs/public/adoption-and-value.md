@@ -1,85 +1,110 @@
 # Adoption and value
 
-> **Audience:** Prospective adopters and technical evaluators
-> **Status:** PROPOSED DESIGN
+> **Audience:** Application developers and technical evaluators
+> **Status:** Implemented development subsets; value requires application evaluation
 > **Owner:** SecretKit maintainers
-> **Source facts checked:** 2026-10-09; no comparative benchmark
-> **Source anchors:** Official references below
+> **Last verified:** 2026-10-25 (local source/documentation review only)
+> **Source anchors:** [Project map](../../PROJECTS.md), [Core](../../src/SecretKit.Core/),
+> [Configuration](../../src/SecretKit.Extensions.Configuration/README.md),
+> [Hosting](../../src/SecretKit.Extensions.Hosting/README.md)
 
-SecretKit provides implemented subsets of a reusable in-process provider
-boundary; its value must be measured rather than assumed. The immediate goal is
-[Infisical-first local-package readiness](local-packages.md), not simultaneous
-provider completion or public publication.
+SecretKit provides an implemented in-process boundary for selected Infisical and
+Azure Key Vault operations. It makes authority selection, material ownership,
+bounded outcomes and local generation replacement explicit. **In development,
+not ready for production; unpublished, with breaking API changes permitted.**
+The immediate adoption path is [exact local Infisical packages](local-packages.md),
+not a commitment to simultaneous provider completion.
 
-The [accepted scope decision](connector-scope-decision.md) removes the broad
-Infisical third-party app-connection/sync catalog while retaining optional
-selected administration and native secret features. Ordinary application reads
-use `ISecretReader` and `ISecretInventory` through Infisical or direct Azure
-access, without an external connector. Broader integration administration can
-be legitimate, but is outside the current product choice. Local removal checks passed; the evaluation below is not comparative or live evidence.
+## What you can use now
 
-The [current preview](current-preview.md) records existing packages, offline
-checks and scoped historical native evidence. This page claims no completed
-application integration or superiority over alternatives. The choices below
-are design alternatives, not recommendations obtained through outreach.
-
-## When the abstraction might help
-
-An application supporting several operator-selected providers could keep its consumption path stable while an installed adapter translates provider addresses, authentication, reads, versions, and outcomes. Explicit material ownership and bounded diagnostic behavior could also give multiple consumers a consistent review boundary.
-
-That boundary would not erase provider differences. Azure vault addresses, Infisical project/environment/folder addresses, import rules, permissions, and mutation effects would retain their native meaning. The small common read surface would coexist with typed provider-native operations. Provider selection would use a host-owned allowlist of installed registrations, never arbitrary configuration-driven plugin installation.
-
-For an application committed to one provider, the direct SDK may be the simpler choice. SecretKit would add another dependency and a contract maintenance obligation. A common facade would not create atomic remote reads, instant rotation propagation, universal administrative permissions, or features absent from the admitted provider contracts.
-
-## Alternatives and their costs
-
-| Approach | Useful fit | Trade-off to evaluate |
+| Need | Implemented utility | What the application still owns |
 | --- | --- | --- |
-| Direct vendor SDK | One provider or extensive native functionality | Application owns provider branching, credential lifecycle, diagnostics, and material handling |
-| Vendor .NET configuration provider | Consumers already require string-valued configuration | Convenient configuration binding; plaintext exposure, precedence, and refresh behavior need review |
-| Dapr sidecar retrieval | A deployment already standardizes Dapr and its secret-store components | Provider selection moves partly into sidecar/component configuration; app-to-sidecar availability and operational ownership remain |
-| External agent, environment injection, or files | Deployment owns retrieval and delivers values outside the process | Application can avoid provider SDKs; file/environment exposure, refresh signaling, permissions, and stale-value handling move to deployment and consumer policy |
-| Proposed SecretKit in-process adapters | Multiple operator-selected providers with an explicit application boundary | Adapter maintenance, dependency review, native feature divergence, and local generation ownership remain |
+| Read from explicitly selected providers | `ISecretReader`, authority-bound references and bounded outcomes through real Infisical/Azure adapters | Provider/address selection, identity provisioning, required-value policy and operation deadlines |
+| Limit accidental material exposure | Independent disposable material, redacted formatting and controlled serialization | Explicit reveal/export, host instrumentation, process memory and ordinary managed strings |
+| Prepare a coherent local required set | `SecretSnapshotLoader` publishes only complete valid collections; acquired handles retain their generation | Remote consistency expectations, freshness deadlines, semantic validation and optional-feature grouping |
+| Export for string-based configuration consumers | Explicit mappings and acknowledged managed-string export with destination collision checks | Configuration precedence, options/debug exposure and client activation; separate indexer reads can cross reloads |
+| Maintain an explicit Infisical token session | Original finite-lifetime ceilings, single-flight renewal and opt-in hosted maintenance | Verified lifetime/principal evidence, explicit startup and authorized replacement after uncertainty or token loss |
+| Perform selected native operations | Typed native reads, mutations and separate management surfaces with caller-held receipts | Administrative authority, downstream effect verification, persistence and recovery decisions |
 
-Microsoft documents an [Azure Key Vault configuration provider](https://learn.microsoft.com/en-us/aspnet/core/security/key-vault-configuration?view=aspnetcore-10.0). Dapr documents a [secrets building block](https://docs.dapr.io/developing-applications/building-blocks/secrets/secrets-overview/) for retrieval from configured stores; that architecture does not require a SecretKit adapter. Infisical documents an [external agent](https://infisical.com/docs/integrations/platforms/infisical-agent). These facts identify alternatives, not evidence that one is faster, safer, or cheaper.
+Start with [getting started](getting-started.md) and [Core API](core-api.md).
+Use [provider support](provider-support.md) to select only the implemented native
+families you need. Native addresses, permissions, revisions, imports, approvals,
+leases and lifecycle effects retain their provider meaning; the common read
+surface does not turn them into universal contracts.
 
-## Proposed evaluation
+## When the extra boundary earns its cost
 
-For implemented package-only console/worker/web workflows, recovery ownership,
-and the fixed local-overhead workload, see [demos and recovery](demos-and-recovery.md).
-Those measurements cover synthetic in-process preparation/export and application
-generation lifetimes, not remote latency, integration hours or comparative value.
-New providers require the [admission decision](../internal/PROVIDER_ADMISSION.md);
-the third-provider research measure below is not automatic admission.
+SecretKit can help when several consumers need the same explicit ownership and
+failure-handling rules, or an application supports operator-selected providers.
+The application can consume common read outcomes while keeping provider-native
+features typed and separately reviewed. Install only needed packages: management
+is not a runtime prerequisite, and Configuration/Hosting are independent options.
 
-Use equivalent standalone sample requirements, identity privileges, required-key sets, failure cases, and provider environments. Record setup separately from steady-state operation, and include unfamiliar-adapter learning time rather than comparing a mature SDK integration with a prepared SecretKit demo.
+For a single provider with extensive native requirements, a direct vendor client
+may be simpler. SecretKit adds another dependency, narrower supported subsets
+and an additional maintenance surface. It does not eliminate deployment setup,
+grant permissions, create remote atomic reads or activate an integration.
+Current evidence does not establish comparative speed, cost, safety or engineering
+time savings.
 
-| Measure | What to record |
-| --- | --- |
-| Integration time | Engineering hours from empty sample to required reads, bootstrap, safe failure handling, and review; distinguish deployment setup and implementation |
-| Provider branches | Application-owned provider-specific branches and duplicated lifecycle logic; also count complexity moved into adapters |
-| Support burden | Support cases, maintenance hours, upgrade effort, incident diagnosis, and unresolved failures over a stated observation period |
-| Third-provider effort | Time and changes needed to admit a third provider, prove common semantics, add native capabilities, tests, documentation, and dependency approval |
+| Approach | Fit to evaluate | Cost or boundary to inspect |
+| --- | --- | --- |
+| Direct provider client | A provider-specific application needing broad native functionality | Application-owned material, diagnostics, identity and lifecycle handling |
+| String-valued configuration integration | Consumers already designed around configuration strings | Plaintext exposure, precedence, refresh and options/client convergence |
+| External agent, sidecar, environment or files | Deployment owns retrieval outside the application process | Delivery permissions, availability, refresh signals and stale-value policy |
+| SecretKit in-process adapters | Shared ownership/outcome contracts plus selected native capabilities | Adapter maintenance, admitted subsets, explicit generation ownership and remaining live qualification |
 
-The third-provider evaluation would be a research exercise, not a commitment to support another vendor. Define acceptance criteria before measuring, preserve failed cases, and publish limitations with any later results. No comparative measurements have been performed for this proposal. No vendor or adopter outreach is part of this documentation work.
+These are architectural choices, not benchmark rankings or externally verified
+recommendations. No vendor/adopter outreach or comparative test was performed
+for this documentation update.
 
-## Mechanisms and application policy
+## Working examples and evidence
 
-SecretKit would know how to address and read a provider under a supplied identity, return independent owned material, describe observed versions and outcomes, and prepare a local immutable generation. It would not decide what a database password or mail credential means to a business workflow.
+The package-only [console](../../samples/Infisical.ConsoleDemo/),
+[worker](../../samples/Infisical.WorkerDemo/) and
+[web](../../samples/Infisical.WebDemo/) apps demonstrate explicit reads/writes,
+awaited admission, opt-in maintenance and request-pinned consumer generations.
+The [demos and recovery guide](demos-and-recovery.md) explains their controls,
+recovery ownership and fixed local-overhead workload. Controlled installed
+process/HTTP tests are not live deployment qualification, production readiness
+or proof of integration into another application.
 
-Event would continue to own its secret definitions, tenant hierarchy, binding resolution, authorization, required-setting policy, and integration activation. Configurator would continue to own requirement definitions, operator review, destination acceptance, configuration persistence, and reconciliation. Neither application would gain an implemented SecretKit integration from these docs.
+The measured workload concerns synthetic in-process preparation/export and
+generation lifetimes, not remote latency, integration hours or superiority over
+alternatives. For a fair application evaluation, hold required keys, privileges,
+failure cases and environments constant. Record setup/learning time separately
+from steady-state work; count complexity moved into adapters as well as branches
+removed from applications. Track support incidents and upgrade effort over a
+stated observation period. Additional providers require demonstrated demand and
+[admission](../internal/PROVIDER_ADMISSION.md), not automatic expansion.
 
-Consumers would also own desired and observed revisions, durable notifications without secret values, replica acknowledgements, stale budgets, and replacement of live clients. Selecting a provider package would neither activate an integration nor transfer tenant policy into the SDK.
+## Application policy stays outside the SDK
 
-## Adoption constraints
+Applications own tenant boundaries, secret meaning, required/optional decisions,
+semantic validation, persistence, readiness and client handover. Reload signals,
+native revision observations and successful writes do not perform activation or
+prove replica convergence. Consumers own stale budgets and durable material-free
+notifications/acknowledgements.
 
-Install only the required approved packages; the seven-package proposal does not imply an umbrella dependency or automatic administrative registration. Use separate least-privilege runtime and management identities. Decide whether consumers need owned material or deliberately exported `IConfiguration` strings before selecting the optional configuration package.
+Event and Configurator integration are outside this library workstream; these
+docs do not establish either application's acceptance or preserve their contracts
+as compatibility shims. Development changes update real callers directly.
+Core treats database credentials as opaque material; no database drivers ship.
+The [removed connector catalog](connector-scope-decision.md) is not required for
+ordinary reads or a reason to discard retained native rotation/gateway features.
 
-Start with standalone samples and inspect the [runtime design](configuration-and-runtime.md)
-and [compatibility gates](operations-and-compatibility.md). An independently
-authorized application workstream can evaluate exact local package originals
-before public publication. Event and Configurator integration remain outside
-this library workstream; neither application's contracts are preserved as SDK
-compatibility shims.
+## Adoption decision
 
-[Public design overview](README.md)
+Evaluate exact candidate originals with the
+[local package recipe](local-packages.md), then follow
+[configuration/runtime](configuration-and-runtime.md),
+[authentication/hosting](authentication-and-hosting.md) and
+[troubleshooting](troubleshooting.md) for the chosen composition.
+Keep runtime and management identities explicit and least-privileged.
+
+Use [current preview](current-preview.md) and
+[operations/compatibility](operations-and-compatibility.md) before making support
+claims. Historical observations and offline tests cannot qualify refreshed
+archives, missing permissions/editions or unobserved effects. Azure live behavior,
+full native binding evidence and untested platform/AOT/trim profiles remain gaps.
+Local evaluation is not public-release or production authority.

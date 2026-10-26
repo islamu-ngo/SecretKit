@@ -1,34 +1,47 @@
 # SecretKit documentation
 
-Choose the track for your task. SecretKit is an unpublished .NET SDK preview; proposed design, implemented behavior, and live verification are separate claims.
+> **Audience:** Application developers, SDK contributors, operators, and AI agents
+> **Status:** Documentation entry point for the development preview
+> **Owner:** SecretKit maintainers
+> **Last verified:** 2026-10-25 against repository documentation and source
+> **Source anchors:** [repository contract](../AGENTS.md), [project map](../PROJECTS.md)
 
-## Using and evaluating the SDK
+**In development. Not ready for production. APIs may change without backward
+compatibility.** SecretKit is an unpublished .NET 10 SDK. Implemented APIs,
+offline tests, live conformance and release approval are separate claims.
 
-- [Repository overview](../README.md): packages, quickstart, trust boundaries, and community.
-- [Current preview](public/current-preview.md): implemented subsets and verification limits.
-- [Local Infisical packages](public/local-packages.md): current evaluation commands, planned qualification profile, and application-owned boundaries.
-- [Demos and recovery](public/demos-and-recovery.md): package-only console/worker/web operation, controlled measurements and selected trim/AOT evidence.
-- [Current provider support](public/provider-support.md): package scope, executable offline evidence and unverified combinations.
-- [Database credential boundary](public/database-credentials.md): opaque secret material, typed Infisical APIs and separate optional database verification.
-- [Public design hub](public/README.md): adoption, configuration, compatibility, and intended behavior.
-- [Scope and future orchestration](public/scope-and-orchestration.md): Infisical-first local readiness, retained provider work, optional administration and future Configurator responsibility.
-- [Connector scope decision](public/connector-scope-decision.md): accepted/applied catalog removal, retained support and local verification.
-- [Package guides](../src/): package-specific entry points and responsibilities.
+## Use the library
 
-## Contributing and reviewing
+Start with the [developer documentation](public/README.md).
 
-- [Contribution guide](../CONTRIBUTING.md): local workflow and pull request evidence.
-- [Project map](../PROJECTS.md): source owners, tests, samples, and tools.
-- [Agent contract](../AGENTS.md): SDK invariants and verification baseline.
-- [Internal documentation hub](internal/README.md): architecture, runtime contracts, provider inventories, and evidence.
-- [Infisical local readiness contract](internal/INFISICAL_LOCAL_READINESS.md): accepted direction, existing gaps, reusable contracts, and qualification boundaries.
-- [Provider onboarding](internal/PROVIDER_ONBOARDING.md): setup, ownership and evidence requirements for both current providers.
-- [Provider admission](internal/PROVIDER_ADMISSION.md): demand, contract, ownership and qualification requirements before another backend.
-- [Dependency provenance](../THIRD-PARTY-NOTICES.md): notices and distribution gates.
+- **First use:** [getting started](public/getting-started.md), then
+  [local package installation](public/local-packages.md).
+- **API integration:** [Core contracts](public/core-api.md),
+  [provider guides](public/providers/README.md),
+  [configuration](public/configuration-and-runtime.md), and
+  [authentication and hosting](public/authentication-and-hosting.md).
+- **Operate and diagnose:** [security and ownership](public/security-and-ownership.md),
+  [troubleshooting](public/troubleshooting.md), and
+  [package-only demos](public/demos-and-recovery.md).
+- **Check a claim:** [current preview](public/current-preview.md) and
+  [provider support](public/provider-support.md).
+- **Navigate with an AI agent:** [task-to-source map](public/ai-agents.md).
 
-## Private reports and community conduct
+## Contribute to the SDK
 
-- [Security policy](../SECURITY.md): private vulnerability disclosure and SDK boundaries.
-- [Code of conduct](../CODE_OF_CONDUCT.md): participation and private conduct reporting.
+Read [CONTRIBUTING.md](../CONTRIBUTING.md), [AGENTS.md](../AGENTS.md), and
+[PROJECTS.md](../PROJECTS.md). The [engineering hub](internal/README.md) routes
+architecture, runtime contracts, provider inventories, decisions and evidence.
 
-When documentation and observed behavior differ, report the affected package, commit, and a sanitized reproduction. Do not turn a design proposal or offline test result into a live support claim.
+The [documentation guide](internal/DOCUMENTATION_GUIDE.md) defines page ownership,
+source accuracy, example conventions, maintenance checks and research sources.
+It also records the distinction between the current Markdown reference and a
+future generated API browser.
+
+## Report a problem
+
+Follow [SECURITY.md](../SECURITY.md) for private vulnerability reports and
+[CONTRIBUTING.md](../CONTRIBUTING.md) for ordinary issues. Participation follows
+the [Code of Conduct](../CODE_OF_CONDUCT.md). Include the package/version,
+sanitized failure category, expected result and reproduction; exclude material,
+credentials and confidential coordinates.

@@ -1,5 +1,15 @@
 # Secret access, optional administration and deployment orchestration
 
+> **Audience:** Application developers and integration designers
+> **Status:** Current product boundary; future orchestration is not implemented
+> **Owner:** SecretKit maintainers
+> **Last verified:** 2026-10-25 against current support and package boundaries
+> **Source anchors:** [Architecture](../internal/SDK_ARCHITECTURE.md), [support](provider-support.md), [accepted scope](connector-scope-decision.md)
+
+SecretKit supplies in-process provider access. The application decides what the
+values mean and when its services become active. Start with the
+[developer guides](README.md) for implementation instructions.
+
 ## Immediate delivery priority
 
 Accepted direction, 2026-10-23: make Infisical access useful to .NET applications
@@ -10,9 +20,11 @@ of SDK-specific models. Breaking redesign is permitted during development.
 Azure and optional administration remain in the repository. Their completion,
 all Infisical native families, and Configurator orchestration are not local
 adoption prerequisites. Existing tests and unfinished work remain preserved.
-The [local evaluation guide](local-packages.md) distinguishes existing commands
-from the planned profile; the [engineering contract](../internal/INFISICAL_LOCAL_READINESS.md)
-defines acceptance without claiming those changes are already implemented.
+The [local evaluation guide](local-packages.md) documents the implemented
+four-package profile tooling and installation procedure. The
+[engineering contract](../internal/INFISICAL_LOCAL_READINESS.md) defines
+acceptance; implemented tooling and demos do not establish complete native
+qualification.
 
 The [accepted catalog-removal decision](connector-scope-decision.md) defines the
 current boundary. Broad Infisical third-party app-connection and secret-sync

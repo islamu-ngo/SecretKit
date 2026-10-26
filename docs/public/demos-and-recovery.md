@@ -1,9 +1,22 @@
 # Package-only demos, measurements and recovery
 
+> **Audience:** Developers evaluating installed console, worker and web consumers
+> **Status:** Implemented examples; measurements and compatibility observations are dated below
+> **Owner:** SecretKit maintainers
+> **Last verified:** 2026-10-25 against sample paths and current task guides; no demo rerun
+> **Source anchors:** [Project map](../../PROJECTS.md), [demo tests](../../tests/SecretKit.Demo.Tests/), [local packages](local-packages.md)
+
 **In development, not ready for production.** These are .NET 10 applications,
 not deployment controllers or credential stores. Controlled local tests are
 not native Infisical qualification. Start with [local package selection](local-packages.md);
 select exact original archives and use source mapping and a fresh cache.
+
+For a credential-free first run, use [getting started](getting-started.md).
+The installed demos below need an explicit candidate and protected host input.
+The [application choices](#choose-an-application), [input contract](#protect-and-supply-input)
+and [recovery table](#interpret-outcomes-and-recover) are current operator guidance;
+the measurement and trim/AOT sections preserve specific historical observations,
+not current performance guarantees.
 
 ## Choose an application
 
@@ -156,7 +169,7 @@ dotnet tests/SecretKit.Demo.Tests/bin/Release/net10.0/SecretKit.Demo.Tests.dll \
   --minimum-expected-tests 3 --zero-tests-policy strict
 ```
 
-This explicitly selects the pre-P7 four originals, not a final candidate.
+This explicitly selects the historical measurement originals, not a final candidate.
 Every invocation generates fresh source-mapped configuration, cache, outputs
 and locks under `artifacts/runtime-adoption-hardening/quality/`. The generated
 consumer lock is restored again with `--locked-mode` and archive/source/cache
@@ -230,7 +243,7 @@ samples/RuntimeConfiguration/RuntimeGenerationLease.cs         eb77043115c34dee4
 ```
 
 This binds the async lease source including retained disposal completion.
-It is a reproducible pre-P7 observation, not a freeze: changed inputs need a new
+It is a reproducible historical observation, not a freeze: changed inputs need a new
 record. Three integrated `DemoQualityTests` cases passed (one measured lifecycle
 workload and two compatibility evidence-recording cases); that count does not
 turn failed publishes into compatible applications.
@@ -249,11 +262,11 @@ Only a successful publish is followed by running that executable's help and
 actual selected read against a controlled loopback server. An analysis/publish
 failure is **not qualified**, not a skipped success. The evidence does not
 qualify the worker, web, all SDK paths, Windows, other RIDs or native deployment.
-P7 final-package/platform checks and separate native gates remain required.
+Final-package/platform checks and separate native gates remain required.
 
 ### Observed Linux analysis, 2026-10-24
 
-The selected pre-P7 originals were version `0.1.0-preview.1`; SDK `10.0.302`,
+The selected historical originals were version `0.1.0-preview.1`; SDK `10.0.302`,
 runtime `.NET 10.0.10`, CachyOS, `linux-x64`. Both generated profile restores
 and their locked rechecks succeeded. These are application analyses, not
 library qualification:

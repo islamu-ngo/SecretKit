@@ -17,11 +17,17 @@ integration has been implemented or verified.
 
 ## Choose the boundary, not the entire repository
 
-SecretKit is **in development, not ready for production**. The next
-[runtime adoption increment](../internal/RUNTIME_ADOPTION_SECURITY.md) plans
-independent installed console, worker and web applications with security and
-recovery evidence. Those requirements do not imply the apps or native profile
-are already qualified.
+SecretKit is **in development, not ready for production**. Independent installed
+console, worker and web applications are implemented; use
+[demos and recovery](demos-and-recovery.md) to choose one. The
+[runtime adoption security contract](../internal/RUNTIME_ADOPTION_SECURITY.md)
+defines their security and recovery evidence. App implementation does not
+establish native deployment or final-archive qualification.
+
+If you already have a prepared handoff, start at
+[portable repository feed](#portable-repository-feed). The candidate-building
+and evidence-freezing procedures below are for maintainers producing that
+handoff. For a source-only first run, use [getting started](getting-started.md).
 
 | Package | Application evaluation role |
 | --- | --- |
