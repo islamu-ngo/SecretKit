@@ -1,92 +1,97 @@
-# SecretKit Internal Design
+# SecretKit internal documentation
 
-Current delivery priority: [core scope and deferred orchestration](CORE_SCOPE_AND_ROADMAP.md).
+> **Audience:** SDK contributors, maintainers and evidence reviewers
+> **Status:** Current contracts and implemented subsets; historical research is separate
+> **Owner:** SecretKit maintainers
+> **Last verified:** 2026-10-25 (local source/documentation review only)
+> **Source anchors:** [Contributor contract](../../AGENTS.md),
+> [project map](../../PROJECTS.md), [current support](../public/provider-support.md)
 
-The accepted 2026-10-23 priority is
-[Infisical-first local readiness](INFISICAL_LOCAL_READINESS.md), before public
-publication and without an Event repository implementation phase. Retained
-Azure/management work and its evidence are not removed or relabeled.
+SecretKit implements seven .NET 10 packages for common reads, typed Infisical/Azure
+subsets and optional configuration/hosting. It is **in development, unpublished
+and not ready for production**. The immediate workstream prioritizes Infisical
+local evaluation without public publication or Event integration; retained
+Azure/management work is not removed or relabeled.
 
-The [accepted 2026-10-11 scope decision](../public/connector-scope-decision.md)
-has removed broad third-party app-connection/sync administration from local
-source while retaining selected administration, native SQL rotation and
-runtime features, and gateway/proxy administration. Local removal checks passed; live-provider and release gates remain separate. R4/R5 scope and research below are historical where superseded.
+## Read by task
 
-> Audience: SDK contributors and maintainers
-> Status: Implemented SDK subsets; broader design and release evidence remain incomplete
-> Owner: SecretKit maintainers
-> Last Verified: 2026-10-12, local offline foundation; remote/release gates remain separate
-> Source Anchors: [historical research](RESEARCH_EVIDENCE.md), [architecture](SDK_ARCHITECTURE.md), [runtime contracts](RUNTIME_CONTRACTS.md)
+Public task guides explain use; internal contracts govern design and evidence.
+Start with [current preview](../public/current-preview.md) and
+[provider support](../public/provider-support.md) before interpreting a design
+requirement or historical registry as completed support.
 
-SecretKit implements a .NET SDK for Infisical and Azure Key Vault in documented
-subsets. Start with [current support](../public/provider-support.md) for observed
-behavior and limits, and [provider onboarding](PROVIDER_ONBOARDING.md) for the
-repeatable contribution unit. Historical proposal sections below retain design
-provenance rather than asserting that every feature is implemented or certified.
-
-## Status And Authority
-
-The architecture/runtime pages describe contracts and broader design; current
-support records implemented and observed subsets. Neither grants remote authority
-or establishes complete live compatibility. R4's bounded research and
-[R5 research evidence](RESEARCH_EVIDENCE.md) are historical; the
-[review traceability](REVIEW_TRACEABILITY.md) map is not current admission.
-Official links preserve provenance, not remotely tested SDK behavior.
-
-R5 supersedes the five-package/speculative-capability/late-pilot portions of R4.
-Those historical planning claims do not establish the current local-readiness
-implementation or approval. Tracked engineering contracts remain independent
-of private task paths.
-
-## Reading Map
-
-The next increment is governed by the
-[runtime adoption security contract](RUNTIME_ADOPTION_SECURITY.md) and
-[ADR-003](adr/ADR-003-runtime-adoption-security-evidence.md). These distinguish
-required new demos/proof producers from existing SDK implementation.
-
-| Page | Design responsibility |
+| Public task | Guide |
 | --- | --- |
-| [Infisical local readiness](INFISICAL_LOCAL_READINESS.md) | Current delivery direction, package profile, reusable behavior and acceptance boundaries |
-| [SDK architecture](SDK_ARCHITECTURE.md) | Seven packages, dependency direction, narrow Core, native features, consumer boundaries |
-| [Runtime contracts](RUNTIME_CONTRACTS.md) | Material ownership, generations, receipts, cancellation, authentication, transports, bulk operations |
-| [Delivery and maintenance](DELIVERY_AND_MAINTENANCE.md) | Admission policy versus registry, early pilots, evidence gates, compatibility, release and ongoing ownership |
-| [ADR-001](adr/ADR-001-capability-aware-secret-sdk.md) | Proposed decision, alternatives, consequences and revisit triggers |
-| [Research evidence](RESEARCH_EVIDENCE.md) | Actual primary facts, MCP limitations and source boundary |
-| [Review traceability](REVIEW_TRACEABILITY.md) | All 79 requested items and acceptance evidence ownership |
+| Install exact packages and perform a first read | [Getting started](../public/getting-started.md), [local packages](../public/local-packages.md) |
+| Understand common ownership/outcomes | [Core API](../public/core-api.md) |
+| Select native provider capabilities | [Provider index](../public/providers/README.md), [Infisical](../public/providers/infisical.md), [Azure](../public/providers/azure-key-vault.md), [management](../public/providers/management.md) |
+| Compose required generations and explicit export | [Configuration/runtime](../public/configuration-and-runtime.md) |
+| Compose authentication and token maintenance | [Authentication/hosting](../public/authentication-and-hosting.md) |
+| Run examples or diagnose outcomes | [Demos/recovery](../public/demos-and-recovery.md), [troubleshooting](../public/troubleshooting.md) |
+| Decide whether to adopt | [Adoption/value](../public/adoption-and-value.md) |
 
-## Historical Design Scope
+## Current contracts and decisions
 
-The package family would contain exactly `SecretKit.Core`, `SecretKit.Infisical`, `SecretKit.Infisical.Management`, `SecretKit.AzureKeyVault`, `SecretKit.AzureKeyVault.Management`, `SecretKit.Extensions.Configuration`, and `SecretKit.Extensions.Hosting`. There would be no umbrella package requiring every provider and no application/database dependency in Core.
+For documentation changes, use the
+[documentation architecture and maintenance guide](DOCUMENTATION_GUIDE.md).
+It owns page routing, source anchors, example conventions, validation and the
+remaining generated-API/IntelliSense documentation boundary.
 
-Core would use only the BCL and contain proven common read, inventory, reference, material and outcome semantics. Provider-native modules would retain useful semantics that are not portable. They would not be second-class escape hatches. No speculative `ISecretApprovalClient`, common backup, lease, rotation, or recovery API would be reserved in Core. Native features could be admitted when their supported contracts and evidence justify them.
+These documents retain their existing authority. Requirements are not evidence
+of implementation or permission, and a contract may describe more than the
+implemented subset.
 
-The earlier complete-admitted-API release goal is historical and superseded by the accepted two-provider/catalog-removal scope. The frozen Infisical inventory is `ContractResearchOnly`, not current product admission. Missing supported programmable contracts remain explicit gates, with no stubs; retained native feature depth still requires evidence.
+| Document | Responsibility |
+| --- | --- |
+| [SDK architecture](SDK_ARCHITECTURE.md) | Seven packages, inward dependencies, narrow BCL-only Core and application boundaries |
+| [Runtime contracts](RUNTIME_CONTRACTS.md) | Material, generations, receipts, cancellation, transports, authentication and bounded bulk operations |
+| [Core scope/roadmap](CORE_SCOPE_AND_ROADMAP.md) | Core-first scope and deferred orchestration |
+| [Infisical local readiness](INFISICAL_LOCAL_READINESS.md), [ADR-002](adr/ADR-002-infisical-local-qualification.md) | Accepted 2026-10-23 local direction and four-package qualification boundaries |
+| [Runtime adoption security](RUNTIME_ADOPTION_SECURITY.md), [ADR-003](adr/ADR-003-runtime-adoption-security-evidence.md) | Installed apps, causal actor/effect proof, lifetime, cleanup and evidence requirements |
+| [Local profile](local/infisical-runtime.json) | Exact local version, package IDs, selected members and S01-S16 denominator |
+| [Delivery/maintenance](DELIVERY_AND_MAINTENANCE.md), [publication protocol](releases/PUBLICATION_PROTOCOL.md) | Release evidence and publication authority, distinct from local evaluation |
+| [Provider admission](PROVIDER_ADMISSION.md), [onboarding](PROVIDER_ONBOARDING.md) | Demand, ownership, native semantics and repeatable provider contribution evidence |
+| [Accepted catalog removal](../public/connector-scope-decision.md) | 2026-10-11 removal of broad third-party connection/sync administration; native SQL rotation and gateway/proxy subsets retained |
 
-Approval administration remaining outside an initial admission would not erase approval effects of admitted operations. Import-resource creation, replication requested, destination approval pending, destination applied and destination outcome unknown would be distinct observations. A returned import identifier would not certify destination material delivery.
+The four-package local profile does not replace the seven-package public release
+family or authorize publication. Runtime and administrative credentials remain
+explicitly selected. Host-owned transports, application validation/activation,
+readiness, persistence and recovery do not become SDK orchestration.
+Breaking development changes are permitted without compatibility aliases.
 
-## Trust And Consumer Boundaries
+## Evidence and qualification
 
-The proposed SDK would bind the caller's selected authority and preserve provider authorization. It would neither choose a fallback provider/identity nor decide application tenant authorization. A package split would organize dependencies, not enforce permission.
+| Evidence location | What it establishes and what it does not |
+| --- | --- |
+| [Local-profile ledger](compatibility/infisical-local-profile.md) | Harness admission, exact source/profile/archive binding, separate functional/full native denominators and unavailable binding proofs; not a blanket native pass |
+| [Dynamic lifecycle evidence](compatibility/dynamic-lifecycle-evidence.md) | Profile/credential/lease observations and remaining downstream-effect gates |
+| [Rotation progress evidence](compatibility/rotation-progress-evidence.md) | Rotation contracts and observed versus unverified effects |
+| [Development checkpoints](compatibility/development-checkpoints.md) | Preserved earlier preview/support narratives, exact historical counts/dates and run qualifications; no checks rerun during this rewrite |
+| [Infisical conformance](../../tests/SecretKit.Infisical.Conformance.Tests/), [Azure conformance](../../tests/SecretKit.AzureKeyVault.Conformance.Tests/) | Nonpackable native harnesses and controlled collector tests; presence is not execution or provider qualification |
+| [Package witnesses](../../tests/SecretKit.Package.Tests/), [demo tests](../../tests/SecretKit.Demo.Tests/) | Installed original-package and process/HTTP test surfaces, not live provider certification |
 
-Event would continue to own desired and observed integration revisions, tenant boundaries, HAL action authorization, application validation, client handover, replica durable metadata and concurrent-disable rules. Configurator would own application definitions and operator review UX. SecretKit would provide fresh provider observations and scoped version/consistency evidence beneath those responsibilities. Early examples would be standalone SDK consumers inside SecretKit, not actual Event or Configurator migrations.
+Keep proposed behavior, source implementation, controlled offline runs and owned
+native effects separate. Settings readback is not logging/delivery proof;
+administrative visibility is not intended-identity consumption. Denied,
+unavailable, uncertain and missing-entitlement cases cannot be promoted to pass.
+Historical Linux results do not establish refreshed archives or the full
+platform/release matrix. Current gaps belong with the exact native evidence.
 
-Disposable material would make access deliberate but would not promise elimination of all plaintext from a managed process. Independent caller-owned copies, immutable acquired generations and retirement rules are proposed in [runtime contracts](RUNTIME_CONTRACTS.md). Export to `IConfiguration` would intentionally create ordinary strings; debug views, options binding, logging and GC would then be separate exposure boundaries.
+## Historical design and research
 
-## Evidence And Open Gates
+- [ADR-001](adr/ADR-001-capability-aware-secret-sdk.md) retains the original
+  decision, alternatives and revisit triggers.
+- [Research evidence](RESEARCH_EVIDENCE.md) preserves R4/R5 source provenance and
+  research limitations. R5 superseded the five-package/speculative-capability/
+  late-pilot parts of R4; later accepted scope/local-readiness decisions govern
+  current delivery.
+- [Review traceability](REVIEW_TRACEABILITY.md) retains the 79 requested items and
+  evidence ownership, not current admission.
+- [Provider research registries](providers/) include the frozen Infisical
+  `ContractResearchOnly` inventory. Research rows and route counts do not promise
+  complete implementation or revive removed connector families.
 
-Provider breadth and depth, versions, editions, API families and cloud deployments would initially be unverified. Documentation page counts and observed method/path counts would not become completed operation counts. Required unknown semantics would fail closed; an unknown permission assessment would not become allowed. Remote observations would carry versions and collection windows rather than fabricated transactions.
-
-Implementation readiness would require a populated operation registry with named owners, contracts, permissions, effects and evidence. Its policy alone would not support estimates or completion claims. Existing authorized isolated sandboxes would support focused early risk tests; missing authority or entitlement would remain an honest open gate, not cause new orchestration or a quiet downgrade.
-
-This documentation task runs no build, tests, Docker, browser, provider mutation or publishing workflow. The proposed implementation verification sequence and limits are in [delivery and maintenance](DELIVERY_AND_MAINTENANCE.md).
-
-## Functional Source Anchors
-
-- [Infisical API overview](https://infisical.com/docs/api-reference/overview/introduction): independently versioned API families and endpoint selection.
-- [Infisical references](https://infisical.com/docs/documentation/platform/secret-reference): provider-specific import and reference behavior.
-- [Infisical approval workflows](https://infisical.com/docs/documentation/platform/secrets-mgmt/concepts/approval-workflows): approval and application are distinct.
-- [Azure secret client](https://learn.microsoft.com/en-us/dotnet/api/overview/azure/security.keyvault.secrets-readme?view=azure-dotnet): official client reuse and native secret lifecycle.
-- [Azure access planes](https://learn.microsoft.com/en-us/azure/key-vault/general/rbac-guide): administrative and secret-data authority are distinct.
-
-These are functional source citations, not permission to copy vendor source, expressive schemas or documentation prose.
+Do not rewrite historical research into current support claims. Use the
+source-linked public family map for implementation and the exact compatibility
+record for observations. Official references in historical research supply
+interface provenance, not copied implementation or deployment qualification.
