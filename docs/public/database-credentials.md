@@ -1,5 +1,11 @@
 # Database credentials: API support, not database clients
 
+> **Audience:** Developers using database credentials and provider-native lifecycle APIs
+> **Status:** Current package boundary, not a database compatibility claim
+> **Owner:** SecretKit maintainers
+> **Last verified:** 2026-10-25 against package boundaries and retained source guidance
+> **Source anchors:** [Core](../../src/SecretKit.Core/), [Infisical](providers/infisical.md), [management](providers/management.md)
+
 SecretKit supports secret-provider APIs, not a general database-support matrix.
 Database drivers do not belong in any shipped SecretKit package: not for SQL
 Server, PostgreSQL, MySQL, MariaDB, or another database. Reading a credential and
@@ -68,3 +74,11 @@ driver dependency was added to the shipped libraries.
 Existing database verification fixtures and any future optional test tooling
 remain subject to the same separation above. Research into a possible test
 transport does not expand the SDK's product scope or establish database support.
+
+## Next steps
+
+Use [Core ownership](core-api.md#material-and-read-ownership) when passing material
+to your application-owned database client. Use the
+[Infisical native guide](providers/infisical.md) for dynamic credentials and
+rotation observations, and [management](providers/management.md) for separately
+authorized SQL rotation configuration.

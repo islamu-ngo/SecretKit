@@ -1,142 +1,115 @@
 # Current provider support
 
-## Immediate delivery priority
+> **Audience:** Developers selecting packages and reviewers assessing support
+> **Status:** Implemented subsets with offline evidence; incomplete live qualification
+> **Owner:** SecretKit maintainers
+> **Last verified:** 2026-10-25 (local source/documentation review only)
+> **Source anchors:** [Projects](../../PROJECTS.md), [package inputs](../../Directory.Build.props),
+> [local profile](../internal/local/infisical-runtime.json), source/test links below
 
-The [runtime adoption contract](../internal/RUNTIME_ADOPTION_SECURITY.md)
-separates implemented offline app/security slices from final qualification.
-The console, worker and loopback web entrypoints have controlled installed
-process evidence; causal proof and lifetime protocols have controlled HTTP/
-injected-time evidence. This does not upgrade native/provider/platform coverage.
-See [adoption and recovery](demos-and-recovery.md). SecretKit remains in
-development, not ready for production.
+**In development. Not ready for production. Unpublished.** All packages target
+.NET 10. Read [current preview](current-preview.md) for candidate/version authority
+and [provider guides](providers/README.md) for usage. Tables below describe
+implemented subsets, not complete vendor APIs or permissions granted to a caller.
+Tests linked here are authored evidence surfaces, not a claim they were rerun.
 
-The 2026-10-23 direction prioritizes
-[Infisical-first local package evaluation](local-packages.md), without public
-publication or an Event implementation phase. Azure and management remain
-available only to their documented implemented/evidence scope; completion of
-those tracks is not a local adoption prerequisite.
+## Seven packages, separately selected
 
-The isolated four-package local profile and raw native revision/provenance API
-are implemented with offline evidence. Native revisions qualify only Raw,
-non-imported responses with exact returned scope, resource identity and positive
-version. The exact current local archives still require installed-consumer and
-owned deployment evidence before a live-ready claim. The source/evidence requirements are in the
-[local readiness contract](../internal/INFISICAL_LOCAL_READINESS.md). The dated
-support narratives below retain their original scope and do not qualify every
-public method in an installed assembly.
-
-The local version is `0.1.0-local.20261024.1`; its eight selected members and
-S01-S16 denominator are declared in
-[the local profile](../internal/local/infisical-runtime.json).
-Local preparation verifies source-content and original-archive identities but
-does not qualify S15 or create public-release authority. Typed native revision,
-token-bound handoff and host-owned read transport remain Infisical mechanisms;
-Core and independently optional extensions retain their existing boundaries.
-
-The local handoff also supplies a relative folder feed and archive hashes,
-tested after relocation with independent caches. The separately selected
-functional gate requires 17 observed cases, Applied create evidence and
-confirmed cleanup. Its no-approval pilot leaves pending approval unobserved;
-three binding proofs stay unavailable in the full 21-entry report. Neither a
-functional pass nor the portable feed establishes production readiness,
-principal identity, complete policy conformance or Event acceptance.
-
-Status: implemented/offline scope, reviewed 2026-10-12 against baseline
-`f7b1f7aec9f312fc2cbc54d1ea797d02824512ad` and the uncommitted
-provider-engineering changes. Packages target .NET 10. This is not release
-admission, a compatibility certification, or a claim of complete vendor coverage.
-
-## Selecting a package
-
-| Package | Implemented responsibility | Evidence and limits |
+| Package | Implemented responsibility | Source, usage and offline evidence |
 | --- | --- | --- |
-| Core | Authority-bound references, common reads and metadata inventory, bounded outcomes, independently owned disposable material | [Core tests](../../tests/SecretKit.Core.Tests/). BCL only; native operations are not universal Core contracts. |
-| Infisical | Common reads/inventory, selected shared-secret mutations, native authentication, imports, dynamic definitions/leases and rotation operations in documented subsets | [Native guide](../../src/SecretKit.Infisical/README.md), [offline tests](../../tests/SecretKit.Infisical.Tests/), [owned conformance harness](../../tests/SecretKit.Infisical.Conformance.Tests/). The harness is separate from routine CI. |
-| Azure Key Vault | Common reads/inventory, SetSecret and native version, metadata, deleted-secret, backup/restore and lifecycle operations | [Native guide](../../src/SecretKit.AzureKeyVault/README.md), [offline tests](../../tests/SecretKit.AzureKeyVault.Tests/). Azure live coverage remains unverified. |
-| Infisical Management | Explicitly authorized administration: identities/authentication, projects, access, governance, native SQL rotation and retained gateway/proxy subsets | [Native guide](../../src/SecretKit.Infisical.Management/README.md), [offline tests](../../tests/SecretKit.Infisical.Management.Tests/). Basic projection counts are not the complete retained-operation denominator. |
-| Azure Key Vault Management | Explicit vault/access/role/private-connection administration, notification configuration and separately selected audit access | [Native guide](../../src/SecretKit.AzureKeyVault.Management/README.md), [offline tests](../../tests/SecretKit.AzureKeyVault.Management.Tests/). Public-cloud endpoint subsets only; configuration does not prove notification delivery or effective permission. |
-| Configuration | Required collection, acquired local generations and deliberate managed-string export | [Guide](../../src/SecretKit.Extensions.Configuration/README.md), [tests](../../tests/SecretKit.Configuration.Tests/). No remote snapshot, activation or erasure of exported strings. |
-| Hosting | Explicitly started Infisical token maintenance and material-free health | [Guide](../../src/SecretKit.Extensions.Hosting/README.md), [tests](../../tests/SecretKit.Hosting.Tests/). No constructor-started worker, automatic principal selection or mutation replay. |
+| `SecretKit.Core` | BCL-only authority-bound references, reads, metadata inventory, outcomes, disposable material and mutation receipts | [Source](../../src/SecretKit.Core/), [Core API](core-api.md), [tests](../../tests/SecretKit.Core.Tests/) |
+| `SecretKit.Infisical` | Runtime reads/writes and typed native authentication, organization/import, dynamic and rotation subsets | [Native source guide](../../src/SecretKit.Infisical/README.md), [usage](providers/infisical.md), [tests](../../tests/SecretKit.Infisical.Tests/) |
+| `SecretKit.AzureKeyVault` | Secret data plane and native lifecycle | [Native source guide](../../src/SecretKit.AzureKeyVault/README.md), [usage](providers/azure-key-vault.md), [tests](../../tests/SecretKit.AzureKeyVault.Tests/) |
+| `SecretKit.Infisical.Management` | Selected identity, authentication, project, access, governance, SQL rotation and gateway/proxy administration | [Source guide](../../src/SecretKit.Infisical.Management/README.md), [usage](providers/management.md), [tests](../../tests/SecretKit.Infisical.Management.Tests/) |
+| `SecretKit.AzureKeyVault.Management` | Vault, access, role, private-connection, notification and audit subsets | [Source guide](../../src/SecretKit.AzureKeyVault.Management/README.md), [usage](providers/management.md), [tests](../../tests/SecretKit.AzureKeyVault.Management.Tests/) |
+| `SecretKit.Extensions.Configuration` | All-required collection, acquired immutable local generations, explicit string export | [Source guide](../../src/SecretKit.Extensions.Configuration/README.md), [usage](configuration-and-runtime.md), [tests](../../tests/SecretKit.Configuration.Tests/) |
+| `SecretKit.Extensions.Hosting` | Explicit Infisical token maintenance, material-free health and bounded stop/drain | [Source guide](../../src/SecretKit.Extensions.Hosting/README.md), [usage](authentication-and-hosting.md), [tests](../../tests/SecretKit.Hosting.Tests/) |
 
-The removed third-party connection/sync catalog is outside this product. Native
-SQL rotation and existing gateway/proxy administration remain; see the
-[accepted scope decision](connector-scope-decision.md).
+There is no umbrella dependency. Runtime reads do not require management.
+Configuration and Hosting are independently optional; Hosting depends on
+Infisical, not Configuration. The immediate local profile selects four packages,
+not a replacement seven-package release policy.
 
-## Database credentials are provider API support
+## Infisical retained native families
 
-Core returns credentials as opaque secret material and does not connect to
-databases. The Infisical packages expose documented subsets of Infisical's typed
-credential-generation and rotation APIs, including PostgreSQL, MySQL and SQL
-Server profiles, without database drivers in shipped packages. Optional
-database connections used to verify returned credentials belong only in
-nonpackable integration tests and fixtures.
+All rows have controlled offline test coverage; live evidence is narrower and
+deployment-specific. Follow the linked source guide for exact input/result variants.
 
-This is an Infisical API boundary, not a general database-support matrix.
-MySQL rotation API support does not establish MariaDB compatibility; that needs
-separate verification. The MSSQL/ODBC investigation concerned peripheral test
-infrastructure; no ODBC helper was implemented or database dependency added to
-shipped libraries. See the [database credential boundary](database-credentials.md).
+| Family | Exact source and tests | Qualification boundary |
+| --- | --- | --- |
+| Common reads, direct-folder inventory, selected create/value update | [Client](../../src/SecretKit.Infisical/InfisicalClient.cs), [read tests](../../tests/SecretKit.Infisical.Tests/InfisicalReadTests.cs), [mutation tests](../../tests/SecretKit.Infisical.Tests/InfisicalMutationTests.cs) | Explicit visibility/scope/version checks; inventory is not material delivery. Historical owned read/write narratives do not cover every route. |
+| Qualified raw resource revisions and host-owned networking | [Revision](../../src/SecretKit.Infisical/InfisicalSecretRevision.cs), [revision tests](../../tests/SecretKit.Infisical.Tests/InfisicalRevisionTests.cs), [transport tests](../../tests/SecretKit.Infisical.Tests/InfisicalTransportOwnershipTests.cs) | Only Raw with imports disabled; returned resource identity and positive version required. Equality does not transfer client authority. Private-network/deployment qualification remains separate. |
+| Universal and proof login exchanges | [Universal](../../src/SecretKit.Infisical/InfisicalUniversalAuthentication.cs), [proofs](../../src/SecretKit.Infisical/InfisicalProofAuthentication.cs), [Universal tests](../../tests/SecretKit.Infisical.Tests/UniversalAuthenticationTests.cs), [proof tests](../../tests/SecretKit.Infisical.Tests/ProofAuthenticationTests.cs) | AliCloud, AWS, Azure, GCP, JWT, Kubernetes, LDAP, OCI, OIDC, SPIFFE and TLS-certificate proofs are host-supplied. No issuer acquisition/signing, fallback identity or full issuer/mTLS qualification. |
+| Token lifetime, renewal and revocation | [Session](../../src/SecretKit.Infisical/InfisicalPeriodicTokenSession.cs), [revocation](../../src/SecretKit.Infisical/InfisicalTokenRevocation.cs), [revocation tests](../../tests/SecretKit.Infisical.Tests/TokenRevocationTests.cs), [Hosting tests](../../tests/SecretKit.Hosting.Tests/) | Original finite ceilings and explicit recovery survive handoff. Historical v0.166.3 observations are scoped; no arbitrary-token principal proof, longevity promise or automatic replay. |
+| Environments, tags, folders, bounded bulk secrets and validation rules | [Organization](../../src/SecretKit.Infisical/Organization.cs), [bulk](../../src/SecretKit.Infisical/NativeBulk.cs), [validation](../../src/SecretKit.Infisical/ValidationPolicies.cs), [tests](../../tests/SecretKit.Infisical.Tests/OrganizationTests.cs) | Native authority and receipts required for writes; batches are not transactions. Permissions, regex semantics and unsupported variants remain native gates. |
+| Imports, reference resolution and fresh intended-identity delivery | [Imports](../../src/SecretKit.Infisical/Imports.cs), [effects](../../src/SecretKit.Infisical/ImportEffectObservation.cs), [effect tests](../../tests/SecretKit.Infisical.Tests/ImportEffectTests.cs), [reference tests](../../tests/SecretKit.Infisical.Tests/ReferenceBoundaryTests.cs) | Configuration success is not replication or destination approval/application; intended-identity denial is not replaced by admin visibility. |
+| Dynamic definitions, credential acquisition and lease lifecycle | [Dynamic client](../../src/SecretKit.Infisical/InfisicalDynamicClient.cs), [profiles](../../src/SecretKit.Infisical/NativeDynamicProfiles.cs), [definition tests](../../tests/SecretKit.Infisical.Tests/DynamicDefinitionTests.cs), [lease tests](../../tests/SecretKit.Infisical.Tests/LeaseLifecycleTests.cs) | 28 definition-input profiles do not mean 28 qualified credential backends. Complete non-SQL/Kubernetes result schemas and downstream revocation effects remain gaps; see [dynamic evidence](../internal/compatibility/dynamic-lifecycle-evidence.md). |
+| Rotation reads, triggers and result observations | [Rotation](../../src/SecretKit.Infisical/InfisicalRotationClient.cs), [tests](../../tests/SecretKit.Infisical.Tests/RotationOutcomeTests.cs), [evidence](../internal/compatibility/rotation-progress-evidence.md) | Native acknowledgements are not independent SQL credential changes or consumer convergence. Historical license rejection remains a failed gate. |
 
-## What the current evidence establishes
+Approval administration, access requests, point-in-time recovery, insights and
+webhook administration remain
+[`ContractNotEstablished`](../../src/SecretKit.Infisical/InfisicalContractAvailability.cs),
+with permission not checked. They are static capability evidence, not callable
+administrative stubs. Approval effects on an implemented mutation still remain
+distinct from applied material.
 
-The [shared provider suite](../../tests/SecretKit.ProviderContract.Tests/) runs
-22 scenarios through actual Infisical and Azure adapters with controlled native
-responses, not substitute common readers. It exercises same-coordinate isolated
-authorities and distinct credentials, concurrent reads, exact material, independent
-disposal, bounded failures, cancellation, malformed/substituted/oversized responses,
-metadata-only bounded inventory and native resource ownership. Both provider cases
-are individually discovered. Temporarily removing the two real read authority
-guards made both isolation cases fail; restoring them made the suite pass.
+## Retained administration
 
-On 2026-10-12, fresh locked restore, Release build and pack passed; all 3,722 offline
-tests, both offline samples and repository formatting passed. The seven-package
-family installed from fresh caches for `0.1.0-preview.1` and `0.1.0-preview.2`;
-original restored archive hashes matched each selected family. See the
-[package witnesses](../../tests/SecretKit.Package.Tests/) and
-[package-only consumer](../../tests/fixtures/SecretKit.PackageConsumer/).
-These are Linux x64 development results, not the selected Linux/Windows
-same-run release matrix.
+| Family | Source and evidence | Limits |
+| --- | --- | --- |
+| Infisical projects, scoped access, identities, memberships, roles/privileges and governance | [Management source](../../src/SecretKit.Infisical.Management/), [basic operation inventory](../../src/SecretKit.Infisical.Management/operation-coverage.json), [tests](../../tests/SecretKit.Infisical.Management.Tests/) | 122 research rows / 121 callable projections across five basic families, not all retained administration. Explicit identity/project coordinates and audit replacement rules apply. Audit settings readback is not event-production proof. |
+| Infisical authentication configuration and credential administration | [Source guide](../../src/SecretKit.Infisical.Management/README.md), [identity auth tests](../../tests/SecretKit.Infisical.Management.Tests/IdentityAuthenticationTests.cs), [cloud auth tests](../../tests/SecretKit.Infisical.Management.Tests/CloudIdentityAuthenticationTests.cs) | Universal/Token and named external strategy subsets do not establish all authentication row variants, issuers, trusted-IP response shapes or credential DELETE contracts. |
+| Infisical SQL rotation configuration and gateway/proxied services | [Source guide](../../src/SecretKit.Infisical.Management/README.md), [rotation tests](../../tests/SecretKit.Infisical.Management.Tests/PostgresSecretRotationTests.cs), [gateway tests](../../tests/SecretKit.Infisical.Management.Tests/GatewayAdministrationTests.cs), [proxy tests](../../tests/SecretKit.Infisical.Management.Tests/ProxiedServiceAdministrationTests.cs) | Existing connection references are not the removed connector catalog. Metadata does not deploy an agent/proxy or prove SQL effects. |
+| Azure vault/access-policy/private-connection/private-link administration | [Vault source](../../src/SecretKit.AzureKeyVault.Management/VaultAdministration.cs), [tests](../../tests/SecretKit.AzureKeyVault.Management.Tests/) | Public-cloud endpoint subset; no private endpoint provisioning, directory lookup or effective-permission proof. |
+| Azure role assignment and role definition inspection | [Roles](../../src/SecretKit.AzureKeyVault.Management/RoleAdministration.cs), [support inventory](../../src/SecretKit.AzureKeyVault.Management/OperationSupport.cs), [tests](../../tests/SecretKit.AzureKeyVault.Management.Tests/) | Typed vault scope and bounded ancestor observations; no custom-role authoring or ancestor mutation from an inherited observation. |
+| Azure notifications and audit queries | [Notifications](../../src/SecretKit.AzureKeyVault.Management/NotificationAdministration.cs), [audit](../../src/SecretKit.AzureKeyVault.Management/AuditDiagnostics.cs), [tests](../../tests/SecretKit.AzureKeyVault.Management.Tests/) | Selected HTTPS webhook/Event Grid and fixed Logs query subsets. Status/configuration is not delivery, audit ingestion or cleanup settlement. Diagnostic-settings CRUD is excluded. |
 
-The later corrected local matrix passed 3,959 tests across twelve native hosts,
-including 301 release-boundary cases, on fresh restored/built/packed originals.
-Both offline samples and solution formatting passed. The exit run exposed a
-pre-existing shared SDK challenge-cache dependency in two security tests; unique
-first-challenge origins now preserve their original zero-token/wire assertions
-and normal concurrency. These remain Linux development observations.
+Azure management's [34-family inventory](../../src/SecretKit.AzureKeyVault.Management/OperationSupport.cs)
+keeps `PermissionChecked` and `LiveVerified` false. The existence of nonpackable
+conformance collectors does not change those flags or qualify a deployment.
 
-Exact-version Azure metadata updates now send an explicit empty tag object when
-an empty dictionary is supplied; null tags remain omitted. The pinned SDK omits
-empty tags by itself, so this path uses a selected request policy while preserving
-the existing authority, receipt, transport and no-retry controls. The native
-Azure suite passed 141 cases, including controlled independent metadata readback,
-unchanged material, denial, cancellation and lost-response/no-replay witnesses.
-This establishes local behavior, not remote tag-clearing certification.
+## Azure secret data plane
 
-The [routine workflow](../../.github/workflows/verify.yml) is credential-free and
-preserves positive per-host discovery and failures. Its diagnostic artifacts are
-explicitly `offline-verification`, never release bundles. Its hosted execution
-has not been observed.
+[AzureKeyVaultClient](../../src/SecretKit.AzureKeyVault/AzureKeyVaultClient.cs)
+selects stable `2025-07-01` and a host-supplied `TokenCredential`. Its
+[native guide](../../src/SecretKit.AzureKeyVault/README.md) and
+[tests](../../tests/SecretKit.AzureKeyVault.Tests/) cover common reads/inventory,
+SetSecret, exact-version material/metadata, properties, delete/recover with explicit
+status checks, deleted-secret metadata, purge, backup and restore.
 
-## Live scope and unverified combinations
+Consumption rejects disabled/not-yet-valid/expired material; native exact-version
+inspection has a different validity contract. Empty tag dictionaries explicitly
+clear tags; null omits them (see the dated controlled readback evidence in the
+[checkpoint ledger](../internal/compatibility/development-checkpoints.md)).
+SetSecret has no mandatory create-only, version-match or version-targeted support.
+Lifecycle acknowledgement does not prove immediate disappearance or readiness.
+Azure live data-plane, lifecycle and administration remain unverified. Public,
+US Government and China runtime origin syntax is not sovereign-cloud conformance;
+management is public-cloud only.
 
-The [current preview](current-preview.md) records the earlier owned Infisical
-v0.166.3 installed narrative with separate setup/runtime/denied identities.
-Those dated observations cover only their named operations and deployment.
-They do not establish all authentication issuers, editions, native profiles,
-SQL backends, import replication, gateway/proxy effects or complete administration.
-An entitlement denial remains a failed gate, not a supported feature.
+## How to interpret evidence
 
-Azure remote data-plane, lifecycle, administration, notification delivery and
-audit behavior require their own owned environment, intended identity and
-independent effect witnesses. Sovereign-cloud endpoint syntax in the runtime
-adapter is not sovereign-cloud conformance. macOS, ARM, other runtime versions,
-NativeAOT and trimming are unverified.
+The [shared provider suite](../../tests/SecretKit.ProviderContract.Tests/) uses
+actual adapters with controlled responses for authority isolation, ownership,
+bounded failures, cancellation and metadata. [Package witnesses](../../tests/SecretKit.Package.Tests/)
+exercise exact original archives and isolated consumers. [Demo tests](../../tests/SecretKit.Demo.Tests/)
+exercise installed process/HTTP behavior. None substitutes for native effects.
 
-Current admission now records every retained member and variant separately from
-qualifying complete-live release evidence. Contract gaps and unobserved native
-effects still block release. This page describes implementation and offline
-scope only. Frozen
-[Infisical research](../internal/providers/infisical-operations.json) is historical
-`ContractResearchOnly` evidence, not current admission. Package presence, a
-successful response, inventory visibility and an issued mutation receipt each
-establish less than an independently observed downstream effect.
+Use the [local-profile ledger](../internal/compatibility/infisical-local-profile.md)
+for the distinct 17-case functional and 21-case full native reports and unavailable
+binding proofs. Exact source/profile/archive/run bindings matter; an earlier
+successful report cannot qualify changed bytes. Historical counts/dates remain
+in [development checkpoints](../internal/compatibility/development-checkpoints.md).
+No tests were rerun for this page.
+
+Complete permissions, editions, external issuers, SQL backends, replication,
+gateway/proxy deployment and Azure effects remain qualification gaps. Hosted CI
+execution, the Ubuntu/Windows release matrix, macOS/ARM, trimming and NativeAOT
+are not established by Linux offline evidence.
+
+Database APIs mean typed Infisical credential-generation/rotation support, not
+database connectivity in shipped libraries. No database drivers or ODBC helper
+ship; MySQL does not qualify MariaDB. See [database credentials](database-credentials.md).
+The broad third-party connection/sync catalog is [removed](connector-scope-decision.md).
+Frozen [Infisical research](../internal/providers/infisical-operations.json)
+remains `ContractResearchOnly`, not current admission or a delivery promise.
