@@ -52,6 +52,11 @@ public sealed class SecretSnapshotLoader : IDisposable
     /// Serializes collections; publishes once only after every required read succeeds with
     /// proven consumption validity. Failures preserve the old generation; cancellation propagates.
     /// </summary>
+    /// <remarks>Each successful observation must preserve the exact requested reference object.
+    /// Reader exceptions become bounded Unavailable outcomes without retaining provider diagnostics.</remarks>
+    /// <returns>The new loader-local generation number, or the failed required-read outcome.</returns>
+    /// <exception cref="OperationCanceledException">Collection or its admission wait was canceled.</exception>
+    /// <exception cref="ObjectDisposedException">The loader was disposed before publication.</exception>
     public async ValueTask<SecretOutcome<long>> RefreshAsync(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -82,7 +87,7 @@ public sealed class SecretSnapshotLoader : IDisposable
                 SecretValidity validity = delivered.Observation.Validity;
                 if (validity != SecretValidity.Valid)
                     return Fail(validity == SecretValidity.Expired ? SecretStatus.Expired : SecretStatus.Invalid);
-                if (!delivered.Observation.Reference.BelongsTo(selection.Reader.Authority))
+                if (!ReferenceEquals(delivered.Observation.Reference, selection.Reference))
                     return Fail(SecretStatus.Invalid);
                 candidate.Add(selection.ConsumerKey,
                     new SecretRead(delivered.Material.Copy(), delivered.Observation));

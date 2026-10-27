@@ -3,7 +3,7 @@
 > **Audience:** .NET application developers, operators and AI coding assistants
 > **Status:** Implemented composition APIs; in development, not ready for production
 > **Owner:** SecretKit maintainers
-> **Last verified:** 2026-10-25 against source and tests; no checks rerun
+> **Last verified:** 2026-10-27 against source and ConfigurationTests; other linked suites not rerun
 > **Source anchors:** [Loader](../../src/SecretKit.Extensions.Configuration/SecretSnapshotLoader.cs), [selection](../../src/SecretKit.Extensions.Configuration/SecretSelection.cs), [handle](../../src/SecretKit.Extensions.Configuration/SecretSnapshotHandle.cs), [export](../../src/SecretKit.Extensions.Configuration/SecretConfigurationExport.cs)
 
 Use `SecretKit.Extensions.Configuration` to collect required values asynchronously
@@ -88,8 +88,12 @@ generation. Before the first successful collection, `Acquire()` throws
 
 Publication requires every read to succeed with `SecretValidity.Valid`. Unknown
 or other non-valid validity becomes `Invalid`; expired validity becomes `Expired`.
-The loader checks returned authority and rechecks all supplied expiry deadlines
-at collection completion. A partial candidate is disposed, never published.
+The loader requires the returned observation to retain the exact requested
+`SecretReference` object and rechecks all supplied expiry deadlines at collection
+completion. A same-authority wrong object, reconstructed reference or foreign
+reference is rejected as `Invalid` before copying material. Rejected reads and
+partial candidates are disposed, never published; acquired old handles and copies
+remain usable.
 
 A failed refresh preserves the previous generation. An unexpected reader
 exception becomes `Unavailable` without exposing its message or inner exception.
@@ -240,7 +244,9 @@ tests:
   `ValidityDeadlineReachedDuringCollectionFailsClosed`,
   `ExportRejectsCaseInsensitiveMappingCollisionsBeforeReveal`,
   `FailedExportReplacementKeepsPreviousStringsAndDoesNotSignalReload` and
-  `SynchronousLoadCannotCollectAndDisposedConfigurationCannotBeRepublished`.
+  `SynchronousLoadCannotCollectAndDisposedConfigurationCannotBeRepublished`;
+  these tests also cover concurrent/single-use builds, disposal/reload reentry,
+  committed notification failures and exact returned-reference rejection.
 - [BootstrapAuthorityTests](../../tests/SecretKit.Consumer.Tests/BootstrapAuthorityTests.cs):
   required failure prevents construction; independent optional failure leaves
   the required consumer usable.
@@ -248,8 +254,9 @@ tests:
   a check does not enable a disabled feature; disable during a read or validation
   prevents late activation.
 
-These are implementation/offline contract evidence, not new test-run results or
-remote snapshot, downstream connectivity, deployment or production qualification.
+ConfigurationTests passed locally on 2026-10-27. Other linked suites were not
+rerun for this change. Offline contract evidence does not establish remote snapshot,
+downstream connectivity, deployment or production qualification.
 See [current preview](current-preview.md) for dated evidence and open gates.
 Next, compose [authentication and hosting](authentication-and-hosting.md), or
 follow the installed [worker](../../samples/Infisical.WorkerDemo/README.md) and

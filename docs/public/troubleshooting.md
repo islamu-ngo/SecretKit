@@ -89,6 +89,9 @@ new export rather than reusing or resetting an existing one.
 If replacement reports that values were committed but notification failed, the
 new dictionary is already visible. Callback diagnostics are sanitized; the
 exception does not mean rollback. Inspect current state before another action.
+Custom readers must return the exact requested reference object in each
+observation. A wrong or reconstructed reference is Invalid before copying and
+does not replace the previous generation.
 
 ## Authentication maintenance is not running
 

@@ -646,6 +646,46 @@ public sealed class ConfigurationTests
             .Throws<ObjectDisposedException>();
     }
 
+    [Test]
+    [Arguments(0, false)]
+    [Arguments(1, false)]
+    [Arguments(2, false)]
+    [Arguments(0, true)]
+    [Arguments(1, true)]
+    [Arguments(2, true)]
+    public async Task ReturnedReferenceMustBeExactBeforeCopyAndRejectionPreservesPinnedGeneration(
+        int mismatch, bool disposedMaterial)
+    {
+        var reader = new ControlledReader();
+        var address = new TestAddress();
+        var requested = new SecretReference(reader.Authority, address);
+        using var loader = new SecretSnapshotLoader([new("first", reader, requested)]);
+        await loader.RefreshAsync();
+        using var previous = loader.Acquire();
+        using SecretRead copy = previous.Read("first");
+        string original = copy.Material.Reveal();
+        reader.Value = NewMaterial();
+        reader.ReturnedReference = mismatch switch
+        {
+            0 => new SecretReference(reader.Authority, new TestAddress()),
+            1 => new SecretReference(reader.Authority, address),
+            _ => new SecretReference(new SecretAuthority(), address)
+        };
+        reader.DisposeDeliveredBeforeReturn = disposedMaterial;
+
+        SecretOutcome<long> result = await loader.RefreshAsync();
+
+        await Assert.That(result.Status).IsEqualTo(SecretStatus.Invalid);
+        await Assert.That(loader.LastAttempt!.Status).IsEqualTo(SecretStatus.Invalid);
+        await Assert.That(() => reader.LastDelivered!.Material.Reveal()).Throws<ObjectDisposedException>();
+        using var current = loader.Acquire();
+        await Assert.That(current.Generation).IsEqualTo(previous.Generation);
+        loader.Dispose();
+        using SecretRead pinned = previous.Read("first");
+        await Assert.That(pinned.Material.Reveal()).IsEqualTo(original);
+        await Assert.That(copy.Material.Reveal()).IsEqualTo(original);
+    }
+
     private sealed class FailingSource : IConfigurationSource
     {
         public IConfigurationProvider Build(IConfigurationBuilder builder) =>
@@ -679,6 +719,8 @@ public sealed class ConfigurationTests
         public DateTimeOffset? ExpiresAt { get; set; }
         public bool BlockSecond { get; set; }
         public bool IgnoreBarrierCancellation { get; set; }
+        public SecretReference? ReturnedReference { get; set; }
+        public bool DisposeDeliveredBeforeReturn { get; set; }
         public ManualTime? Time { get; set; }
         public SecretRead? LastDelivered { get; private set; }
         public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -700,8 +742,9 @@ public sealed class ConfigurationTests
                 return SecretOutcome<SecretRead>.Failure(failure,
                     failure == SecretStatus.Throttled ? TimeSpan.FromMinutes(1) : null);
             LastDelivered = new SecretRead(SecretMaterial.FromText(Value),
-                new SecretObservation(reference, Version, Time?.GetUtcNow() ?? DateTimeOffset.UnixEpoch,
+                new SecretObservation(ReturnedReference ?? reference, Version, Time?.GetUtcNow() ?? DateTimeOffset.UnixEpoch,
                     Validity, ExpiresAt));
+            if (DisposeDeliveredBeforeReturn) LastDelivered.Dispose();
             return SecretOutcome<SecretRead>.Success(LastDelivered);
         }
     }

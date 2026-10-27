@@ -3,7 +3,7 @@
 > **Audience:** .NET application developers and adapter authors
 > **Status:** Implemented `SecretKit.Core` contract
 > **Owner:** SecretKit maintainers
-> **Last verified:** 2026-10-25 against Core source and tests; no native qualification implied
+> **Last verified:** 2026-10-27 reader contract source review and ConfigurationTests; Core suite not rerun, no native qualification implied
 > **Source anchors:** [Core source](../../src/SecretKit.Core/), [Core tests](../../tests/SecretKit.Core.Tests/)
 
 `SecretKit.Core` defines common reads, metadata, material ownership and bounded
@@ -43,6 +43,13 @@ References do not choose a network endpoint. An Infisical address, for example,
 selects project/environment/folder/key within the client's trusted origin.
 A new client requires new references; a comparable native revision does not
 transfer reference authority.
+
+A successful `ReadAsync` result must retain the **exact requested reference
+object** in `SecretRead.Observation.Reference`. Equal-looking coordinates or a
+new reference with the same authority do not satisfy this contract.
+`SecretSnapshotLoader` checks `ReferenceEquals` before copying material, disposes
+mismatched results and returns `Invalid` without replacing the current generation.
+Previously acquired generations and copies remain valid.
 
 See [getting started](getting-started.md#5-make-a-selected-infisical-read) for a
 complete read fragment and [provider guides](providers/README.md) for addresses.

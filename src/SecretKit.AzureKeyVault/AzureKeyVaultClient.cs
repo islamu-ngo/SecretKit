@@ -225,7 +225,7 @@ public sealed partial class AzureKeyVaultClient : ISecretReader, ISecretInventor
                     ? SecretStatus.Expired : SecretStatus.Invalid);
             }
 
-            var observation = Observe(response.Value.Properties, observedAt);
+            var observation = Observe(response.Value.Properties, observedAt, reference);
             return SecretOutcome<SecretRead>.Success(
                 new SecretRead(SecretMaterial.FromText(response.Value.Value), observation));
         }
@@ -306,8 +306,9 @@ public sealed partial class AzureKeyVaultClient : ISecretReader, ISecretInventor
         }
     }
 
-    private SecretObservation Observe(SecretProperties properties, DateTimeOffset observedAt) =>
-        new(new SecretReference(Authority, new AzureSecretAddress(properties.Name, properties.Version)),
+    private SecretObservation Observe(SecretProperties properties, DateTimeOffset observedAt,
+        SecretReference? requestedReference = null) =>
+        new(requestedReference ?? new SecretReference(Authority, new AzureSecretAddress(properties.Name, properties.Version)),
             properties.Version, observedAt, Validity(properties, observedAt), properties.ExpiresOn);
 
     private static SecretValidity Validity(SecretProperties properties, DateTimeOffset now) =>

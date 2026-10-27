@@ -26,6 +26,10 @@ serializes concurrent collections. Only a complete valid candidate replaces the
 current generation. Absent, denied, invalid, expired or unknown-validity material
 cannot become a required generation. Validity deadlines are checked again at
 publication. Subsequent freshness and activation decisions belong to the caller.
+Successful reader observations must retain the exact requested `SecretReference`
+instance. A different object, even with the same authority and address, is
+rejected as Invalid before material is copied. Rejected reads are disposed and
+previously acquired generations and copies remain valid.
 
 `RefreshAsync` returns a bounded `SecretOutcome<long>`; `LastAttempt` retains only
 timing, status, retry timing and cancellation evidence. An unexpected reader

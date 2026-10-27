@@ -16,6 +16,23 @@ public sealed class AzureKeyVaultTests
     private static readonly Uri Vault = new("https://unit.vault.azure.net");
 
     [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task ReadObservationPreservesRequestedReferenceIdentity(bool versioned)
+    {
+        var wire = new WireTransport((_, _) => Task.FromResult(WireTransport.Json(200, SecretJson)));
+        var client = new AzureKeyVaultClient(Vault, new TestCredential(), wire, new FixedTime());
+        var reference = new SecretReference(client.Authority,
+            new AzureSecretAddress("name-canary", versioned ? Version : null));
+        var outcome = await client.ReadAsync(reference);
+        await Assert.That(outcome.Status).IsEqualTo(SecretStatus.Success);
+        using SecretRead read = outcome.Value;
+        await Assert.That(ReferenceEquals(read.Observation.Reference, reference)).IsTrue();
+        await Assert.That(read.Observation.Version).IsEqualTo(Version);
+        await Assert.That(read.Material.Reveal()).IsEqualTo("material-canary");
+    }
+
+    [Test]
     [Arguments(401, SecretStatus.Denied)]
     [Arguments(403, SecretStatus.Denied)]
     [Arguments(404, SecretStatus.Absent)]
