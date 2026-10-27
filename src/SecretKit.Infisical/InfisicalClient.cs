@@ -411,7 +411,7 @@ public sealed partial class InfisicalClient : ISecretReader, ISecretInventory, I
 
     private static string? Version(JsonElement secret) =>
         secret.TryGetProperty("version", out JsonElement version) && version.ValueKind == JsonValueKind.Number &&
-            version.TryGetInt32(out int number)
+            version.TryGetInt32(out int number) && number > 0
             ? number.ToString(CultureInfo.InvariantCulture) : null;
 
     private static SecretStatus ReadScope(JsonElement secret, string project, string environment,

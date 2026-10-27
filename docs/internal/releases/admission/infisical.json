@@ -262,7 +262,7 @@
     },
     {
       "file": "src/SecretKit.Infisical/InfisicalClient.cs",
-      "sha256": "6411c2aff441aadb5d635ae7f57924f2649b7c116343d27b968bb76669a63b7a"
+      "sha256": "db2f458b4ef46a0f881b823fbe368a6f7193ffe6ce3a78fcecf5c0346ed8f8ab"
     },
     {
       "file": "src/SecretKit.Infisical/InfisicalContractAvailability.cs",
@@ -322,7 +322,7 @@
     },
     {
       "file": "src/SecretKit.Infisical/InfisicalStaticChanges.cs",
-      "sha256": "a5c38eab7f5d60c9eaec54f37b572a504fc21411e47ec852d85d9920899a2c93"
+      "sha256": "42fb14b43cf55592ac88eee6320eaeaa484b1046e74cc063d864081e114c4191"
     },
     {
       "file": "src/SecretKit.Infisical/InfisicalStaticWire.cs",

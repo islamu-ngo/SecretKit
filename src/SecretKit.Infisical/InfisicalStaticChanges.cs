@@ -128,14 +128,25 @@ public sealed partial class InfisicalClient
 
             if (!root.TryGetProperty("secret", out JsonElement secret) || secret.ValueKind != JsonValueKind.Object ||
                 !secret.TryGetProperty("secretKey", out JsonElement key) || key.ValueKind != JsonValueKind.String ||
-                key.GetString() != address.Key ||
                 !secret.TryGetProperty("workspace", out JsonElement project) || project.ValueKind != JsonValueKind.String ||
-                project.GetString() != address.ProjectId ||
-                !secret.TryGetProperty("environment", out JsonElement environment) || environment.ValueKind != JsonValueKind.String ||
-                environment.GetString() != address.Environment || Version(secret) is not { } version)
+                !secret.TryGetProperty("environment", out JsonElement environment) || environment.ValueKind != JsonValueKind.String)
             {
                 return SecretOutcome<InfisicalStaticChange>.Failure(SecretStatus.Unknown);
             }
+
+            if (key.GetString() != address.Key || project.GetString() != address.ProjectId ||
+                environment.GetString() != address.Environment ||
+                secret.TryGetProperty("secretPath", out JsonElement path) &&
+                    (path.ValueKind != JsonValueKind.String || path.GetString() != address.Folder) ||
+                secret.TryGetProperty("type", out JsonElement type) &&
+                    (type.ValueKind != JsonValueKind.String || type.GetString() != "shared") ||
+                secret.TryGetProperty("version", out JsonElement returnedVersion) &&
+                    returnedVersion.ValueKind == JsonValueKind.Number &&
+                    returnedVersion.TryGetInt32(out int number) && number <= 0)
+                return SecretOutcome<InfisicalStaticChange>.Failure(SecretStatus.Invalid);
+
+            if (Version(secret) is not { } version)
+                return SecretOutcome<InfisicalStaticChange>.Failure(SecretStatus.Unknown);
 
             receipt.Record(DispatchEvidence.Applied);
             return SecretOutcome<InfisicalStaticChange>.Success(new(InfisicalChangeDisposition.Applied, version, null));

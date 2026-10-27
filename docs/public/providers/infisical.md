@@ -109,6 +109,13 @@ application activation is performed. See
 [implementation](../../../src/SecretKit.Infisical/InfisicalStaticChanges.cs) and
 [mutation tests](../../../tests/SecretKit.Infisical.Tests/InfisicalMutationTests.cs).
 
+Applied static responses require returned key, workspace, environment and a
+positive integral version. Missing or malformed required evidence is Unknown;
+contradictory keys/scope and nonpositive versions are Invalid. Returned
+`secretPath` and `type`, when present, must match; omission stays unobserved and
+is not filled from the request. A provider may have acted even when its response
+is rejected, so the receipt remains PossiblyDispatched rather than Applied.
+
 ## Native API owner map
 
 All methods in the first five rows are on `InfisicalClient`. Native addresses

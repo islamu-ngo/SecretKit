@@ -9,6 +9,57 @@ namespace SecretKit.Infisical.Tests;
 public sealed class InfisicalMutationTests
 {
     [Test]
+    [Arguments("secretKey", "\"foreign\"", SecretStatus.Invalid)]
+    [Arguments("workspace", "\"foreign\"", SecretStatus.Invalid)]
+    [Arguments("environment", "\"foreign\"", SecretStatus.Invalid)]
+    [Arguments("secretPath", "\"/foreign\"", SecretStatus.Invalid)]
+    [Arguments("type", "\"personal\"", SecretStatus.Invalid)]
+    [Arguments("version", "0", SecretStatus.Invalid)]
+    [Arguments("version", "-1", SecretStatus.Invalid)]
+    [Arguments("secretKey", null, SecretStatus.Unknown)]
+    [Arguments("workspace", null, SecretStatus.Unknown)]
+    [Arguments("environment", null, SecretStatus.Unknown)]
+    [Arguments("version", null, SecretStatus.Unknown)]
+    [Arguments("version", "\"1\"", SecretStatus.Unknown)]
+    [Arguments("secretPath", null, SecretStatus.Success)]
+    [Arguments("type", null, SecretStatus.Success)]
+    public async Task MutationEvidenceDistinguishesContradictionsFromMissingFields(
+        string field, string? wireValue, SecretStatus expected)
+    {
+        JsonElement template = JsonSerializer.SerializeToElement(new
+        {
+            secretKey = "key",
+            workspace = "project",
+            environment = "env",
+            secretPath = "/",
+            type = "shared",
+            version = 1
+        });
+        var fields = template.EnumerateObject().ToDictionary(property => property.Name,
+            property => property.Value.Clone(), StringComparer.Ordinal);
+        if (wireValue is null) fields.Remove(field);
+        else
+        {
+            using var replacement = JsonDocument.Parse(wireValue);
+            fields[field] = replacement.RootElement.Clone();
+        }
+        var backend = new Backend { MutationResponse = JsonSerializer.Serialize(new { secret = fields }) };
+        await using InfisicalClient client = Client(backend);
+        SecretReference target = Target(client);
+        var receipt = new MutationReceipt(target);
+        using SecretMaterial material = SecretMaterial.FromText(Material());
+        var result = await client.CreateAsync(target, material, receipt);
+        await Assert.That(result.Status).IsEqualTo(expected);
+        await Assert.That(receipt.Evidence).IsEqualTo(expected == SecretStatus.Success
+            ? DispatchEvidence.Applied : DispatchEvidence.PossiblyDispatched);
+        // The backend committed once even when its response cannot prove the
+        // selected effect. A read does not rewrite that receipt's evidence.
+        using SecretRead read = (await client.ReadAsync(target)).Value;
+        await Assert.That(read.Material.Reveal()).IsEqualTo(material.Reveal());
+        await Assert.That((await client.CreateAsync(target, material, receipt)).Status).IsEqualTo(SecretStatus.Invalid);
+    }
+
+    [Test]
     [Arguments(false)]
     [Arguments(true)]
     public async Task SelectedCreateAndUpdatePreserveBytesAndReturnObservedVersion(bool update)
@@ -206,6 +257,7 @@ public sealed class InfisicalMutationTests
         public bool HoldResponse { get; init; }
         public bool AmbiguousResponse { get; init; }
         public bool Reject { get; init; }
+        public string? MutationResponse { get; init; }
         public TaskCompletionSource Committed { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly TaskCompletionSource _never = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -250,6 +302,12 @@ public sealed class InfisicalMutationTests
             {
                 throw new HttpRequestException("Fixture response lost after commit.");
             }
+
+            if (MutationResponse is { } response)
+                return new(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(response, Encoding.UTF8, "application/json")
+                };
 
             if (AmbiguousResponse)
             {
