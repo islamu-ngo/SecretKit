@@ -106,7 +106,7 @@
     },
     {
       "file": "src/SecretKit.Infisical.Management/ManagementClient.cs",
-      "sha256": "e3e9f7f6f6c843f8b2e1ebed956a40090f5c505764df16e0528ee17dc2336e1e"
+      "sha256": "d56b0772f8f049ea54cc0c6a0ec9aa33b501d8e5d10ed3fd289c1eef82065cac"
     },
     {
       "file": "src/SecretKit.Infisical.Management/ManagementContracts.cs",

@@ -113,6 +113,7 @@ public sealed class ManagementClient
                 await authority.Tokens.GetTokenAsync(cancellationToken).ConfigureAwait(false);
             if (!tokenOutcome.IsSuccess)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 return SecretOutcome<T>.Failure(tokenOutcome.Status, tokenOutcome.RetryAfter);
             }
             using InfisicalAccessToken token = tokenOutcome.Value;
@@ -147,6 +148,7 @@ public sealed class ManagementClient
             if (response.StatusCode == HttpStatusCode.Accepted)
             {
                 receipt?.Record(DispatchEvidence.Pending);
+                cancellationToken.ThrowIfCancellationRequested();
                 return SecretOutcome<T>.Failure(SecretStatus.Pending);
             }
             if (response.StatusCode != HttpStatusCode.OK || credentialCheck)
@@ -168,10 +170,12 @@ public sealed class ManagementClient
                 {
                     receipt?.Record(DispatchEvidence.Rejected);
                 }
+                cancellationToken.ThrowIfCancellationRequested();
                 return SecretOutcome<T>.Failure(status);
             }
             if (response.Content.Headers.ContentLength > _transport.ResponseLimit)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 return SecretOutcome<T>.Failure(SecretStatus.Unknown);
             }
             using Stream stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
@@ -187,6 +191,7 @@ public sealed class ManagementClient
             }
             if (length > _transport.ResponseLimit)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 return SecretOutcome<T>.Failure(SecretStatus.Unknown);
             }
             using JsonDocument document = JsonDocument.Parse(responseBytes.AsMemory(0, length),
@@ -209,11 +214,13 @@ public sealed class ManagementClient
         }
         catch (ManagementContractException error)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             return SecretOutcome<T>.Failure(error.Status);
         }
         catch (Exception error) when (error is HttpRequestException or IOException or JsonException or
             InvalidOperationException or FormatException or ObjectDisposedException)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             return SecretOutcome<T>.Failure(SecretStatus.Unknown);
         }
         finally

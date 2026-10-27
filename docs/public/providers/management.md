@@ -128,6 +128,12 @@ leaves `NotDispatched`; uncertainty after dispatch remains `PossiblyDispatched`.
 `Applied` means a validated native success projection, not downstream delivery.
 There is no automatic replay or rollback.
 
+Cancellation is rechecked after asynchronous completion and before failure
+returns, including an unsuccessful token acquisition. A validated response keeps
+its known receipt even when cancellation prevents returning the result; owned
+material that cannot be returned is disposed. Cancellation does not undo a remote
+effect.
+
 Start with [ManagementBoundaryTests](../../../tests/SecretKit.Infisical.Management.Tests/ManagementBoundaryTests.cs)
 for exact grants, scope and retired-route rejection,
 [PostgresSecretRotationTests](../../../tests/SecretKit.Infisical.Management.Tests/PostgresSecretRotationTests.cs)

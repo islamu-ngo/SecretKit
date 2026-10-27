@@ -308,6 +308,76 @@ public sealed class ManagementBoundaryTests
     }
 
     [Test]
+    [Arguments("failure")]
+    [Arguments("throw")]
+    [Arguments("success")]
+    public async Task CancellationWinsReleasedTokenCompletionWithoutDispatch(string completion)
+    {
+        var backend = new Backend();
+        using var transport = Transport(backend);
+        var client = new ManagementClient(transport);
+        var tokens = new ReleasedTokens(completion);
+        var authority = new ManagementAuthority(client.Authority, tokens, OrgId);
+        using var request = ScopedAccessOperations.CreateGroup(OrgId, "first", "group");
+        var receipt = client.CreateReceipt(request);
+        using var cancel = new CancellationTokenSource();
+        Task<SecretOutcome<GroupMetadata>> operation = client.ExecuteAsync(request, authority,
+            authority.IssueGrant(request.OperationId,
+                ScopedAccessOperations.GroupCreationTarget(OrgId, "first", "group")), receipt, cancel.Token).AsTask();
+        await tokens.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        cancel.Cancel();
+        tokens.Release.SetResult();
+        await Assert.That(async () => await operation.WaitAsync(TimeSpan.FromSeconds(5)))
+            .Throws<OperationCanceledException>();
+        await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.NotDispatched);
+        await Assert.That(backend.Groups.Count).IsEqualTo(0);
+        if (tokens.Material is not null)
+            await Assert.That(() => tokens.Material.Reveal()).Throws<ObjectDisposedException>();
+    }
+
+    [Test]
+    [Arguments("malformed")]
+    [Arguments("contract")]
+    [Arguments("oversized")]
+    [Arguments("valid")]
+    public async Task CancellationWinsReleasedResponseWhilePreservingKnownEvidence(string shape)
+    {
+        var stream = new ReleasedResponseStream(shape switch
+        {
+            "malformed" => "{",
+            "oversized" => new string('x', 1025),
+            "contract" => "{}",
+            _ => JsonSerializer.Serialize(new
+            {
+                id = GroupId,
+                orgId = OrgId,
+                name = "first",
+                slug = "group",
+                createdAt = "2026-01-01T00:00:00Z",
+                updatedAt = "2026-01-01T00:00:00Z"
+            })
+        });
+        using var transport = Transport(new StreamResponse(stream), 1024);
+        var client = new ManagementClient(transport);
+        var tokens = new Tokens();
+        var authority = new ManagementAuthority(client.Authority, tokens, OrgId);
+        using var request = ScopedAccessOperations.CreateGroup(OrgId, "first", "group");
+        var receipt = client.CreateReceipt(request);
+        using var cancel = new CancellationTokenSource();
+        Task<SecretOutcome<GroupMetadata>> operation = client.ExecuteAsync(request, authority,
+            authority.IssueGrant(request.OperationId,
+                ScopedAccessOperations.GroupCreationTarget(OrgId, "first", "group")), receipt, cancel.Token).AsTask();
+        await stream.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        cancel.Cancel();
+        stream.Release.SetResult();
+        await Assert.That(async () => await operation.WaitAsync(TimeSpan.FromSeconds(5)))
+            .Throws<OperationCanceledException>();
+        await Assert.That(receipt.Evidence).IsEqualTo(shape == "valid"
+            ? DispatchEvidence.Applied : DispatchEvidence.PossiblyDispatched);
+        await Assert.That(() => tokens.LastMaterial!.Reveal()).Throws<ObjectDisposedException>();
+    }
+
+    [Test]
     public async Task WrongReturnedOrganizationDoesNotUndoAnAlreadyCommittedMutation()
     {
         var backend = new Backend { ReturnedOrganization = ForeignId };
@@ -511,6 +581,45 @@ public sealed class ManagementBoundaryTests
             await _blocked.Task.WaitAsync(cancellationToken);
             throw new InvalidOperationException("Unreachable token completion.");
         }
+    }
+
+    private sealed class ReleasedTokens(string completion) : IInfisicalTokenSource
+    {
+        public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public SecretMaterial? Material { get; private set; }
+        public async ValueTask<SecretOutcome<InfisicalAccessToken>> GetTokenAsync(CancellationToken cancellationToken)
+        {
+            Entered.SetResult();
+            await Release.Task;
+            if (completion == "throw") throw new InvalidOperationException("Private token-source text.");
+            if (completion == "failure") return SecretOutcome<InfisicalAccessToken>.Failure(SecretStatus.Denied);
+            Material = SecretMaterial.FromText("test-only-token");
+            return SecretOutcome<InfisicalAccessToken>.Success(new(Material));
+        }
+    }
+
+    private sealed class ReleasedResponseStream(string body) : MemoryStream(Encoding.UTF8.GetBytes(body))
+    {
+        public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public override bool CanSeek => false;
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            int count = await base.ReadAsync(buffer, CancellationToken.None);
+            if (count == 0 || body.Length > 1024)
+            {
+                Entered.TrySetResult();
+                await Release.Task;
+            }
+            return count;
+        }
+    }
+
+    private sealed class StreamResponse(Stream stream) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(stream) });
     }
 
     private sealed class RendezvousTokens : IInfisicalTokenSource
