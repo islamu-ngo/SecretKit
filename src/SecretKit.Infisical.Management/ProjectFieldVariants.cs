@@ -5,13 +5,20 @@ using SecretKit.Core;
 
 namespace SecretKit.Infisical.Management;
 
+/// <summary>Native project product discriminators; selection does not establish product entitlement.</summary>
 public enum ProjectType
 {
+    /// <summary>Secret-management project.</summary>
     SecretManager,
+    /// <summary>Certificate-management project.</summary>
     CertificateManager,
+    /// <summary>Key-management project.</summary>
     Kms,
+    /// <summary>Secret-scanning project.</summary>
     SecretScanning,
+    /// <summary>Privileged-access-management project.</summary>
     Pam,
+    /// <summary>Agent Vault project.</summary>
     AgentVault
 }
 
@@ -25,13 +32,17 @@ public readonly struct ProjectField<T> where T : notnull
         IsPresent = true;
         IsNull = isNull;
     }
+    /// <summary>Gets whether the response included this field; false differs from explicit null.</summary>
     public bool IsPresent { get; }
+    /// <summary>Gets whether the included field was explicitly null.</summary>
     public bool IsNull { get; }
+    /// <summary>Gets the returned value; throws for absence or explicit null.</summary>
     [JsonIgnore]
     public T Value => IsPresent && !IsNull
         ? _value! : throw new InvalidOperationException("The project field has no value.");
     internal static ProjectField<T> Present(T value) => new(value, false);
     internal static ProjectField<T> Null() => new(default, true);
+    /// <summary>Returns a marker without exporting the field value.</summary>
     public override string ToString() => "[ProjectField]";
 }
 
@@ -44,14 +55,20 @@ public sealed class ProjectEnvironmentReference
         Name = ManagementJson.Required(value, "name");
         Slug = ManagementJson.Required(value, "slug");
     }
+    /// <summary>Gets the returned embedded environment identifier.</summary>
     [JsonIgnore] public string Id { get; }
+    /// <summary>Gets the returned embedded environment name.</summary>
     [JsonIgnore] public string Name { get; }
+    /// <summary>Gets the native environment slug.</summary>
     [JsonIgnore] public string Slug { get; }
+    /// <summary>Returns a marker without environment coordinates.</summary>
     public override string ToString() => "[ProjectEnvironmentReference]";
 }
 
-public enum ProjectDeletedByType { User, Identity }
+/// <summary>Known actor kinds returned for soft-deleted environments.</summary>
+public enum ProjectDeletedByType { /** <summary>A user performed the deletion.</summary> */ User, /** <summary>A machine identity performed the deletion.</summary> */ Identity }
 
+/// <summary>Returned deletion actor metadata; optional fields depend on the native actor kind.</summary>
 public sealed class ProjectDeletedBy
 {
     internal ProjectDeletedBy(JsonElement value)
@@ -72,16 +89,25 @@ public sealed class ProjectDeletedBy
             LastName = ProjectWire.RequiredNullableString(value, "lastName");
         }
     }
+    /// <summary>Gets the returned actor kind.</summary>
     public ProjectDeletedByType Type { get; }
+    /// <summary>Gets the returned actor identifier.</summary>
     [JsonIgnore] public string Id { get; }
+    /// <summary>Gets machine-identity name; user actors leave this null.</summary>
     [JsonIgnore] public string? Name { get; }
+    /// <summary>Gets user email, or null for a null user field or a machine identity.</summary>
     [JsonIgnore] public string? Email { get; }
+    /// <summary>Gets username, or null for a null user field or a machine identity.</summary>
     [JsonIgnore] public string? Username { get; }
+    /// <summary>Gets given name, or null for a null user field or a machine identity.</summary>
     [JsonIgnore] public string? FirstName { get; }
+    /// <summary>Gets family name, or null for a null user field or a machine identity.</summary>
     [JsonIgnore] public string? LastName { get; }
+    /// <summary>Returns a marker without deletion-actor details.</summary>
     public override string ToString() => "[ProjectDeletedBy]";
 }
 
+/// <summary>Returned soft-deleted environment metadata, not a deletion command or recovery guarantee.</summary>
 public sealed class DeletedProjectEnvironment
 {
     internal DeletedProjectEnvironment(JsonElement value)
@@ -95,12 +121,19 @@ public sealed class DeletedProjectEnvironment
             throw new ManagementContractException(SecretStatus.Unknown);
         if (actor.ValueKind != JsonValueKind.Null) DeletedBy = new(actor);
     }
+    /// <summary>Gets the returned environment identifier.</summary>
     [JsonIgnore] public string Id { get; }
+    /// <summary>Gets the returned environment name.</summary>
     [JsonIgnore] public string Name { get; }
+    /// <summary>Gets the native environment slug.</summary>
     [JsonIgnore] public string Slug { get; }
+    /// <summary>Gets the provider-reported scheduled deletion timestamp.</summary>
     [JsonIgnore] public string DeleteAfter { get; }
+    /// <summary>Gets the reported soft-deletion timestamp.</summary>
     [JsonIgnore] public string SoftDeletedAt { get; }
+    /// <summary>Gets the returned deletion actor, or null when the provider explicitly returns no actor.</summary>
     [JsonIgnore] public ProjectDeletedBy? DeletedBy { get; }
+    /// <summary>Returns a marker without deletion metadata.</summary>
     public override string ToString() => "[DeletedProjectEnvironment]";
 }
 
@@ -120,16 +153,27 @@ public sealed class ProjectRoleMetadata
         HasPermissions = value.TryGetProperty("permissions", out var permissions);
         PermissionsIsNull = HasPermissions && permissions.ValueKind == JsonValueKind.Null;
     }
+    /// <summary>Gets the returned embedded role identifier.</summary>
     [JsonIgnore] public string Id { get; }
+    /// <summary>Gets the returned role name.</summary>
     [JsonIgnore] public string Name { get; }
+    /// <summary>Gets the native role slug.</summary>
     [JsonIgnore] public string Slug { get; }
+    /// <summary>Gets description presence, preserving omission and explicit null.</summary>
     [JsonIgnore] public ProjectField<string> Description { get; }
+    /// <summary>Gets the returned creation timestamp.</summary>
     [JsonIgnore] public string CreatedAt { get; }
+    /// <summary>Gets the returned update timestamp.</summary>
     [JsonIgnore] public string UpdatedAt { get; }
+    /// <summary>Gets returned version presence without inferring an omitted version.</summary>
     [JsonIgnore] public ProjectField<double> Version { get; }
+    /// <summary>Gets whether a permissions node was returned, not whether permissions are effective.</summary>
     public bool HasPermissions { get; }
+    /// <summary>Gets whether the returned permissions node was explicitly null.</summary>
     public bool PermissionsIsNull { get; }
+    /// <summary>Always false: embedded permission-node values are deliberately not exported.</summary>
     public bool IncludesPermissionValues => false;
+    /// <summary>Returns a marker without role metadata.</summary>
     public override string ToString() => "[ProjectRoleMetadata]";
 }
 

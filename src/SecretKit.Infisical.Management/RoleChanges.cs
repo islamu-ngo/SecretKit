@@ -8,15 +8,19 @@ namespace SecretKit.Infisical.Management;
 /// <summary>A supplied nullable description. A null change argument means absent, not clearing.</summary>
 public sealed class RoleDescription
 {
+    /// <summary>Captures an explicit nullable description; a null wrapper value clears while no wrapper omits.</summary>
     public RoleDescription(string? value)
     {
         if (value is not null) RolePermissionWire.Text(value, 4096, allowEmpty: true);
         Value = value;
     }
+    /// <summary>Gets the explicit description value, including null or empty text.</summary>
     [JsonIgnore] public string? Value { get; }
+    /// <summary>Returns a marker without description contents.</summary>
     public override string ToString() => "[RoleDescription]";
 }
 
+/// <summary>Copied organization-role changes preserving absent, explicit null and empty permission selections.</summary>
 public sealed class OrganizationRoleChange
 {
     private readonly string? _name;
@@ -25,6 +29,7 @@ public sealed class OrganizationRoleChange
     internal string? Slug { get; }
     internal bool CanCreate => _name is { Length: > 0 } && Slug is not null && _permissions is not null;
 
+    /// <summary>Captures at least one change; copies up to 128 permissions, with an empty list remaining explicit.</summary>
     public OrganizationRoleChange(string? name = null, string? slug = null,
         RoleDescription? description = null, IReadOnlyList<OrganizationRolePermission>? permissions = null)
     {
@@ -46,9 +51,11 @@ public sealed class OrganizationRoleChange
         }
         writer.WriteEndObject();
     }
+    /// <summary>Returns a marker without organization-role changes.</summary>
     public override string ToString() => "[OrganizationRoleChange]";
 }
 
+/// <summary>Copied project-role changes preserving native subject/action and condition dialects.</summary>
 public sealed class ProjectRoleChange
 {
     private readonly string? _name;
@@ -57,6 +64,7 @@ public sealed class ProjectRoleChange
     internal string? Slug { get; }
     internal bool CanCreate => _name is { Length: > 0 } && Slug is not null && _permissions is not null;
 
+    /// <summary>Captures at least one project-role change and copies permissions; creation later requires name, slug and permissions.</summary>
     public ProjectRoleChange(string? name = null, string? slug = null,
         RoleDescription? description = null, IReadOnlyList<ProjectRolePermission>? permissions = null)
     {
@@ -78,11 +86,14 @@ public sealed class ProjectRoleChange
         }
         writer.WriteEndObject();
     }
+    /// <summary>Returns a marker without project-role changes.</summary>
     public override string ToString() => "[ProjectRoleChange]";
 }
 
+/// <summary>Constructs disposable role mutations and independent approval targets; permissions remain provider-enforced.</summary>
 public static class RoleChangeOperations
 {
+    /// <summary>Builds organization-role creation requiring nonempty name, slug and explicit permissions.</summary>
     public static ManagementRequest<RoleSummary> CreateOrganizationRole(string organizationId, OrganizationRoleChange change)
     {
         ArgumentNullException.ThrowIfNull(change);
@@ -92,6 +103,7 @@ public static class RoleChangeOperations
             root => Response(root, organizationId, null, null, change.Slug));
     }
 
+    /// <summary>Builds organization-role update bound to exact role identity and complete change intent.</summary>
     public static ManagementRequest<RoleSummary> UpdateOrganizationRole(string organizationId, string roleId,
         OrganizationRoleChange change)
     {
@@ -102,6 +114,7 @@ public static class RoleChangeOperations
             root => Response(root, organizationId, null, roleId, change.Slug));
     }
 
+    /// <summary>Builds project-role creation requiring name, slug and explicit permissions.</summary>
     public static ManagementRequest<RoleSummary> CreateProjectRole(string organizationId, string projectId,
         ProjectRoleChange change)
     {
@@ -113,6 +126,7 @@ public static class RoleChangeOperations
             root => Response(root, organizationId, projectId, null, change.Slug));
     }
 
+    /// <summary>Builds project-role update; omitted permission fields differ from an explicit empty permission list.</summary>
     public static ManagementRequest<RoleSummary> UpdateProjectRole(string organizationId, string projectId,
         string roleId, ProjectRoleChange change)
     {
@@ -131,6 +145,7 @@ public static class RoleChangeOperations
         return Intent(organizationId, null, change.Slug!, change.Write);
     }
 
+    /// <summary>Builds independent organization-role update approval including every serialized change field.</summary>
     public static ManagementTarget OrganizationUpdateTarget(string organizationId, string roleId,
         OrganizationRoleChange change)
     {
@@ -138,6 +153,7 @@ public static class RoleChangeOperations
         return Intent(organizationId, null, roleId, change.Write);
     }
 
+    /// <summary>Builds independent project-role creation approval from trusted scope and complete change fields.</summary>
     public static ManagementTarget ProjectCreationTarget(string organizationId, string projectId, ProjectRoleChange change)
     {
         ArgumentNullException.ThrowIfNull(change);
@@ -145,6 +161,7 @@ public static class RoleChangeOperations
         return Intent(organizationId, projectId, change.Slug!, change.Write);
     }
 
+    /// <summary>Builds independent project-role update approval from trusted scope, exact role and complete change fields.</summary>
     public static ManagementTarget ProjectUpdateTarget(string organizationId, string projectId, string roleId,
         ProjectRoleChange change)
     {

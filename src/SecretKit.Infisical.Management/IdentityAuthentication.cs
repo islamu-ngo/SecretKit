@@ -11,6 +11,7 @@ public static class IdentityAuthenticationOperations
     private const string UniversalId = "v1.auth.universal.auth.identities.by.identityId";
     private const string TokenId = "v1.auth.token.auth.identities.by.identityId";
 
+    /// <summary>Builds independent approval intent for the complete Universal Auth attach or update body.</summary>
     public static ManagementTarget UniversalAuthConfigurationTarget(string organizationId, string identityId,
         UniversalAuthConfigurationInput input, bool update = false)
     {
@@ -19,6 +20,7 @@ public static class IdentityAuthenticationOperations
         return AuthenticationJson.Intent(organizationId, identityId, update ? "patch-universal" : "attach-universal",
             writer => Write(writer, input.Write));
     }
+    /// <summary>Builds independent approval intent for Token Auth attachment or update.</summary>
     public static ManagementTarget TokenAuthConfigurationTarget(string organizationId, string identityId,
         TokenAuthConfigurationInput input, bool update = false)
     {
@@ -26,6 +28,7 @@ public static class IdentityAuthenticationOperations
         return AuthenticationJson.Intent(organizationId, identityId, update ? "patch-token" : "attach-token",
             writer => Write(writer, input.Write));
     }
+    /// <summary>Builds independent client-secret issuance intent; null description, use limit and TTL are omitted.</summary>
     public static ManagementTarget ClientSecretCreateTarget(string organizationId, string identityId,
         string? description = null, double? numUsesLimit = null, double? ttl = null)
     {
@@ -33,6 +36,7 @@ public static class IdentityAuthenticationOperations
         return AuthenticationJson.Intent(organizationId, identityId, "create-client-secret",
             writer => SecretCreate(writer, description, numUsesLimit, ttl));
     }
+    /// <summary>Builds independent token issuance intent including optional name and organization slug.</summary>
     public static ManagementTarget TokenCreateTarget(string organizationId, string identityId,
         string? name = null, string? organizationSlug = null)
     {
@@ -40,6 +44,7 @@ public static class IdentityAuthenticationOperations
         return AuthenticationJson.Intent(organizationId, identityId, "create-token",
             writer => TokenCreate(writer, name, organizationSlug));
     }
+    /// <summary>Builds independent token metadata-change intent; null name produces an empty body.</summary>
     public static ManagementTarget TokenRenameTarget(string organizationId, string tokenId, string? name = null)
     {
         AuthenticationJson.OptionalText(name, 1024);
@@ -47,39 +52,47 @@ public static class IdentityAuthenticationOperations
             writer => Rename(writer, name));
     }
 
+    /// <summary>Builds Universal Auth attachment, not login or token acquisition.</summary>
     public static ManagementRequest<IdentityAuthenticationConfiguration> AttachUniversalAuth(string organizationId,
         string identityId, UniversalAuthConfigurationInput input) =>
         Configuration(organizationId, identityId, true, HttpMethod.Post,
             UniversalAuthConfigurationTarget(organizationId, identityId, input), input.Write);
+    /// <summary>Builds a Universal Auth configuration update with omitted fields preserved.</summary>
     public static ManagementRequest<IdentityAuthenticationConfiguration> UpdateUniversalAuth(string organizationId,
         string identityId, UniversalAuthConfigurationInput input) =>
         Configuration(organizationId, identityId, true, HttpMethod.Patch,
             UniversalAuthConfigurationTarget(organizationId, identityId, input, true), input.Write);
+    /// <summary>Builds Universal Auth configuration inspection without granting runtime access.</summary>
     public static ManagementRequest<IdentityAuthenticationConfiguration> GetUniversalAuth(string organizationId, string identityId) =>
         Configuration(organizationId, identityId, true, HttpMethod.Get, new(organizationId, resourceId: identityId), null);
     /// <summary>Deletes the identity's Universal Auth configuration, not an individual client secret.</summary>
     public static ManagementRequest<IdentityAuthenticationConfiguration> DeleteUniversalAuth(string organizationId, string identityId) =>
         Configuration(organizationId, identityId, true, HttpMethod.Delete, new(organizationId, resourceId: identityId), null);
 
+    /// <summary>Builds Token Auth attachment for the selected identity.</summary>
     public static ManagementRequest<IdentityAuthenticationConfiguration> AttachTokenAuth(string organizationId,
         string identityId, TokenAuthConfigurationInput input) =>
         Configuration(organizationId, identityId, false, HttpMethod.Post,
             TokenAuthConfigurationTarget(organizationId, identityId, input), input.Write);
+    /// <summary>Builds a Token Auth configuration update preserving native zero and omitted fields.</summary>
     public static ManagementRequest<IdentityAuthenticationConfiguration> UpdateTokenAuth(string organizationId,
         string identityId, TokenAuthConfigurationInput input) =>
         Configuration(organizationId, identityId, false, HttpMethod.Patch,
             TokenAuthConfigurationTarget(organizationId, identityId, input, true), input.Write);
+    /// <summary>Builds Token Auth configuration inspection, not a usable-token export.</summary>
     public static ManagementRequest<IdentityAuthenticationConfiguration> GetTokenAuth(string organizationId, string identityId) =>
         Configuration(organizationId, identityId, false, HttpMethod.Get, new(organizationId, resourceId: identityId), null);
     /// <summary>Deletes the identity's Token Auth configuration, not an individual token.</summary>
     public static ManagementRequest<IdentityAuthenticationConfiguration> DeleteTokenAuth(string organizationId, string identityId) =>
         Configuration(organizationId, identityId, false, HttpMethod.Delete, new(organizationId, resourceId: identityId), null);
 
+    /// <summary>Builds client-secret issuance; dispose the successful material-bearing result and retain the mutation receipt.</summary>
     public static ManagementRequest<UniversalAuthClientSecretCreation> CreateUniversalClientSecret(string organizationId,
         string identityId, string? description = null, double? numUsesLimit = null, double? ttl = null) =>
         new("infisical.post." + UniversalId + ".client.secrets", HttpMethod.Post, IdentityPath(Universal, identityId) + "/client-secrets",
             ClientSecretCreateTarget(organizationId, identityId, description, numUsesLimit, ttl),
             writer => SecretCreate(writer, description, numUsesLimit, ttl), root => new(root));
+    /// <summary>Builds bounded client-secret metadata inventory without usable secret material.</summary>
     public static ManagementRequest<ManagementPage<UniversalAuthClientSecret>> ListUniversalClientSecrets(
         string organizationId, string identityId) =>
         new("infisical.get." + UniversalId + ".client.secrets", HttpMethod.Get, IdentityPath(Universal, identityId) + "/client-secrets",
@@ -89,20 +102,25 @@ public static class IdentityAuthenticationOperations
                 AuthenticationJson.ClosedObject(root, "clientSecretData");
                 return new(ManagementJson.Array(root, "clientSecretData").Select(value => new UniversalAuthClientSecret(value)), true);
             }, false);
+    /// <summary>Builds exact client-secret metadata lookup scoped to the selected identity.</summary>
     public static ManagementRequest<UniversalAuthClientSecret> GetUniversalClientSecret(string organizationId,
         string identityId, string clientSecretId) => ClientSecret(organizationId, identityId, clientSecretId, false);
+    /// <summary>Builds revocation of one client secret; uncertain execution is retained in the caller receipt.</summary>
     public static ManagementRequest<UniversalAuthClientSecret> RevokeUniversalClientSecret(string organizationId,
         string identityId, string clientSecretId) => ClientSecret(organizationId, identityId, clientSecretId, true);
+    /// <summary>Builds lockout clearing for the selected identity; no automatic retry or login follows.</summary>
     public static ManagementRequest<IdentityAuthenticationAcknowledgement> ClearUniversalAuthLockouts(
         string organizationId, string identityId) =>
         new("infisical.post." + UniversalId + ".clear.lockouts", HttpMethod.Post, IdentityPath(Universal, identityId) + "/clear-lockouts",
             new(organizationId, resourceId: identityId), null, root => new(root, true));
 
+    /// <summary>Builds token issuance; successful results own disposable material and deliberate reveal creates plaintext.</summary>
     public static ManagementRequest<TokenAuthTokenCreation> CreateToken(string organizationId, string identityId,
         string? name = null, string? organizationSlug = null) =>
         new("infisical.post." + TokenId + ".tokens", HttpMethod.Post, IdentityPath(Token, identityId) + "/tokens",
             TokenCreateTarget(organizationId, identityId, name, organizationSlug),
             writer => TokenCreate(writer, name, organizationSlug), root => new(root, identityId));
+    /// <summary>Builds token metadata inventory for the selected identity, not token-material retrieval.</summary>
     public static ManagementRequest<ManagementPage<TokenAuthToken>> ListTokens(string organizationId, string identityId) =>
         new("infisical.get." + TokenId + ".tokens", HttpMethod.Get, IdentityPath(Token, identityId) + "/tokens",
             new(organizationId, resourceId: identityId), null,
@@ -111,6 +129,7 @@ public static class IdentityAuthenticationOperations
                 AuthenticationJson.ClosedObject(root, "tokens");
                 return new(ManagementJson.Array(root, "tokens").Select(value => new TokenAuthToken(value, identityId)), true);
             }, false);
+    /// <summary>Builds metadata lookup of one token, not an export of its bearer material.</summary>
     public static ManagementRequest<TokenAuthToken> GetToken(string organizationId, string tokenId) =>
         new("infisical.get.v1.auth.token.auth.tokens.by.tokenId", HttpMethod.Get, TokenPath(tokenId),
             new(organizationId, resourceId: tokenId), null,
@@ -120,6 +139,7 @@ public static class IdentityAuthenticationOperations
         new("infisical.patch.v1.auth.token.auth.tokens.by.tokenId", HttpMethod.Patch, TokenPath(tokenId),
             TokenRenameTarget(organizationId, tokenId, name), writer => Rename(writer, name),
             root => new(AuthenticationJson.Object(root, "token"), tokenId: tokenId));
+    /// <summary>Builds explicit token revocation; retain the receipt when cancellation or a lost response leaves uncertainty.</summary>
     public static ManagementRequest<IdentityAuthenticationAcknowledgement> RevokeToken(string organizationId, string tokenId) =>
         new("infisical.post.v1.auth.token.auth.tokens.by.tokenId.revoke", HttpMethod.Post, TokenPath(tokenId) + "/revoke",
             new(organizationId, resourceId: tokenId), null, root => new(root, false));

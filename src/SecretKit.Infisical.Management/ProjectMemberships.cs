@@ -51,27 +51,49 @@ public sealed class ProjectMembershipRole
         }
     }
 
+    /// <summary>Gets the returned assignment identifier.</summary>
     [JsonIgnore] public string Id { get; }
+    /// <summary>Gets the returned role label, not effective permissions.</summary>
     [JsonIgnore] public string Role { get; }
+    /// <summary>Gets custom-role identifier, or null when absent or explicitly null.</summary>
     [JsonIgnore] public string? CustomRoleId { get; }
+    /// <summary>Gets custom-role name when projected, or null otherwise.</summary>
     [JsonIgnore] public string? CustomRoleName { get; }
+    /// <summary>Gets custom-role slug when projected, or null otherwise.</summary>
     [JsonIgnore] public string? CustomRoleSlug { get; }
+    /// <summary>Gets the returned temporary flag, or null when its endpoint permits omission.</summary>
     [JsonIgnore] public bool? IsTemporary { get; }
+    /// <summary>Gets native validity mode, or null when absent or explicitly null.</summary>
     [JsonIgnore] public string? Mode { get; }
+    /// <summary>Gets native duration expression, or null when absent or explicitly null.</summary>
     [JsonIgnore] public string? Range { get; }
+    /// <summary>Gets access start timestamp, or null when absent or explicitly null.</summary>
     [JsonIgnore] public string? StartsAt { get; }
+    /// <summary>Gets access end timestamp, or null when absent or explicitly null.</summary>
     [JsonIgnore] public string? EndsAt { get; }
+    /// <summary>Gets creation timestamp when projected, or null otherwise.</summary>
     [JsonIgnore] public string? CreatedAt { get; }
+    /// <summary>Gets update timestamp when projected, or null otherwise.</summary>
     [JsonIgnore] public string? UpdatedAt { get; }
+    /// <summary>Gets custom-role identifier presence, preserving explicit null.</summary>
     [JsonIgnore] public ProjectField<string> CustomRoleIdField { get; }
+    /// <summary>Gets custom-role name presence; some response projections leave it absent.</summary>
     [JsonIgnore] public ProjectField<string> CustomRoleNameField { get; }
+    /// <summary>Gets custom-role slug presence; some response projections leave it absent.</summary>
     [JsonIgnore] public ProjectField<string> CustomRoleSlugField { get; }
+    /// <summary>Gets validity-mode presence, preserving explicit null.</summary>
     [JsonIgnore] public ProjectField<string> ModeField { get; }
+    /// <summary>Gets duration presence, preserving explicit null.</summary>
     [JsonIgnore] public ProjectField<string> RangeField { get; }
+    /// <summary>Gets access-start presence, preserving explicit null.</summary>
     [JsonIgnore] public ProjectField<string> StartsAtField { get; }
+    /// <summary>Gets access-end presence, preserving explicit null.</summary>
     [JsonIgnore] public ProjectField<string> EndsAtField { get; }
+    /// <summary>Gets creation-time presence without inventing missing timestamps.</summary>
     [JsonIgnore] public ProjectField<string> CreatedAtField { get; }
+    /// <summary>Gets update-time presence without inventing missing timestamps.</summary>
     [JsonIgnore] public ProjectField<string> UpdatedAtField { get; }
+    /// <summary>Returns a marker without assignment metadata.</summary>
     public override string ToString() => "[ProjectMembershipRole]";
 }
 
@@ -91,12 +113,19 @@ public sealed class ProjectMembershipSummary
         Roles = ProjectMembershipOperations.ReadRoles(value);
     }
 
+    /// <summary>Gets the returned user-membership identifier.</summary>
     [JsonIgnore] public string Id { get; }
+    /// <summary>Gets the returned user identifier matched to the nested user.</summary>
     [JsonIgnore] public string UserId { get; }
+    /// <summary>Gets the returned creation timestamp, or null when omitted or explicitly null.</summary>
     [JsonIgnore] public string? CreatedAt { get; }
+    /// <summary>Gets protected returned user metadata.</summary>
     [JsonIgnore] public ProjectMembershipUser User { get; }
+    /// <summary>Gets bounded returned role assignments, not an effective role union.</summary>
     [JsonIgnore] public IReadOnlyList<ProjectMembershipRole> Roles { get; }
+    /// <summary>Always false: user membership metadata does not include effective permissions.</summary>
     public bool IncludesPermissions => false;
+    /// <summary>Returns a marker without user or role metadata.</summary>
     public override string ToString() => "[ProjectMembershipSummary]";
 }
 
@@ -124,19 +153,31 @@ public sealed class ProjectIdentityMembershipSummary
         Roles = ProjectMembershipOperations.ReadRoles(value);
     }
 
+    /// <summary>Gets the returned identity-membership identifier.</summary>
     [JsonIgnore] public string Id { get; }
+    /// <summary>Gets the returned identity identifier matched to the nested identity.</summary>
     [JsonIgnore] public string IdentityId { get; }
+    /// <summary>Gets the returned membership creation timestamp.</summary>
     [JsonIgnore] public string CreatedAt { get; }
+    /// <summary>Gets the returned membership update timestamp.</summary>
     [JsonIgnore] public string UpdatedAt { get; }
+    /// <summary>Gets protected nested identity metadata.</summary>
     [JsonIgnore] public IdentitySummary Identity { get; }
+    /// <summary>Gets endpoint-specific identity attributes and authentication-method metadata.</summary>
     [JsonIgnore] public MembershipIdentityMetadata IdentityMetadata { get; }
+    /// <summary>Gets last-login time presence for detail responses; inventory leaves it absent.</summary>
     [JsonIgnore] public ProjectField<string> LastLoginTime { get; }
+    /// <summary>Gets last-login method presence for detail responses; inventory leaves it absent.</summary>
     [JsonIgnore] public ProjectField<string> LastLoginAuthMethod { get; }
+    /// <summary>Gets bounded returned role assignments, not effective permissions.</summary>
     [JsonIgnore] public IReadOnlyList<ProjectMembershipRole> Roles { get; }
+    /// <summary>Always false: identity membership metadata does not include effective permissions.</summary>
     public bool IncludesPermissions => false;
+    /// <summary>Returns a marker without identity or assignment metadata.</summary>
     public override string ToString() => "[ProjectIdentityMembershipSummary]";
 }
 
+/// <summary>Constructs disposable project membership requests and independently selected approval targets.</summary>
 public static class ProjectMembershipOperations
 {
     /// <summary>Unpaginated native inventory, bounded to 1000 memberships without truncation.</summary>
@@ -150,6 +191,7 @@ public static class ProjectMembershipOperations
                 return new ProjectMembershipSummary(value, projectId);
             }), true), false);
 
+    /// <summary>Builds explicit nonempty user-role replacement bound to the exact membership identifier.</summary>
     public static ManagementRequest<ManagementPage<ProjectMembershipRole>> UpdateProjectMembershipRoles(
         string organizationId, string projectId, string membershipId, IReadOnlyList<MembershipRole> roles)
     {
@@ -187,6 +229,7 @@ public static class ProjectMembershipOperations
             root => ScopedAccessOperations.BoundedPage(ManagementJson.Array(root, "identities")
                 .Select(value => new AccessCandidate(value)).ToArray(), offset, limit), false);
 
+    /// <summary>Builds count-validated identity-membership inventory with exact paging and optional name/role filters.</summary>
     public static ManagementRequest<ManagementPage<ProjectIdentityMembershipSummary>> ListProjectIdentityMemberships(
         string organizationId, string projectId, int offset = 0, int limit = 20,
         string? identityName = null, string? roles = null)
@@ -200,10 +243,12 @@ public static class ProjectMembershipOperations
                 value => new ProjectIdentityMembershipSummary(value, organizationId, projectId), offset, limit), false);
     }
 
+    /// <summary>Builds independent inventory approval for exact paging and optional identity-name selection.</summary>
     public static ManagementTarget AvailableProjectIdentityListTarget(string organizationId, string projectId,
         int offset = 0, int limit = 20, string? identityName = null) =>
         InventorySelectorWire.Intent(organizationId, projectId, Query(offset, limit, identityName));
 
+    /// <summary>Builds independent approval for identity-membership paging and optional name/role selectors.</summary>
     public static ManagementTarget ProjectIdentityMembershipListTarget(string organizationId, string projectId,
         int offset = 0, int limit = 20, string? identityName = null, string? roles = null)
     {

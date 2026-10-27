@@ -10,9 +10,12 @@ public sealed class ProjectTemplateCollection<T> where T : class
 {
     private ProjectTemplateCollection(T[]? values) => Values = values;
     internal T[]? Values { get; }
+    /// <summary>Selects an explicit JSON null collection rather than omission.</summary>
     public static ProjectTemplateCollection<T> Null() => new(null);
+    /// <summary>Copies a bounded collection; an empty list remains an explicit empty array.</summary>
     public static ProjectTemplateCollection<T> FromValues(IReadOnlyList<T> values) =>
         new(ProjectTemplateWire.Copy(values));
+    /// <summary>Returns a marker without collection contents.</summary>
     public override string ToString() => "[ProjectTemplateCollection]";
 }
 
@@ -38,11 +41,13 @@ public sealed class ProjectTemplateStringClause
         if (_included is not null)
             foreach (string value in _included) ProjectTemplateWire.Text(value);
     }
+    /// <summary>Selects a literal string, including an explicit empty value.</summary>
     public static ProjectTemplateStringClause Literal(string value)
     {
         ArgumentNullException.ThrowIfNull(value);
         return new(value, null, null, null, null);
     }
+    /// <summary>Copies native comparison operands; all omitted operands produce an explicit empty comparison object.</summary>
     public static ProjectTemplateStringClause Compare(string? equal = null, string? notEqual = null,
         IReadOnlyList<string>? included = null, string? glob = null) => new(null, equal, notEqual, glob, included);
     // Validate operator applicability through the native peer, replacing only empty shapes
@@ -62,11 +67,14 @@ public sealed class ProjectTemplateStringClause
         if (_glob is not null) writer.WriteString("$glob", _glob);
         writer.WriteEndObject();
     }
+    /// <summary>Returns a marker without comparison operands.</summary>
     public override string ToString() => "[ProjectTemplateStringClause]";
 }
 
+/// <summary>A typed native template condition, not arbitrary condition JSON.</summary>
 public sealed class ProjectTemplateCondition
 {
+    /// <summary>Binds one known condition field to an explicit literal or comparison clause.</summary>
     public ProjectTemplateCondition(RoleConditionField field, ProjectTemplateStringClause clause)
     {
         if (!Enum.IsDefined(field)) throw new ArgumentOutOfRangeException(nameof(field));
@@ -76,13 +84,16 @@ public sealed class ProjectTemplateCondition
     }
     internal RoleConditionField Field { get; }
     internal ProjectTemplateStringClause Clause { get; }
+    /// <summary>Returns a marker without condition operands.</summary>
     public override string ToString() => "[ProjectTemplateCondition]";
 }
 
+/// <summary>Native secret-tag predicates preserving absent and explicit empty operator arrays.</summary>
 public sealed class ProjectTemplateSecretTags
 {
     private readonly string[]? _included;
     private readonly string[]? _all;
+    /// <summary>Copies optional inclusion and all-tag selections; null omits each operator.</summary>
     public ProjectTemplateSecretTags(IReadOnlyList<string>? included = null, IReadOnlyList<string>? all = null)
     {
         _included = included is null ? null : ProjectTemplateWire.Copy(included);
@@ -96,6 +107,7 @@ public sealed class ProjectTemplateSecretTags
         if (_all is not null) ProjectTemplateWire.Array(writer, "$all", _all, (w, v) => w.WriteStringValue(v));
         writer.WriteEndObject();
     }
+    /// <summary>Returns a marker without tag selectors.</summary>
     public override string ToString() => "[ProjectTemplateSecretTags]";
 }
 
@@ -104,6 +116,7 @@ public sealed class ProjectTemplateMetadataMatch
 {
     private readonly ProjectTemplateStringClause? _key;
     private readonly ProjectTemplateStringClause? _value;
+    /// <summary>Selects comparisons on one metadata entry; omitted key and value retain an explicit empty elemMatch.</summary>
     public ProjectTemplateMetadataMatch(ProjectTemplateStringClause? key = null, ProjectTemplateStringClause? value = null)
     {
         _key = key;
@@ -122,6 +135,7 @@ public sealed class ProjectTemplateMetadataMatch
         writer.WriteEndObject();
         writer.WriteEndObject();
     }
+    /// <summary>Returns a marker without metadata predicates.</summary>
     public override string ToString() => "[ProjectTemplateMetadataMatch]";
 }
 
@@ -135,10 +149,12 @@ public sealed class ProjectTemplatePermission
     private readonly ProjectTemplateCondition[]? _conditions;
     private readonly ProjectTemplateSecretTags? _tags;
     private readonly ProjectTemplateMetadataMatch? _metadata;
+    /// <summary>Captures a scalar native action with copied optional conditions and nullable inversion.</summary>
     public ProjectTemplatePermission(ProjectRoleSubject subject, ProjectRoleAction action, bool? inverted = null,
         IReadOnlyList<ProjectTemplateCondition>? conditions = null, ProjectTemplateSecretTags? secretTags = null,
         ProjectTemplateMetadataMatch? metadata = null)
         : this(subject, [action], inverted, conditions, secretTags, metadata) => _scalar = true;
+    /// <summary>Copies an action array and optional conditions; empty supported conditions remain explicit, not omitted.</summary>
     public ProjectTemplatePermission(ProjectRoleSubject subject, IReadOnlyList<ProjectRoleAction> actions,
         bool? inverted = null, IReadOnlyList<ProjectTemplateCondition>? conditions = null,
         ProjectTemplateSecretTags? secretTags = null, ProjectTemplateMetadataMatch? metadata = null)
@@ -187,14 +203,17 @@ public sealed class ProjectTemplatePermission
         }
         writer.WriteEndObject();
     }
+    /// <summary>Returns a marker without permission conditions.</summary>
     public override string ToString() => "[ProjectTemplatePermission]";
 }
 
+/// <summary>Template role authoring with bounded copied permissions, not effective-permission evaluation.</summary>
 public sealed class ProjectTemplateRole
 {
     private readonly string _name;
     private readonly string _slug;
     private readonly ProjectTemplatePermission[] _permissions;
+    /// <summary>Captures role name/slug and copies bounded permission selections, including explicit empty permissions.</summary>
     public ProjectTemplateRole(string name, string slug, IReadOnlyList<ProjectTemplatePermission> permissions)
     {
         ProjectTemplateWire.Text(name);
@@ -213,11 +232,14 @@ public sealed class ProjectTemplateRole
         writer.WriteEndArray();
         writer.WriteEndObject();
     }
+    /// <summary>Returns a marker without role or permission fields.</summary>
     public override string ToString() => "[ProjectTemplateRole]";
 }
 
+/// <summary>Native template environment definition preserving numeric position without rounding.</summary>
 public sealed class ProjectTemplateEnvironment
 {
+    /// <summary>Captures environment name/slug and a finite position of at least one.</summary>
     public ProjectTemplateEnvironment(string name, string slug, double position)
     {
         ProjectTemplateWire.Text(name);
@@ -228,8 +250,11 @@ public sealed class ProjectTemplateEnvironment
         Slug = slug;
         Position = position;
     }
+    /// <summary>Gets the selected or returned environment name.</summary>
     [JsonIgnore] public string Name { get; }
+    /// <summary>Gets the native environment slug.</summary>
     [JsonIgnore] public string Slug { get; }
+    /// <summary>Gets the finite native position without integer truncation.</summary>
     [JsonIgnore] public double Position { get; }
     internal void Write(Utf8JsonWriter writer)
     {
@@ -249,11 +274,14 @@ public sealed class ProjectTemplateEnvironment
         Position = number;
     }
     internal static ProjectTemplateEnvironment Parse(JsonElement value) => new(value);
+    /// <summary>Returns a marker without environment coordinates.</summary>
     public override string ToString() => "[ProjectTemplateEnvironment]";
 }
 
+/// <summary>Template user assignment with explicit copied role slugs.</summary>
 public sealed class ProjectTemplateUser
 {
+    /// <summary>Captures a username and copies a nonempty bounded role selection.</summary>
     public ProjectTemplateUser(string username, IReadOnlyList<string> roles)
     {
         ProjectTemplateWire.Text(username);
@@ -265,14 +293,19 @@ public sealed class ProjectTemplateUser
         Username = ProjectTemplateWire.Required(value, "username", 16384, false);
         Roles = ProjectTemplateWire.Strings(value, "roles");
     }
+    /// <summary>Gets the selected or returned username.</summary>
     [JsonIgnore] public string Username { get; }
+    /// <summary>Gets copied native role slugs, not an effective role set.</summary>
     [JsonIgnore] public IReadOnlyList<string> Roles { get; }
     internal void Write(Utf8JsonWriter writer) => ProjectTemplateWire.Principal(writer, "username", Username, Roles);
+    /// <summary>Returns a marker without user assignments.</summary>
     public override string ToString() => "[ProjectTemplateUser]";
 }
 
+/// <summary>Template group assignment selected by native group slug.</summary>
 public sealed class ProjectTemplateGroup
 {
+    /// <summary>Captures a group slug and copies a nonempty bounded role selection.</summary>
     public ProjectTemplateGroup(string groupSlug, IReadOnlyList<string> roles)
     {
         ProjectTemplateWire.Text(groupSlug);
@@ -284,14 +317,19 @@ public sealed class ProjectTemplateGroup
         GroupSlug = ProjectTemplateWire.Required(value, "groupSlug");
         Roles = ProjectTemplateWire.Strings(value, "roles");
     }
+    /// <summary>Gets the selected or returned group slug.</summary>
     [JsonIgnore] public string GroupSlug { get; }
+    /// <summary>Gets copied native role slugs without evaluating permissions.</summary>
     [JsonIgnore] public IReadOnlyList<string> Roles { get; }
     internal void Write(Utf8JsonWriter writer) => ProjectTemplateWire.Principal(writer, "groupSlug", GroupSlug, Roles);
+    /// <summary>Returns a marker without group assignments.</summary>
     public override string ToString() => "[ProjectTemplateGroup]";
 }
 
+/// <summary>Template existing-machine-identity assignment with explicit role selection.</summary>
 public sealed class ProjectTemplateIdentity
 {
+    /// <summary>Captures an identity UUID and copies nonempty role slugs; does not infer an identity name.</summary>
     public ProjectTemplateIdentity(string identityId, IReadOnlyList<string> roles)
     {
         if (!Guid.TryParseExact(identityId, "D", out _))
@@ -307,16 +345,21 @@ public sealed class ProjectTemplateIdentity
         IdentityName = ProjectTemplateWire.Required(value, "identityName");
         Roles = ProjectTemplateWire.Strings(value, "roles");
     }
+    /// <summary>Gets the selected or returned identity UUID.</summary>
     [JsonIgnore] public string IdentityId { get; }
     /// <summary>Returned metadata only; never inferred from an input ID.</summary>
     [JsonIgnore] public string? IdentityName { get; }
+    /// <summary>Gets copied native role slugs, not runtime authorization evidence.</summary>
     [JsonIgnore] public IReadOnlyList<string> Roles { get; }
     internal void Write(Utf8JsonWriter writer) => ProjectTemplateWire.Principal(writer, "identityId", IdentityId, Roles);
+    /// <summary>Returns a marker without identity assignments.</summary>
     public override string ToString() => "[ProjectTemplateIdentity]";
 }
 
+/// <summary>Template-managed identity definition, not an already provisioned runtime identity.</summary>
 public sealed class ProjectTemplateManagedIdentity
 {
+    /// <summary>Captures a managed-identity name and copies a nonempty bounded role selection.</summary>
     public ProjectTemplateManagedIdentity(string name, IReadOnlyList<string> roles)
     {
         ProjectTemplateWire.Text(name);
@@ -328,9 +371,12 @@ public sealed class ProjectTemplateManagedIdentity
         Name = ProjectTemplateWire.Required(value, "name", 16384, false);
         Roles = ProjectTemplateWire.Strings(value, "roles");
     }
+    /// <summary>Gets the selected or returned managed-identity name.</summary>
     [JsonIgnore] public string Name { get; }
+    /// <summary>Gets copied native role slugs, not effective access.</summary>
     [JsonIgnore] public IReadOnlyList<string> Roles { get; }
     internal void Write(Utf8JsonWriter writer) => ProjectTemplateWire.Principal(writer, "name", Name, Roles);
+    /// <summary>Returns a marker without managed-identity assignments.</summary>
     public override string ToString() => "[ProjectTemplateManagedIdentity]";
 }
 
@@ -343,6 +389,7 @@ public sealed class ProjectTemplateConfiguration
     private readonly ProjectTemplateCollection<ProjectTemplateGroup>? _groups;
     private readonly ProjectTemplateCollection<ProjectTemplateIdentity>? _identities;
     private readonly ProjectTemplateCollection<ProjectTemplateManagedIdentity>? _managed;
+    /// <summary>Copies optional roles and retains immutable nullable collections; null arguments omit and wrappers can explicitly clear.</summary>
     public ProjectTemplateConfiguration(IReadOnlyList<ProjectTemplateRole>? roles = null,
         ProjectTemplateCollection<ProjectTemplateEnvironment>? environments = null,
         ProjectTemplateCollection<ProjectTemplateUser>? users = null,
@@ -374,6 +421,7 @@ public sealed class ProjectTemplateConfiguration
         ProjectTemplateWire.Collection(writer, "identities", _identities, (w, v) => v.Write(w));
         ProjectTemplateWire.Collection(writer, "projectManagedIdentities", _managed, (w, v) => v.Write(w));
     }
+    /// <summary>Returns a marker without template configuration.</summary>
     public override string ToString() => "[ProjectTemplateConfiguration]";
 }
 
@@ -391,8 +439,11 @@ public sealed class ProjectTemplatePermissionSelection
         else
             Values = Array.AsReadOnly(ManagementJson.Array(value).Select(v => ProjectTemplateWire.String(v)).ToArray());
     }
+    /// <summary>Gets whether the response used a scalar string rather than an array.</summary>
     public bool IsScalar { get; }
+    /// <summary>Gets the returned scalar as one value or the exact returned array, including an empty array.</summary>
     [JsonIgnore] public IReadOnlyList<string> Values { get; }
+    /// <summary>Returns a marker without permission selection values.</summary>
     public override string ToString() => "[ProjectTemplatePermissionSelection]";
 }
 
@@ -408,14 +459,21 @@ public sealed class ProjectTemplatePermissionSummary
         if (value.TryGetProperty("inverted", out _)) Inverted = ManagementJson.Boolean(value, "inverted");
         HasConditions = value.TryGetProperty("conditions", out _);
     }
+    /// <summary>Gets the returned scalar or array action selection.</summary>
     [JsonIgnore] public ProjectTemplatePermissionSelection Action { get; }
+    /// <summary>Gets returned subject selection, or null when the subject field is omitted.</summary>
     [JsonIgnore] public ProjectTemplatePermissionSelection? Subject { get; }
+    /// <summary>Gets returned inversion, or null when omitted rather than defaulting to false.</summary>
     [JsonIgnore] public bool? Inverted { get; }
+    /// <summary>Gets whether a conditions node exists without interpreting its unconstrained shape.</summary>
     public bool HasConditions { get; }
+    /// <summary>Always false: condition-node values are deliberately not projected.</summary>
     public bool IncludesConditionValues => false;
+    /// <summary>Returns a marker without permission metadata.</summary>
     public override string ToString() => "[ProjectTemplatePermissionSummary]";
 }
 
+/// <summary>Returned template-role configuration metadata, not an effective-permission decision.</summary>
 public sealed class ProjectTemplateRoleSummary
 {
     internal ProjectTemplateRoleSummary(JsonElement value)
@@ -425,9 +483,13 @@ public sealed class ProjectTemplateRoleSummary
         Permissions = Array.AsReadOnly(ManagementJson.Array(value, "permissions")
             .Select(v => new ProjectTemplatePermissionSummary(v)).ToArray());
     }
+    /// <summary>Gets the returned role name.</summary>
     [JsonIgnore] public string Name { get; }
+    /// <summary>Gets the returned native role slug.</summary>
     [JsonIgnore] public string Slug { get; }
+    /// <summary>Gets bounded returned permission summaries without condition values.</summary>
     [JsonIgnore] public IReadOnlyList<ProjectTemplatePermissionSummary> Permissions { get; }
+    /// <summary>Returns a marker without role configuration.</summary>
     public override string ToString() => "[ProjectTemplateRoleSummary]";
 }
 

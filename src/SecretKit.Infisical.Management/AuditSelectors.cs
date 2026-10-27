@@ -14,10 +14,13 @@ public sealed class AuditEventFilter
     }
     internal string Parameter { get; }
     internal bool IsArray { get; }
+    /// <summary>Selects one bounded native event-class string without expanding it into an array.</summary>
     public static AuditEventFilter Class(string value) =>
         new("eventClass", [Text(value, 51)], false);
+    /// <summary>Selects one bounded native event-type string without requiring catalog membership.</summary>
     public static AuditEventFilter Type(string value) =>
         new("eventType", [Text(value, 17467)], false);
+    /// <summary>Copies up to four known event classes for repeated native query selectors.</summary>
     public static AuditEventFilter Classes(IReadOnlyList<AuditEventClass> values)
     {
         ArgumentNullException.ThrowIfNull(values);
@@ -32,6 +35,7 @@ public sealed class AuditEventFilter
         if (copy.Length > 4) throw new ArgumentException("At most four event classes are supported.");
         return new("eventClass", copy, true);
     }
+    /// <summary>Copies at most 691 catalog-recognized event types; unknown entries are rejected.</summary>
     public static AuditEventFilter Types(IReadOnlyList<string> values)
     {
         ArgumentNullException.ThrowIfNull(values);
@@ -48,6 +52,7 @@ public sealed class AuditEventFilter
             throw new ArgumentException("Invalid protected audit filter.");
         return value;
     }
+    /// <summary>Returns a marker without exposing filter values.</summary>
     public override string ToString() => "[AuditEventFilter]";
 }
 
@@ -64,6 +69,7 @@ public sealed class AuditSelectors
     {
         "web", "cli", "k8-operator", "terraform", "other", "InfisicalPythonSDK", "InfisicalNodeSDK"
     };
+    /// <summary>Captures fixed audit filters; null omits a selector and empty strings remain explicit selections.</summary>
     public AuditSelectors(string? actor = null, string? actorType = null, string? environment = null,
         AuditEventFilter? eventClass = null, string? eventMetadata = null,
         AuditEventFilter? eventType = null, string? secretKey = null, string? secretPath = null,
@@ -84,14 +90,23 @@ public sealed class AuditSelectors
         SecretPath = secretPath is null ? null : AuditEventFilter.Text(secretPath);
         UserAgentType = userAgentType;
     }
+    /// <summary>Gets the selected actor coordinate, or null to omit actor filtering.</summary>
     [JsonIgnore] public string? Actor { get; }
+    /// <summary>Gets the native actor discriminator, or null to omit it.</summary>
     [JsonIgnore] public string? ActorType { get; }
+    /// <summary>Gets the environment selector, or null to omit it.</summary>
     [JsonIgnore] public string? Environment { get; }
+    /// <summary>Gets the scalar or repeated event-class selection, or null when omitted.</summary>
     [JsonIgnore] public AuditEventFilter? EventClass { get; }
+    /// <summary>Gets the protected event-metadata selector, or null when omitted.</summary>
     [JsonIgnore] public string? EventMetadata { get; }
+    /// <summary>Gets the scalar or repeated event-type selection, or null when omitted.</summary>
     [JsonIgnore] public AuditEventFilter? EventType { get; }
+    /// <summary>Gets the protected secret-key selector, or null when omitted.</summary>
     [JsonIgnore] public string? SecretKey { get; }
+    /// <summary>Gets the protected secret-path selector, or null when omitted.</summary>
     [JsonIgnore] public string? SecretPath { get; }
+    /// <summary>Gets the native user-agent discriminator, or null to omit it.</summary>
     [JsonIgnore] public string? UserAgentType { get; }
     internal string Query()
     {
@@ -105,5 +120,6 @@ public sealed class AuditSelectors
             if (value is not null) query += "&" + name + "=" + Uri.EscapeDataString(value);
         return query + EventClass?.Query() + EventType?.Query();
     }
+    /// <summary>Returns a marker without revealing audit selectors.</summary>
     public override string ToString() => "[AuditSelectors]";
 }

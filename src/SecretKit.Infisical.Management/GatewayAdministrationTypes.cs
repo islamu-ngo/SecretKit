@@ -4,19 +4,25 @@ using SecretKit.Core;
 
 namespace SecretKit.Infisical.Management;
 
-public enum GatewayGcpType { Gce, Iam }
-public enum GatewayTokenReviewMode { Api, Gateway }
-public enum GatewayAuthenticationMethod { Aws, Gcp, Kubernetes, Token, Identity }
+/// <summary>Native GCP gateway authentication strategy.</summary>
+public enum GatewayGcpType { /** <summary>Selects Compute Engine proof.</summary> */ Gce, /** <summary>Selects IAM proof.</summary> */ Iam }
+/// <summary>Native Kubernetes gateway token-review route.</summary>
+public enum GatewayTokenReviewMode { /** <summary>Uses direct API token review.</summary> */ Api, /** <summary>Uses gateway token review.</summary> */ Gateway }
+/// <summary>Known gateway authentication response branches; identity is response-only in this input surface.</summary>
+public enum GatewayAuthenticationMethod { /** <summary>AWS authentication configuration.</summary> */ Aws, /** <summary>GCP authentication configuration.</summary> */ Gcp, /** <summary>Kubernetes authentication configuration.</summary> */ Kubernetes, /** <summary>Enrollment-token authentication configuration.</summary> */ Token, /** <summary>Returned existing identity association.</summary> */ Identity }
 
 /// <summary>Supplied nullable UUID. No wrapper means omission, not JSON null.</summary>
 public sealed class GatewayNullableId
 {
+    /// <summary>Captures an explicit nullable UUID; no wrapper means omission.</summary>
     public GatewayNullableId(string? value)
     {
         if (value is not null) GatewayJson.UuidInput(value);
         Value = value;
     }
+    /// <summary>Gets the selected UUID or explicit null.</summary>
     [JsonIgnore] public string? Value { get; }
+    /// <summary>Returns a marker without UUID coordinates.</summary>
     public override string ToString() => "[GatewayNullableId]";
 }
 
@@ -28,6 +34,7 @@ public sealed class GatewayAuthenticationInput : IDisposable
     private GatewayAuthenticationInput(Action<Utf8JsonWriter> write) => _body = GatewayJson.Serialize(write);
 
     // field-17354/17358 permit empty strings and omission independently; no SDK defaults.
+    /// <summary>Copies AWS selector configuration; null omits and empty strings remain explicit.</summary>
     public static GatewayAuthenticationInput Aws(string? allowedAccountIds = null, string? allowedPrincipalArns = null)
     {
         GatewayJson.InputText(allowedAccountIds, 4096);
@@ -42,6 +49,7 @@ public sealed class GatewayAuthenticationInput : IDisposable
         });
     }
 
+    /// <summary>Copies GCP selectors and optional type without credential discovery.</summary>
     public static GatewayAuthenticationInput Gcp(string? allowedProjects = null, string? allowedServiceAccounts = null,
         string? allowedZones = null, GatewayGcpType? type = null)
     {
@@ -65,6 +73,7 @@ public sealed class GatewayAuthenticationInput : IDisposable
         });
     }
 
+    /// <summary>Copies Kubernetes reviewer material into the owned serialized body; caller retains the original token.</summary>
     public static GatewayAuthenticationInput Kubernetes(string allowedNames, string allowedNamespaces,
         string? allowedAudience = null, string? caCertificate = null, GatewayNullableId? gatewayId = null,
         GatewayNullableId? gatewayPoolId = null, string? kubernetesHost = null, SecretMaterial? tokenReviewerJwt = null,
@@ -108,6 +117,7 @@ public sealed class GatewayAuthenticationInput : IDisposable
         finally { if (jwt is not null) Array.Clear(jwt); }
     }
 
+    /// <summary>Selects native token authentication without issuing an enrollment token.</summary>
     public static GatewayAuthenticationInput Token() => new(writer =>
     {
         writer.WriteStartObject();
@@ -124,14 +134,19 @@ public sealed class GatewayAuthenticationInput : IDisposable
             writer.WriteRawValue(_body);
         }
     }
+    /// <summary>Clears the owned serialized authentication body and prevents further serialization.</summary>
     public void Dispose() { lock (_gate) { if (_body is not null) Array.Clear(_body); _body = null; } }
+    /// <summary>Returns a marker without authentication settings or material.</summary>
     public override string ToString() => "[GatewayAuthenticationInput]";
 }
 
+/// <summary>Gateway creation settings borrowing an explicitly selected authentication input.</summary>
 public sealed class GatewayCreation
 {
     private readonly GatewayAuthenticationInput _authentication;
+    /// <summary>Gets the selected gateway name.</summary>
     [JsonIgnore] public string Name { get; }
+    /// <summary>Captures the name and borrowed authentication input; keep it alive through request construction.</summary>
     public GatewayCreation(string name, GatewayAuthenticationInput authentication)
     {
         ArgumentNullException.ThrowIfNull(name);
@@ -147,13 +162,16 @@ public sealed class GatewayCreation
         _authentication.Write(writer);
         writer.WriteEndObject();
     }
+    /// <summary>Returns a marker without gateway creation settings.</summary>
     public override string ToString() => "[GatewayCreation]";
 }
 
+/// <summary>Optional native gateway patch fields; omitted fields remain omitted.</summary>
 public sealed class GatewayUpdate
 {
     private readonly string? _name;
     private readonly GatewayAuthenticationInput? _authentication;
+    /// <summary>Captures an optional name and borrowed authentication input; null omits each field.</summary>
     public GatewayUpdate(string? name = null, GatewayAuthenticationInput? authentication = null)
     {
         GatewayJson.InputText(name, 64, 1);
@@ -167,6 +185,7 @@ public sealed class GatewayUpdate
         _authentication?.Write(writer);
         writer.WriteEndObject();
     }
+    /// <summary>Returns a marker without patch settings.</summary>
     public override string ToString() => "[GatewayUpdate]";
 }
 
@@ -222,31 +241,55 @@ public sealed class GatewayAuthenticationSummary
             VerifyTlsCertificate = ManagementJson.Boolean(config, "verifyTlsCertificate");
         }
     }
+    /// <summary>Gets the native returned authentication branch.</summary>
     [JsonIgnore] public GatewayAuthenticationMethod Method { get; }
+    /// <summary>Gets configuration UUID for AWS, GCP or Kubernetes; other branches leave it null.</summary>
     [JsonIgnore] public string? Id { get; }
+    /// <summary>Gets returned configuration creation time, or null when this branch has none.</summary>
     [JsonIgnore] public string? CreatedAt { get; }
+    /// <summary>Gets returned configuration update time, or null when this branch has none.</summary>
     [JsonIgnore] public string? UpdatedAt { get; }
+    /// <summary>Gets AWS account selectors; other branches leave this null.</summary>
     [JsonIgnore] public string? AllowedAccountIds { get; }
+    /// <summary>Gets AWS principal ARN selectors; other branches leave this null.</summary>
     [JsonIgnore] public string? AllowedPrincipalArns { get; }
+    /// <summary>Gets GCP project selectors; other branches leave this null.</summary>
     [JsonIgnore] public string? AllowedProjects { get; }
+    /// <summary>Gets GCP service-account selectors; other branches leave this null.</summary>
     [JsonIgnore] public string? AllowedServiceAccounts { get; }
+    /// <summary>Gets GCP zone selectors; other branches leave this null.</summary>
     [JsonIgnore] public string? AllowedZones { get; }
+    /// <summary>Gets open native GCP type text without narrowing it to input enums.</summary>
     [JsonIgnore] public string? Type { get; }
+    /// <summary>Gets returned identity coordinate for the identity branch.</summary>
     [JsonIgnore] public string? IdentityId { get; }
+    /// <summary>Gets returned identity name, or null when absent or for another branch.</summary>
     [JsonIgnore] public string? IdentityName { get; }
+    /// <summary>Gets Kubernetes audience constraint; other branches leave this null.</summary>
     [JsonIgnore] public string? AllowedAudience { get; }
+    /// <summary>Gets Kubernetes service-account name constraints; other branches leave this null.</summary>
     [JsonIgnore] public string? AllowedNames { get; }
+    /// <summary>Gets Kubernetes namespace constraints; other branches leave this null.</summary>
     [JsonIgnore] public string? AllowedNamespaces { get; }
+    /// <summary>Gets Kubernetes CA certificate text; other branches leave this null.</summary>
     [JsonIgnore] public string? CaCertificate { get; }
+    /// <summary>Gets returned Kubernetes gateway coordinate, or null for explicit null or another branch.</summary>
     [JsonIgnore] public string? GatewayId { get; }
+    /// <summary>Gets returned Kubernetes gateway-pool coordinate, or null for explicit null or another branch.</summary>
     [JsonIgnore] public string? GatewayPoolId { get; }
+    /// <summary>Gets reviewer-token presence metadata for Kubernetes; no token material is exported.</summary>
     [JsonIgnore] public bool? HasTokenReviewerJwt { get; }
+    /// <summary>Gets Kubernetes host text; other branches leave this null.</summary>
     [JsonIgnore] public string? KubernetesHost { get; }
+    /// <summary>Gets open native review-mode text; other branches leave this null.</summary>
     [JsonIgnore] public string? TokenReviewMode { get; }
+    /// <summary>Gets reported provider-side TLS-verification state; other branches leave this null.</summary>
     [JsonIgnore] public bool? VerifyTlsCertificate { get; }
+    /// <summary>Returns a marker without authentication configuration.</summary>
     public override string ToString() => "[GatewayAuthenticationSummary]";
 }
 
+/// <summary>Returned gateway configuration and heartbeat metadata, not deployment or current connectivity proof.</summary>
 public sealed class GatewaySummary
 {
     internal GatewaySummary(JsonElement value, string? id = null, string? name = null)
@@ -277,24 +320,43 @@ public sealed class GatewaySummary
         HasRelayId = value.TryGetProperty("relayId", out _);
         RelayId = GatewayJson.OptionalUuid(value, "relayId");
     }
+    /// <summary>Gets the returned gateway UUID matched to selection when requested.</summary>
     [JsonIgnore] public string Id { get; }
+    /// <summary>Gets the returned gateway name.</summary>
     [JsonIgnore] public string Name { get; }
+    /// <summary>Gets the returned gateway creation timestamp.</summary>
     [JsonIgnore] public string CreatedAt { get; }
+    /// <summary>Gets the returned gateway update timestamp.</summary>
     [JsonIgnore] public string UpdatedAt { get; }
+    /// <summary>Gets the provider-authored revoke affordance; not an independent permission probe.</summary>
     [JsonIgnore] public bool CanRevoke { get; }
+    /// <summary>Gets the typed returned authentication configuration.</summary>
     [JsonIgnore] public GatewayAuthenticationSummary Authentication { get; }
+    /// <summary>Gets whether a direct-address field was returned, including explicit null.</summary>
     [JsonIgnore] public bool HasDirectAddress { get; }
+    /// <summary>Gets direct-address text; use HasDirectAddress to distinguish omission.</summary>
     [JsonIgnore] public string? DirectAddress { get; }
+    /// <summary>Gets whether direct-heartbeat time was returned, including explicit null.</summary>
     [JsonIgnore] public bool HasDirectHeartbeat { get; }
+    /// <summary>Gets direct-heartbeat time; it does not establish current reachability.</summary>
     [JsonIgnore] public string? DirectHeartbeat { get; }
+    /// <summary>Gets whether heartbeat time was returned, including explicit null.</summary>
     [JsonIgnore] public bool HasHeartbeat { get; }
+    /// <summary>Gets reported heartbeat time; use HasHeartbeat to distinguish omission.</summary>
     [JsonIgnore] public string? Heartbeat { get; }
+    /// <summary>Gets whether heartbeat TTL was returned, including explicit null.</summary>
     [JsonIgnore] public bool HasHeartbeatTTL { get; }
+    /// <summary>Gets native heartbeat TTL without deriving a local liveness guarantee.</summary>
     [JsonIgnore] public double? HeartbeatTTL { get; }
+    /// <summary>Gets whether an identity coordinate was returned, including explicit null.</summary>
     [JsonIgnore] public bool HasIdentityId { get; }
+    /// <summary>Gets returned identity UUID; use HasIdentityId to distinguish omission.</summary>
     [JsonIgnore] public string? IdentityId { get; }
+    /// <summary>Gets whether a relay coordinate was returned, including explicit null.</summary>
     [JsonIgnore] public bool HasRelayId { get; }
+    /// <summary>Gets returned relay UUID; use HasRelayId to distinguish omission.</summary>
     [JsonIgnore] public string? RelayId { get; }
+    /// <summary>Returns a marker without heartbeat or address details.</summary>
     public override string ToString() => "[GatewaySummary]";
 }
 
@@ -306,8 +368,12 @@ public sealed class GatewayEnrollmentToken : IDisposable
         ExpiresAt = GatewayJson.Timestamp(value, "expiresAt")!;
         Material = SecretMaterial.FromText(ManagementJson.Required(value, "token"));
     }
+    /// <summary>Gets the provider-reported enrollment expiry timestamp.</summary>
     [JsonIgnore] public string ExpiresAt { get; }
+    /// <summary>Gets owned enrollment material; revealing it creates ordinary plaintext.</summary>
     [JsonIgnore] public SecretMaterial Material { get; }
+    /// <summary>Disposes enrollment material without revoking it or enrolling an agent.</summary>
     public void Dispose() => Material.Dispose();
+    /// <summary>Returns a marker without enrollment material.</summary>
     public override string ToString() => "[GatewayEnrollmentToken]";
 }

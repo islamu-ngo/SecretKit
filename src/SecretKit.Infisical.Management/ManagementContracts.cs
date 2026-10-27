@@ -17,8 +17,11 @@ public sealed class ManagementRequest<T> : IDisposable where T : notnull
     internal HttpMethod Method { get; }
     internal string Path { get; }
     internal Func<JsonElement, T> Parse { get; }
+    /// <summary>Gets the exact protected target and intent that a host grant must independently approve.</summary>
     [JsonIgnore] public ManagementTarget Target { get; }
+    /// <summary>Gets the fixed native operation identifier used for grant matching.</summary>
     public string OperationId { get; }
+    /// <summary>Gets whether execution requires caller-held pre-dispatch mutation evidence.</summary>
     public bool IsMutation { get; }
 
     internal ManagementRequest(string operationId, HttpMethod method, string path,
@@ -77,6 +80,7 @@ public sealed class ManagementRequest<T> : IDisposable where T : notnull
         }
     }
 
+    /// <summary>Clears the owned serialized request body and prevents further execution; does not undo a remote effect.</summary>
     public void Dispose()
     {
         lock (_gate)
@@ -90,6 +94,7 @@ public sealed class ManagementRequest<T> : IDisposable where T : notnull
         }
     }
 
+    /// <summary>Returns a marker without serialized material or target coordinates.</summary>
     public override string ToString() => "[ManagementRequest]";
 }
 
@@ -108,9 +113,13 @@ public sealed class ManagementPage<T> where T : notnull
         NextOffset = nextOffset;
     }
 
+    /// <summary>Gets the copied, bounded items returned for this page, not a cross-page snapshot.</summary>
     [JsonIgnore] public IReadOnlyList<T> Items { get; }
+    /// <summary>Gets whether the response establishes completion for this listing.</summary>
     public bool IsComplete { get; }
+    /// <summary>Gets the next offset when further paging is established, or null when no continuation is supplied.</summary>
     public int? NextOffset { get; }
+    /// <summary>Returns a marker without disclosing page contents.</summary>
     public override string ToString() => "[ManagementPage]";
 }
 

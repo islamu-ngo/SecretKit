@@ -4,13 +4,20 @@ using SecretKit.Core;
 
 namespace SecretKit.Infisical.Management;
 
+/// <summary>Native project-template product discriminators, not product entitlements.</summary>
 public enum ProjectTemplateType
 {
+    /// <summary>Secret-management template.</summary>
     SecretManager,
+    /// <summary>Certificate-management template.</summary>
     CertificateManager,
+    /// <summary>Key-management template.</summary>
     KeyManagement,
+    /// <summary>Secret-scanning template.</summary>
     SecretScanning,
+    /// <summary>Privileged-access template.</summary>
     PrivilegedAccess,
+    /// <summary>Agent Vault template.</summary>
     AgentVault
 }
 
@@ -42,21 +49,37 @@ public sealed class ProjectTemplateSummary
         ProjectManagedIdentities = ProjectTemplateWire.ParseCollection(value, "projectManagedIdentities", v => new ProjectTemplateManagedIdentity(v));
     }
 
+    /// <summary>Gets the returned template identifier.</summary>
     [JsonIgnore] public string Id { get; }
+    /// <summary>Gets the returned organization coordinate matched to selection.</summary>
     [JsonIgnore] public string OrganizationId { get; }
+    /// <summary>Gets the returned template name.</summary>
     [JsonIgnore] public string Name { get; }
+    /// <summary>Gets returned description, or null when absent or explicitly null.</summary>
     [JsonIgnore] public string? Description { get; }
+    /// <summary>Gets returned product type, or null when omitted; never substitutes the requested filter.</summary>
     [JsonIgnore] public string? Type { get; }
+    /// <summary>Gets the returned creation timestamp.</summary>
     [JsonIgnore] public string CreatedAt { get; }
+    /// <summary>Gets the returned update timestamp.</summary>
     [JsonIgnore] public string UpdatedAt { get; }
+    /// <summary>Gets returned role definitions without effective permission evaluation.</summary>
     [JsonIgnore] public IReadOnlyList<ProjectTemplateRoleSummary> Roles { get; }
+    /// <summary>Gets returned environments; null is an explicit provider null, not an empty array.</summary>
     [JsonIgnore] public IReadOnlyList<ProjectTemplateEnvironment>? Environments { get; }
+    /// <summary>Gets returned users; null is explicit provider null rather than an empty collection.</summary>
     [JsonIgnore] public IReadOnlyList<ProjectTemplateUser>? Users { get; }
+    /// <summary>Gets returned groups; null differs from an empty collection.</summary>
     [JsonIgnore] public IReadOnlyList<ProjectTemplateGroup>? Groups { get; }
+    /// <summary>Gets returned existing identities; null differs from an empty collection.</summary>
     [JsonIgnore] public IReadOnlyList<ProjectTemplateIdentity>? Identities { get; }
+    /// <summary>Gets returned managed-identity definitions; null differs from an empty collection.</summary>
     [JsonIgnore] public IReadOnlyList<ProjectTemplateManagedIdentity>? ProjectManagedIdentities { get; }
+    /// <summary>Always true: this summary includes typed native configuration.</summary>
     public bool IncludesConfiguration => true;
+    /// <summary>Always false: unconstrained permission-condition values are not exported.</summary>
     public bool IncludesPermissionConditionValues => false;
+    /// <summary>Returns a marker without template settings or assignments.</summary>
     public override string ToString() => "[ProjectTemplateSummary]";
 }
 
@@ -67,6 +90,7 @@ public sealed class ProjectTemplateSummary
 /// </summary>
 public static class ProjectTemplateOperations
 {
+    /// <summary>Builds bounded template inventory; null product type omits the filter and does not manufacture response type evidence.</summary>
     public static ManagementRequest<ManagementPage<ProjectTemplateSummary>> ListProjectTemplates(
         string organizationId, ProjectTemplateType? type = null)
     {
@@ -78,11 +102,13 @@ public static class ProjectTemplateOperations
                 .Select(value => new ProjectTemplateSummary(value, organizationId, type: nativeType)), true), false);
     }
 
+    /// <summary>Builds lookup of one exact template UUID under the selected organization.</summary>
     public static ManagementRequest<ProjectTemplateSummary> GetProjectTemplate(string organizationId, string templateId) =>
         new("infisical.get.v1.project.templates.by.templateId", HttpMethod.Get, TemplatePath(templateId),
             new(organizationId, resourceId: templateId), null,
             root => new(ManagementJson.Object(root, "projectTemplate"), organizationId, templateId), false);
 
+    /// <summary>Builds template creation; nullable principal-collection clearing is rejected on creation.</summary>
     public static ManagementRequest<ProjectTemplateSummary> CreateProjectTemplate(string organizationId,
         string name, ProjectTemplateType type = ProjectTemplateType.SecretManager, string? description = null,
         ProjectTemplateConfiguration? configuration = null)
@@ -97,6 +123,7 @@ public static class ProjectTemplateOperations
             root => new(ManagementJson.Object(root, "projectTemplate"), organizationId, name: name, type: nativeType));
     }
 
+    /// <summary>Builds template update; omitted fields are retained and explicit nullable collections preserve clearing intent.</summary>
     public static ManagementRequest<ProjectTemplateSummary> UpdateProjectTemplate(string organizationId,
         string templateId, string? name = null, string? description = null, ProjectTemplateConfiguration? configuration = null)
     {
@@ -110,6 +137,7 @@ public static class ProjectTemplateOperations
             root => new(ManagementJson.Object(root, "projectTemplate"), organizationId, templateId, name));
     }
 
+    /// <summary>Builds exact template deletion; does not delete projects created from the template.</summary>
     public static ManagementRequest<ProjectTemplateSummary> DeleteProjectTemplate(string organizationId, string templateId) =>
         new("infisical.delete.v1.project.templates.by.templateId", HttpMethod.Delete, TemplatePath(templateId),
             new(organizationId, resourceId: templateId), null,
@@ -127,6 +155,7 @@ public static class ProjectTemplateOperations
         return ProjectTemplateWire.Intent(organizationId, name, writer => Write(writer, name, description, nativeType, configuration));
     }
 
+    /// <summary>Builds independent approval for the complete selected update body, including absent/null/empty distinctions.</summary>
     public static ManagementTarget ProjectTemplateUpdateTarget(string organizationId, string templateId,
         string? name = null, string? description = null, ProjectTemplateConfiguration? configuration = null)
     {

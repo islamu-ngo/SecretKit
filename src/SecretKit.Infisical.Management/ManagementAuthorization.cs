@@ -6,6 +6,7 @@ namespace SecretKit.Infisical.Management;
 /// <summary>Protected exact coordinates. Null is absent, not a wildcard; an empty project selector is distinct.</summary>
 public sealed class ManagementTarget
 {
+    /// <summary>Captures exact protected coordinates; null selectors are absent, never wildcards.</summary>
     public ManagementTarget(string organizationId, string? projectId = null,
         string? resourceId = null, string? secondaryId = null)
     {
@@ -24,9 +25,13 @@ public sealed class ManagementTarget
         SecondaryId = secondaryId;
     }
 
+    /// <summary>Gets the exact organization coordinate approved by the host.</summary>
     [JsonIgnore] public string OrganizationId { get; }
+    /// <summary>Gets the project selector; null is absent and differs from an empty selector.</summary>
     [JsonIgnore] public string? ProjectId { get; }
+    /// <summary>Gets the resource coordinate, or null when the operation has none.</summary>
     [JsonIgnore] public string? ResourceId { get; }
+    /// <summary>Gets the operation-specific secondary selector or intent binding, or null when absent.</summary>
     [JsonIgnore] public string? SecondaryId { get; }
 
     internal bool SameScope(ManagementTarget other) =>
@@ -35,6 +40,7 @@ public sealed class ManagementTarget
     internal bool SameTarget(ManagementTarget other) => SameScope(other) &&
         ResourceId == other.ResourceId && SecondaryId == other.SecondaryId;
 
+    /// <summary>Returns a marker without exposing any protected coordinates.</summary>
     public override string ToString() => "[ManagementTarget]";
 }
 
@@ -49,6 +55,7 @@ public sealed class ManagementAuthority
     internal IInfisicalTokenSource Tokens { get; }
     private readonly ManagementTarget _scope;
 
+    /// <summary>Binds a borrowed token source and exact host scope to one client's local authority; performs no provider permission probe.</summary>
     public ManagementAuthority(SecretAuthority clientAuthority, IInfisicalTokenSource tokens,
         string organizationId, string? projectId = null)
     {
@@ -75,6 +82,7 @@ public sealed class ManagementAuthority
         return new ManagementGrant(this, operationId, target);
     }
 
+    /// <summary>Returns a marker without identity, token-source or scope details.</summary>
     public override string ToString() => "[ManagementAuthority]";
 }
 
@@ -97,6 +105,7 @@ public sealed class ManagementGrant
         ReferenceEquals(Issuer, selected) && ReferenceEquals(Issuer.ClientAuthority, client) &&
         _operationId == operationId && _target.SameTarget(target);
 
+    /// <summary>Returns a marker without disclosing the approved target or operation.</summary>
     public override string ToString() => "[ManagementGrant]";
 }
 
@@ -116,7 +125,9 @@ public sealed class ManagementReceipt
         _receipt = new MutationReceipt(_reference);
     }
 
+    /// <summary>Gets known dispatch evidence; unknown or pending evidence is not proof of rollback or rejection.</summary>
     public DispatchEvidence Evidence => _receipt.Evidence;
+    /// <summary>Gets a process-local correlation identifier, not a provider transaction identifier.</summary>
     [JsonIgnore] public Guid LocalId => _receipt.LocalId;
     internal bool Matches(object request, SecretAuthority client) =>
         ReferenceEquals(_request, request) && ReferenceEquals(_client, client);
@@ -133,6 +144,7 @@ public sealed class ManagementReceipt
         }
     }
     internal void Record(DispatchEvidence evidence) => _receipt.Record(evidence);
+    /// <summary>Returns the evidence state without protected request coordinates.</summary>
     public override string ToString() => $"[ManagementReceipt:{Evidence}]";
     private sealed class ReceiptAddress : SecretAddress;
 }

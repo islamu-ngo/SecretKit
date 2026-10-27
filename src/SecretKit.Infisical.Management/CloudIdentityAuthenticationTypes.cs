@@ -3,11 +3,13 @@ using System.Text.Json.Serialization;
 
 namespace SecretKit.Infisical.Management;
 
-public enum GcpAuthConfigurationType { Iam, Gce }
+/// <summary>Native GCP identity authentication configuration strategies.</summary>
+public enum GcpAuthConfigurationType { /** <summary>Selects IAM proof authentication.</summary> */ Iam, /** <summary>Selects Compute Engine proof authentication.</summary> */ Gce }
 
 /// <summary>Optional native AWS settings; null omits a field rather than clearing it.</summary>
 public sealed class AwsAuthConfigurationInput
 {
+    /// <summary>Captures optional AWS settings; null fields are omitted and a null policy supplies an all-omitted policy.</summary>
     public AwsAuthConfigurationInput(string? allowedPrincipalArns = null, string? allowedAccountIds = null,
         string? stsEndpoint = null, WorkloadAuthTokenPolicy? policy = null)
     {
@@ -20,9 +22,13 @@ public sealed class AwsAuthConfigurationInput
         StsEndpoint = stsEndpoint;
         Policy = policy ?? new();
     }
+    /// <summary>Gets allowed principal ARNs, or null to leave the setting omitted.</summary>
     [JsonIgnore] public string? AllowedPrincipalArns { get; }
+    /// <summary>Gets allowed account identifiers, or null to omit the setting.</summary>
     [JsonIgnore] public string? AllowedAccountIds { get; }
+    /// <summary>Gets the selected STS endpoint, or null to omit it.</summary>
     [JsonIgnore] public string? StsEndpoint { get; }
+    /// <summary>Gets the token policy whose individual null fields remain omitted.</summary>
     [JsonIgnore] public WorkloadAuthTokenPolicy Policy { get; }
     internal void ValidateAttach()
     {
@@ -35,12 +41,14 @@ public sealed class AwsAuthConfigurationInput
         WorkloadAuthJson.String(writer, "stsEndpoint", StsEndpoint);
         Policy.Write(writer);
     }
+    /// <summary>Returns a marker without cloud selectors.</summary>
     public override string ToString() => "[AwsAuthConfigurationInput]";
 }
 
 /// <summary>Attachment requires resource and tenant presence; update can omit them.</summary>
 public sealed class AzureAuthConfigurationInput
 {
+    /// <summary>Captures optional Azure settings; attachment later requires tenant and resource presence.</summary>
     public AzureAuthConfigurationInput(string? tenantId = null, string? resource = null,
         string? allowedServicePrincipalIds = null, WorkloadAuthTokenPolicy? policy = null)
     {
@@ -52,9 +60,13 @@ public sealed class AzureAuthConfigurationInput
         AllowedServicePrincipalIds = allowedServicePrincipalIds;
         Policy = policy ?? new();
     }
+    /// <summary>Gets the tenant selector, or null to omit it on update.</summary>
     [JsonIgnore] public string? TenantId { get; }
+    /// <summary>Gets the resource selector, or null to omit it on update.</summary>
     [JsonIgnore] public string? Resource { get; }
+    /// <summary>Gets allowed service-principal selectors, or null to omit them.</summary>
     [JsonIgnore] public string? AllowedServicePrincipalIds { get; }
+    /// <summary>Gets the explicit token-policy fields, with no inferred provider defaults.</summary>
     [JsonIgnore] public WorkloadAuthTokenPolicy Policy { get; }
     internal void ValidateAttach()
     {
@@ -67,12 +79,14 @@ public sealed class AzureAuthConfigurationInput
         WorkloadAuthJson.String(writer, "allowedServicePrincipalIds", AllowedServicePrincipalIds);
         Policy.Write(writer);
     }
+    /// <summary>Returns a marker without tenant or resource selectors.</summary>
     public override string ToString() => "[AzureAuthConfigurationInput]";
 }
 
 /// <summary>Explicit IAM/GCE selection on attachment, never ambient credential discovery.</summary>
 public sealed class GcpAuthConfigurationInput
 {
+    /// <summary>Captures GCP settings; a null type can be omitted on update, not attachment.</summary>
     public GcpAuthConfigurationInput(GcpAuthConfigurationType? type = null, string? allowedServiceAccounts = null,
         string? allowedProjects = null, string? allowedZones = null, WorkloadAuthTokenPolicy? policy = null)
     {
@@ -86,10 +100,15 @@ public sealed class GcpAuthConfigurationInput
         AllowedZones = allowedZones;
         Policy = policy ?? new();
     }
+    /// <summary>Gets the IAM/GCE discriminator, or null when omitted.</summary>
     [JsonIgnore] public GcpAuthConfigurationType? Type { get; }
+    /// <summary>Gets allowed service-account selectors, or null when omitted.</summary>
     [JsonIgnore] public string? AllowedServiceAccounts { get; }
+    /// <summary>Gets allowed project selectors, or null when omitted.</summary>
     [JsonIgnore] public string? AllowedProjects { get; }
+    /// <summary>Gets allowed zone selectors, or null when omitted.</summary>
     [JsonIgnore] public string? AllowedZones { get; }
+    /// <summary>Gets the token-policy field selections.</summary>
     [JsonIgnore] public WorkloadAuthTokenPolicy Policy { get; }
     internal void ValidateAttach()
     {
@@ -103,12 +122,14 @@ public sealed class GcpAuthConfigurationInput
         WorkloadAuthJson.String(writer, "allowedZones", AllowedZones);
         Policy.Write(writer);
     }
+    /// <summary>Returns a marker without GCP selectors.</summary>
     public override string ToString() => "[GcpAuthConfigurationInput]";
 }
 
 /// <summary>Allowed ARNs remain required for both attachment and update.</summary>
 public sealed class AliCloudAuthConfigurationInput
 {
+    /// <summary>Captures required nonempty allowed ARNs and optional token policy for AliCloud.</summary>
     public AliCloudAuthConfigurationInput(string allowedArns, WorkloadAuthTokenPolicy? policy = null)
     {
         ArgumentNullException.ThrowIfNull(allowedArns);
@@ -117,7 +138,9 @@ public sealed class AliCloudAuthConfigurationInput
         AllowedArns = allowedArns;
         Policy = policy ?? new();
     }
+    /// <summary>Gets the explicitly selected allowed ARNs.</summary>
     [JsonIgnore] public string AllowedArns { get; }
+    /// <summary>Gets the selected token-policy fields; null constructor policy omits them.</summary>
     [JsonIgnore] public WorkloadAuthTokenPolicy Policy { get; }
     internal void ValidateAttach()
     {
@@ -128,6 +151,7 @@ public sealed class AliCloudAuthConfigurationInput
         writer.WriteString("allowedArns", AllowedArns);
         Policy.Write(writer);
     }
+    /// <summary>Returns a marker without allowed ARNs.</summary>
     public override string ToString() => "[AliCloudAuthConfigurationInput]";
 }
 
@@ -142,13 +166,19 @@ public sealed class AwsAuthConfiguration : WorkloadAuthConfiguration
         StsEndpoint = ManagementJson.Required(value, "stsEndpoint");
         AccessTokenPeriod = WorkloadAuthJson.Number(value, "accessTokenPeriod");
     }
+    /// <summary>Gets the native returned AWS authentication type.</summary>
     [JsonIgnore] public string Type { get; }
+    /// <summary>Gets the returned allowed principal ARN selectors.</summary>
     [JsonIgnore] public string AllowedPrincipalArns { get; }
+    /// <summary>Gets the returned allowed account selectors.</summary>
     [JsonIgnore] public string AllowedAccountIds { get; }
+    /// <summary>Gets the returned STS endpoint.</summary>
     [JsonIgnore] public string StsEndpoint { get; }
+    /// <summary>Gets the returned token period in seconds, or null when absent.</summary>
     [JsonIgnore] public double? AccessTokenPeriod { get; }
 }
 
+/// <summary>Returned Azure authentication settings, not proof that the identity can authenticate.</summary>
 public sealed class AzureAuthConfiguration : WorkloadAuthConfiguration
 {
     internal AzureAuthConfiguration(JsonElement value, string identityId) : base(CloudAuthJson.Configuration(value), identityId)
@@ -158,12 +188,17 @@ public sealed class AzureAuthConfiguration : WorkloadAuthConfiguration
         AllowedServicePrincipalIds = ManagementJson.Required(value, "allowedServicePrincipalIds");
         AccessTokenPeriod = WorkloadAuthJson.Number(value, "accessTokenPeriod");
     }
+    /// <summary>Gets the returned tenant identifier.</summary>
     [JsonIgnore] public string TenantId { get; }
+    /// <summary>Gets the returned resource selector.</summary>
     [JsonIgnore] public string Resource { get; }
+    /// <summary>Gets the returned allowed service-principal identifiers.</summary>
     [JsonIgnore] public string AllowedServicePrincipalIds { get; }
+    /// <summary>Gets the returned token period in seconds, or null when absent.</summary>
     [JsonIgnore] public double? AccessTokenPeriod { get; }
 }
 
+/// <summary>Returned GCP authentication settings without request-derived defaults.</summary>
 public sealed class GcpAuthConfiguration : WorkloadAuthConfiguration
 {
     internal GcpAuthConfiguration(JsonElement value, string identityId) : base(CloudAuthJson.Configuration(value), identityId)
@@ -174,13 +209,19 @@ public sealed class GcpAuthConfiguration : WorkloadAuthConfiguration
         AllowedZones = WorkloadAuthJson.NullableResponse(value, "allowedZones");
         AccessTokenPeriod = WorkloadAuthJson.Number(value, "accessTokenPeriod");
     }
+    /// <summary>Gets the native returned IAM/GCE type.</summary>
     [JsonIgnore] public string Type { get; }
+    /// <summary>Gets allowed-project presence, preserving explicit null and omission.</summary>
     [JsonIgnore] public ProjectField<string> AllowedProjects { get; }
+    /// <summary>Gets allowed-service-account presence, preserving explicit null and omission.</summary>
     [JsonIgnore] public ProjectField<string> AllowedServiceAccounts { get; }
+    /// <summary>Gets allowed-zone presence, preserving explicit null and omission.</summary>
     [JsonIgnore] public ProjectField<string> AllowedZones { get; }
+    /// <summary>Gets the returned token period in seconds, or null when absent.</summary>
     [JsonIgnore] public double? AccessTokenPeriod { get; }
 }
 
+/// <summary>Returned AliCloud authentication settings, not an effective authorization decision.</summary>
 public sealed class AliCloudAuthConfiguration : WorkloadAuthConfiguration
 {
     internal AliCloudAuthConfiguration(JsonElement value, string identityId) : base(CloudAuthJson.Configuration(value), identityId)
@@ -188,7 +229,9 @@ public sealed class AliCloudAuthConfiguration : WorkloadAuthConfiguration
         Type = ManagementJson.Required(value, "type");
         AllowedArns = ManagementJson.Required(value, "allowedArns");
     }
+    /// <summary>Gets the native returned authentication type.</summary>
     [JsonIgnore] public string Type { get; }
+    /// <summary>Gets the returned allowed ARN selectors.</summary>
     [JsonIgnore] public string AllowedArns { get; }
 }
 

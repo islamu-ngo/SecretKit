@@ -10,6 +10,7 @@ public sealed class MembershipRoleSelection
     private readonly string? _role;
     private readonly MembershipRole[]? _roles;
 
+    /// <summary>Copies native scalar and array role selections; null omits, while an empty array remains explicit.</summary>
     public MembershipRoleSelection(string? role = null, IReadOnlyList<MembershipRole>? roles = null)
     {
         if (role is not null) ManagementJson.Text(role, 255);
@@ -37,6 +38,7 @@ public sealed class MembershipRoleSelection
         writer.WriteEndObject();
     }
 
+    /// <summary>Returns a marker without role assignments.</summary>
     public override string ToString() => "[MembershipRoleSelection]";
 }
 

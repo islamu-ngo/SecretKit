@@ -6,21 +6,28 @@ using SecretKit.Core;
 
 namespace SecretKit.Infisical.Management;
 
-public enum AuditEventClass { Management, Authentication, Authorization, DataAccess }
+/// <summary>Native audit event categories; writable settings admit only authentication and authorization.</summary>
+public enum AuditEventClass { /** <summary>Administrative configuration events.</summary> */ Management, /** <summary>Identity authentication events.</summary> */ Authentication, /** <summary>Authorization decision events.</summary> */ Authorization, /** <summary>Secret or other protected data access events.</summary> */ DataAccess }
 
+/// <summary>One explicit native audit-class switch, not evidence that events were captured.</summary>
 public sealed class AuditClassSetting
 {
+    /// <summary>Captures a known audit category and its explicit enabled state.</summary>
     public AuditClassSetting(AuditEventClass eventClass, bool isEnabled)
     {
         if (!Enum.IsDefined(eventClass)) throw new ArgumentException("Invalid audit class.");
         EventClass = eventClass;
         IsEnabled = isEnabled;
     }
+    /// <summary>Gets the selected native audit category.</summary>
     public AuditEventClass EventClass { get; }
+    /// <summary>Gets the explicit enabled state, not provider logging proof.</summary>
     public bool IsEnabled { get; }
+    /// <summary>Returns a marker without additional policy details.</summary>
     public override string ToString() => "[AuditClassSetting]";
 }
 
+/// <summary>Returned audit settings, not permission or event-delivery evidence.</summary>
 public sealed class AuditSettings
 {
     internal AuditSettings(JsonElement root)
@@ -36,8 +43,11 @@ public sealed class AuditSettings
         Classes = Array.AsReadOnly(items);
         UsesNewPrivilegeSystem = ManagementJson.Boolean(value, "shouldUseNewPrivilegeSystem");
     }
+    /// <summary>Gets bounded returned class settings; absent categories are not inferred.</summary>
     [JsonIgnore] public IReadOnlyList<AuditClassSetting> Classes { get; }
+    /// <summary>Gets the provider-reported privilege-system flag.</summary>
     public bool UsesNewPrivilegeSystem { get; }
+    /// <summary>Returns a marker without class settings.</summary>
     public override string ToString() => "[AuditSettings]";
 }
 
@@ -62,20 +72,35 @@ public sealed class AuditEntry
         UserAgent = ProjectWire.StringField(value, "userAgent", nullable: true);
         UserAgentType = ProjectWire.StringField(value, "userAgentType", nullable: true);
     }
+    /// <summary>Gets the returned audit-entry identifier.</summary>
     [JsonIgnore] public string Id { get; }
+    /// <summary>Gets the returned project coordinate, or null when absent or explicitly null.</summary>
     [JsonIgnore] public string? ProjectId { get; }
+    /// <summary>Gets the returned event creation timestamp.</summary>
     [JsonIgnore] public string CreatedAt { get; }
+    /// <summary>Gets the native actor discriminator without arbitrary actor metadata.</summary>
     [JsonIgnore] public string ActorType { get; }
+    /// <summary>Gets the native event-type discriminator without arbitrary event metadata.</summary>
     [JsonIgnore] public string EventType { get; }
+    /// <summary>Gets the returned known audit category.</summary>
     public AuditEventClass EventClass { get; }
+    /// <summary>Gets expiry timestamp presence, preserving explicit null.</summary>
     [JsonIgnore] public ProjectField<string> ExpiresAt { get; }
+    /// <summary>Gets protected IP-address presence, preserving explicit null.</summary>
     [JsonIgnore] public ProjectField<string> IpAddress { get; }
+    /// <summary>Gets project-name presence, preserving explicit null.</summary>
     [JsonIgnore] public ProjectField<string> ProjectName { get; }
+    /// <summary>Gets the required returned update timestamp with presence information.</summary>
     [JsonIgnore] public ProjectField<string> UpdatedAt { get; }
+    /// <summary>Gets protected user-agent presence, preserving explicit null.</summary>
     [JsonIgnore] public ProjectField<string> UserAgent { get; }
+    /// <summary>Gets native agent-type presence, preserving explicit null.</summary>
     [JsonIgnore] public ProjectField<string> UserAgentType { get; }
+    /// <summary>Always false: arbitrary actor metadata is not exported.</summary>
     public bool IncludesActorMetadata => false;
+    /// <summary>Always false: arbitrary event metadata is not exported.</summary>
     public bool IncludesEventMetadata => false;
+    /// <summary>Returns a marker without audit contents or coordinates.</summary>
     public override string ToString() => "[AuditEntry]";
 }
 
@@ -87,28 +112,37 @@ public sealed class AuditRow
         Ordinal = ordinal;
         Outcome = outcome;
     }
+    /// <summary>Gets the response ordinal including the requested offset; failed rows retain their positions.</summary>
     public int Ordinal { get; }
+    /// <summary>Gets this row's validated outcome without discarding neighboring rows.</summary>
     public SecretOutcome<AuditEntry> Outcome { get; }
+    /// <summary>Returns a marker without audit row contents.</summary>
     public override string ToString() => "[AuditRow]";
 }
 
+/// <summary>Constructs disposable audit-setting and inventory requests under independently approved authority.</summary>
 public static class GovernanceOperations
 {
+    /// <summary>Builds organization audit-setting inspection; inspection does not establish logging or rights.</summary>
     public static ManagementRequest<AuditSettings> GetOrganizationAuditSettings(string organizationId) =>
         AuditConfiguration(organizationId, null, null);
 
+    /// <summary>Builds organization audit-setting update requiring authentication and authorization exactly once.</summary>
     public static ManagementRequest<AuditSettings> SetOrganizationAuditSettings(string organizationId,
         IReadOnlyList<AuditClassSetting> settings) =>
         AuditConfiguration(organizationId, null, settings ?? throw new ArgumentNullException(nameof(settings)));
 
+    /// <summary>Builds project audit-setting inspection for the explicit project UUID.</summary>
     public static ManagementRequest<AuditSettings> GetProjectAuditSettings(string organizationId, string projectId) =>
         AuditConfiguration(organizationId, projectId ?? throw new ArgumentNullException(nameof(projectId)), null);
 
+    /// <summary>Builds project audit-setting update requiring both writable categories exactly once.</summary>
     public static ManagementRequest<AuditSettings> SetProjectAuditSettings(string organizationId, string projectId,
         IReadOnlyList<AuditClassSetting> settings) =>
         AuditConfiguration(organizationId, projectId ?? throw new ArgumentNullException(nameof(projectId)),
             settings ?? throw new ArgumentNullException(nameof(settings)));
 
+    /// <summary>Builds independent approval intent for the complete category-switch body and exact scope.</summary>
     public static ManagementTarget AuditSettingsTarget(string organizationId,
         IReadOnlyList<AuditClassSetting> settings, string? projectId = null)
     {
@@ -117,6 +151,7 @@ public static class GovernanceOperations
         return request.Target;
     }
 
+    /// <summary>Builds bounded audit inventory over an ordered time window; each row retains its validation outcome.</summary>
     public static ManagementRequest<ManagementPage<AuditRow>> ReadAudit(string organizationId,
         DateTimeOffset from, DateTimeOffset until, string? projectId = null, int offset = 0, int limit = 100,
         AuditSelectors? selectors = null)
@@ -148,6 +183,7 @@ public static class GovernanceOperations
         }, false);
     }
 
+    /// <summary>Builds independent approval intent for exact time bounds, paging and selector shapes.</summary>
     public static ManagementTarget AuditReadTarget(string organizationId, DateTimeOffset from, DateTimeOffset until,
         string? projectId = null, int offset = 0, int limit = 100, AuditSelectors? selectors = null) =>
         AuditTarget(organizationId, projectId, AuditQuery(from, until, projectId, offset, limit, selectors), selectors);
@@ -258,26 +294,45 @@ public sealed class SharedSecretMetadata
             throw new ManagementContractException(SecretStatus.Unknown);
         OrganizationName = ProjectWire.StringField(value, "orgName");
     }
+    /// <summary>Gets the returned share identifier.</summary>
     [JsonIgnore] public string Id { get; }
+    /// <summary>Gets the returned share name, or null when not supplied.</summary>
     [JsonIgnore] public string? Name { get; }
+    /// <summary>Gets the native returned expiration timestamp.</summary>
     [JsonIgnore] public string ExpiresAt { get; }
+    /// <summary>Gets the returned audience label, or null when not supplied.</summary>
     [JsonIgnore] public string? AccessType { get; }
+    /// <summary>Gets organization presence, retaining explicit null and omission.</summary>
     [JsonIgnore] public ProjectField<string> OrganizationId { get; }
+    /// <summary>Gets external-email policy-field presence, not full recipient policy.</summary>
     [JsonIgnore] public ProjectField<bool> AllowExternalEmails { get; }
+    /// <summary>Gets required returned creation time with presence information.</summary>
     [JsonIgnore] public ProjectField<string> CreatedAt { get; }
+    /// <summary>Gets required returned update time with presence information.</summary>
     [JsonIgnore] public ProjectField<string> UpdatedAt { get; }
+    /// <summary>Gets view-expiration count presence, retaining explicit null.</summary>
     [JsonIgnore] public ProjectField<double> ExpiresAfterViews { get; }
+    /// <summary>Gets creating-identity presence, retaining explicit null.</summary>
     [JsonIgnore] public ProjectField<string> IdentityId { get; }
+    /// <summary>Gets last-view timestamp presence, retaining explicit null.</summary>
     [JsonIgnore] public ProjectField<string> LastViewedAt { get; }
+    /// <summary>Gets returned native share-type presence.</summary>
     [JsonIgnore] public ProjectField<string> Type { get; }
+    /// <summary>Gets creating-user presence, retaining explicit null.</summary>
     [JsonIgnore] public ProjectField<string> UserId { get; }
+    /// <summary>Gets reported authorization-flag presence; not independently verified recipient policy.</summary>
     [JsonIgnore] public ProjectField<bool> IsAuthorizedUser { get; }
+    /// <summary>Gets password-protection flag presence; not a password export.</summary>
     [JsonIgnore] public ProjectField<bool> IsPasswordProtected { get; }
+    /// <summary>Gets organization-name presence without inferring an omitted name.</summary>
     [JsonIgnore] public ProjectField<string> OrganizationName { get; }
+    /// <summary>Always false: full recipient policy is not projected.</summary>
     public bool IncludesRecipientPolicy => false;
+    /// <summary>Returns a marker without share metadata.</summary>
     public override string ToString() => "[SharedSecretMetadata]";
 }
 
+/// <summary>Share creation result owning a protected link; dispose after use and protect deliberate plaintext exports.</summary>
 public sealed class CreatedShare : IDisposable
 {
     internal CreatedShare(SharedSecretMetadata metadata, SecretMaterial link)
@@ -285,12 +340,17 @@ public sealed class CreatedShare : IDisposable
         Metadata = metadata;
         Link = link;
     }
+    /// <summary>Gets returned share metadata without inferring recipient access.</summary>
     [JsonIgnore] public SharedSecretMetadata Metadata { get; }
+    /// <summary>Gets the owned protected link; revealing creates an ordinary managed string.</summary>
     [JsonIgnore] public SecretMaterial Link { get; }
+    /// <summary>Disposes owned link material without deleting the provider share.</summary>
     public void Dispose() => Link.Dispose();
+    /// <summary>Returns a marker without the share link.</summary>
     public override string ToString() => "[CreatedShare]";
 }
 
+/// <summary>Share-access result owning returned secret material; access may already have consumed a view.</summary>
 public sealed class SharedValue : IDisposable
 {
     internal SharedValue(SharedSecretMetadata metadata, SecretMaterial material)
@@ -298,16 +358,23 @@ public sealed class SharedValue : IDisposable
         Metadata = metadata;
         Material = material;
     }
+    /// <summary>Gets returned metadata associated with accessed material.</summary>
     [JsonIgnore] public SharedSecretMetadata Metadata { get; }
+    /// <summary>Gets owned returned material; dispose the containing result after use.</summary>
     [JsonIgnore] public SecretMaterial Material { get; }
+    /// <summary>Disposes owned value material without undoing view consumption or erasing exported strings.</summary>
     public void Dispose() => Material.Dispose();
+    /// <summary>Returns a marker without the shared value.</summary>
     public override string ToString() => "[SharedValue]";
 }
 
-public enum ShareAudience { Organization, Anyone }
+/// <summary>Explicit native audience choice for share creation.</summary>
+public enum ShareAudience { /** <summary>Selects organization-scoped sharing.</summary> */ Organization, /** <summary>Selects the native anyone audience; recipient policy still belongs to the provider and host.</summary> */ Anyone }
 
+/// <summary>Constructs disposable sharing requests; view-consuming access requires mutation receipts.</summary>
 public static class SharingOperations
 {
+    /// <summary>Builds count-validated share inventory within the native offset limit.</summary>
     public static ManagementRequest<ManagementPage<SharedSecretMetadata>> ListShares(
         string organizationId, int offset = 0, int limit = 100)
     {
@@ -320,22 +387,26 @@ public static class SharingOperations
                 value => new SharedSecretMetadata(value, organizationId), offset, limit), false);
     }
 
+    /// <summary>Builds independent approval intent for the selected sharing inventory page.</summary>
     public static ManagementTarget ListSharesTarget(string organizationId, int offset = 0, int limit = 100)
     {
         using var request = ListShares(organizationId, offset, limit);
         return request.Target;
     }
 
+    /// <summary>Builds share metadata inspection without retrieving the shared value.</summary>
     public static ManagementRequest<SharedSecretMetadata> GetShare(string organizationId, string shareId) =>
         new("infisical.get.v1.shared.secrets.by.id", HttpMethod.Get,
             "/api/v1/shared-secrets/" + ManagementJson.Escape(shareId), new(organizationId, resourceId: shareId),
             null, root => new(root, organizationId, shareId, inspection: true), false);
 
+    /// <summary>Builds deletion of the exact share; uncertain execution is retained in the caller receipt.</summary>
     public static ManagementRequest<SharedSecretMetadata> DeleteShare(string organizationId, string shareId) =>
         new("infisical.delete.v1.shared.secrets.by.id", HttpMethod.Delete,
             "/api/v1/shared-secrets/" + ManagementJson.Escape(shareId), new(organizationId, resourceId: shareId),
             null, root => new(root, organizationId, shareId));
 
+    /// <summary>Builds sharing with a 5-to-43200-minute lifetime; copies material into the owned request body and leaves originals caller-owned.</summary>
     public static ManagementRequest<CreatedShare> CreateShare(string organizationId, string name,
         SecretMaterial material, int lifetimeMinutes, ShareAudience audience,
         int? maximumViews = null, SecretMaterial? password = null,
@@ -434,6 +505,7 @@ public static class SharingOperations
         }
     }
 
+    /// <summary>Builds independent approval intent for exact share access and optional password; construction does not consume a view.</summary>
     public static ManagementTarget AccessShareTarget(string organizationId, string shareId, SecretMaterial? password = null)
     {
         using var request = AccessShare(organizationId, shareId, password);

@@ -4,8 +4,10 @@ using System.Text.Json;
 
 namespace SecretKit.Infisical.Management;
 
-public enum LegacyPrivilegeAction { Read, Create, Edit, Delete }
-public enum PrivilegeTemporaryMode { Relative }
+/// <summary>Native scalar actions for v1 privilege authoring, not v2 role actions.</summary>
+public enum LegacyPrivilegeAction { /** <summary>Selects value-reading permission.</summary> */ Read, /** <summary>Selects resource-creation permission.</summary> */ Create, /** <summary>Selects resource-editing permission.</summary> */ Edit, /** <summary>Selects resource-deletion permission.</summary> */ Delete }
+/// <summary>Native interpretation of temporary privilege validity.</summary>
+public enum PrivilegeTemporaryMode { /** <summary>Interprets validity as a duration from the selected start time.</summary> */ Relative }
 
 /// <summary>V1 conditions: literal environment and a secret-path glob only.</summary>
 public sealed class LegacyPrivilegeConditions
@@ -14,6 +16,7 @@ public sealed class LegacyPrivilegeConditions
     private readonly string? _path;
     internal bool HasEnvironment => _environment is not null;
 
+    /// <summary>Captures optional environment and path-glob conditions; null omits each condition.</summary>
     public LegacyPrivilegeConditions(string? environment = null, string? secretPathGlob = null)
     {
         if (environment is not null) RolePermissionWire.Text(environment, 1024, allowEmpty: true);
@@ -34,6 +37,7 @@ public sealed class LegacyPrivilegeConditions
         }
         writer.WriteEndObject();
     }
+    /// <summary>Returns a marker without environment or path conditions.</summary>
     public override string ToString() => "[LegacyPrivilegeConditions]";
 }
 
@@ -44,6 +48,7 @@ public sealed class LegacyPrivilegePermission
     private readonly string _action;
     private readonly LegacyPrivilegeConditions? _conditions;
 
+    /// <summary>Captures a native subject/action pair and optional conditions without granting access.</summary>
     public LegacyPrivilegePermission(ProjectRoleSubject subject, LegacyPrivilegeAction action,
         LegacyPrivilegeConditions? conditions = null)
     {
@@ -60,6 +65,7 @@ public sealed class LegacyPrivilegePermission
         _conditions?.Write(writer);
         writer.WriteEndObject();
     }
+    /// <summary>Returns a marker without permission conditions.</summary>
     public override string ToString() => "[LegacyPrivilegePermission]";
 }
 
@@ -69,6 +75,7 @@ public sealed class LegacySecretPrivilegePermission
     private readonly string[] _actions;
     private readonly LegacyPrivilegeConditions _conditions;
 
+    /// <summary>Copies selected secret CRUD actions and requires an explicit environment condition.</summary>
     public LegacySecretPrivilegePermission(IReadOnlyList<LegacyPrivilegeAction> actions,
         LegacyPrivilegeConditions conditions)
     {
@@ -86,6 +93,7 @@ public sealed class LegacySecretPrivilegePermission
         _conditions.Write(writer);
         writer.WriteEndObject();
     }
+    /// <summary>Returns a marker without secret permission selectors.</summary>
     public override string ToString() => "[LegacySecretPrivilegePermission]";
 }
 
@@ -96,7 +104,9 @@ public sealed class PrivilegeLifetime
     private readonly DateTimeOffset? _start;
     internal bool IsTemporary => _range is not null;
     private PrivilegeLifetime(string? range, DateTimeOffset? start) { _range = range; _start = start; }
+    /// <summary>Selects permanent validity without temporary timestamps or duration.</summary>
     public static PrivilegeLifetime Permanent() => new(null, null);
+    /// <summary>Selects positive minute, hour or day validity from an explicit start time.</summary>
     public static PrivilegeLifetime Temporary(string range, DateTimeOffset startsAt)
     {
         IdentityPrivilegeChangeOperations.Range(range);
@@ -112,6 +122,7 @@ public sealed class PrivilegeLifetime
             writer.WriteString("temporaryAccessStartTime", _start!.Value.UtcDateTime.ToString("O", CultureInfo.InvariantCulture));
         }
     }
+    /// <summary>Returns a marker without validity details.</summary>
     public override string ToString() => "[PrivilegeLifetime]";
 }
 
@@ -127,6 +138,7 @@ public sealed class LegacyPrivilegeChange
     internal string? Slug { get; }
     internal bool HasTemporalFields => _temporary is not null || _mode is not null || _range is not null || _start is not null;
 
+    /// <summary>Captures optional v1 change fields; creation validity belongs to the separate lifetime selection.</summary>
     public LegacyPrivilegeChange(string? slug = null, IReadOnlyList<LegacyPrivilegePermission>? permissions = null,
         LegacySecretPrivilegePermission? privilegePermission = null, bool? isTemporary = null,
         PrivilegeTemporaryMode? temporaryMode = null, string? temporaryRange = null,
@@ -163,15 +175,18 @@ public sealed class LegacyPrivilegeChange
         if (_range is not null) writer.WriteString("temporaryRange", _range);
         if (_start is { } start) writer.WriteString("temporaryAccessStartTime", start.UtcDateTime.ToString("O", CultureInfo.InvariantCulture));
     }
+    /// <summary>Returns a marker without privilege changes.</summary>
     public override string ToString() => "[LegacyPrivilegeChange]";
 }
 
+/// <summary>Copied v2 project permissions and explicit lifetime for a privilege change.</summary>
 public sealed class ProjectPrivilegeChange
 {
     private readonly ProjectRolePermission[] _permissions;
     private readonly PrivilegeLifetime _lifetime;
     internal string? Slug { get; }
 
+    /// <summary>Copies permission intent and required lifetime; null slug omits the slug field.</summary>
     public ProjectPrivilegeChange(IReadOnlyList<ProjectRolePermission> permissions, PrivilegeLifetime lifetime,
         string? slug = null)
     {
@@ -192,6 +207,7 @@ public sealed class ProjectPrivilegeChange
         _lifetime.Write(writer, true);
         writer.WriteEndObject();
     }
+    /// <summary>Returns a marker without permissions or validity.</summary>
     public override string ToString() => "[ProjectPrivilegeChange]";
 }
 
@@ -201,14 +217,17 @@ public sealed class ProjectPrivilegeChange
 /// </summary>
 public static class IdentityPrivilegeChangeOperations
 {
+    /// <summary>Builds a v1 update request for the selected slug and exact change body.</summary>
     public static ManagementRequest<IdentityPrivilegeSummary> UpdateLegacyPrivilege(
         LegacyPrivilegeSelection selection, string privilegeSlug, LegacyPrivilegeChange change) =>
         Legacy(selection, change, privilegeSlug, null);
 
+    /// <summary>Builds permanent v1 creation; temporal change fields cannot override the selected lifetime.</summary>
     public static ManagementRequest<IdentityPrivilegeSummary> CreatePermanentLegacyPrivilege(
         LegacyPrivilegeSelection selection, LegacyPrivilegeChange change) =>
         Legacy(selection, change, null, PrivilegeLifetime.Permanent());
 
+    /// <summary>Builds temporary v1 creation with an explicitly temporary lifetime.</summary>
     public static ManagementRequest<IdentityPrivilegeSummary> CreateTemporaryLegacyPrivilege(
         LegacyPrivilegeSelection selection, LegacyPrivilegeChange change, PrivilegeLifetime lifetime)
     {
@@ -217,9 +236,11 @@ public static class IdentityPrivilegeChangeOperations
         return Legacy(selection, change, null, lifetime);
     }
 
+    /// <summary>Builds v2 privilege creation with exact copied permissions and lifetime.</summary>
     public static ManagementRequest<IdentityPrivilegeSummary> CreateProjectPrivilege(
         LegacyPrivilegeSelection selection, ProjectPrivilegeChange change) => Project(selection, change, null);
 
+    /// <summary>Builds v2 privilege update; the replacement slug must be explicit in the change.</summary>
     public static ManagementRequest<IdentityPrivilegeSummary> UpdateProjectPrivilege(
         LegacyPrivilegeSelection selection, string privilegeId, ProjectPrivilegeChange change)
     {
@@ -229,6 +250,7 @@ public static class IdentityPrivilegeChangeOperations
         return Project(selection, change, privilegeId);
     }
 
+    /// <summary>Builds a v2 lookup by native privilege slug without inventing missing scope evidence.</summary>
     public static ManagementRequest<IdentityPrivilegeSummary> GetProjectPrivilegeBySlug(
         LegacyPrivilegeSelection selection, string privilegeSlug)
     {
@@ -248,6 +270,7 @@ public static class IdentityPrivilegeChangeOperations
         return Intent(selection, privilegeSlug, writer => WriteLegacy(writer, selection, change, privilegeSlug, creationLifetime));
     }
 
+    /// <summary>Builds independent host approval intent for v2 creation or update; null identifier selects creation.</summary>
     public static ManagementTarget ProjectChangeTarget(LegacyPrivilegeSelection selection, ProjectPrivilegeChange change,
         string? privilegeId = null)
     {

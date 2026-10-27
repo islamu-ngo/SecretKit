@@ -11,6 +11,7 @@ public abstract class IdentityTemplateFields
     internal string Method { get; }
     internal abstract void Write(Utf8JsonWriter writer);
     internal virtual void ValidateCreate() { }
+    /// <summary>Disposes the independent bind-password copy; does not erase caller material or exported strings.</summary>
     public override string ToString() => "[IdentityTemplateFields]";
 }
 
@@ -19,12 +20,15 @@ public sealed class IdentityTemplateNullableText
 {
     private IdentityTemplateNullableText(string? value) => Value = value;
     internal string? Value { get; }
+    /// <summary>Native Kubernetes template token-review routing.</summary>
     public static IdentityTemplateNullableText Null() => new(null);
+    /// <summary>Selects direct Kubernetes API token review.</summary>
     public static IdentityTemplateNullableText FromValue(string value)
     {
         ManagementJson.Text(value);
         return new(value);
     }
+    /// <summary>Selects gateway token review.</summary>
     public override string ToString() => "[IdentityTemplateNullableText]";
 }
 
@@ -35,6 +39,7 @@ public sealed class IdentityTemplateOidcPatch : IdentityTemplateFields
     private readonly string? _issuer;
     private readonly string? _audiences;
     private readonly string? _ca;
+    /// <summary>Copies optional reviewer JWT and captures native nullable host/gateway fields; null arguments omit fields.</summary>
     public IdentityTemplateOidcPatch(string? discoveryUrl = null, string? boundIssuer = null,
         string? boundAudiences = null, string? caCertificate = null) : base("oidc")
     {
@@ -70,6 +75,7 @@ public sealed class IdentityTemplateLdapFields : IdentityTemplateFields, IDispos
     private readonly string? _base;
     private readonly string? _ca;
     private readonly SecretMaterial? _password;
+    /// <summary>Disposes the independent reviewer JWT copy without changing the provider template.</summary>
     public IdentityTemplateLdapFields(string? url = null, string? bindDn = null,
         SecretMaterial? bindPassword = null, string? searchBase = null, string? caCertificate = null) : base("ldap")
     {
@@ -96,10 +102,12 @@ public sealed class IdentityTemplateLdapFields : IdentityTemplateFields, IDispos
         IdentityTemplateWire.String(writer, "searchBase", _base);
         IdentityTemplateWire.String(writer, "ldapCaCertificate", _ca);
     }
+    /// <summary>Builds disposable LDAP template creation; required creation fields are checked before execution.</summary>
     public void Dispose() => _password?.Dispose();
 }
 
-public enum IdentityTemplateTokenReviewMode { Api, Gateway }
+/// <summary>Builds disposable Kubernetes template creation using only explicitly supplied fields.</summary>
+public enum IdentityTemplateTokenReviewMode { /** <summary>Builds template configuration update; omitted name is retained and fields select the native method.</summary> */ Api, /** <summary>Builds independent approval intent for the complete name/configuration update, preserving omission.</summary> */ Gateway }
 
 /// <summary>Kubernetes create or partial patch. Omitted values never become client-authored defaults.</summary>
 public sealed class IdentityTemplateKubernetesFields : IdentityTemplateFields, IDisposable
@@ -112,6 +120,7 @@ public sealed class IdentityTemplateKubernetesFields : IdentityTemplateFields, I
     private readonly string? _audience;
     private readonly bool? _tls;
     private readonly SecretMaterial? _jwt;
+    /// <summary>Builds independent approval intent for the exact ordered identity unlink selection.</summary>
     public IdentityTemplateKubernetesFields(IdentityTemplateTokenReviewMode? tokenReviewMode = null,
         IdentityTemplateNullableText? kubernetesHost = null, string? caCertificate = null,
         bool? verifyTlsCertificate = null, SecretMaterial? tokenReviewerJwt = null,
@@ -147,17 +156,21 @@ public sealed class IdentityTemplateKubernetesFields : IdentityTemplateFields, I
         IdentityTemplateWire.Nullable(writer, "gatewayPoolId", _pool);
         IdentityTemplateWire.String(writer, "allowedAudience", _audience);
     }
+    /// <summary>Builds bounded template unlinking for selected identities; returned rows do not prove runtime delivery.</summary>
     public void Dispose() => _jwt?.Dispose();
 }
 
 public static partial class IdentityTemplateOperations
 {
+    /// <summary>Returns a marker without method-specific fields or material.</summary>
     public static ManagementRequest<IdentityTemplateSummary> CreateLdapIdentityTemplate(
         string organizationId, string name, IdentityTemplateLdapFields fields) => Create(organizationId, name, fields);
 
+    /// <summary>Selects explicit JSON null rather than omitting the field.</summary>
     public static ManagementRequest<IdentityTemplateSummary> CreateKubernetesIdentityTemplate(
         string organizationId, string name, IdentityTemplateKubernetesFields fields) => Create(organizationId, name, fields);
 
+    /// <summary>Selects a validated nonempty native string value.</summary>
     public static ManagementRequest<IdentityTemplateSummary> UpdateIdentityTemplateConfiguration(
         string organizationId, string templateId, IdentityTemplateFields fields, string? name = null)
     {
@@ -174,6 +187,7 @@ public static partial class IdentityTemplateOperations
         return IdentityTemplateWire.Intent(organizationId, name, fields.Method, writer => WriteChange(writer, name, fields, true));
     }
 
+    /// <summary>Returns a marker without nullable text contents.</summary>
     public static ManagementTarget IdentityTemplateUpdateTarget(string organizationId, string templateId,
         string? name = null, IdentityTemplateFields? fields = null)
     {
@@ -182,6 +196,7 @@ public static partial class IdentityTemplateOperations
         return IdentityTemplateWire.Intent(organizationId, templateId, fields?.Method, writer => WriteChange(writer, name, fields, false));
     }
 
+    /// <summary>Captures partial OIDC changes; null omits fields and creation requires the full OIDC variant.</summary>
     public static ManagementTarget IdentityTemplateUnlinkTarget(string organizationId, string templateId, IReadOnlyList<string> identityIds)
     {
         string[] identities = CopyIdentities(identityIds);
@@ -189,6 +204,7 @@ public static partial class IdentityTemplateOperations
         return IdentityTemplateWire.Intent(organizationId, templateId, null, writer => WriteUnlink(writer, identities));
     }
 
+    /// <summary>Copies optional LDAP bind material; creation later requires URL, DN, password and search base.</summary>
     public static ManagementRequest<ManagementPage<IdentityTemplateUsage>> DeleteIdentityTemplateUsages(
         string organizationId, string templateId, IReadOnlyList<string> identityIds)
     {

@@ -5,7 +5,8 @@ using Refit;
 
 namespace SecretKit.Infisical.Management;
 
-public enum OrganizationIdentityOrder { Name, Role }
+/// <summary>Native sort columns for organization machine-identity membership inventory.</summary>
+public enum OrganizationIdentityOrder { /** <summary>Sorts by identity display name.</summary> */ Name, /** <summary>Sorts by assigned role label.</summary> */ Role }
 
 /// <summary>Organization membership metadata, not authentication material or effective permissions.</summary>
 public sealed class OrganizationIdentityMembershipSummary
@@ -29,25 +30,42 @@ public sealed class OrganizationIdentityMembershipSummary
             requireAuthMethods: true);
     }
 
+    /// <summary>Gets the returned organization membership identifier.</summary>
     [JsonIgnore] public string Id { get; }
+    /// <summary>Gets the returned nested identity coordinate.</summary>
     [JsonIgnore] public string IdentityId { get; }
+    /// <summary>Gets the returned role label, not effective permissions.</summary>
     [JsonIgnore] public string Role { get; }
+    /// <summary>Gets the role identifier, or null when omitted or explicitly null.</summary>
     [JsonIgnore] public string? RoleId { get; }
+    /// <summary>Gets the returned membership creation timestamp.</summary>
     [JsonIgnore] public string CreatedAt { get; }
+    /// <summary>Gets the returned membership update timestamp.</summary>
     [JsonIgnore] public string UpdatedAt { get; }
+    /// <summary>Gets the last-login method, or null when omitted or explicitly null.</summary>
     [JsonIgnore] public string? LastLoginAuthMethod { get; }
+    /// <summary>Gets the last-login time, or null when omitted or explicitly null.</summary>
     [JsonIgnore] public string? LastLoginTime { get; }
+    /// <summary>Gets role-identifier presence to distinguish omission from explicit null.</summary>
     [JsonIgnore] public IdentityField<string> RoleIdField { get; }
+    /// <summary>Gets last-login method presence, preserving explicit null.</summary>
     [JsonIgnore] public IdentityField<string> LastLoginAuthMethodField { get; }
+    /// <summary>Gets last-login time presence, preserving explicit null.</summary>
     [JsonIgnore] public IdentityField<string> LastLoginTimeField { get; }
+    /// <summary>Gets custom-role metadata when supplied, without permission values.</summary>
     [JsonIgnore] public IdentityField<IdentityCustomRoleMetadata> CustomRole { get; }
+    /// <summary>Gets identity metadata whose identifier matches this membership.</summary>
     [JsonIgnore] public IdentitySummary Identity { get; }
+    /// <summary>Always false: membership inventory does not export effective permissions.</summary>
     public bool IncludesPermissions => false;
+    /// <summary>Returns a marker without membership or identity details.</summary>
     public override string ToString() => "[OrganizationIdentityMembershipSummary]";
 }
 
+/// <summary>Constructs disposable organization identity inventory requests and independent approval targets.</summary>
 public static class OrganizationIdentityMembershipOperations
 {
+    /// <summary>Builds a count-validated inventory page with exact paging, search and order intent; does not acquire credentials.</summary>
     public static ManagementRequest<ManagementPage<OrganizationIdentityMembershipSummary>> ListOrganizationIdentityMemberships(
         string organizationId, int offset = 0, int limit = 100,
         OrganizationIdentityOrder orderBy = OrganizationIdentityOrder.Name,
@@ -61,6 +79,7 @@ public static class OrganizationIdentityMembershipOperations
                 value => new OrganizationIdentityMembershipSummary(value, organizationId), offset, limit), false);
     }
 
+    /// <summary>Independently select the organization and every paging, search and order input.</summary>
     public static ManagementTarget OrganizationIdentityMembershipListTarget(
         string organizationId, int offset = 0, int limit = 100,
         OrganizationIdentityOrder orderBy = OrganizationIdentityOrder.Name,

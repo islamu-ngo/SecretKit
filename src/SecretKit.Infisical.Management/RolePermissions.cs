@@ -4,71 +4,121 @@ using System.Text.Json.Serialization;
 
 namespace SecretKit.Infisical.Management;
 
+/// <summary>Closed native organization permission subjects; selecting one does not grant its capabilities.</summary>
 public enum OrganizationRoleSubject
 {
-    Workspace, Project, Role, SubOrganization, Member, Settings, IncidentContact, Sso, Scim,
-    GithubOrgSync, GithubOrgSyncManual, Ldap, Groups, SecretScanning, Billing, Identity, Kms,
-    AuditLogs, ProjectTemplates, AppConnections, OrganizationAdminConsole, SecretShare, Kmip,
-    MachineIdentityAuthTemplate, Gateway, GatewayPool, Relay, KmipServer, EmailDomains,
-    CertificateManager, HoneyTokens, OauthClients, SecretsManagementInsights
+    /** <summary>Legacy workspace subject admitting project creation.</summary> */
+    Workspace, /** <summary>Project provisioning and access-request administration.</summary> */ Project, /** <summary>Organization custom-role administration.</summary> */ Role, /** <summary>Child-organization administration and direct-access controls.</summary> */ SubOrganization, /** <summary>Organization member administration and privilege assignment.</summary> */ Member, /** <summary>Organization settings administration.</summary> */ Settings, /** <summary>Security incident contact administration.</summary> */ IncidentContact, /** <summary>Single sign-on configuration and enforcement controls.</summary> */ Sso, /** <summary>SCIM provisioning configuration.</summary> */ Scim,
+    /** <summary>GitHub organization synchronization configuration.</summary> */
+    GithubOrgSync, /** <summary>Manual GitHub organization synchronization configuration.</summary> */ GithubOrgSyncManual, /** <summary>LDAP directory configuration.</summary> */ Ldap, /** <summary>Organization group and group-member administration.</summary> */ Groups, /** <summary>Organization secret-scanning administration.</summary> */ SecretScanning, /** <summary>Billing inspection and billing-management authority.</summary> */ Billing, /** <summary>Machine-identity administration and authentication credential controls.</summary> */ Identity, /** <summary>Organization key-management administration.</summary> */ Kms,
+    /** <summary>Audit log visibility and settings.</summary> */
+    AuditLogs, /** <summary>Organization-owned project-template administration.</summary> */ ProjectTemplates, /** <summary>Native application-connection permissions; this SDK exposes no arbitrary connector runtime.</summary> */ AppConnections, /** <summary>Administrative access across organization projects.</summary> */ OrganizationAdminConsole, /** <summary>Organization secret-sharing settings.</summary> */ SecretShare, /** <summary>Organization KMIP proxy authority.</summary> */ Kmip,
+    /** <summary>Machine-identity authentication template administration.</summary> */
+    MachineIdentityAuthTemplate, /** <summary>Gateway creation, attachment and access revocation.</summary> */ Gateway, /** <summary>Gateway-pool administration and attachment.</summary> */ GatewayPool, /** <summary>Relay administration and access revocation.</summary> */ Relay, /** <summary>KMIP server administration and access revocation.</summary> */ KmipServer, /** <summary>Allowed email-domain registration and verification.</summary> */ EmailDomains,
+    /** <summary>Certificate-manager instance and settings administration.</summary> */
+    CertificateManager, /** <summary>Organization honey-token setup authority.</summary> */ HoneyTokens, /** <summary>OAuth client administration.</summary> */ OauthClients, /** <summary>Secrets-management insights, reports and value search.</summary> */ SecretsManagementInsights
 }
 
+/// <summary>Closed native organization actions; constructors validate applicability to the selected subject.</summary>
 public enum OrganizationRoleAction
 {
-    Read, Create, Edit, Delete, RequestAccess, DirectAccess, LinkGroup, GrantPrivileges,
-    BypassSsoEnforcement, AddIdentities, AddMembers, RemoveMembers, RemoveIdentities,
-    ManageBilling, RevokeAuth, EditAuth, CreateToken, GetToken, DeleteToken, Connect,
-    RotateCredentials, AccessAllProjects, ManageSettings, Proxy, ListTemplates, EditTemplates,
-    CreateTemplates, DeleteTemplates, UnlinkTemplates, AttachTemplates, CreateGateways,
-    ListGateways, EditGateways, DeleteGateways, AttachGateways, RevokeGatewayAccess,
-    CreateGatewayPools, ListGatewayPools, EditGatewayPools, DeleteGatewayPools, AttachGatewayPools,
-    CreateRelays, ListRelays, EditRelays, DeleteRelays, RevokeRelayAccess, CreateKmipServers,
-    ListKmipServers, EditKmipServers, DeleteKmipServers, RevokeKmipServerAccess, VerifyDomain,
-    ManageInstance, Setup, GenerateReport, DeleteReport, SearchAllSecretValues
+    /** <summary>Reads metadata for the selected organization subject.</summary> */
+    Read, /** <summary>Creates a resource within the selected subject.</summary> */ Create, /** <summary>Changes configuration for an existing subject resource.</summary> */ Edit, /** <summary>Deletes an existing subject resource.</summary> */ Delete, /** <summary>Requests access to a project rather than granting direct access.</summary> */ RequestAccess, /** <summary>Selects direct child-organization access authority.</summary> */ DirectAccess, /** <summary>Links a group to a child organization.</summary> */ LinkGroup, /** <summary>Assigns privileges within the selected member, group or identity subject.</summary> */ GrantPrivileges,
+    /** <summary>Bypasses native single sign-on enforcement.</summary> */
+    BypassSsoEnforcement, /** <summary>Adds machine identities to groups.</summary> */ AddIdentities, /** <summary>Adds users to groups.</summary> */ AddMembers, /** <summary>Removes users from groups.</summary> */ RemoveMembers, /** <summary>Removes machine identities from groups.</summary> */ RemoveIdentities,
+    /** <summary>Changes organization billing rather than merely reading billing details.</summary> */
+    ManageBilling, /** <summary>Revokes machine-identity authentication configuration.</summary> */ RevokeAuth, /** <summary>Changes machine-identity authentication configuration.</summary> */ EditAuth, /** <summary>Issues machine-identity tokens.</summary> */ CreateToken, /** <summary>Retrieves machine-identity token data under native authority.</summary> */ GetToken, /** <summary>Deletes machine-identity tokens.</summary> */ DeleteToken, /** <summary>Uses a native application connection.</summary> */ Connect,
+    /** <summary>Rotates native connection credentials.</summary> */
+    RotateCredentials, /** <summary>Accesses projects through the administrative console.</summary> */ AccessAllProjects, /** <summary>Changes organization-level settings for the selected specialized subject.</summary> */ ManageSettings, /** <summary>Uses the native KMIP proxy.</summary> */ Proxy, /** <summary>Lists machine-identity authentication templates.</summary> */ ListTemplates, /** <summary>Changes machine-identity authentication templates.</summary> */ EditTemplates,
+    /** <summary>Creates machine-identity authentication templates.</summary> */
+    CreateTemplates, /** <summary>Deletes machine-identity authentication templates.</summary> */ DeleteTemplates, /** <summary>Unlinks identities from authentication templates.</summary> */ UnlinkTemplates, /** <summary>Attaches authentication templates to identities.</summary> */ AttachTemplates, /** <summary>Creates gateway configurations.</summary> */ CreateGateways,
+    /** <summary>Lists gateway configurations.</summary> */
+    ListGateways, /** <summary>Changes gateway configurations.</summary> */ EditGateways, /** <summary>Deletes gateway configurations.</summary> */ DeleteGateways, /** <summary>Attaches gateways to selected resources.</summary> */ AttachGateways, /** <summary>Revokes gateway access.</summary> */ RevokeGatewayAccess,
+    /** <summary>Creates gateway pools.</summary> */
+    CreateGatewayPools, /** <summary>Lists gateway pools.</summary> */ ListGatewayPools, /** <summary>Changes gateway pools.</summary> */ EditGatewayPools, /** <summary>Deletes gateway pools.</summary> */ DeleteGatewayPools, /** <summary>Attaches gateway pools to selected resources.</summary> */ AttachGatewayPools,
+    /** <summary>Creates relay configurations.</summary> */
+    CreateRelays, /** <summary>Lists relay configurations.</summary> */ ListRelays, /** <summary>Changes relay configurations.</summary> */ EditRelays, /** <summary>Deletes relay configurations.</summary> */ DeleteRelays, /** <summary>Revokes relay access.</summary> */ RevokeRelayAccess, /** <summary>Creates KMIP server configurations.</summary> */ CreateKmipServers,
+    /** <summary>Lists KMIP server configurations.</summary> */
+    ListKmipServers, /** <summary>Changes KMIP server configurations.</summary> */ EditKmipServers, /** <summary>Deletes KMIP server configurations.</summary> */ DeleteKmipServers, /** <summary>Revokes KMIP server access.</summary> */ RevokeKmipServerAccess, /** <summary>Verifies ownership of a registered email domain.</summary> */ VerifyDomain,
+    /** <summary>Manages the certificate-manager instance.</summary> */
+    ManageInstance, /** <summary>Initializes organization honey-token capability.</summary> */ Setup, /** <summary>Generates a secrets-management insights report.</summary> */ GenerateReport, /** <summary>Deletes a secrets-management insights report.</summary> */ DeleteReport, /** <summary>Searches secret values across the native insights scope.</summary> */ SearchAllSecretValues
 }
 
 /// <summary>Finite active subjects; deprecated SSH/MCP compatibility branches are not authorable.</summary>
 public enum ProjectRoleSubject
 {
-    Secrets, SecretFolders, SecretImports, DynamicSecrets, Identity, PkiSubscribers,
-    CertificateTemplates, SecretRotation, SecretSyncs, PkiSyncs, SecretEventSubscriptions,
-    CertificateProfiles, CertificatePolicies, CertificateApplication, CertificateAuthorities,
-    Certificates, SecretApproval, SecretRollback, Member, Groups, Role, Integrations, Webhooks,
-    ServiceTokens, Settings, SecretValidationRules, Environments, Tags, AuditLogs, Insights,
-    IpAllowlist, PkiAlerts, PkiCollections, CertificateInventoryViews, PkiDiscovery,
-    PkiCertificateInstallations, CodeSigners, Workspace, Kms, Cmek, Kmip, Commits,
-    SecretScanningDataSources, SecretScanningFindings, SecretScanningConfigs, AppConnections,
-    HsmConnectors, HoneyTokens, ProxiedServices, AgentVaultAccessBundles, AgentVaultSessions,
-    AgentVaultProxies, ApprovalRequests, ApprovalRequestGrants, SecretApprovalRequest, ProjectFolderGrant
+    /** <summary>Secret metadata and value permissions, whose read actions are distinct.</summary> */
+    Secrets, /** <summary>Secret folder administration.</summary> */ SecretFolders, /** <summary>Secret import configuration.</summary> */ SecretImports, /** <summary>Dynamic-secret root credentials and lease issuance.</summary> */ DynamicSecrets, /** <summary>Project machine-identity administration and delegated privileges.</summary> */ Identity, /** <summary>PKI subscriber configuration and certificate issuance.</summary> */ PkiSubscribers,
+    /** <summary>Certificate-template configuration and issuance.</summary> */
+    CertificateTemplates, /** <summary>Native secret-rotation configuration and generated credentials.</summary> */ SecretRotation, /** <summary>Native secret-sync configuration and transfer controls.</summary> */ SecretSyncs, /** <summary>PKI synchronization configuration and transfer controls.</summary> */ PkiSyncs, /** <summary>Subscriptions to native secret lifecycle events.</summary> */ SecretEventSubscriptions,
+    /** <summary>Certificate profile configuration and ACME binding controls.</summary> */
+    CertificateProfiles, /** <summary>Certificate policy configuration.</summary> */ CertificatePolicies, /** <summary>Certificate application registration and listing.</summary> */ CertificateApplication, /** <summary>Certificate-authority administration and intermediate signing.</summary> */ CertificateAuthorities,
+    /** <summary>Certificate administration and private-key access.</summary> */
+    Certificates, /** <summary>Secret approval policy administration.</summary> */ SecretApproval, /** <summary>Secret rollback request administration.</summary> */ SecretRollback, /** <summary>Project user membership and delegated privilege assignment.</summary> */ Member, /** <summary>Project group membership and role assignment.</summary> */ Groups, /** <summary>Project custom-role administration.</summary> */ Role, /** <summary>Retained native project integration configuration.</summary> */ Integrations, /** <summary>Project webhook configuration.</summary> */ Webhooks,
+    /** <summary>Project service-token administration.</summary> */
+    ServiceTokens, /** <summary>Project settings administration.</summary> */ Settings, /** <summary>Secret validation-rule configuration.</summary> */ SecretValidationRules, /** <summary>Project environment administration.</summary> */ Environments, /** <summary>Secret tag administration.</summary> */ Tags, /** <summary>Project audit-log inspection and settings.</summary> */ AuditLogs, /** <summary>Project insights and report administration.</summary> */ Insights,
+    /** <summary>Project network allowlist administration.</summary> */
+    IpAllowlist, /** <summary>PKI alert configuration.</summary> */ PkiAlerts, /** <summary>PKI collection administration.</summary> */ PkiCollections, /** <summary>Certificate inventory-view administration.</summary> */ CertificateInventoryViews, /** <summary>PKI discovery configuration and scans.</summary> */ PkiDiscovery,
+    /** <summary>Discovered certificate-installation administration.</summary> */
+    PkiCertificateInstallations, /** <summary>Code-signer configuration and signing authority.</summary> */ CodeSigners, /** <summary>Native workspace-level project modification and deletion.</summary> */ Workspace, /** <summary>Project KMS configuration changes.</summary> */ Kms, /** <summary>Customer-managed encryption key administration and cryptographic operations.</summary> */ Cmek, /** <summary>KMIP client configuration and client-certificate generation.</summary> */ Kmip, /** <summary>Secret commit inspection and rollback execution.</summary> */ Commits,
+    /** <summary>Secret-scanning data sources, scans and resources.</summary> */
+    SecretScanningDataSources, /** <summary>Secret-scanning finding inspection and updates.</summary> */ SecretScanningFindings, /** <summary>Secret-scanning configuration inspection and updates.</summary> */ SecretScanningConfigs, /** <summary>Native application-connection administration; not an SDK connector execution surface.</summary> */ AppConnections,
+    /** <summary>Hardware security module connector administration.</summary> */
+    HsmConnectors, /** <summary>Honey-token configuration, credential access and reset.</summary> */ HoneyTokens, /** <summary>Proxy service configuration, runtime proxy authority and usage reporting.</summary> */ ProxiedServices, /** <summary>Agent Vault access-bundle administration and membership.</summary> */ AgentVaultAccessBundles, /** <summary>Agent Vault session creation and revocation.</summary> */ AgentVaultSessions,
+    /** <summary>Agent Vault proxy administration and token issuance.</summary> */
+    AgentVaultProxies, /** <summary>Approval request creation and inspection.</summary> */ ApprovalRequests, /** <summary>Approval-request grant inspection and revocation.</summary> */ ApprovalRequestGrants, /** <summary>Secret approval-request inspection.</summary> */ SecretApprovalRequest, /** <summary>Explicit project-folder grant administration.</summary> */ ProjectFolderGrant
 }
 
+/// <summary>Closed native project actions; valid combinations depend on the selected subject.</summary>
 public enum ProjectRoleAction
 {
-    Read, Create, Edit, Delete, DescribeSecret, ReadValue, ReadRootCredential, CreateRootCredential,
-    EditRootCredential, DeleteRootCredential, Lease, GrantPrivileges, AssignRole,
-    AssignAdditionalPrivileges, AssumePrivileges, RevokeAuth, EditAuth, CreateToken, GetToken,
-    DeleteToken, IssueCert, ListCerts, ReadGeneratedCredentials, RotateSecrets, SyncSecrets,
-    ImportSecrets, RemoveSecrets, SyncCertificates, ImportCertificates, RemoveCertificates,
-    SetPostSyncCommand, SetHealthCheckCommand, SetTargetHost, SubscribeToCreationEvents,
-    SubscribeToUpdateEvents, SubscribeToDeletionEvents, SubscribeToImportMutationEvents,
-    RevealAcmeEabSecret, RotateAcmeEabSecret, ManageApplicationAttachments, List,
-    IssueCaCertificate, SignIntermediate, ReadPrivateKey, Import, GenerateReport, DeleteReport,
-    RunScan, Sign, Encrypt, Decrypt, Verify, GenerateMac, VerifyMac, Rotate, ExportPrivateKey,
-    CreateClients, UpdateClients, DeleteClients, ReadClients, GenerateClientCertificates,
-    PerformRollback, ReadDataSources, CreateDataSources, EditDataSources, DeleteDataSources,
-    TriggerDataSourceScans, ReadDataSourceScans, ReadDataSourceResources, ReadFindings,
-    UpdateFindings, ReadConfigs, UpdateConfigs, ReadAppConnections, CreateAppConnections,
-    EditAppConnections, DeleteAppConnections, ConnectAppConnections, RotateCredentials,
-    ReadHsmConnectors, CreateHsmConnectors, EditHsmConnectors, DeleteHsmConnectors,
-    TestHsmConnectors, AttachHsmConnectors, ReadCredentials, Reset, Revoke, Proxy, ReportUsage,
-    ManageMembers, IssueToken, ReadGrant, CreateGrant, RevokeGrant
+    /** <summary>Reads the selected subject under its native semantics.</summary> */
+    Read, /** <summary>Creates a resource for the selected subject.</summary> */ Create, /** <summary>Changes an existing subject resource.</summary> */ Edit, /** <summary>Deletes an existing subject resource.</summary> */ Delete, /** <summary>Inspects secret metadata without selecting value-read authority.</summary> */ DescribeSecret, /** <summary>Reads secret values separately from metadata description.</summary> */ ReadValue, /** <summary>Reads dynamic-secret root credential configuration.</summary> */ ReadRootCredential, /** <summary>Creates dynamic-secret root credential configuration.</summary> */ CreateRootCredential,
+    /** <summary>Changes dynamic-secret root credential configuration.</summary> */
+    EditRootCredential, /** <summary>Deletes dynamic-secret root credential configuration.</summary> */ DeleteRootCredential, /** <summary>Issues a dynamic-secret lease.</summary> */ Lease, /** <summary>Delegates privileges to selected members, groups or identities.</summary> */ GrantPrivileges, /** <summary>Assigns a native project role to a principal.</summary> */ AssignRole,
+    /** <summary>Assigns additional project privileges.</summary> */
+    AssignAdditionalPrivileges, /** <summary>Assumes delegated native privileges.</summary> */ AssumePrivileges, /** <summary>Revokes machine-identity authentication.</summary> */ RevokeAuth, /** <summary>Changes machine-identity authentication.</summary> */ EditAuth, /** <summary>Issues machine-identity tokens.</summary> */ CreateToken, /** <summary>Retrieves machine-identity token data.</summary> */ GetToken,
+    /** <summary>Deletes machine-identity tokens.</summary> */
+    DeleteToken, /** <summary>Issues certificates through the selected PKI subject.</summary> */ IssueCert, /** <summary>Lists certificates through the selected PKI subject.</summary> */ ListCerts, /** <summary>Retrieves generated rotation credential material.</summary> */ ReadGeneratedCredentials, /** <summary>Triggers native secret rotation.</summary> */ RotateSecrets, /** <summary>Transfers secrets through a native synchronization configuration.</summary> */ SyncSecrets,
+    /** <summary>Imports secrets through a native synchronization configuration.</summary> */
+    ImportSecrets, /** <summary>Removes synchronized secrets through native authority.</summary> */ RemoveSecrets, /** <summary>Transfers certificates through PKI synchronization.</summary> */ SyncCertificates, /** <summary>Imports certificates through PKI synchronization.</summary> */ ImportCertificates, /** <summary>Removes synchronized certificates through native authority.</summary> */ RemoveCertificates,
+    /** <summary>Configures a command to run after native certificate synchronization.</summary> */
+    SetPostSyncCommand, /** <summary>Configures a native target health-check command.</summary> */ SetHealthCheckCommand, /** <summary>Configures a native synchronization target host.</summary> */ SetTargetHost, /** <summary>Subscribes to secret creation events.</summary> */ SubscribeToCreationEvents,
+    /** <summary>Subscribes to secret update events.</summary> */
+    SubscribeToUpdateEvents, /** <summary>Subscribes to secret deletion events.</summary> */ SubscribeToDeletionEvents, /** <summary>Subscribes to secret-import mutation events.</summary> */ SubscribeToImportMutationEvents,
+    /** <summary>Reveals the ACME external-account-binding secret.</summary> */
+    RevealAcmeEabSecret, /** <summary>Rotates the ACME external-account-binding secret.</summary> */ RotateAcmeEabSecret, /** <summary>Changes certificate profile application attachments.</summary> */ ManageApplicationAttachments, /** <summary>Lists certificate applications without selecting detail-read authority.</summary> */ List,
+    /** <summary>Issues a certificate-authority certificate.</summary> */
+    IssueCaCertificate, /** <summary>Signs an intermediate certificate authority.</summary> */ SignIntermediate, /** <summary>Retrieves certificate private-key material.</summary> */ ReadPrivateKey, /** <summary>Imports certificate material under native authority.</summary> */ Import, /** <summary>Generates a report for the selected insights subject.</summary> */ GenerateReport, /** <summary>Deletes a report for the selected insights subject.</summary> */ DeleteReport,
+    /** <summary>Starts a PKI discovery scan.</summary> */
+    RunScan, /** <summary>Performs a signature operation through the selected native subject.</summary> */ Sign, /** <summary>Encrypts using a customer-managed key.</summary> */ Encrypt, /** <summary>Decrypts using a customer-managed key.</summary> */ Decrypt, /** <summary>Verifies a signature using a customer-managed key.</summary> */ Verify, /** <summary>Generates a message authentication code.</summary> */ GenerateMac, /** <summary>Verifies a message authentication code.</summary> */ VerifyMac, /** <summary>Rotates a customer-managed encryption key.</summary> */ Rotate, /** <summary>Exports customer-managed private-key material.</summary> */ ExportPrivateKey,
+    /** <summary>Creates KMIP clients.</summary> */
+    CreateClients, /** <summary>Changes KMIP clients.</summary> */ UpdateClients, /** <summary>Deletes KMIP clients.</summary> */ DeleteClients, /** <summary>Reads KMIP client configuration.</summary> */ ReadClients, /** <summary>Generates certificates for KMIP clients.</summary> */ GenerateClientCertificates,
+    /** <summary>Executes native rollback for a secret commit.</summary> */
+    PerformRollback, /** <summary>Reads secret-scanning data sources.</summary> */ ReadDataSources, /** <summary>Creates secret-scanning data sources.</summary> */ CreateDataSources, /** <summary>Changes secret-scanning data sources.</summary> */ EditDataSources, /** <summary>Deletes secret-scanning data sources.</summary> */ DeleteDataSources,
+    /** <summary>Starts secret-scanning data-source scans.</summary> */
+    TriggerDataSourceScans, /** <summary>Reads secret-scanning scan metadata.</summary> */ ReadDataSourceScans, /** <summary>Reads resources discovered in secret-scanning data sources.</summary> */ ReadDataSourceResources, /** <summary>Reads secret-scanning findings.</summary> */ ReadFindings,
+    /** <summary>Changes secret-scanning finding state.</summary> */
+    UpdateFindings, /** <summary>Reads secret-scanning configuration.</summary> */ ReadConfigs, /** <summary>Changes secret-scanning configuration.</summary> */ UpdateConfigs, /** <summary>Reads native application-connection configuration.</summary> */ ReadAppConnections, /** <summary>Creates native application connections.</summary> */ CreateAppConnections,
+    /** <summary>Changes native application connections.</summary> */
+    EditAppConnections, /** <summary>Deletes native application connections.</summary> */ DeleteAppConnections, /** <summary>Uses native application connections.</summary> */ ConnectAppConnections, /** <summary>Rotates native application-connection credentials.</summary> */ RotateCredentials,
+    /** <summary>Reads HSM connector configuration.</summary> */
+    ReadHsmConnectors, /** <summary>Creates HSM connectors.</summary> */ CreateHsmConnectors, /** <summary>Changes HSM connectors.</summary> */ EditHsmConnectors, /** <summary>Deletes HSM connectors.</summary> */ DeleteHsmConnectors,
+    /** <summary>Tests native HSM connector connectivity.</summary> */
+    TestHsmConnectors, /** <summary>Attaches HSM connectors to selected resources.</summary> */ AttachHsmConnectors, /** <summary>Retrieves honey-token credential material.</summary> */ ReadCredentials, /** <summary>Resets a honey token.</summary> */ Reset, /** <summary>Revokes honey tokens, Agent Vault sessions or proxies under their subject-specific semantics.</summary> */ Revoke, /** <summary>Uses the configured native proxy service.</summary> */ Proxy, /** <summary>Reports native proxy-service usage.</summary> */ ReportUsage,
+    /** <summary>Changes Agent Vault access-bundle membership.</summary> */
+    ManageMembers, /** <summary>Issues an Agent Vault proxy token.</summary> */ IssueToken, /** <summary>Reads a project-folder grant.</summary> */ ReadGrant, /** <summary>Creates a project-folder grant.</summary> */ CreateGrant, /** <summary>Revokes a project-folder grant.</summary> */ RevokeGrant
 }
 
+/// <summary>Closed native condition keys; each subject restricts admitted keys and operators.</summary>
 public enum RoleConditionField
 {
-    ConnectionId, Environment, SecretPath, SecretName, EventType, IdentityId, AssignableRole,
-    AssignableSubject, AssignableAction, Name, SubscriberName, Slug, CommonName, AltNames,
-    SerialNumber, FriendlyName, Status, UserEmail, GroupName
+    /** <summary>Matches a native application-connection identifier.</summary> */
+    ConnectionId, /** <summary>Matches a native environment slug.</summary> */ Environment, /** <summary>Matches a protected secret folder path.</summary> */ SecretPath, /** <summary>Matches a protected secret key name.</summary> */ SecretName, /** <summary>Matches a native secret event discriminator.</summary> */ EventType, /** <summary>Matches a machine-identity identifier.</summary> */ IdentityId, /** <summary>Constrains which native role can be assigned.</summary> */ AssignableRole,
+    /** <summary>Constrains which permission subject can be delegated.</summary> */
+    AssignableSubject, /** <summary>Constrains which native action can be delegated.</summary> */ AssignableAction, /** <summary>Matches a named PKI resource.</summary> */ Name, /** <summary>Matches a PKI synchronization subscriber name.</summary> */ SubscriberName, /** <summary>Matches a certificate-profile slug.</summary> */ Slug, /** <summary>Matches a certificate common name.</summary> */ CommonName, /** <summary>Matches certificate alternative names.</summary> */ AltNames,
+    /** <summary>Matches a certificate serial number.</summary> */
+    SerialNumber, /** <summary>Matches a certificate friendly name.</summary> */ FriendlyName, /** <summary>Matches native certificate status.</summary> */ Status, /** <summary>Matches a project member email selector.</summary> */ UserEmail, /** <summary>Matches a project group name.</summary> */ GroupName
 }
 
 /// <summary>Explicit literal or conjunctive comparison operators. No arbitrary predicate text.</summary>
@@ -95,12 +145,14 @@ public sealed class RoleStringClause
         _included = included is null ? null : RolePermissionWire.CopyStrings(included);
     }
 
+    /// <summary>Selects a literal string rather than an operator object; an empty literal is explicit.</summary>
     public static RoleStringClause Literal(string value)
     {
         ArgumentNullException.ThrowIfNull(value);
         return new(value, null, null, null, null);
     }
 
+    /// <summary>Copies explicit comparison operands; subject validation later restricts unsupported operators.</summary>
     public static RoleStringClause Compare(string? equal = null, string? notEqual = null,
         IReadOnlyList<string>? included = null, string? glob = null) =>
         new(null, equal, notEqual, glob, included);
@@ -116,11 +168,14 @@ public sealed class RoleStringClause
         writer.WriteEndObject();
     }
 
+    /// <summary>Returns a marker without condition operands.</summary>
     public override string ToString() => "[RoleStringClause]";
 }
 
+/// <summary>One typed native condition field and bounded string clause, not arbitrary policy JSON.</summary>
 public sealed class RoleCondition
 {
+    /// <summary>Binds a known condition key to an explicit clause; applicability is checked by the permission constructor.</summary>
     public RoleCondition(RoleConditionField field, RoleStringClause clause)
     {
         if (!Enum.IsDefined(field)) throw new ArgumentOutOfRangeException(nameof(field));
@@ -128,15 +183,20 @@ public sealed class RoleCondition
         Field = field;
         Clause = clause;
     }
+    /// <summary>Gets the native condition key.</summary>
     [JsonIgnore] public RoleConditionField Field { get; }
+    /// <summary>Gets the protected literal or comparison clause.</summary>
     [JsonIgnore] public RoleStringClause Clause { get; }
+    /// <summary>Returns a marker without condition contents.</summary>
     public override string ToString() => "[RoleCondition]";
 }
 
+/// <summary>Native secret-tag predicates with independently optional inclusion and all-tag arrays.</summary>
 public sealed class RoleSecretTags
 {
     private readonly string[]? _included;
     private readonly string[]? _all;
+    /// <summary>Copies bounded tag arrays; null omits each operator and an empty array remains explicit.</summary>
     public RoleSecretTags(IReadOnlyList<string>? included = null, IReadOnlyList<string>? all = null)
     {
         _included = included is null ? null : RolePermissionWire.CopyStrings(included);
@@ -149,6 +209,7 @@ public sealed class RoleSecretTags
         if (_all is not null) RolePermissionWire.Strings(writer, "$all", _all);
         writer.WriteEndObject();
     }
+    /// <summary>Returns a marker without tag selectors.</summary>
     public override string ToString() => "[RoleSecretTags]";
 }
 
@@ -159,6 +220,7 @@ public sealed class RoleMetadataMatch
     private readonly RoleStringClause? _value;
     internal bool HasNotEqual => (_key?.HasNotEqual ?? false) || (_value?.HasNotEqual ?? false);
 
+    /// <summary>Captures key/value comparisons on one metadata entry; literal and glob clauses are not admitted.</summary>
     public RoleMetadataMatch(RoleStringClause? key = null, RoleStringClause? value = null)
     {
         foreach (RoleStringClause? clause in new[] { key, value })
@@ -177,6 +239,7 @@ public sealed class RoleMetadataMatch
         writer.WriteEndObject();
         writer.WriteEndObject();
     }
+    /// <summary>Returns a marker without metadata operands.</summary>
     public override string ToString() => "[RoleMetadataMatch]";
 }
 
@@ -189,10 +252,12 @@ public sealed class OrganizationRolePermission
     private readonly bool? _inverted;
     private readonly RoleCondition[]? _conditions;
 
+    /// <summary>Captures a scalar native organization action with optional inversion and copied conditions.</summary>
     public OrganizationRolePermission(OrganizationRoleSubject subject, OrganizationRoleAction action,
         bool? inverted = null, IReadOnlyList<RoleCondition>? conditions = null)
         : this(subject, [action], inverted, conditions) => _scalar = true;
 
+    /// <summary>Copies validated organization actions; only application connections admit inversion and connection conditions.</summary>
     public OrganizationRolePermission(OrganizationRoleSubject subject, IReadOnlyList<OrganizationRoleAction> actions,
         bool? inverted = null, IReadOnlyList<RoleCondition>? conditions = null)
     {
@@ -238,9 +303,11 @@ public sealed class OrganizationRolePermission
 
     internal void Write(Utf8JsonWriter writer) =>
         RolePermissionWire.Write(writer, _subject, _actions, _scalar, _inverted, _conditions, null, null);
+    /// <summary>Returns a marker without permission conditions.</summary>
     public override string ToString() => "[OrganizationRolePermission]";
 }
 
+/// <summary>Immutable native project permission input; construction validates dialect, not effective provider authorization.</summary>
 public sealed class ProjectRolePermission
 {
     private readonly string _subject;
@@ -251,11 +318,13 @@ public sealed class ProjectRolePermission
     private readonly RoleSecretTags? _tags;
     private readonly RoleMetadataMatch? _metadata;
 
+    /// <summary>Captures a scalar action preserving its native shape and validating subject-specific constraints.</summary>
     public ProjectRolePermission(ProjectRoleSubject subject, ProjectRoleAction action,
         bool? inverted = null, IReadOnlyList<RoleCondition>? conditions = null, RoleSecretTags? secretTags = null,
         RoleMetadataMatch? metadata = null)
         : this(subject, [action], inverted, conditions, secretTags, metadata) => _scalar = true;
 
+    /// <summary>Copies nonempty action selections and conditions; tags and metadata are admitted only for their native subjects.</summary>
     public ProjectRolePermission(ProjectRoleSubject subject, IReadOnlyList<ProjectRoleAction> actions,
         bool? inverted = null, IReadOnlyList<RoleCondition>? conditions = null, RoleSecretTags? secretTags = null,
         RoleMetadataMatch? metadata = null)
@@ -348,6 +417,7 @@ public sealed class ProjectRolePermission
 
     internal void Write(Utf8JsonWriter writer) =>
         RolePermissionWire.Write(writer, _subject, _actions, _scalar, _inverted, _conditions, _tags, _metadata);
+    /// <summary>Returns a marker without project permission conditions.</summary>
     public override string ToString() => "[ProjectRolePermission]";
 }
 
@@ -467,8 +537,11 @@ public sealed class RolePermissionSelection
         return result;
     }
 
+    /// <summary>Gets whether the returned native selection was a scalar rather than an array.</summary>
     public bool IsScalar { get; }
+    /// <summary>Gets returned scalar or array values; array shape and empty entries are preserved.</summary>
     [JsonIgnore] public IReadOnlyList<string> Values { get; }
+    /// <summary>Returns a marker without permission selection values.</summary>
     public override string ToString() => "[RolePermissionSelection]";
 }
 
@@ -494,10 +567,16 @@ public sealed class RolePermissionSummary
             .Select(permission => new RolePermissionSummary(permission)).ToArray());
     }
 
+    /// <summary>Gets returned native action metadata without interpreting it as an access decision.</summary>
     [JsonIgnore] public RolePermissionSelection Action { get; }
+    /// <summary>Gets returned subject metadata, or null when omitted.</summary>
     [JsonIgnore] public RolePermissionSelection? Subject { get; }
+    /// <summary>Gets returned inversion, or null when absent rather than inferring false.</summary>
     [JsonIgnore] public bool? Inverted { get; }
+    /// <summary>Gets whether a conditions node was returned; no condition values are interpreted.</summary>
     public bool HasConditions { get; }
+    /// <summary>Always false: unconstrained returned condition values are deliberately not exported.</summary>
     public bool IncludesConditionValues => false;
+    /// <summary>Returns a marker without permission metadata.</summary>
     public override string ToString() => "[RolePermissionSummary]";
 }

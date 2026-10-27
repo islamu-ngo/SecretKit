@@ -12,6 +12,7 @@ public static class MySqlSecretRotationOperations
     private const string IdPrefix = "infisical.";
     private const string Profile = "v2.secret.rotations.mysql.credentials";
 
+    /// <summary>Builds a disposable native rotation inventory request for one project; successful lists own their items.</summary>
     public static ManagementRequest<MySqlSecretRotationList> List(string organizationId, string projectId)
     {
         ManagementJson.Text(projectId);
@@ -19,11 +20,13 @@ public static class MySqlSecretRotationOperations
             new(organizationId, projectId), null, root => ReadList(root, projectId, false), false);
     }
 
+    /// <summary>Builds exact rotation inspection using the profile-specific address; successful results require disposal.</summary>
     public static ManagementRequest<MySqlSecretRotationSummary> Get(string organizationId, InfisicalRotationAddress address) =>
         new(IdPrefix + "get." + Profile + ".by.rotationId", HttpMethod.Get, RotationPath(address),
             SelectionTarget(organizationId, address), null,
             root => Read(root, address), false);
 
+    /// <summary>Builds rotation lookup by name with exact project, environment and path correspondence.</summary>
     public static ManagementRequest<MySqlSecretRotationSummary> GetByName(string organizationId, string projectId,
         string environment, string secretPath, string rotationName)
     {
@@ -35,10 +38,12 @@ public static class MySqlSecretRotationOperations
                 environment: environment, secretPath: secretPath), false);
     }
 
+    /// <summary>Builds independent approval intent for the selected native name and coordinates.</summary>
     public static ManagementTarget NameTarget(string organizationId, string projectId, string environment,
         string secretPath, string rotationName) =>
         new(organizationId, projectId, rotationName, NameQuery(projectId, environment, secretPath));
 
+    /// <summary>Builds rotation configuration creation; does not create a database connection or execute SQL locally.</summary>
     public static ManagementRequest<MySqlSecretRotationSummary> Create(string organizationId, MySqlSecretRotationCreation creation)
     {
         ArgumentNullException.ThrowIfNull(creation);
@@ -47,12 +52,14 @@ public static class MySqlSecretRotationOperations
                 environment: creation.Environment, secretPath: creation.SecretPath, connectionId: creation.ConnectionId));
     }
 
+    /// <summary>Builds independent host approval for the complete serialized creation body.</summary>
     public static ManagementTarget CreationTarget(string organizationId, MySqlSecretRotationCreation creation)
     {
         ArgumentNullException.ThrowIfNull(creation);
         return BodyTarget(organizationId, creation.ProjectId, creation.Name, "", creation.Write);
     }
 
+    /// <summary>Builds rotation configuration update; null fields remain omitted and empty patches remain explicit.</summary>
     public static ManagementRequest<MySqlSecretRotationSummary> Update(string organizationId, InfisicalRotationAddress address,
         MySqlSecretRotationUpdate update)
     {
@@ -61,6 +68,7 @@ public static class MySqlSecretRotationOperations
             UpdateTarget(organizationId, address, update), update.Write, root => Read(root, address));
     }
 
+    /// <summary>Builds independent approval for the exact existing address and complete update body.</summary>
     public static ManagementTarget UpdateTarget(string organizationId, InfisicalRotationAddress address,
         MySqlSecretRotationUpdate update)
     {
@@ -77,6 +85,7 @@ public static class MySqlSecretRotationOperations
             DeletionTarget(organizationId, address, deleteSecrets, revokeGeneratedCredentials), null,
             root => Read(root, address));
 
+    /// <summary>Builds independent deletion intent preserving omission, true and false for both deletion flags.</summary>
     public static ManagementTarget DeletionTarget(string organizationId, InfisicalRotationAddress address,
         bool? deleteSecrets = null, bool? revokeGeneratedCredentials = null)
     {
@@ -85,6 +94,7 @@ public static class MySqlSecretRotationOperations
             Coordinates(address) + DeleteQuery(deleteSecrets, revokeGeneratedCredentials));
     }
 
+    /// <summary>Builds a receipt-bearing native credential-check request; a 204 acknowledgement does not prove convergence.</summary>
     public static ManagementRequest<MySqlCredentialCheckAcknowledgement> CheckCredentials(string organizationId,
         InfisicalRotationAddress address) =>
         new(IdPrefix + "post." + Profile + ".by.rotationId.check.credentials", HttpMethod.Post,
@@ -92,12 +102,14 @@ public static class MySqlSecretRotationOperations
             root => root.ValueKind == JsonValueKind.String && root.GetString() == ""
                 ? new() : throw new ManagementContractException(SecretStatus.Unknown));
 
+    /// <summary>Builds generated-credential retrieval; dispose the successful material-bearing result and protect explicit plaintext exports.</summary>
     public static ManagementRequest<MySqlGeneratedCredentials> GetGeneratedCredentials(string organizationId,
         InfisicalRotationAddress address) =>
         new(IdPrefix + "get." + Profile + ".by.rotationId.generated.credentials", HttpMethod.Get,
             RotationPath(address) + "/generated-credentials", SelectionTarget(organizationId, address), null,
             root => new(root, address.RotationId), false);
 
+    /// <summary>Builds a rotation move to exact selected destination coordinates.</summary>
     public static ManagementRequest<MySqlSecretRotationSummary> Move(string organizationId, InfisicalRotationAddress address,
         MySqlSecretRotationMove move)
     {
@@ -108,6 +120,7 @@ public static class MySqlSecretRotationOperations
                 environment: move.DestinationEnvironment, secretPath: move.DestinationSecretPath));
     }
 
+    /// <summary>Builds independent approval intent binding both source address and complete destination body.</summary>
     public static ManagementTarget MoveTarget(string organizationId, InfisicalRotationAddress address, MySqlSecretRotationMove move)
     {
         ArgumentNullException.ThrowIfNull(move);
@@ -132,6 +145,7 @@ public static class MySqlSecretRotationOperations
             root => ReadList(root, projectId, true), false);
     }
 
+    /// <summary>Builds a profile-only options projection from the mixed catalog; successful results own protected statement templates.</summary>
     public static ManagementRequest<MySqlSecretRotationOptions> MySqlOptionsSubset(string organizationId) =>
         new("infisical.get.v2.secret.rotations.options", HttpMethod.Get, "/api/v2/secret-rotations/options",
             new(organizationId, secondaryId: "mysql-credentials-subset"), null, root =>

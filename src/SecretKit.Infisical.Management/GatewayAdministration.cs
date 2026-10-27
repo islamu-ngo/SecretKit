@@ -11,6 +11,7 @@ public static class GatewayAdministrationOperations
     // Original registry wire-facts-0983 through 0987; request and success unions are independent.
     private const string Path = "/api/v3/gateways";
 
+    /// <summary>Builds disposable gateway configuration creation; does not deploy or authenticate an agent.</summary>
     public static ManagementRequest<GatewaySummary> Create(string organizationId, GatewayCreation creation)
     {
         ArgumentNullException.ThrowIfNull(creation);
@@ -19,12 +20,14 @@ public static class GatewayAdministrationOperations
             root => new(root, name: creation.Name));
     }
 
+    /// <summary>Builds independently approved gateway name and complete authentication-body intent.</summary>
     public static ManagementTarget CreationTarget(string organizationId, GatewayCreation creation)
     {
         ArgumentNullException.ThrowIfNull(creation);
         return GatewayJson.BodyTarget(organizationId, null, creation.Name, creation.Write);
     }
 
+    /// <summary>Builds lookup of one exact gateway UUID without performing agent health checks.</summary>
     public static ManagementRequest<GatewaySummary> Get(string organizationId, string gatewayId) =>
         new("infisical.get.v3.gateways.by.gatewayId", HttpMethod.Get, GatewayPath(gatewayId),
             new(organizationId, resourceId: gatewayId), null, root => new(root, gatewayId), false);
@@ -37,6 +40,7 @@ public static class GatewayAdministrationOperations
             UpdateTarget(organizationId, gatewayId, update), update.Write, root => new(root, gatewayId));
     }
 
+    /// <summary>Builds independent approval intent for the exact gateway and complete patch body.</summary>
     public static ManagementTarget UpdateTarget(string organizationId, string gatewayId, GatewayUpdate update)
     {
         ArgumentNullException.ThrowIfNull(update);
@@ -44,6 +48,7 @@ public static class GatewayAdministrationOperations
         return GatewayJson.BodyTarget(organizationId, null, gatewayId, update.Write);
     }
 
+    /// <summary>Builds receipt-bearing enrollment-token issuance; dispose returned material after use and retain uncertainty evidence.</summary>
     public static ManagementRequest<GatewayEnrollmentToken> GenerateEnrollmentToken(string organizationId, string gatewayId) =>
         new("infisical.post.v3.gateways.by.gatewayId.token.auth.generate.enrollment.token", HttpMethod.Post,
             GatewayPath(gatewayId) + "/token-auth/generate-enrollment-token",

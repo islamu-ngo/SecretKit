@@ -10,6 +10,7 @@ namespace SecretKit.Infisical.Management;
 /// <summary>Copied, bounded native project-member selectors; neither list is a wildcard.</summary>
 public sealed class MembershipPrincipals
 {
+    /// <summary>Copies one to 128 unique email or username selectors; null contributes no selectors.</summary>
     public MembershipPrincipals(IReadOnlyList<string>? emails = null, IReadOnlyList<string>? usernames = null)
     {
         string[] emailCopy = MembershipMutationOperations.Copy(emails ?? [], 128);
@@ -23,8 +24,11 @@ public sealed class MembershipPrincipals
         Usernames = Array.AsReadOnly(usernameCopy);
     }
 
+    /// <summary>Gets the copied explicit email selectors, never a wildcard.</summary>
     [JsonIgnore] public IReadOnlyList<string> Emails { get; }
+    /// <summary>Gets the copied explicit username selectors, never a wildcard.</summary>
     [JsonIgnore] public IReadOnlyList<string> Usernames { get; }
+    /// <summary>Returns a marker without principal selectors.</summary>
     public override string ToString() => "[MembershipPrincipals]";
 }
 
@@ -43,14 +47,21 @@ public sealed class ProjectMembershipMutationSummary
         UpdatedAt = ManagementJson.Required(value, "updatedAt");
     }
 
+    /// <summary>Gets the returned changed membership identifier.</summary>
     [JsonIgnore] public string Id { get; }
+    /// <summary>Gets the returned user coordinate without claiming correspondence to each input selector.</summary>
     [JsonIgnore] public string UserId { get; }
+    /// <summary>Gets the returned project identifier matched to the request.</summary>
     [JsonIgnore] public string ProjectId { get; }
+    /// <summary>Gets the returned creation timestamp.</summary>
     [JsonIgnore] public string CreatedAt { get; }
+    /// <summary>Gets the returned update timestamp.</summary>
     [JsonIgnore] public string UpdatedAt { get; }
+    /// <summary>Returns a marker without changed-member metadata.</summary>
     public override string ToString() => "[ProjectMembershipMutationSummary]";
 }
 
+/// <summary>Constructs disposable membership mutations; execution requires exact host grants and retained receipts.</summary>
 public static class MembershipMutationOperations
 {
     /// <summary>Omitted role slugs retain the provider default; an explicit empty role list is invalid.</summary>
@@ -66,6 +77,7 @@ public static class MembershipMutationOperations
             root => ProjectResponse(root, organizationId, projectId));
     }
 
+    /// <summary>Builds removal of explicitly selected project principals; returned rows are not per-input success guarantees.</summary>
     public static ManagementRequest<ManagementPage<ProjectMembershipMutationSummary>> RemoveProjectMembers(
         string organizationId, string projectId, MembershipPrincipals principals)
     {
@@ -113,6 +125,7 @@ public static class MembershipMutationOperations
         return ProjectTarget(organizationId, projectId, principals, Roles(roleSlugs));
     }
 
+    /// <summary>Builds independent host intent for the complete ordered project-principal removal selection.</summary>
     public static ManagementTarget ProjectDeletionTarget(string organizationId, string projectId,
         MembershipPrincipals principals)
     {
@@ -120,6 +133,7 @@ public static class MembershipMutationOperations
         return ProjectTarget(organizationId, projectId, principals, null);
     }
 
+    /// <summary>Builds independent host intent for the complete ordered organization membership deletion batch.</summary>
     public static ManagementTarget OrganizationDeletionTarget(string organizationId,
         IReadOnlyList<string> membershipIds) => OrganizationTarget(organizationId, Ids(membershipIds));
 

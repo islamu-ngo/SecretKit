@@ -61,13 +61,18 @@ public sealed class ManagementTransport : IDisposable
     public override string ToString() => "[ManagementTransport]";
 }
 
-/// <summary>Typed administrative execution; credentials and grants are explicit on every call.</summary>
+/// <summary>
+/// Executes typed administrative requests using explicitly selected credentials
+/// and exact host grants. Borrows its transport and never chooses a fallback identity.
+/// </summary>
 public sealed class ManagementClient
 {
     private readonly ManagementTransport _transport;
     private readonly TimeProvider _time;
+    /// <summary>Gets this client's local binding identity for grants and receipts, not proof of provider permissions.</summary>
     public SecretAuthority Authority { get; } = new();
 
+    /// <summary>Creates a client borrowing the transport; a null clock uses system UTC time for token expiry checks.</summary>
     public ManagementClient(ManagementTransport transport, TimeProvider? timeProvider = null)
     {
         ArgumentNullException.ThrowIfNull(transport);
@@ -75,6 +80,7 @@ public sealed class ManagementClient
         _time = timeProvider ?? TimeProvider.System;
     }
 
+    /// <summary>Creates pre-dispatch evidence for this exact mutation request; retain it across cancellation or an unknown response.</summary>
     public ManagementReceipt CreateReceipt<T>(ManagementRequest<T> request) where T : notnull
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -85,6 +91,17 @@ public sealed class ManagementClient
         return new ManagementReceipt(request, Authority);
     }
 
+    /// <summary>
+    /// Executes once after checking the selected authority, exact grant and mutation
+    /// receipt. Null or mismatched grants deny access before token acquisition.
+    /// Dispose successful material-bearing results and the caller-owned request.
+    /// </summary>
+    /// <remarks>
+    /// Reads require no receipt; mutations require a fresh receipt from this client.
+    /// Cancellation propagates and does not roll back remote effects. Keep the
+    /// receipt when dispatch or response evidence is uncertain; execution never replays.
+    /// </remarks>
+    /// <exception cref="OperationCanceledException">The operation was canceled; inspect the retained receipt for known dispatch evidence.</exception>
     public async ValueTask<SecretOutcome<T>> ExecuteAsync<T>(ManagementRequest<T> request,
         ManagementAuthority authority, ManagementGrant? grant, ManagementReceipt? receipt = null,
         CancellationToken cancellationToken = default) where T : notnull
@@ -256,5 +273,6 @@ public sealed class ManagementClient
         }
     }
 
+    /// <summary>Returns a redacted marker without credentials or administrative scope.</summary>
     public override string ToString() => "[ManagementClient]";
 }

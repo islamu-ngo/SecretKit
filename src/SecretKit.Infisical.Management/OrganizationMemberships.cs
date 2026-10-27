@@ -37,22 +37,39 @@ public sealed class OrganizationMembershipSummary
         }
     }
 
+    /// <summary>Gets the returned membership identifier.</summary>
     [JsonIgnore] public string Id { get; }
+    /// <summary>Gets the organization coordinate verified against the selection.</summary>
     [JsonIgnore] public string OrganizationId { get; }
+    /// <summary>Gets the returned role label, not an effective-permission decision.</summary>
     [JsonIgnore] public string Role { get; }
+    /// <summary>Gets the user coordinate, or null when not supplied.</summary>
     [JsonIgnore] public string? UserId { get; }
+    /// <summary>Gets the role coordinate, or null when absent or explicitly null.</summary>
     [JsonIgnore] public string? RoleId { get; }
+    /// <summary>Gets the native membership status, or null when not supplied.</summary>
     [JsonIgnore] public string? Status { get; }
+    /// <summary>Gets the invitation email, or null when not supplied.</summary>
     [JsonIgnore] public string? InviteEmail { get; }
+    /// <summary>Gets the returned active flag, or null when omitted.</summary>
     [JsonIgnore] public bool? IsActive { get; }
+    /// <summary>Gets the mutation response creation timestamp, or null for inventory projections.</summary>
     [JsonIgnore] public string? CreatedAt { get; }
+    /// <summary>Gets the mutation response update timestamp, or null for inventory projections.</summary>
     [JsonIgnore] public string? UpdatedAt { get; }
+    /// <summary>Gets last-invitation timestamp presence, retaining explicit null.</summary>
     [JsonIgnore] public ProjectField<string> LastInvitedAt { get; }
+    /// <summary>Gets last-login method presence, retaining explicit null.</summary>
     [JsonIgnore] public ProjectField<string> LastLoginAuthMethod { get; }
+    /// <summary>Gets last-login timestamp presence, retaining explicit null.</summary>
     [JsonIgnore] public ProjectField<string> LastLoginTime { get; }
+    /// <summary>Gets favorite-project presence; an empty list differs from absence or null.</summary>
     [JsonIgnore] public ProjectField<IReadOnlyList<string>> ProjectFavorites { get; }
+    /// <summary>Gets the inventory user projection, or null for mutation responses.</summary>
     [JsonIgnore] public OrganizationMembershipUser? User { get; }
+    /// <summary>Always false: membership metadata does not include effective permissions.</summary>
     public bool IncludesPermissions => false;
+    /// <summary>Returns a marker without membership, email or user details.</summary>
     public override string ToString() => "[OrganizationMembershipSummary]";
 
     private static ProjectField<string> DateField(JsonElement value, string field)
@@ -79,17 +96,27 @@ public sealed class OrganizationMembershipUser
         PublicKey = ProjectWire.StringField(value, "publicKey", nullable: true);
     }
 
+    /// <summary>Gets the returned user identifier.</summary>
     [JsonIgnore] public string Id { get; }
+    /// <summary>Gets the returned username.</summary>
     [JsonIgnore] public string Username { get; }
+    /// <summary>Gets the returned email, or null when omitted or explicitly null.</summary>
     [JsonIgnore] public string? Email { get; }
+    /// <summary>Gets the returned given name, or null when not supplied.</summary>
     [JsonIgnore] public string? FirstName { get; }
+    /// <summary>Gets the returned family name, or null when not supplied.</summary>
     [JsonIgnore] public string? LastName { get; }
+    /// <summary>Gets authentication-method presence without proving login capability.</summary>
     [JsonIgnore] public ProjectField<IReadOnlyList<string>> AuthMethods { get; }
+    /// <summary>Gets email-verification presence; absent or null is not a false value.</summary>
     [JsonIgnore] public ProjectField<bool> IsEmailVerified { get; }
+    /// <summary>Gets public-key presence, retaining explicit null.</summary>
     [JsonIgnore] public ProjectField<string> PublicKey { get; }
+    /// <summary>Returns a marker without protected user metadata.</summary>
     public override string ToString() => "[OrganizationMembershipUser]";
 }
 
+/// <summary>Constructs disposable organization membership requests under separately selected authority.</summary>
 public static class OrganizationMembershipOperations
 {
     /// <summary>The native endpoint is unpaginated; oversized collections fail closed, never truncate.</summary>
@@ -100,6 +127,7 @@ public static class OrganizationMembershipOperations
             root => new(ManagementJson.Array(root, "users")
                 .Select(value => new OrganizationMembershipSummary(value, organizationId)), true), false);
 
+    /// <summary>Builds a membership change; null omits each field and empty metadata is explicit.</summary>
     public static ManagementRequest<OrganizationMembershipSummary> UpdateOrganizationMembership(
         string organizationId, string membershipId, string? role = null, bool? isActive = null,
         IReadOnlyList<IdentityAttribute>? metadata = null)
@@ -136,6 +164,7 @@ public static class OrganizationMembershipOperations
             root => new(ManagementJson.Object(root, "membership"), organizationId, membershipId));
     }
 
+    /// <summary>Builds independently selected approval intent for the complete membership update body.</summary>
     public static ManagementTarget OrganizationMembershipUpdateTarget(string organizationId, string membershipId,
         string? role = null, bool? isActive = null, IReadOnlyList<IdentityAttribute>? metadata = null)
     {
@@ -143,6 +172,7 @@ public static class OrganizationMembershipOperations
         return request.Target;
     }
 
+    /// <summary>Builds deletion of one exact membership; retain the caller receipt during uncertain execution.</summary>
     public static ManagementRequest<OrganizationMembershipSummary> DeleteOrganizationMembership(
         string organizationId, string membershipId)
     {

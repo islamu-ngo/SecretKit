@@ -75,6 +75,8 @@ public sealed class PackageInstallTests
                 ["T:SecretKit.Core.SecretMaterial", "M:SecretKit.Core.SecretMaterial.Copy"],
             "SecretKit.Infisical" =>
                 ["T:SecretKit.Infisical.InfisicalTransportOptions", "P:SecretKit.Infisical.InfisicalTransportOptions.SafeDefault"],
+            "SecretKit.Infisical.Management" =>
+                ["T:SecretKit.Infisical.Management.ManagementClient", "P:SecretKit.Infisical.Management.ManagementClient.Authority"],
             _ => []
         };
         // Excluded Azure packages keep their own documentation scope.

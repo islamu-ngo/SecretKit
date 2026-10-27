@@ -9,6 +9,7 @@ namespace SecretKit.Infisical.Management;
 /// <summary>Native IP or CIDR input; never a free-form policy document.</summary>
 public sealed class IdentityTrustedIp
 {
+    /// <summary>Validates a literal IPv4/IPv6 address or CIDR prefix without resolving hostnames.</summary>
     public IdentityTrustedIp(string ipAddress)
     {
         ManagementJson.Text(ipAddress, 128);
@@ -19,13 +20,16 @@ public sealed class IdentityTrustedIp
             throw new ArgumentException("Invalid trusted IP or CIDR.");
         IpAddress = ipAddress;
     }
+    /// <summary>Gets the protected native IP or CIDR input.</summary>
     [JsonIgnore] public string IpAddress { get; }
+    /// <summary>Returns a marker without network selectors.</summary>
     public override string ToString() => "[IdentityTrustedIp]";
 }
 
 /// <summary>Null omits an input. Zero remains native zero, never a client-invented expiry.</summary>
 public sealed class TokenAuthConfigurationInput
 {
+    /// <summary>Captures optional token policy fields and copies trusted IPs; null omits and zero retains native meaning.</summary>
     public TokenAuthConfigurationInput(int? accessTokenTTL = null, int? accessTokenMaxTTL = null,
         long? accessTokenNumUsesLimit = null, IEnumerable<IdentityTrustedIp>? accessTokenTrustedIps = null)
     {
@@ -37,9 +41,13 @@ public sealed class TokenAuthConfigurationInput
         AccessTokenNumUsesLimit = accessTokenNumUsesLimit;
         AccessTokenTrustedIps = AuthenticationJson.CopyIps(accessTokenTrustedIps);
     }
+    /// <summary>Gets token TTL seconds, or null to omit the field.</summary>
     [JsonIgnore] public int? AccessTokenTTL { get; }
+    /// <summary>Gets maximum token TTL seconds, or null to omit the field.</summary>
     [JsonIgnore] public int? AccessTokenMaxTTL { get; }
+    /// <summary>Gets the native token-use limit, or null to omit it.</summary>
     [JsonIgnore] public long? AccessTokenNumUsesLimit { get; }
+    /// <summary>Gets copied trusted IPs, or null when omitted; explicit collections must be nonempty.</summary>
     [JsonIgnore] public IReadOnlyList<IdentityTrustedIp>? AccessTokenTrustedIps { get; }
     internal void Write(Utf8JsonWriter writer)
     {
@@ -48,12 +56,14 @@ public sealed class TokenAuthConfigurationInput
         if (AccessTokenNumUsesLimit is { } uses) writer.WriteNumber("accessTokenNumUsesLimit", uses);
         AuthenticationJson.Ips(writer, "accessTokenTrustedIps", AccessTokenTrustedIps);
     }
+    /// <summary>Returns a marker without policy selectors.</summary>
     public override string ToString() => "[TokenAuthConfigurationInput]";
 }
 
 /// <summary>Universal policy only. Period does not imply a finite original max-TTL ceiling.</summary>
 public sealed class UniversalAuthConfigurationInput
 {
+    /// <summary>Captures optional Universal Auth policy and lockout fields without inferring session lifetime.</summary>
     public UniversalAuthConfigurationInput(int? accessTokenTTL = null, int? accessTokenMaxTTL = null,
         long? accessTokenNumUsesLimit = null, int? accessTokenPeriod = null,
         IEnumerable<IdentityTrustedIp>? clientSecretTrustedIps = null,
@@ -73,12 +83,19 @@ public sealed class UniversalAuthConfigurationInput
         LockoutDurationSeconds = lockoutDurationSeconds;
         LockoutCounterResetSeconds = lockoutCounterResetSeconds;
     }
+    /// <summary>Gets selected common token-policy fields.</summary>
     [JsonIgnore] public TokenAuthConfigurationInput Policy { get; }
+    /// <summary>Gets token period seconds, or null when omitted; zero remains native zero.</summary>
     [JsonIgnore] public int? AccessTokenPeriod { get; }
+    /// <summary>Gets copied client-secret trusted IPs, or null when omitted.</summary>
     [JsonIgnore] public IReadOnlyList<IdentityTrustedIp>? ClientSecretTrustedIps { get; }
+    /// <summary>Gets the explicit lockout switch, or null to leave it omitted.</summary>
     [JsonIgnore] public bool? LockoutEnabled { get; }
+    /// <summary>Gets the lockout attempt threshold, or null when omitted.</summary>
     [JsonIgnore] public double? LockoutThreshold { get; }
+    /// <summary>Gets lockout duration seconds, or null when omitted.</summary>
     [JsonIgnore] public double? LockoutDurationSeconds { get; }
+    /// <summary>Gets lockout counter reset seconds, or null when omitted.</summary>
     [JsonIgnore] public double? LockoutCounterResetSeconds { get; }
     internal void Write(Utf8JsonWriter writer)
     {
@@ -90,6 +107,7 @@ public sealed class UniversalAuthConfigurationInput
         AuthenticationJson.Number(writer, "lockoutDurationSeconds", LockoutDurationSeconds);
         AuthenticationJson.Number(writer, "lockoutCounterResetSeconds", LockoutCounterResetSeconds);
     }
+    /// <summary>Returns a marker without Universal Auth policy details.</summary>
     public override string ToString() => "[UniversalAuthConfigurationInput]";
 }
 
@@ -127,20 +145,35 @@ public sealed class IdentityAuthenticationConfiguration
         HasUnestablishedTrustedIpProjection = value.TryGetProperty("accessTokenTrustedIps", out _) ||
             universal && value.TryGetProperty("clientSecretTrustedIps", out _);
     }
+    /// <summary>Gets the returned authentication-configuration identifier.</summary>
     [JsonIgnore] public string Id { get; }
+    /// <summary>Gets the identity identifier verified against the request.</summary>
     [JsonIgnore] public string IdentityId { get; }
+    /// <summary>Gets the Universal Auth client identifier; Token Auth configurations leave this null.</summary>
     [JsonIgnore] public string? ClientId { get; }
+    /// <summary>Gets the returned configuration creation time with its offset.</summary>
     [JsonIgnore] public DateTimeOffset CreatedAt { get; }
+    /// <summary>Gets the returned configuration update time with its offset.</summary>
     [JsonIgnore] public DateTimeOffset UpdatedAt { get; }
+    /// <summary>Gets returned token TTL seconds, or null when absent.</summary>
     [JsonIgnore] public double? AccessTokenTTL { get; }
+    /// <summary>Gets returned maximum TTL seconds, or null when absent; does not infer a session deadline.</summary>
     [JsonIgnore] public double? AccessTokenMaxTTL { get; }
+    /// <summary>Gets the returned use limit, or null when absent.</summary>
     [JsonIgnore] public double? AccessTokenNumUsesLimit { get; }
+    /// <summary>Gets returned token period seconds, or null when absent.</summary>
     [JsonIgnore] public double? AccessTokenPeriod { get; }
+    /// <summary>Gets the returned lockout switch, or null for absence or a non-Universal configuration.</summary>
     [JsonIgnore] public bool? LockoutEnabled { get; }
+    /// <summary>Gets the returned lockout threshold, or null when not projected.</summary>
     [JsonIgnore] public double? LockoutThreshold { get; }
+    /// <summary>Gets returned lockout duration seconds, or null when not projected.</summary>
     [JsonIgnore] public double? LockoutDurationSeconds { get; }
+    /// <summary>Gets returned counter reset seconds, or null when not projected.</summary>
     [JsonIgnore] public double? LockoutCounterResetSeconds { get; }
+    /// <summary>Gets whether a trusted-IP node exists whose shape is deliberately not interpreted as policy.</summary>
     [JsonIgnore] public bool HasUnestablishedTrustedIpProjection { get; }
+    /// <summary>Returns a marker without client or policy metadata.</summary>
     public override string ToString() => "[IdentityAuthenticationConfiguration]";
 }
 
@@ -165,19 +198,31 @@ public sealed class UniversalAuthClientSecret
         ClientSecretTTL = AuthenticationJson.OptionalNumber(value, "clientSecretTTL");
         IsClientSecretRevoked = AuthenticationJson.OptionalBoolean(value, "isClientSecretRevoked");
     }
+    /// <summary>Gets the returned client-secret identifier, not its usable credential.</summary>
     [JsonIgnore] public string Id { get; }
+    /// <summary>Gets the owning Universal Auth configuration identifier.</summary>
     [JsonIgnore] public string IdentityUAId { get; }
+    /// <summary>Gets the returned protected client-secret description.</summary>
     [JsonIgnore] public string Description { get; }
+    /// <summary>Gets the native secret prefix, not the full client secret.</summary>
     [JsonIgnore] public string ClientSecretPrefix { get; }
+    /// <summary>Gets the returned client-secret creation time.</summary>
     [JsonIgnore] public DateTimeOffset CreatedAt { get; }
+    /// <summary>Gets the returned client-secret update time.</summary>
     [JsonIgnore] public DateTimeOffset UpdatedAt { get; }
+    /// <summary>Gets reported use count, or null when absent.</summary>
     [JsonIgnore] public double? ClientSecretNumUses { get; }
+    /// <summary>Gets reported use limit, or null when absent.</summary>
     [JsonIgnore] public double? ClientSecretNumUsesLimit { get; }
+    /// <summary>Gets reported client-secret TTL seconds, or null when absent.</summary>
     [JsonIgnore] public double? ClientSecretTTL { get; }
+    /// <summary>Gets reported revocation state, or null when absent; absence is not false.</summary>
     [JsonIgnore] public bool? IsClientSecretRevoked { get; }
+    /// <summary>Returns a marker without client-secret metadata.</summary>
     public override string ToString() => "[UniversalAuthClientSecret]";
 }
 
+/// <summary>Owned client-secret issuance result; dispose after use, and treat revealed strings as ordinary plaintext.</summary>
 public sealed class UniversalAuthClientSecretCreation : IDisposable
 {
     internal UniversalAuthClientSecretCreation(JsonElement root)
@@ -186,9 +231,13 @@ public sealed class UniversalAuthClientSecretCreation : IDisposable
         Metadata = new(ManagementJson.Object(root, "clientSecretData"));
         ClientSecret = AuthenticationJson.Material(root, "clientSecret");
     }
+    /// <summary>Gets metadata associated with the issued client secret.</summary>
     [JsonIgnore] public UniversalAuthClientSecret Metadata { get; }
+    /// <summary>Gets owned secret material; revealing it creates a string that disposal cannot erase.</summary>
     [JsonIgnore] public SecretMaterial ClientSecret { get; }
+    /// <summary>Disposes the owned client-secret material without revoking the remote credential.</summary>
     public void Dispose() => ClientSecret.Dispose();
+    /// <summary>Returns a marker without client-secret material.</summary>
     public override string ToString() => "[UniversalAuthClientSecretCreation]";
 }
 
@@ -225,22 +274,39 @@ public sealed class TokenAuthToken
         AccessTokenLastRenewedAt = ProjectWire.Field(value, "accessTokenLastRenewedAt",
             _ => AuthenticationJson.Date(value, "accessTokenLastRenewedAt", true)!.Value, nullable: true);
     }
+    /// <summary>Gets the returned token identifier, not the bearer token.</summary>
     [JsonIgnore] public string Id { get; }
+    /// <summary>Gets the returned owning identity identifier.</summary>
     [JsonIgnore] public string IdentityId { get; }
+    /// <summary>Gets token-name presence, preserving explicit null and omission.</summary>
     [JsonIgnore] public ProjectField<string> Name { get; }
+    /// <summary>Gets suborganization presence, preserving explicit null and omission.</summary>
     [JsonIgnore] public ProjectField<string> SubOrganizationId { get; }
+    /// <summary>Gets the returned native authentication-method label.</summary>
     [JsonIgnore] public string AuthMethod { get; }
+    /// <summary>Gets Universal Auth client-secret identifier presence when supplied.</summary>
     [JsonIgnore] public ProjectField<string> IdentityUAClientSecretId { get; }
+    /// <summary>Gets reported TTL seconds, or null when absent.</summary>
     [JsonIgnore] public double? AccessTokenTTL { get; }
+    /// <summary>Gets reported maximum TTL seconds, or null when absent; not an inferred finite lifetime.</summary>
     [JsonIgnore] public double? AccessTokenMaxTTL { get; }
+    /// <summary>Gets reported use count, or null when absent.</summary>
     [JsonIgnore] public double? AccessTokenNumUses { get; }
+    /// <summary>Gets reported token-use limit, or null when absent.</summary>
     [JsonIgnore] public double? AccessTokenNumUsesLimit { get; }
+    /// <summary>Gets reported token period seconds, or null when absent.</summary>
     [JsonIgnore] public double? AccessTokenPeriod { get; }
+    /// <summary>Gets reported revocation state, or null when absent.</summary>
     [JsonIgnore] public bool? IsAccessTokenRevoked { get; }
+    /// <summary>Gets the returned token creation time.</summary>
     [JsonIgnore] public DateTimeOffset CreatedAt { get; }
+    /// <summary>Gets the returned token update time.</summary>
     [JsonIgnore] public DateTimeOffset UpdatedAt { get; }
+    /// <summary>Gets last-use timestamp presence, retaining explicit null.</summary>
     [JsonIgnore] public ProjectField<DateTimeOffset> AccessTokenLastUsedAt { get; }
+    /// <summary>Gets last-renewal timestamp presence, retaining explicit null.</summary>
     [JsonIgnore] public ProjectField<DateTimeOffset> AccessTokenLastRenewedAt { get; }
+    /// <summary>Returns a marker without token metadata or identifiers.</summary>
     public override string ToString() => "[TokenAuthToken]";
 }
 
@@ -257,14 +323,21 @@ public sealed class TokenAuthTokenCreation : IDisposable
             throw new ManagementContractException(SecretStatus.Unknown);
         AccessToken = AuthenticationJson.Material(root, "accessToken");
     }
+    /// <summary>Gets metadata associated with the issued bearer token.</summary>
     [JsonIgnore] public TokenAuthToken Metadata { get; }
+    /// <summary>Gets owned bearer material; reveal is a deliberate plaintext export.</summary>
     [JsonIgnore] public SecretMaterial AccessToken { get; }
+    /// <summary>Gets native reported expiry seconds without manufacturing a local session deadline.</summary>
     [JsonIgnore] public double ExpiresIn { get; }
+    /// <summary>Gets native reported maximum TTL seconds, retaining native zero semantics.</summary>
     [JsonIgnore] public double AccessTokenMaxTTL { get; }
+    /// <summary>Disposes owned bearer material; does not revoke the provider token or erase exported strings.</summary>
     public void Dispose() => AccessToken.Dispose();
+    /// <summary>Returns a marker without bearer material.</summary>
     public override string ToString() => "[TokenAuthTokenCreation]";
 }
 
+/// <summary>Native lockout-clear or revocation acknowledgement, not a runtime capability attestation.</summary>
 public sealed class IdentityAuthenticationAcknowledgement
 {
     internal IdentityAuthenticationAcknowledgement(JsonElement root, bool lockout)
@@ -273,8 +346,11 @@ public sealed class IdentityAuthenticationAcknowledgement
         if (lockout) Deleted = AuthenticationJson.RequiredNumber(root, "deleted");
         else Message = ManagementJson.Required(root, "message");
     }
+    /// <summary>Gets the native deleted-lockout count, or null for token revocation acknowledgements.</summary>
     [JsonIgnore] public double? Deleted { get; }
+    /// <summary>Gets the native revocation message, or null for lockout-clear acknowledgements.</summary>
     [JsonIgnore] public string? Message { get; }
+    /// <summary>Returns a marker without the acknowledgement message.</summary>
     public override string ToString() => "[IdentityAuthenticationAcknowledgement]";
 }
 

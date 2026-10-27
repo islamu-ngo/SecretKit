@@ -44,23 +44,41 @@ public sealed class IdentityTemplateConfigurationSummary
         }
     }
 
+    /// <summary>Gets returned LDAP URL, or null when absent or not an LDAP template.</summary>
     [JsonIgnore] public string? Url { get; }
+    /// <summary>Gets returned LDAP bind DN, or null when not supplied.</summary>
     [JsonIgnore] public string? BindDn { get; }
+    /// <summary>Gets returned LDAP search base, or null when not supplied.</summary>
     [JsonIgnore] public string? SearchBase { get; }
+    /// <summary>Gets returned LDAP CA certificate text, or null when not supplied; no bind credential is exported.</summary>
     [JsonIgnore] public string? LdapCaCertificate { get; }
+    /// <summary>Gets returned OIDC discovery URL, or null for another method.</summary>
     [JsonIgnore] public string? OidcDiscoveryUrl { get; }
+    /// <summary>Gets returned OIDC issuer constraint, or null for another method.</summary>
     [JsonIgnore] public string? BoundIssuer { get; }
+    /// <summary>Gets returned OIDC audience constraints, or null when absent.</summary>
     [JsonIgnore] public string? BoundAudiences { get; }
+    /// <summary>Gets returned OIDC or Kubernetes CA text, or null when absent.</summary>
     [JsonIgnore] public string? CaCertificate { get; }
+    /// <summary>Gets whether a Kubernetes host field was returned, even if explicitly null.</summary>
     [JsonIgnore] public bool HasKubernetesHost { get; }
+    /// <summary>Gets returned Kubernetes host text; use HasKubernetesHost to distinguish absent from null.</summary>
     [JsonIgnore] public string? KubernetesHost { get; }
+    /// <summary>Gets whether a gateway identifier field was returned, even if null.</summary>
     [JsonIgnore] public bool HasGatewayId { get; }
+    /// <summary>Gets returned gateway identifier; use HasGatewayId to distinguish absence.</summary>
     [JsonIgnore] public string? GatewayId { get; }
+    /// <summary>Gets whether a gateway-pool identifier field was returned, even if null.</summary>
     [JsonIgnore] public bool HasGatewayPoolId { get; }
+    /// <summary>Gets returned gateway-pool identifier; use HasGatewayPoolId to distinguish absence.</summary>
     [JsonIgnore] public string? GatewayPoolId { get; }
+    /// <summary>Gets returned Kubernetes audience constraint, or null when absent.</summary>
     [JsonIgnore] public string? AllowedAudience { get; }
+    /// <summary>Gets returned API/gateway review mode, or null when absent.</summary>
     [JsonIgnore] public string? TokenReviewMode { get; }
+    /// <summary>Gets reported provider-side TLS-verification state, or null when absent.</summary>
     [JsonIgnore] public bool? VerifyTlsCertificate { get; }
+    /// <summary>Returns a marker without template configuration details.</summary>
     public override string ToString() => "[IdentityTemplateConfigurationSummary]";
 
     private static string? Text(JsonElement value, string field, bool required = false,

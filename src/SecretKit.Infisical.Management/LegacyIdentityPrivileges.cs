@@ -9,6 +9,7 @@ namespace SecretKit.Infisical.Management;
 /// <summary>Independently selected v1 project/identity membership, including its native project slug.</summary>
 public sealed class LegacyPrivilegeSelection
 {
+    /// <summary>Captures independently trusted organization, project, native slug, identity and membership coordinates.</summary>
     public LegacyPrivilegeSelection(string organizationId, string projectId, string projectSlug,
         string identityId, string membershipId)
     {
@@ -20,10 +21,15 @@ public sealed class LegacyPrivilegeSelection
         IdentityId = identityId;
         MembershipId = membershipId;
     }
+    /// <summary>Gets the selected organization coordinate.</summary>
     [JsonIgnore] public string OrganizationId { get; }
+    /// <summary>Gets the canonical project identifier, distinct from its native slug.</summary>
     [JsonIgnore] public string ProjectId { get; }
+    /// <summary>Gets the native project slug used by v1 privilege endpoints.</summary>
     [JsonIgnore] public string ProjectSlug { get; }
+    /// <summary>Gets the selected machine-identity identifier.</summary>
     [JsonIgnore] public string IdentityId { get; }
+    /// <summary>Gets the expected project-membership identifier for response correspondence.</summary>
     [JsonIgnore] public string MembershipId { get; }
 
     /// <summary>Build grant intent from trusted host selection, never an incoming request target.</summary>
@@ -37,12 +43,14 @@ public sealed class LegacyPrivilegeSelection
         }
         finally { Array.Clear(coordinates); }
     }
+    /// <summary>Returns a marker without trusted selection coordinates.</summary>
     public override string ToString() => "[LegacyPrivilegeSelection]";
 }
 
 /// <summary>Native v1 metadata and deletion; permission conditions remain unprojected.</summary>
 public static class LegacyIdentityPrivilegeOperations
 {
+    /// <summary>Builds a disposable v1 inventory request with membership correspondence and duplicate rejection.</summary>
     public static ManagementRequest<ManagementPage<IdentityPrivilegeSummary>> ListPrivileges(LegacyPrivilegeSelection selection)
     {
         ArgumentNullException.ThrowIfNull(selection);
@@ -60,6 +68,7 @@ public static class LegacyIdentityPrivilegeOperations
             }, false);
     }
 
+    /// <summary>Builds an exact v1 privilege-slug lookup for the selected membership.</summary>
     public static ManagementRequest<IdentityPrivilegeSummary> GetPrivilege(LegacyPrivilegeSelection selection, string privilegeSlug)
     {
         ArgumentNullException.ThrowIfNull(selection);
@@ -69,6 +78,7 @@ public static class LegacyIdentityPrivilegeOperations
             root => Parse(ManagementJson.Object(root, "privilege"), selection, privilegeSlug), false);
     }
 
+    /// <summary>Builds a v1 deletion request bound to the selected membership and privilege slug; does not execute it.</summary>
     public static ManagementRequest<IdentityPrivilegeSummary> DeletePrivilege(LegacyPrivilegeSelection selection, string privilegeSlug)
     {
         ArgumentNullException.ThrowIfNull(selection);

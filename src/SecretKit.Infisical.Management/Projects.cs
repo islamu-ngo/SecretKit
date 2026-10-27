@@ -50,36 +50,65 @@ public sealed class ProjectSummary
         if (includesRoles)
             Roles = ProjectWire.Collection(value, "roles", child => new ProjectRoleMetadata(child, Id));
     }
+    /// <summary>Gets the returned project identifier.</summary>
     [JsonIgnore] public string Id { get; }
+    /// <summary>Gets the returned project name.</summary>
     [JsonIgnore] public string Name { get; }
+    /// <summary>Gets the native project slug.</summary>
     [JsonIgnore] public string Slug { get; }
+    /// <summary>Gets returned description, or null when absent or explicitly null.</summary>
     [JsonIgnore] public string? Description { get; }
+    /// <summary>Gets description presence to distinguish omission from explicit null.</summary>
     [JsonIgnore] public ProjectField<string> DescriptionField { get; }
+    /// <summary>Gets the native returned product discriminator.</summary>
     [JsonIgnore] public string Type { get; }
+    /// <summary>Gets native _id presence when the endpoint projects details.</summary>
     [JsonIgnore] public ProjectField<string> NativeId { get; }
+    /// <summary>Gets the required returned creation timestamp with presence information.</summary>
     [JsonIgnore] public ProjectField<string> CreatedAt { get; }
+    /// <summary>Gets the required returned update timestamp with presence information.</summary>
     [JsonIgnore] public ProjectField<string> UpdatedAt { get; }
+    /// <summary>Gets default-product presence, preserving explicit null.</summary>
     [JsonIgnore] public ProjectField<string> DefaultProduct { get; }
+    /// <summary>Gets upgrade-status presence, preserving explicit null.</summary>
     [JsonIgnore] public ProjectField<string> UpgradeStatus { get; }
+    /// <summary>Gets certificate KMS key reference presence, not key material.</summary>
     [JsonIgnore] public ProjectField<string> KmsCertificateKeyId { get; }
+    /// <summary>Gets secret-manager KMS key reference presence, not key material.</summary>
     [JsonIgnore] public ProjectField<string> KmsSecretManagerKeyId { get; }
+    /// <summary>Gets returned audit retention days with presence and explicit-null information.</summary>
     [JsonIgnore] public ProjectField<double> AuditLogsRetentionDays { get; }
+    /// <summary>Gets returned project version presence.</summary>
     [JsonIgnore] public ProjectField<double> Version { get; }
+    /// <summary>Gets returned point-in-time version-limit presence.</summary>
     [JsonIgnore] public ProjectField<double> PitVersionLimit { get; }
+    /// <summary>Gets capitalization-policy presence, preserving explicit null.</summary>
     [JsonIgnore] public ProjectField<bool> AutoCapitalization { get; }
+    /// <summary>Gets deletion-protection presence, preserving explicit null.</summary>
     [JsonIgnore] public ProjectField<bool> HasDeleteProtection { get; }
+    /// <summary>Gets encrypted-metadata-policy presence, preserving explicit null.</summary>
     [JsonIgnore] public ProjectField<bool> EnforceEncryptedSecretManagerSecretMetadata { get; }
+    /// <summary>Gets legacy additional-privilege switch presence.</summary>
     [JsonIgnore] public ProjectField<bool> IsLegacyAdditionalPrivilegesEnabled { get; }
+    /// <summary>Gets blind-index switch presence.</summary>
     [JsonIgnore] public ProjectField<bool> SecretBlindIndexEnabled { get; }
+    /// <summary>Gets secret-sharing switch presence, not recipient access evidence.</summary>
     [JsonIgnore] public ProjectField<bool> SecretSharing { get; }
+    /// <summary>Gets legacy snapshot visibility switch presence.</summary>
     [JsonIgnore] public ProjectField<bool> ShowSnapshotsLegacy { get; }
+    /// <summary>Gets protected detection-ignore values; omission, null and an empty array remain distinct.</summary>
     [JsonIgnore] public ProjectField<IReadOnlyList<string>> SecretDetectionIgnoreValues { get; }
+    /// <summary>Gets embedded environment presence when details are projected.</summary>
     [JsonIgnore] public ProjectField<IReadOnlyList<ProjectEnvironmentReference>> Environments { get; }
+    /// <summary>Gets embedded deleted-environment presence when details are projected.</summary>
     [JsonIgnore] public ProjectField<IReadOnlyList<DeletedProjectEnvironment>> DeletedEnvironments { get; }
+    /// <summary>Gets embedded role metadata presence without effective permissions.</summary>
     [JsonIgnore] public ProjectField<IReadOnlyList<ProjectRoleMetadata>> Roles { get; }
+    /// <summary>Returns a marker without project settings or coordinates.</summary>
     public override string ToString() => "[ProjectSummary]";
 }
 
+/// <summary>Returned environment coordinates and lifecycle metadata checked against the selected project.</summary>
 public sealed class ProjectEnvironment
 {
     internal ProjectEnvironment(JsonElement value, string projectId, string? id = null, string? slug = null)
@@ -104,22 +133,35 @@ public sealed class ProjectEnvironment
         if (!CreatedAt.IsPresent || !UpdatedAt.IsPresent)
             throw new ManagementContractException(SecretStatus.Unknown);
     }
+    /// <summary>Gets the returned environment identifier.</summary>
     [JsonIgnore] public string Id { get; }
+    /// <summary>Gets the returned environment name.</summary>
     [JsonIgnore] public string Name { get; }
+    /// <summary>Gets the native environment slug.</summary>
     [JsonIgnore] public string Slug { get; }
     /// <summary>Finite IEEE 754 double subset of the provider number domain, without integer truncation.</summary>
     [JsonIgnore] public double Position { get; }
+    /// <summary>Gets reported soft-deletion time, or null when absent or explicitly null.</summary>
     [JsonIgnore] public string? SoftDeletedAt { get; }
+    /// <summary>Gets reported scheduled deletion time, or null when absent or explicitly null.</summary>
     [JsonIgnore] public string? DeleteAfter { get; }
+    /// <summary>Gets soft-deletion timestamp presence, retaining explicit null.</summary>
     [JsonIgnore] public ProjectField<string> SoftDeletedAtField { get; }
+    /// <summary>Gets scheduled-deletion timestamp presence, retaining explicit null.</summary>
     [JsonIgnore] public ProjectField<string> DeleteAfterField { get; }
+    /// <summary>Gets the required returned creation timestamp with presence information.</summary>
     [JsonIgnore] public ProjectField<string> CreatedAt { get; }
+    /// <summary>Gets the required returned update timestamp with presence information.</summary>
     [JsonIgnore] public ProjectField<string> UpdatedAt { get; }
+    /// <summary>Gets deleting-user coordinate presence, retaining explicit null.</summary>
     [JsonIgnore] public ProjectField<string> DeletedByUserId { get; }
+    /// <summary>Gets deleting-identity coordinate presence, retaining explicit null.</summary>
     [JsonIgnore] public ProjectField<string> DeletedByIdentityId { get; }
+    /// <summary>Returns a marker without environment lifecycle details.</summary>
     public override string ToString() => "[ProjectEnvironment]";
 }
 
+/// <summary>Returned project tag metadata, not secret values or authorization evidence.</summary>
 public sealed class ProjectTag
 {
     internal ProjectTag(JsonElement value, string projectId, string? id = null, string? slug = null, bool inspection = false)
@@ -140,20 +182,32 @@ public sealed class ProjectTag
         CreatedBy = ProjectWire.StringField(value, "createdBy", nullable: true);
         CreatedByActorType = ProjectWire.StringField(value, "createdByActorType");
     }
+    /// <summary>Gets the returned tag identifier.</summary>
     [JsonIgnore] public string Id { get; }
+    /// <summary>Gets the native tag slug.</summary>
     [JsonIgnore] public string Slug { get; }
+    /// <summary>Gets returned color, or null when absent or explicitly null.</summary>
     [JsonIgnore] public string? Color { get; }
+    /// <summary>Gets returned tag name; endpoints that do not supply it leave it null.</summary>
     [JsonIgnore] public string? Name { get; }
+    /// <summary>Gets color presence to distinguish omission from explicit null.</summary>
     [JsonIgnore] public ProjectField<string> ColorField { get; }
+    /// <summary>Gets the required returned creation timestamp with presence information.</summary>
     [JsonIgnore] public ProjectField<string> CreatedAt { get; }
+    /// <summary>Gets the required returned update timestamp with presence information.</summary>
     [JsonIgnore] public ProjectField<string> UpdatedAt { get; }
+    /// <summary>Gets creator-coordinate presence, retaining explicit null.</summary>
     [JsonIgnore] public ProjectField<string> CreatedBy { get; }
+    /// <summary>Gets native creator-kind presence when returned.</summary>
     [JsonIgnore] public ProjectField<string> CreatedByActorType { get; }
+    /// <summary>Returns a marker without tag metadata.</summary>
     public override string ToString() => "[ProjectTag]";
 }
 
+/// <summary>Constructs disposable project, environment, tag and role requests; execution needs separately selected authority and exact grants.</summary>
 public static class ProjectOperations
 {
+    /// <summary>Builds bounded project inventory; null type or includeRoles omits that selector rather than selecting false.</summary>
     public static ManagementRequest<ManagementPage<ProjectSummary>> ListProjects(string organizationId,
         ProjectType? type = ProjectType.SecretManager, bool? includeRoles = false)
     {
@@ -166,6 +220,7 @@ public static class ProjectOperations
                 .Select(value => new ProjectSummary(value, organizationId, expectedType: typeName, includesRoles: true)), true), false);
     }
 
+    /// <summary>Builds independent inventory approval preserving omitted product and role-inclusion selectors.</summary>
     public static ManagementTarget ProjectListTarget(string organizationId,
         ProjectType? type = ProjectType.SecretManager, bool? includeRoles = false) =>
         ProjectWire.Intent(organizationId, null, null, writer =>
@@ -176,17 +231,20 @@ public static class ProjectOperations
             writer.WriteEndObject();
         });
 
+    /// <summary>Builds exact project lookup under the selected organization.</summary>
     public static ManagementRequest<ProjectSummary> GetProject(string organizationId, string projectId) =>
         new("infisical.get.v1.projects.by.projectId", HttpMethod.Get, ProjectPath(projectId),
             new(organizationId, projectId), null,
             root => new(ManagementJson.Object(root, "project"), organizationId, projectId), false);
 
+    /// <summary>Builds project lookup by native slug with response correspondence checks.</summary>
     public static ManagementRequest<ProjectSummary> GetProjectBySlug(string organizationId, string projectSlug) =>
         new("infisical.get.v1.projects.slug.by.slug", HttpMethod.Get,
             "/api/v1/projects/slug/" + ManagementJson.Escape(projectSlug),
             new(organizationId, resourceId: projectSlug), null,
             root => new(root, organizationId, slug: projectSlug), false);
 
+    /// <summary>Builds secret-manager project creation with explicit protection/default-environment choices and optional fields.</summary>
     public static ManagementRequest<ProjectSummary> CreateProject(string organizationId, string name, string slug,
         string? description = null, bool deleteProtection = false, bool createDefaultEnvironments = true,
         string? template = null, string? kmsKeyId = null)
@@ -216,6 +274,7 @@ public static class ProjectOperations
             root => new(ManagementJson.Object(root, "project"), organizationId, slug: slug, requiredDetails: true));
     }
 
+    /// <summary>Builds independent approval for the complete project creation body.</summary>
     public static ManagementTarget ProjectCreateTarget(string organizationId, string name, string slug,
         string? description = null, bool deleteProtection = false, bool createDefaultEnvironments = true,
         string? template = null, string? kmsKeyId = null)
@@ -269,6 +328,7 @@ public static class ProjectOperations
             root => new(ManagementJson.Object(root, "project"), organizationId, projectId, includesDetails: false));
     }
 
+    /// <summary>Builds independent approval for the complete project update; omitted fields and explicit empty ignore lists differ.</summary>
     public static ManagementTarget ProjectUpdateTarget(string organizationId, string projectId,
         string? name = null, string? slug = null, string? description = null, bool? deleteProtection = null,
         int? auditRetentionDays = null, bool? secretSharing = null, bool? autoCapitalization = null,
@@ -281,11 +341,13 @@ public static class ProjectOperations
         return request.Target;
     }
 
+    /// <summary>Builds project deletion; retain the caller receipt during cancellation or uncertain execution.</summary>
     public static ManagementRequest<ProjectSummary> DeleteProject(string organizationId, string projectId) =>
         new("infisical.delete.v1.projects.by.projectId", HttpMethod.Delete, ProjectPath(projectId),
             new(organizationId, projectId), null,
             root => new(ManagementJson.Object(root, "project"), organizationId, projectId, includesDetails: false));
 
+    /// <summary>Builds environment creation; optional numeric position is preserved without integer truncation.</summary>
     public static ManagementRequest<ProjectEnvironment> CreateEnvironment(string organizationId, string projectId,
         string name, string slug, double? position = null)
     {
@@ -298,6 +360,7 @@ public static class ProjectOperations
             root => EnvironmentResult(root, projectId, null, slug, true));
     }
 
+    /// <summary>Builds independent approval for exact environment creation fields.</summary>
     public static ManagementTarget EnvironmentCreateTarget(string organizationId, string projectId,
         string name, string slug, double? position = null)
     {
@@ -305,17 +368,20 @@ public static class ProjectOperations
         return request.Target;
     }
 
+    /// <summary>Builds exact environment lookup by identifier.</summary>
     public static ManagementRequest<ProjectEnvironment> GetEnvironment(string organizationId, string projectId, string environmentId) =>
         new("infisical.get.v1.projects.by.projectId.environments.by.envId", HttpMethod.Get,
             EnvironmentPath(projectId, environmentId), new(organizationId, projectId, environmentId), null,
             root => EnvironmentResult(root, projectId, environmentId, null, false), false);
 
+    /// <summary>Builds exact environment lookup by native slug.</summary>
     public static ManagementRequest<ProjectEnvironment> GetEnvironmentBySlug(string organizationId, string projectId, string slug) =>
         new("infisical.get.v1.projects.by.projectId.environments.slug.by.envSlug", HttpMethod.Get,
             ProjectPath(projectId) + "/environments/slug/" + ManagementJson.Escape(slug),
             new(organizationId, projectId, slug), null,
             root => EnvironmentResult(root, projectId, null, slug, false), false);
 
+    /// <summary>Builds environment change; null fields omit changes and an entirely empty change is invalid.</summary>
     public static ManagementRequest<ProjectEnvironment> UpdateEnvironment(string organizationId, string projectId,
         string environmentId, string? name = null, string? slug = null, double? position = null)
     {
@@ -329,6 +395,7 @@ public static class ProjectOperations
             root => EnvironmentResult(root, projectId, environmentId, null, true));
     }
 
+    /// <summary>Builds independent approval for the complete selected environment update.</summary>
     public static ManagementTarget EnvironmentUpdateTarget(string organizationId, string projectId,
         string environmentId, string? name = null, string? slug = null, double? position = null)
     {
@@ -336,6 +403,7 @@ public static class ProjectOperations
         return request.Target;
     }
 
+    /// <summary>Builds explicit hard or soft environment deletion; default is soft and execution requires a fresh receipt.</summary>
     public static ManagementRequest<ProjectEnvironment> DeleteEnvironment(string organizationId, string projectId,
         string environmentId, bool permanently = false) =>
         new("infisical.delete.v1.projects.by.projectId.environments.by.id", HttpMethod.Delete,
@@ -343,26 +411,31 @@ public static class ProjectOperations
             new(organizationId, projectId, environmentId, permanently ? "hard-delete" : "soft-delete"), null,
             root => EnvironmentResult(root, projectId, environmentId, null, true));
 
+    /// <summary>Builds explicit restoration of one environment; construction performs no remote recovery.</summary>
     public static ManagementRequest<ProjectEnvironment> RestoreEnvironment(string organizationId, string projectId, string environmentId) =>
         new("infisical.post.v1.projects.by.projectId.environments.by.id.restore", HttpMethod.Post,
             EnvironmentPath(projectId, environmentId) + "/restore", new(organizationId, projectId, environmentId), null,
             root => EnvironmentResult(root, projectId, environmentId, null, true));
 
+    /// <summary>Builds bounded unpaged tag inventory.</summary>
     public static ManagementRequest<ManagementPage<ProjectTag>> ListTags(string organizationId, string projectId) =>
         new("infisical.get.v1.projects.by.projectId.tags", HttpMethod.Get, ProjectPath(projectId) + "/tags",
             new(organizationId, projectId), null, root => new(ManagementJson.Array(root, "tags")
                 .Select(value => new ProjectTag(value, projectId)), true), false);
 
+    /// <summary>Builds exact tag inspection by identifier.</summary>
     public static ManagementRequest<ProjectTag> GetTag(string organizationId, string projectId, string tagId) =>
         new("infisical.get.v1.projects.by.projectId.tags.by.tagId", HttpMethod.Get, TagPath(projectId, tagId),
             new(organizationId, projectId, tagId), null,
             root => new(ManagementJson.Object(root, "tag"), projectId, tagId, inspection: true), false);
 
+    /// <summary>Builds exact tag inspection by native slug.</summary>
     public static ManagementRequest<ProjectTag> GetTagBySlug(string organizationId, string projectId, string slug) =>
         new("infisical.get.v1.projects.by.projectId.tags.slug.by.tagSlug", HttpMethod.Get,
             ProjectPath(projectId) + "/tags/slug/" + ManagementJson.Escape(slug), new(organizationId, projectId, slug), null,
             root => new(ManagementJson.Object(root, "tag"), projectId, slug: slug, inspection: true), false);
 
+    /// <summary>Builds tag creation with explicit slug and color.</summary>
     public static ManagementRequest<ProjectTag> CreateTag(string organizationId, string projectId, string slug, string color)
     {
         ManagementJson.Text(slug, 64);
@@ -373,6 +446,7 @@ public static class ProjectOperations
             root => new(ManagementJson.Object(root, "tag"), projectId, slug: slug));
     }
 
+    /// <summary>Builds tag update with explicit replacement slug and color.</summary>
     public static ManagementRequest<ProjectTag> UpdateTag(string organizationId, string projectId, string tagId, string slug, string color)
     {
         ManagementJson.Text(slug, 64);
@@ -383,38 +457,45 @@ public static class ProjectOperations
             root => new(ManagementJson.Object(root, "tag"), projectId, tagId));
     }
 
+    /// <summary>Builds independent approval for exact tag creation fields.</summary>
     public static ManagementTarget TagCreateTarget(string organizationId, string projectId, string slug, string color)
     {
         using var request = CreateTag(organizationId, projectId, slug, color);
         return request.Target;
     }
 
+    /// <summary>Builds independent approval for the selected tag and complete update body.</summary>
     public static ManagementTarget TagUpdateTarget(string organizationId, string projectId, string tagId, string slug, string color)
     {
         using var request = UpdateTag(organizationId, projectId, tagId, slug, color);
         return request.Target;
     }
 
+    /// <summary>Builds exact tag deletion; does not delete tagged secrets.</summary>
     public static ManagementRequest<ProjectTag> DeleteTag(string organizationId, string projectId, string tagId) =>
         new("infisical.delete.v1.projects.by.projectId.tags.by.tagId", HttpMethod.Delete, TagPath(projectId, tagId),
             new(organizationId, projectId, tagId), null,
             root => new(ManagementJson.Object(root, "tag"), projectId, tagId));
 
+    /// <summary>Builds bounded project-role inventory; metadata is not an effective-permission decision.</summary>
     public static ManagementRequest<ManagementPage<RoleSummary>> ListProjectRoles(string organizationId, string projectId) =>
         new("infisical.get.v1.projects.by.projectId.roles", HttpMethod.Get, ProjectPath(projectId) + "/roles",
             new(organizationId, projectId), null, root => new(ManagementJson.Array(root, "roles")
                 .Select(value => new RoleSummary(value, "projectId", projectId)), true), false);
 
+    /// <summary>Builds exact project-role lookup by UUID.</summary>
     public static ManagementRequest<RoleSummary> GetProjectRole(string organizationId, string projectId, string roleId) =>
         new("infisical.get.v1.projects.roles.by.roleId", HttpMethod.Get,
             "/api/v1/projects/roles/" + ManagementJson.Escape(ManagementJson.UuidInput(roleId)), new(organizationId, projectId, roleId), null,
             root => new(ManagementJson.Object(root, "role"), "projectId", projectId, roleId), false);
 
+    /// <summary>Builds project-role lookup by native slug.</summary>
     public static ManagementRequest<RoleSummary> GetProjectRoleBySlug(string organizationId, string projectId, string roleSlug) =>
         new("infisical.get.v1.projects.by.projectId.roles.slug.by.roleSlug", HttpMethod.Get,
             ProjectPath(projectId) + "/roles/slug/" + ManagementJson.Escape(roleSlug), new(organizationId, projectId, roleSlug), null,
             root => new(ManagementJson.Object(root, "role"), "projectId", projectId, slug: roleSlug), false);
 
+    /// <summary>Builds exact project-role deletion with retained mutation evidence required at execution.</summary>
     public static ManagementRequest<RoleSummary> DeleteProjectRole(string organizationId, string projectId, string roleId) =>
         new("infisical.delete.v1.projects.by.projectId.roles.by.roleId", HttpMethod.Delete,
             ProjectPath(projectId) + "/roles/" + ManagementJson.Escape(roleId), new(organizationId, projectId, roleId), null,

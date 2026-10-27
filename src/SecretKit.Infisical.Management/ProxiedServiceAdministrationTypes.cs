@@ -4,15 +4,19 @@ using SecretKit.Core;
 
 namespace SecretKit.Infisical.Management;
 
-public enum ProxiedServiceCredentialRole { HeaderRewrite, CredentialSubstitution }
-public enum ProxiedServiceHeaderPurpose { Username, Password }
-public enum ProxiedServiceSubstitutionSurface { Header, Path, Query, Body }
+/// <summary>Native proxy credential placement strategy.</summary>
+public enum ProxiedServiceCredentialRole { /** <summary>Rewrites a selected outgoing header.</summary> */ HeaderRewrite, /** <summary>Substitutes selected credential placeholders.</summary> */ CredentialSubstitution }
+/// <summary>Native purpose of a rewritten credential header.</summary>
+public enum ProxiedServiceHeaderPurpose { /** <summary>Places the username component.</summary> */ Username, /** <summary>Places the password component.</summary> */ Password }
+/// <summary>Explicit request surfaces admitted for native substitution.</summary>
+public enum ProxiedServiceSubstitutionSurface { /** <summary>Substitutes within request headers.</summary> */ Header, /** <summary>Substitutes within the URL path.</summary> */ Path, /** <summary>Substitutes within URL query fields.</summary> */ Query, /** <summary>Substitutes within the request body.</summary> */ Body }
 
 /// <summary>Immutable copied protected credential selectors; no secret retrieval or principal acquisition.</summary>
 public sealed class ProxiedServiceCredentialInput : IDisposable
 {
     private readonly object _gate = new();
     private byte[]? _body;
+    /// <summary>Copies bounded credential selectors and optional placeholder material into an owned body; acquires no secret.</summary>
     public ProxiedServiceCredentialInput(ProxiedServiceCredentialRole role, string? dynamicSecretField = null,
         string? dynamicSecretName = null, string? headerName = null, string? headerPrefix = null,
         ProxiedServiceHeaderPurpose? headerPurpose = null, string? placeholderKey = null,
@@ -79,7 +83,9 @@ public sealed class ProxiedServiceCredentialInput : IDisposable
             writer.WriteRawValue(_body);
         }
     }
+    /// <summary>Clears the owned serialized selector/material body and prevents further serialization.</summary>
     public void Dispose() { lock (_gate) { if (_body is not null) Array.Clear(_body); _body = null; } }
+    /// <summary>Returns a marker without credential selectors or placeholder material.</summary>
     public override string ToString() => "[ProxiedServiceCredentialInput]";
 }
 
@@ -88,8 +94,11 @@ public sealed class ProxiedServiceCreation : IDisposable
 {
     private readonly object _gate = new();
     private byte[]? _body;
+    /// <summary>Gets the selected proxy service name.</summary>
     [JsonIgnore] public string Name { get; }
+    /// <summary>Gets the selected project identifier.</summary>
     [JsonIgnore] public string ProjectId { get; }
+    /// <summary>Copies one to 1000 credential inputs into its independent body; caller retains ownership of inputs.</summary>
     public ProxiedServiceCreation(string projectId, string environment, string name, string hostPattern,
         IEnumerable<ProxiedServiceCredentialInput> credentials, string? secretPath = null, bool? isEnabled = null)
     {
@@ -120,14 +129,18 @@ public sealed class ProxiedServiceCreation : IDisposable
     {
         lock (_gate) { ObjectDisposedException.ThrowIf(_body is null, this); writer.WriteRawValue(_body); }
     }
+    /// <summary>Clears the owned creation body without deleting provider configuration.</summary>
     public void Dispose() { lock (_gate) { if (_body is not null) Array.Clear(_body); _body = null; } }
+    /// <summary>Returns a marker without creation settings or credential selectors.</summary>
     public override string ToString() => "[ProxiedServiceCreation]";
 }
 
+/// <summary>Owned optional proxy patch body; null fields remain omitted rather than cleared.</summary>
 public sealed class ProxiedServiceUpdate : IDisposable
 {
     private readonly object _gate = new();
     private byte[]? _body;
+    /// <summary>Copies optional credential inputs into an owned body; null credentials omit the field and explicit arrays must be nonempty.</summary>
     public ProxiedServiceUpdate(string? name = null, string? hostPattern = null, bool? isEnabled = null,
         IEnumerable<ProxiedServiceCredentialInput>? credentials = null)
     {
@@ -148,7 +161,9 @@ public sealed class ProxiedServiceUpdate : IDisposable
     {
         lock (_gate) { ObjectDisposedException.ThrowIf(_body is null, this); writer.WriteRawValue(_body); }
     }
+    /// <summary>Clears the owned patch body and prevents further serialization.</summary>
     public void Dispose() { lock (_gate) { if (_body is not null) Array.Clear(_body); _body = null; } }
+    /// <summary>Returns a marker without patch contents.</summary>
     public override string ToString() => "[ProxiedServiceUpdate]";
 }
 
@@ -210,33 +225,59 @@ public sealed class ProxiedServiceCredentialSummary : IDisposable
         string? placeholder = GatewayJson.Text(value, "placeholderValue");
         if (placeholder is not null) PlaceholderValue = SecretMaterial.FromText(placeholder);
     }
+    /// <summary>Gets the returned credential configuration UUID.</summary>
     [JsonIgnore] public string Id { get; }
+    /// <summary>Gets the owning service UUID verified against the returned service.</summary>
     [JsonIgnore] public string ServiceId { get; }
+    /// <summary>Gets the open native placement-role string without constraining it to input enums.</summary>
     [JsonIgnore] public string Role { get; }
+    /// <summary>Gets whether a read response included the provider lease affordance.</summary>
     [JsonIgnore] public bool HasCallerCanLease { get; }
+    /// <summary>Gets the provider-authored lease flag, or null when absent; not independently verified capability.</summary>
     [JsonIgnore] public bool? CallerCanLease { get; }
+    /// <summary>Gets whether the dynamic-secret field selector was returned, including null.</summary>
     [JsonIgnore] public bool HasDynamicSecretField { get; }
+    /// <summary>Gets the dynamic-secret field selector; use its Has flag to distinguish omission.</summary>
     [JsonIgnore] public string? DynamicSecretField { get; }
+    /// <summary>Gets whether a dynamic-secret name was returned, including null.</summary>
     [JsonIgnore] public bool HasDynamicSecretName { get; }
+    /// <summary>Gets the dynamic-secret name; use its Has flag to distinguish omission.</summary>
     [JsonIgnore] public string? DynamicSecretName { get; }
+    /// <summary>Gets whether a header name was returned, including null.</summary>
     [JsonIgnore] public bool HasHeaderName { get; }
+    /// <summary>Gets the header name; use its Has flag to distinguish omission.</summary>
     [JsonIgnore] public string? HeaderName { get; }
+    /// <summary>Gets whether a header prefix was returned, including null.</summary>
     [JsonIgnore] public bool HasHeaderPrefix { get; }
+    /// <summary>Gets the header prefix; empty remains distinct from null.</summary>
     [JsonIgnore] public string? HeaderPrefix { get; }
+    /// <summary>Gets whether header purpose was returned, including null.</summary>
     [JsonIgnore] public bool HasHeaderPurpose { get; }
+    /// <summary>Gets open native header-purpose text; use its Has flag to distinguish omission.</summary>
     [JsonIgnore] public string? HeaderPurpose { get; }
+    /// <summary>Gets whether a placeholder key was returned, including null.</summary>
     [JsonIgnore] public bool HasPlaceholderKey { get; }
+    /// <summary>Gets the placeholder key; use its Has flag to distinguish omission.</summary>
     [JsonIgnore] public string? PlaceholderKey { get; }
+    /// <summary>Gets whether placeholder material was returned, including explicit null.</summary>
     [JsonIgnore] public bool HasPlaceholderValue { get; }
+    /// <summary>Gets owned placeholder material, or null when absent or null; dispose this summary after use.</summary>
     [JsonIgnore] public SecretMaterial? PlaceholderValue { get; }
+    /// <summary>Gets whether a secret key selector was returned, including null.</summary>
     [JsonIgnore] public bool HasSecretKey { get; }
+    /// <summary>Gets the secret key selector, not a secret value.</summary>
     [JsonIgnore] public string? SecretKey { get; }
+    /// <summary>Gets whether substitution surfaces were returned, including null.</summary>
     [JsonIgnore] public bool HasSubstitutionSurfaces { get; }
+    /// <summary>Gets open native surface strings; null differs from an explicit empty collection.</summary>
     [JsonIgnore] public IReadOnlyList<string>? SubstitutionSurfaces { get; }
+    /// <summary>Disposes owned placeholder material without changing proxy configuration.</summary>
     public void Dispose() => PlaceholderValue?.Dispose();
+    /// <summary>Returns a marker without placeholder material or credential selectors.</summary>
     public override string ToString() => "[ProxiedServiceCredentialSummary]";
 }
 
+/// <summary>Owned proxy metadata and credential projections; dispose to release every placeholder buffer.</summary>
 public sealed class ProxiedServiceSummary : IDisposable
 {
     internal ProxiedServiceSummary(JsonElement value, bool credentials, bool access, string? id = null, string? name = null)
@@ -265,23 +306,39 @@ public sealed class ProxiedServiceSummary : IDisposable
         }
         catch { foreach (var credential in copy) credential.Dispose(); throw; }
     }
+    /// <summary>Gets the returned service UUID.</summary>
     [JsonIgnore] public string Id { get; }
+    /// <summary>Gets the returned service name.</summary>
     [JsonIgnore] public string Name { get; }
+    /// <summary>Gets the returned folder UUID without inventing broader scope attestation.</summary>
     [JsonIgnore] public string FolderId { get; }
+    /// <summary>Gets the protected backend host pattern, not an active backend connection.</summary>
     [JsonIgnore] public string HostPattern { get; }
+    /// <summary>Gets the returned creation timestamp.</summary>
     [JsonIgnore] public string CreatedAt { get; }
+    /// <summary>Gets the returned update timestamp.</summary>
     [JsonIgnore] public string UpdatedAt { get; }
+    /// <summary>Gets whether the enabled flag was returned.</summary>
     [JsonIgnore] public bool HasIsEnabled { get; }
+    /// <summary>Gets the returned enabled switch, or null when omitted.</summary>
     [JsonIgnore] public bool? IsEnabled { get; }
+    /// <summary>Gets whether last-use time was returned, including explicit null.</summary>
     [JsonIgnore] public bool HasLastUsedAt { get; }
+    /// <summary>Gets the reported last-use timestamp; use HasLastUsedAt to distinguish absence.</summary>
     [JsonIgnore] public string? LastUsedAt { get; }
+    /// <summary>Gets the provider-authored proxy affordance for read results; mutation results leave it null.</summary>
     [JsonIgnore] public bool? CanProxy { get; }
+    /// <summary>Gets whether this projection includes credential rows; deletion results do not.</summary>
     [JsonIgnore] public bool HasCredentials { get; }
+    /// <summary>Gets owned credential summaries; empty does not imply omission when HasCredentials is true.</summary>
     [JsonIgnore] public IReadOnlyList<ProxiedServiceCredentialSummary> Credentials { get; }
+    /// <summary>Disposes all owned credential placeholder material without remote cleanup.</summary>
     public void Dispose() { foreach (var credential in Credentials) credential.Dispose(); }
+    /// <summary>Returns a marker without proxy configuration or credentials.</summary>
     public override string ToString() => "[ProxiedServiceSummary]";
 }
 
+/// <summary>Owned proxy-service inventory response with protected project-slug metadata.</summary>
 public sealed class ProxiedServiceList : IDisposable
 {
     internal ProxiedServiceList(JsonElement value)
@@ -295,8 +352,12 @@ public sealed class ProxiedServiceList : IDisposable
         }
         catch { foreach (var service in copy) service.Dispose(); throw; }
     }
+    /// <summary>Gets the native returned project slug.</summary>
     [JsonIgnore] public string ProjectSlug { get; }
+    /// <summary>Gets owned returned service summaries; dispose the list after inspection.</summary>
     [JsonIgnore] public IReadOnlyList<ProxiedServiceSummary> Services { get; }
+    /// <summary>Disposes every owned returned service summary.</summary>
     public void Dispose() { foreach (var service in Services) service.Dispose(); }
+    /// <summary>Returns a marker without service inventory contents.</summary>
     public override string ToString() => "[ProxiedServiceList]";
 }

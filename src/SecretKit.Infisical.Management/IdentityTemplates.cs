@@ -4,16 +4,21 @@ using SecretKit.Core;
 
 namespace SecretKit.Infisical.Management;
 
+/// <summary>Native authentication methods supported by typed identity templates.</summary>
 public enum IdentityTemplateAuthMethod
 {
+    /// <summary>Directory authentication template.</summary>
     Ldap,
+    /// <summary>Kubernetes token-review template.</summary>
     Kubernetes,
+    /// <summary>OpenID Connect authentication template.</summary>
     Oidc
 }
 
 /// <summary>OIDC creation fields. Null optional arguments omit fields; empty strings are explicit values.</summary>
 public sealed class IdentityTemplateOidcFields : IdentityTemplateFields
 {
+    /// <summary>Captures full OIDC creation fields; optional null fields are omitted rather than cleared.</summary>
     public IdentityTemplateOidcFields(string discoveryUrl, string boundIssuer,
         string? boundAudiences = null, string? caCertificate = null) : base("oidc")
     {
@@ -29,9 +34,13 @@ public sealed class IdentityTemplateOidcFields : IdentityTemplateFields
         CaCertificate = caCertificate;
     }
 
+    /// <summary>Gets the explicit discovery URL.</summary>
     [JsonIgnore] public string DiscoveryUrl { get; }
+    /// <summary>Gets the explicit issuer constraint.</summary>
     [JsonIgnore] public string BoundIssuer { get; }
+    /// <summary>Gets audience constraints, or null when omitted.</summary>
     [JsonIgnore] public string? BoundAudiences { get; }
+    /// <summary>Gets CA certificate text, or null when omitted.</summary>
     [JsonIgnore] public string? CaCertificate { get; }
     internal override void Write(Utf8JsonWriter writer)
     {
@@ -40,6 +49,7 @@ public sealed class IdentityTemplateOidcFields : IdentityTemplateFields
         IdentityTemplateWire.String(writer, "boundAudiences", BoundAudiences);
         IdentityTemplateWire.String(writer, "caCert", CaCertificate);
     }
+    /// <summary>Returns a marker without OIDC configuration.</summary>
     public override string ToString() => "[IdentityTemplateOidcFields]";
 }
 
@@ -77,15 +87,25 @@ public sealed class IdentityTemplateSummary
         UpdatedAt = ManagementJson.Required(value, "updatedAt");
     }
 
+    /// <summary>Gets the returned template identifier.</summary>
     [JsonIgnore] public string Id { get; }
+    /// <summary>Gets the returned organization coordinate matched to selection.</summary>
     [JsonIgnore] public string OrganizationId { get; }
+    /// <summary>Gets the returned template name.</summary>
     [JsonIgnore] public string Name { get; }
+    /// <summary>Gets the returned native authentication method.</summary>
     [JsonIgnore] public IdentityTemplateAuthMethod AuthMethod { get; }
+    /// <summary>Gets stored-credential presence for LDAP or Kubernetes; OIDC leaves this null and no credential is exported.</summary>
     [JsonIgnore] public bool? HasStoredCredential { get; }
+    /// <summary>Gets the returned creation timestamp.</summary>
     [JsonIgnore] public string CreatedAt { get; }
+    /// <summary>Gets the returned update timestamp.</summary>
     [JsonIgnore] public string UpdatedAt { get; }
+    /// <summary>Gets protected stored settings without bind-password or reviewer-token material.</summary>
     [JsonIgnore] public IdentityTemplateConfigurationSummary Configuration { get; }
+    /// <summary>Always true: this projection includes the typed configuration summary.</summary>
     public bool IncludesConfiguration => true;
+    /// <summary>Returns a marker without template settings or coordinates.</summary>
     public override string ToString() => "[IdentityTemplateSummary]";
 }
 
@@ -102,9 +122,13 @@ public sealed class IdentityTemplateUsage
             throw new ManagementContractException(SecretStatus.Unknown);
     }
 
+    /// <summary>Gets the returned associated identity identifier.</summary>
     [JsonIgnore] public string IdentityId { get; }
+    /// <summary>Gets the returned identity display name.</summary>
     [JsonIgnore] public string IdentityName { get; }
+    /// <summary>Gets the returned authentication identifier for unlink results; usage listings leave it null.</summary>
     [JsonIgnore] public string? AuthId { get; }
+    /// <summary>Returns a marker without association details.</summary>
     public override string ToString() => "[IdentityTemplateUsage]";
 }
 
@@ -112,7 +136,9 @@ public sealed class IdentityTemplateUsage
 public sealed class IdentityTemplateDeletion
 {
     internal IdentityTemplateDeletion(JsonElement value) => Message = ManagementJson.Required(value, "message");
+    /// <summary>Gets the native deletion acknowledgement message; it carries no scope attestation.</summary>
     [JsonIgnore] public string Message { get; }
+    /// <summary>Returns a marker without the native acknowledgement message.</summary>
     public override string ToString() => "[IdentityTemplateDeletion]";
 }
 
@@ -122,6 +148,7 @@ public sealed class IdentityTemplateDeletion
 /// </summary>
 public static partial class IdentityTemplateOperations
 {
+    /// <summary>Builds a bounded method-filtered template inventory request.</summary>
     public static ManagementRequest<ManagementPage<IdentityTemplateSummary>> ListIdentityTemplates(
         string organizationId, IdentityTemplateAuthMethod authMethod)
     {
@@ -132,6 +159,7 @@ public static partial class IdentityTemplateOperations
                 new IdentityTemplateSummary(value, organizationId, authMethod: method)), true), false);
     }
 
+    /// <summary>Builds count-validated template search with exact optional search and paging intent.</summary>
     public static ManagementRequest<ManagementPage<IdentityTemplateSummary>> SearchIdentityTemplates(
         string organizationId, string? search = null, int offset = 0, int limit = 5)
     {
@@ -166,23 +194,28 @@ public static partial class IdentityTemplateOperations
         return query;
     }
 
+    /// <summary>Builds an exact template lookup under the selected organization.</summary>
     public static ManagementRequest<IdentityTemplateSummary> GetIdentityTemplate(string organizationId, string templateId) =>
         new("infisical.get.v1.identity.templates.by.templateId", HttpMethod.Get, TemplatePath(templateId),
             new(organizationId, resourceId: templateId), null,
             root => new(root, organizationId, templateId), false);
 
+    /// <summary>Builds OIDC template creation using complete typed fields.</summary>
     public static ManagementRequest<IdentityTemplateSummary> CreateIdentityTemplate(string organizationId,
         string name, IdentityTemplateOidcFields fields)
         => Create(organizationId, name, fields);
 
+    /// <summary>Builds a name-only template update; null name emits no name field.</summary>
     public static ManagementRequest<IdentityTemplateSummary> UpdateIdentityTemplate(string organizationId,
         string templateId, string? name = null)
         => Update(organizationId, templateId, name, null);
 
+    /// <summary>Builds template deletion; retain the caller receipt across cancellation or unknown outcomes.</summary>
     public static ManagementRequest<IdentityTemplateDeletion> DeleteIdentityTemplate(string organizationId, string templateId) =>
         new("infisical.delete.v1.identity.templates.by.templateId", HttpMethod.Delete, TemplatePath(templateId),
             new(organizationId, resourceId: templateId), null, root => new(root));
 
+    /// <summary>Builds template association inventory; usage does not attest delivery or effective permissions.</summary>
     public static ManagementRequest<ManagementPage<IdentityTemplateUsage>> GetIdentityTemplateUsage(
         string organizationId, string templateId) =>
         new("infisical.get.v1.identity.templates.by.templateId.usage", HttpMethod.Get, TemplatePath(templateId) + "/usage",
