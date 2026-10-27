@@ -45,7 +45,7 @@ public sealed class SecretMaterialOwnershipTests
     }
 
     [Test]
-    public async Task ConcurrentCopyAndDisposalNeverReturnClearedMaterial()
+    public async Task ConcurrentCopyAndDisposalSmokePreservesAnyReturnedCopy()
     {
         string value = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
         using SecretMaterial material = SecretMaterial.FromText(value);
@@ -53,15 +53,18 @@ public sealed class SecretMaterialOwnershipTests
         Task copy = Task.Run(async () =>
         {
             await start.Task;
+            SecretMaterial owned;
             try
             {
-                using SecretMaterial owned = material.Copy();
-                await Assert.That(owned.Reveal()).IsEqualTo(value);
+                owned = material.Copy();
             }
             catch (ObjectDisposedException)
             {
                 // Disposal won the synchronization boundary.
+                return;
             }
+            using (owned)
+                await Assert.That(owned.Reveal()).IsEqualTo(value);
         });
         Task dispose = Task.Run(async () =>
         {
