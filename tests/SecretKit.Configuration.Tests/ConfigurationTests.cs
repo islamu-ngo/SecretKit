@@ -381,6 +381,132 @@ public sealed class ConfigurationTests
         await Assert.That(debug.Contains(exportKey, StringComparison.Ordinal)).IsFalse();
     }
 
+    [Test]
+    public async Task SecondBuildRejectsWithoutDisposingWinningRoot()
+    {
+        var reader = new ControlledReader();
+        using var loader = CreateLoader(reader);
+        await loader.RefreshAsync();
+        using var handle = loader.Acquire();
+        using var export = SecretConfigurationExport.CreateAcknowledgingManagedStrings(
+            handle, [new("first", "Service:Value")]);
+        IConfigurationRoot root = new ConfigurationBuilder().Add(export).Build();
+        using var lifetime = (IDisposable)root;
+
+        await Assert.That(() => new ConfigurationBuilder().Add(export).Build())
+            .Throws<InvalidOperationException>();
+        await Assert.That(root["Service:Value"]).IsEqualTo(reader.Value);
+        reader.Value = NewMaterial();
+        await loader.RefreshAsync();
+        using var next = loader.Acquire();
+        export.ReplaceAcknowledgingManagedStrings(next);
+        await Assert.That(root["Service:Value"]).IsEqualTo(reader.Value);
+    }
+
+    [Test]
+    public async Task ConcurrentBuildersHaveExactlyOneUsableWinner()
+    {
+        var reader = new ControlledReader();
+        using var loader = CreateLoader(reader);
+        await loader.RefreshAsync();
+        using var handle = loader.Acquire();
+        using var export = SecretConfigurationExport.CreateAcknowledgingManagedStrings(
+            handle, [new("first", "Service:Value")]);
+        var start = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        int arrivals = 0;
+        Task<(IConfigurationRoot? Root, Exception? Error)> BuildAsync() => Task.Run(async () =>
+        {
+            if (Interlocked.Increment(ref arrivals) == 2) ready.TrySetResult();
+            await start.Task;
+            try { return ((IConfigurationRoot?)new ConfigurationBuilder().Add(export).Build(), (Exception?)null); }
+            catch (Exception error) { return ((IConfigurationRoot?)null, error); }
+        });
+        var first = BuildAsync();
+        var second = BuildAsync();
+        (IConfigurationRoot? Root, Exception? Error)[] results;
+        try
+        {
+            await ready.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            start.TrySetResult();
+            results = await Task.WhenAll(first, second).WaitAsync(TimeSpan.FromSeconds(10));
+        }
+        finally { start.TrySetResult(); }
+        try
+        {
+            await Assert.That(results.Count(result => result.Root is not null)).IsEqualTo(1);
+            await Assert.That(results.Count(result => result.Error is InvalidOperationException)).IsEqualTo(1);
+            IConfigurationRoot winner = results.Single(result => result.Root is not null).Root!;
+            await Assert.That(winner["Service:Value"]).IsEqualTo(reader.Value);
+        }
+        finally
+        {
+            foreach (var result in results) (result.Root as IDisposable)?.Dispose();
+        }
+    }
+
+    [Test]
+    public async Task LaterSiblingBuildFailureDoesNotReopenExportSlot()
+    {
+        var reader = new ControlledReader();
+        using var loader = CreateLoader(reader);
+        await loader.RefreshAsync();
+        using var handle = loader.Acquire();
+        using var export = SecretConfigurationExport.CreateAcknowledgingManagedStrings(
+            handle, [new("first", "Service:Value")]);
+        await Assert.That(() => new ConfigurationBuilder().Add(export).Add(new FailingSource()).Build())
+            .Throws<InvalidOperationException>();
+        await Assert.That(() => new ConfigurationBuilder().Add(export).Build())
+            .Throws<InvalidOperationException>();
+        export.Dispose();
+        await Assert.That(() => export.Build(new ConfigurationBuilder())).Throws<ObjectDisposedException>();
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task BuildAndSourceDisposalLinearizeWithoutRebuild(bool disposeFirst)
+    {
+        var reader = new ControlledReader();
+        using var loader = CreateLoader(reader);
+        await loader.RefreshAsync();
+        using var handle = loader.Acquire();
+        using var export = SecretConfigurationExport.CreateAcknowledgingManagedStrings(
+            handle, [new("first", "Service:Value")]);
+        var start = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var disposed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var built = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task<IConfigurationRoot?> build = Task.Run(async () =>
+        {
+            await start.Task;
+            if (disposeFirst) await disposed.Task;
+            try { return new ConfigurationBuilder().Add(export).Build(); }
+            catch (ObjectDisposedException) { return null; }
+            finally { built.TrySetResult(); }
+        });
+        Task dispose = Task.Run(async () =>
+        {
+            await start.Task;
+            if (!disposeFirst) await built.Task;
+            export.Dispose();
+            disposed.TrySetResult();
+        });
+        start.TrySetResult();
+        await Task.WhenAll(build, dispose).WaitAsync(TimeSpan.FromSeconds(10));
+        IConfigurationRoot? root = await build;
+        using var lifetime = root as IDisposable;
+        await Assert.That(root is null).IsEqualTo(disposeFirst);
+        if (root is not null) await Assert.That(root["Service:Value"]).IsNull();
+        await Assert.That(() => export.Build(new ConfigurationBuilder())).Throws<ObjectDisposedException>();
+        await Assert.That(() => export.ReplaceAcknowledgingManagedStrings(handle)).Throws<ObjectDisposedException>();
+    }
+
+    private sealed class FailingSource : IConfigurationSource
+    {
+        public IConfigurationProvider Build(IConfigurationBuilder builder) =>
+            throw new InvalidOperationException("Synthetic sibling source failure.");
+    }
+
     private static string NewMaterial() => Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
     private static SecretSelection Select(string key, ControlledReader reader) =>
         new(key, reader, new SecretReference(reader.Authority, new TestAddress()));

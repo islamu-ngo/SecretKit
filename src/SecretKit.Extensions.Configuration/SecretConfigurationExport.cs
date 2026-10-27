@@ -25,12 +25,14 @@ public sealed class SecretConfigurationMapping
 /// Deliberate ordinary-string export. IConfiguration enumeration, debug views, options,
 /// logs and escaped strings are host-owned plaintext boundaries. Disposal does not erase
 /// strings. Indexer reads across reload are not a coherent multi-key operation.
+/// The source can build exactly one provider for one configuration root.
 /// </summary>
 public sealed class SecretConfigurationExport : IConfigurationSource, IDisposable
 {
     private readonly object _gate = new();
     private readonly SecretConfigurationMapping[] _mapping;
     private readonly ExportProvider _provider = new();
+    private bool _built;
     private bool _disposed;
 
     private SecretConfigurationExport(SecretSnapshotHandle generation, SecretConfigurationMapping[] mapping)
@@ -69,12 +71,19 @@ public sealed class SecretConfigurationExport : IConfigurationSource, IDisposabl
         _provider.SignalReload();
     }
 
+    /// <summary>
+    /// Returns the sole provider once. A later sibling-source failure does not reopen this slot.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The source has already built its provider.</exception>
     public IConfigurationProvider Build(IConfigurationBuilder builder)
     {
         ArgumentNullException.ThrowIfNull(builder);
         lock (_gate)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
+            if (_built)
+                throw new InvalidOperationException("A secret configuration export supports only one build.");
+            _built = true;
             return _provider;
         }
     }

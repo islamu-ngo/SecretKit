@@ -55,12 +55,17 @@ only when ordinary managed strings are intended. Each
 configuration key. The complete mapping is checked for ordinal case-insensitive
 collisions before reading material. Add the returned source to a
 `ConfigurationBuilder`; `Build` and synchronous `Load` do no reader I/O.
+Each export supports exactly one successful `Build`, including concurrent
+builders. A second build throws `InvalidOperationException` without affecting
+the winning root. The slot is consumed when the source returns its provider;
+if a later sibling source fails, dispose the export rather than rebuilding it.
 
 `ReplaceAcknowledgingManagedStrings(nextHandle)` prepares all mapped values,
 atomically replaces the provider's string dictionary and signals reload. A failed
 replacement leaves prior strings and the reload token unchanged. The provider
 is read-only. Disposing either the source or configuration root clears its
-dictionary references; a disposed provider cannot be republished.
+dictionary references and prevents replacement or rebuild; an in-flight
+replacement cannot resurrect a disposed provider.
 
 Separate IConfiguration indexer reads can cross a reload and mix generations.
 Use an acquired handle or construct a consumer-owned immutable typed object from

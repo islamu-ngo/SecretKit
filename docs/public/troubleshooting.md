@@ -82,6 +82,10 @@ Destination keys for explicit configuration export are case-insensitive:
 `Connection:Key` and `connection:key` collide even though loader consumer keys use
 ordinal comparison. Correct the mapping before export.
 
+An export can build exactly one root. A rejected second Build leaves the first
+root usable; a later sibling-source failure does not reopen that slot. Create a
+new export rather than reusing or resetting an existing one.
+
 ## Authentication maintenance is not running
 
 Constructing or registering a helper alone starts no worker. The host must

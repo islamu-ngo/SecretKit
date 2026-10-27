@@ -158,6 +158,12 @@ The export owns strings, not the supplied handle; it neither retains nor dispose
 that handle. The provider is read-only: setting configuration values throws
 `NotSupportedException`.
 
+An export is single-root: exactly one `Build` succeeds, including concurrent
+builders. Later builds throw a fixed `InvalidOperationException` without
+disposing or changing the winning provider. The slot is consumed when the source
+returns its provider, even if a later sibling source fails to build the root.
+Dispose the export after that failure; do not retry it in another builder.
+
 For explicit replacement, keep the loader, export and root alive:
 
 ```csharp
@@ -186,7 +192,8 @@ authority-controlled keys.
 enumeration, options binding, serializers, logs and dumps can disclose exported
 values and coordinates. Disposal of the export or configuration root drops the
 provider's dictionary references; it does not erase strings, old options or
-consumer fields. A disposed provider cannot be republished. Reload is not proof
+consumer fields. Source/root disposal prevents replacement and rebuild, and a
+replacement losing to disposal cannot resurrect values. Reload is not proof
 that an options consumer or client switched credentials.
 
 ## Application activation is a separate step
