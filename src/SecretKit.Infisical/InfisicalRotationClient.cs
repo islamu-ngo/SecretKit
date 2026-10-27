@@ -156,23 +156,25 @@ public sealed class InfisicalRotationClient : IDisposable
         bool? enabled, SecretReference target, InfisicalRotationAction? action,
         InfisicalRotationReceipt? receipt, CancellationToken cancellationToken)
     {
-        var tokenOutcome = await _administration.Tokens.GetTokenAsync(cancellationToken).ConfigureAwait(false);
-        if (!tokenOutcome.IsSuccess)
-        {
-            return SecretOutcome<JsonDocument>.Failure(tokenOutcome.Status);
-        }
-        using var token = tokenOutcome.Value;
-        if (token.ExpiresAt <= DateTimeOffset.UtcNow)
-        {
-            return SecretOutcome<JsonDocument>.Failure(SecretStatus.Expired);
-        }
-        using var controlled = new HttpClient(new RequestBuilderOnlyHandler())
-        {
-            BaseAddress = _origin,
-            Timeout = Timeout.InfiniteTimeSpan
-        };
         try
         {
+            var tokenOutcome = await _administration.Tokens.GetTokenAsync(cancellationToken).ConfigureAwait(false);
+            if (!tokenOutcome.IsSuccess)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                return SecretOutcome<JsonDocument>.Failure(tokenOutcome.Status);
+            }
+            using var token = tokenOutcome.Value;
+            cancellationToken.ThrowIfCancellationRequested();
+            if (token.ExpiresAt <= DateTimeOffset.UtcNow)
+            {
+                return SecretOutcome<JsonDocument>.Failure(SecretStatus.Expired);
+            }
+            using var controlled = new HttpClient(new RequestBuilderOnlyHandler())
+            {
+                BaseAddress = _origin,
+                Timeout = Timeout.InfiniteTimeSpan
+            };
             // Do not let Refit manufacture ApiException objects retaining provider bodies.
             var api = RestService.For<IInfisicalRotationApi>(controlled, new RefitSettings
             {
@@ -288,6 +290,7 @@ public sealed class InfisicalRotationClient : IDisposable
         catch (Exception exception) when (exception is HttpRequestException or IOException or
             JsonException or FormatException or OperationCanceledException)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             return SecretOutcome<JsonDocument>.Failure(SecretStatus.Unknown);
         }
     }

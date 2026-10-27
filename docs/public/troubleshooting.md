@@ -96,6 +96,10 @@ expecting automatic login, persistence or replay.
 
 See [authentication and hosting](authentication-and-hosting.md).
 
+Rotation token-acquisition transport/I/O failures also return bounded outcomes
+without source exception text. Preserve a receipt that remains NotDispatched;
+caller cancellation still propagates rather than becoming an ordinary failure.
+
 ## A native revision read fails while a common read works
 
 `InfisicalClient.ReadNativeAsync` qualifies only raw, non-imported reads and

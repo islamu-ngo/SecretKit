@@ -11,6 +11,115 @@ public sealed class RotationOutcomeTests
     private const string OtherId = "7dd128d5-fedd-445f-aaef-6aec4bb35335";
 
     [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task AcquisitionFaultIsSanitizedBeforeAnyDispatch(bool io)
+    {
+        using var wire = new RotationWire();
+        using var http = new HttpClient(wire);
+        using var tokens = new Tokens
+        {
+            AcquisitionFault = io
+            ? new IOException("protected-acquisition-canary")
+            : new HttpRequestException("protected-acquisition-canary")
+        };
+        using var client = Client(http, tokens);
+        var target = Target(client);
+        var receipt = new InfisicalRotationReceipt(target, InfisicalRotationAction.RotateSecrets);
+        await Assert.That((await client.RotateSecretsAsync(target, receipt)).Status).IsEqualTo(SecretStatus.Unknown);
+        await Assert.That((await client.GetAsync(target)).Status).IsEqualTo(SecretStatus.Unknown);
+        await Assert.That((await client.ListAsync(new(client.Authority,
+            new InfisicalRotationScope("private-project")))).Status).IsEqualTo(SecretStatus.Unknown);
+        await Assert.That(receipt.Dispatch).IsEqualTo(InfisicalRotationDispatch.NotDispatched);
+        await Assert.That(wire.Requests).IsEqualTo(0);
+    }
+
+    [Test]
+    public async Task AcquisitionCancellationRemainsCallerCancellation()
+    {
+        using var wire = new RotationWire();
+        using var http = new HttpClient(wire);
+        using var cancellation = new CancellationTokenSource();
+        using var tokens = new Tokens
+        {
+            OnAcquire = cancellation.Cancel,
+            AcquisitionFault = new OperationCanceledException("protected-cancellation-canary")
+        };
+        using var client = Client(http, tokens);
+        var target = Target(client);
+        var receipt = new InfisicalRotationReceipt(target, InfisicalRotationAction.RotateSecrets);
+        try
+        {
+            await client.RotateSecretsAsync(target, receipt, cancellationToken: cancellation.Token);
+            throw new InvalidOperationException("Expected caller cancellation.");
+        }
+        catch (OperationCanceledException exception)
+        {
+            await Assert.That(exception.CancellationToken).IsEqualTo(cancellation.Token);
+            await Assert.That(exception.ToString().Contains("protected-cancellation-canary", StringComparison.Ordinal)).IsFalse();
+        }
+        await Assert.That(receipt.Dispatch).IsEqualTo(InfisicalRotationDispatch.NotDispatched);
+        await Assert.That(wire.Requests).IsEqualTo(0);
+    }
+
+    [Test]
+    [Arguments("unsuccessful")]
+    [Arguments("http")]
+    [Arguments("io")]
+    public async Task CancellationWinsReleasedAcquisitionFailureWithoutDispatch(string failure)
+    {
+        foreach (string operation in new[] { "get", "list", "rotate", "automatic" })
+        {
+            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            using var cancellation = new CancellationTokenSource();
+            var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var acquisition = new TaskCompletionSource<SecretOutcome<InfisicalAccessToken>>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            using var wire = new RotationWire();
+            using var http = new HttpClient(wire);
+            using var tokens = new Tokens
+            {
+                OnAcquire = () => entered.TrySetResult(),
+                PendingAcquisition = acquisition.Task
+            };
+            using var client = Client(http, tokens);
+            var target = Target(client);
+            var receipt = new InfisicalRotationReceipt(target, operation == "automatic" ?
+                InfisicalRotationAction.EnableAutomaticRotation : InfisicalRotationAction.RotateSecrets);
+            Task pending = operation switch
+            {
+                "get" => client.GetAsync(target, cancellation.Token).AsTask(),
+                "list" => client.ListAsync(new(client.Authority,
+                    new InfisicalRotationScope("private-project")), cancellationToken: cancellation.Token).AsTask(),
+                "rotate" => client.RotateSecretsAsync(target, receipt, cancellationToken: cancellation.Token).AsTask(),
+                _ => client.SetAutomaticRotationAsync(target, true, receipt,
+                    cancellationToken: cancellation.Token).AsTask()
+            };
+            await entered.Task.WaitAsync(deadline.Token);
+            cancellation.Cancel();
+            if (failure == "unsuccessful")
+                acquisition.SetResult(SecretOutcome<InfisicalAccessToken>.Failure(SecretStatus.Denied));
+            else
+                acquisition.SetException(failure == "http" ?
+                    new HttpRequestException("protected-acquisition-canary") :
+                    new IOException("protected-acquisition-canary"));
+            try
+            {
+                await pending.WaitAsync(deadline.Token);
+                throw new InvalidOperationException("Expected caller cancellation.");
+            }
+            catch (OperationCanceledException exception)
+            {
+                await Assert.That(exception.CancellationToken).IsEqualTo(cancellation.Token);
+                await Assert.That(exception.ToString().Contains("protected-acquisition-canary",
+                    StringComparison.Ordinal)).IsFalse();
+            }
+            await Assert.That(receipt.Dispatch).IsEqualTo(InfisicalRotationDispatch.NotDispatched);
+            await Assert.That(wire.Requests).IsEqualTo(0);
+        }
+    }
+
+    [Test]
     public async Task EveryCurrentProfileUsesItsNativeRoutesAndObservedSetting()
     {
         foreach (var profile in Enum.GetValues<InfisicalRotationProfile>())
@@ -363,9 +472,15 @@ public sealed class RotationOutcomeTests
         internal SecretMaterial? LastCopy { get; private set; }
         internal bool Forbidden { get; init; }
         internal Action? OnIssued { get; init; }
+        internal Action? OnAcquire { get; init; }
+        internal Exception? AcquisitionFault { get; init; }
+        internal Task<SecretOutcome<InfisicalAccessToken>>? PendingAcquisition { get; init; }
         public ValueTask<SecretOutcome<InfisicalAccessToken>> GetTokenAsync(CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            OnAcquire?.Invoke();
+            if (PendingAcquisition is { } pending) return new(pending);
+            if (AcquisitionFault is { } fault) throw fault;
             if (Forbidden)
             {
                 throw new InvalidOperationException("Forbidden credential acquisition.");
