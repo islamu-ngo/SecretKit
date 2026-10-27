@@ -39,18 +39,26 @@ database drivers. See [scope decision](connector-scope-decision.md) and
 
 | Surface | Implemented transport boundary | What the host must supply |
 | --- | --- | --- |
-| Infisical common reads | Fixed HTTPS origin; explicit loopback HTTP opt-in; owned transport disables redirects, cookies and activity propagation | Bounded cancellation deadline and selected token source. With supplied `SocketsHttpHandler`, keep configuration stable and preserve validating TLS, no redirects/cookies/activity propagation. |
-| Infisical dynamic/native rotation | Dedicated typed client; selected origin/scope/credentials | Secure supplied transport. Rotation's supplied `HttpClient` is host-owned; do not add redirects, cookies, retries or sensitive diagnostics. |
-| Infisical management | `ManagementTransport` owns fixed-origin HTTP wrapper; no automatic retry or fallback | Dispose the transport after clients finish; pass cancellation deadlines and explicit grants/receipts. |
+| Infisical reads/login/renewal | Shared explicit safe or host-controlled selection; absolute selected-origin requests | Bounded cancellation and selected credentials. Borrowed client/handler configuration and lifetime stay host-owned. |
+| Infisical dynamic/native rotation | Same transport selection; dedicated typed origin/scope/authority | Dispose owned client resources; explicit host-controlled networking retains host policy. |
+| Infisical management | Same selection through `ManagementTransport(origin, network)` | Dispose transport after clients finish; pass cancellation deadlines and explicit grants/receipts. |
 | Azure data plane | Official SDK, revision `2025-07-01`; trusted public/US government/China vault hostname forms; challenge-resource validation enabled | Selected credential and any injected transport; normal vault DNS for private endpoints. Accepted syntax does not qualify a cloud deployment. |
 | Azure administration/audit | Fixed public-cloud ARM/Logs endpoints; SDK retries/logging/tracing disabled | Separate explicit administrative/monitoring credentials and secure host-owned transports. Sovereign management endpoints are not exposed. |
 
-The Infisical read-client supplied-handler overload rejects custom certificate
-validation callbacks and chain verification bypass flags. Use standard trust
-stores or a validating custom-root chain policy, not an accept-all callback.
-Proxy, DNS, credential telemetry and host transport instrumentation remain host
-responsibilities. SDK validation of outer requests does not validate the internals
-of arbitrary injected transports.
+`InfisicalNetworkOptions.Transport` defaults to `SafeDefault`: normal HTTPS TLS,
+no redirects/cookies/propagation, no ambient proxy or SDK replay. Loopback
+development HTTP is explicit. `SafeWithPrivateTrust(roots)` copies public issuer
+data and retains normal hostname/chain checks; revocation uses the handler's
+default no-lookup policy. Explicit `network.Proxy` selects safe routing.
+
+`HostControlled(client)` or `HostControlled(handler)` deliberately accepts host
+HTTP(S), TLS relaxation, redirects, retries, cookies and instrumentation without
+SDK enforcement inside the pipeline. Do not combine it with SDK proxy settings.
+Both modes retain SDK authority, response budgets and receipts. The client is
+not mutated, and host resources survive SDK disposal. Safe connections are
+reused with a two-minute pooled lifetime; host networking retains its own DNS
+and pooling policy. Runtime EventSource, profilers and host instrumentation are
+not covered by SDK diagnostic controls.
 
 Source/evidence:
 [Infisical client](../../src/SecretKit.Infisical/InfisicalClient.cs),
