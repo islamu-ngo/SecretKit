@@ -161,7 +161,7 @@ public sealed class InfisicalTransportOwnershipTests
     [Arguments("activity")]
     [Arguments("certificate-callback")]
     [Arguments("chain-bypass")]
-    public async Task UnsafeHostConfigurationIsRejectedBeforeCredentials(string fault)
+    public async Task ExplicitHostConfigurationIsAcceptedWithoutAcquiringCredentials(string fault)
     {
         using var handler = SafeHandler();
         switch (fault)
@@ -178,8 +178,9 @@ public sealed class InfisicalTransportOwnershipTests
                 break;
         }
 
-        await Assert.That(() => new InfisicalClient(new("https://selected.test"), handler, new ForbiddenTokens()))
-            .Throws<ArgumentException>();
+        await using var client = new InfisicalClient(new("https://selected.test"), new ForbiddenTokens(),
+            new() { Transport = InfisicalTransportOptions.HostControlled(handler) });
+        await Assert.That(client.Authority).IsNotNull();
     }
 
     [Test]
@@ -190,8 +191,8 @@ public sealed class InfisicalTransportOwnershipTests
         listener.Start();
         var origin = new Uri($"http://127.0.0.1:{((IPEndPoint)listener.LocalEndpoint).Port}/");
         using var handler = SafeHandler();
-        var client = new InfisicalClient(origin, handler, new Tokens(),
-            new() { AllowLoopbackDevelopmentHttp = true });
+        var client = new InfisicalClient(origin, new Tokens(),
+            new() { Transport = InfisicalTransportOptions.HostControlled(handler) });
         Task<bool> firstServer = RespondAsync(listener, "200 OK", NativeBody, deadline.Token);
         using InfisicalSecretRead read = (await client.ReadNativeAsync(Reference(client), deadline.Token)).Value;
         await Assert.That(read.Material.Reveal()).IsEqualTo("material-canary");
@@ -218,9 +219,8 @@ public sealed class InfisicalTransportOwnershipTests
         using var foreignStop = CancellationTokenSource.CreateLinkedTokenSource(deadline.Token);
         Task<TcpClient> foreignConnection = foreign.AcceptTcpClientAsync(foreignStop.Token).AsTask();
         Task<bool> server = RespondAsync(listener, "302 Found", "", deadline.Token, location);
-        using var handler = SafeHandler();
         await using var client = new InfisicalClient(
-            new($"http://127.0.0.1:{((IPEndPoint)listener.LocalEndpoint).Port}/"), handler, new Tokens(),
+            new($"http://127.0.0.1:{((IPEndPoint)listener.LocalEndpoint).Port}/"), new Tokens(),
             new() { AllowLoopbackDevelopmentHttp = true });
 
         var result = await client.ReadAsync(Reference(client), deadline.Token);

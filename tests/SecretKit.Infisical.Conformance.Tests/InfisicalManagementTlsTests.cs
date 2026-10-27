@@ -178,7 +178,8 @@ public sealed class InfisicalManagementTlsTests
         {
             using SocketsHttpHandler handler = pair.CreateHandler(denied);
             TrustControl(handler, control);
-            using var authentication = new InfisicalProofAuthentication(control.Origin, handler);
+            using var authentication = new InfisicalProofAuthentication(control.Origin,
+                new() { Transport = InfisicalTransportOptions.HostControlled(handler) });
             using var proof = InfisicalLoginProof.TlsCertificate(Identity);
             var receipt = authentication.CreateReceipt();
             SecretOutcome<InfisicalProofLogin> outcome = await authentication.LoginAsync(proof, receipt).AsTask().WaitAsync(Deadline);

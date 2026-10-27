@@ -129,7 +129,8 @@ public sealed class InfisicalProofMtlsTests
         {
             // The second SDK instance uses the very same host handler after the first
             // SDK instance is disposed, proving ownership through another TLS exchange.
-            using var authentication = new InfisicalProofAuthentication(server.Origin, handler);
+            using var authentication = new InfisicalProofAuthentication(server.Origin,
+                new() { Transport = InfisicalTransportOptions.HostControlled(handler) });
             var receipt = authentication.CreateReceipt();
             Exchange exchange = server.Arm(ResponseMode.Complete);
             Task<SecretOutcome<InfisicalProofLogin>> pending = authentication.LoginAsync(proof, receipt).AsTask();
@@ -170,7 +171,8 @@ public sealed class InfisicalProofMtlsTests
         using var pair = ProofCertificatePair.Load(Packet(certificates.Accepted), Packet(certificates.Denied));
         await using var server = new TlsServer(certificates);
         using SocketsHttpHandler handler = TrustedHandler(pair, false, certificates);
-        using var authentication = new InfisicalProofAuthentication(server.Origin, handler);
+        using var authentication = new InfisicalProofAuthentication(server.Origin,
+            new() { Transport = InfisicalTransportOptions.HostControlled(handler) });
         using var proof = InfisicalLoginProof.TlsCertificate(Identity);
         using var cancellation = new CancellationTokenSource();
         var canceled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -230,7 +232,8 @@ public sealed class InfisicalProofMtlsTests
         // Force presentation of the unexpected leaf regardless of its server-only EKU.
         if (unexpected)
             handler.SslOptions.LocalCertificateSelectionCallback = (_, _, _, _, _) => certificates.Server;
-        using var authentication = new InfisicalProofAuthentication(server.Origin, handler);
+        using var authentication = new InfisicalProofAuthentication(server.Origin,
+            new() { Transport = InfisicalTransportOptions.HostControlled(handler) });
         using var proof = InfisicalLoginProof.TlsCertificate(Identity);
         Exchange exchange = server.Arm(ResponseMode.Complete);
         var receipt = authentication.CreateReceipt();

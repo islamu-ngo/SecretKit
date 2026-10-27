@@ -324,9 +324,11 @@ public sealed class ProofAuthenticationTests
         await Assert.That(() => new InfisicalProofAuthentication(new("https://auth.test?query"))).Throws<ArgumentException>();
         await Assert.That(() => new InfisicalProofAuthentication(new("https://auth.test#fragment"))).Throws<ArgumentException>();
         using var unsafeHandler = new SocketsHttpHandler();
-        await Assert.That(() => new InfisicalProofAuthentication(new("https://auth.test"), unsafeHandler)).Throws<ArgumentException>();
+        using var explicitHost = new InfisicalProofAuthentication(new("http://auth.test"),
+            new InfisicalNetworkOptions { Transport = InfisicalTransportOptions.HostControlled(unsafeHandler) });
         using var handler = new SocketsHttpHandler { AllowAutoRedirect = false, UseCookies = false, ActivityHeadersPropagator = null };
-        using (var client = new InfisicalProofAuthentication(new("https://auth.test:8443"), handler))
+        using (var client = new InfisicalProofAuthentication(new("https://auth.test:8443"),
+            new InfisicalNetworkOptions { Transport = InfisicalTransportOptions.HostControlled(handler) }))
             await Assert.That(client.ToString()).IsEqualTo("[InfisicalProofAuthentication]");
         handler.MaxConnectionsPerServer = 3;
         await Assert.That(handler.MaxConnectionsPerServer).IsEqualTo(3);

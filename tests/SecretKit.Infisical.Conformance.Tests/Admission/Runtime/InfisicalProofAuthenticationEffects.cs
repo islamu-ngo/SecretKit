@@ -61,7 +61,12 @@ internal static class InfisicalProofAuthenticationEffects
             if (handler is not null) configureProofTransport?.Invoke(handler);
             using var authentication = handler is null ?
                 new InfisicalProofAuthentication(environment.Origin, fixture.Network) :
-                new InfisicalProofAuthentication(environment.Origin, handler, fixture.Network);
+                new InfisicalProofAuthentication(environment.Origin,
+                    new()
+                    {
+                        AllowLoopbackDevelopmentHttp = fixture.Network.AllowLoopbackDevelopmentHttp,
+                        Transport = InfisicalTransportOptions.HostControlled(handler)
+                    });
             InfisicalProofLoginReceipt receipt = authentication.CreateReceipt();
             if (issuance is not null) await issuance.ArmAsync(receipt, token);
             AuthenticationDispatchResult<InfisicalProofLogin> dispatch = await AuthenticationDispatch.InvokeAsync(

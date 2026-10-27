@@ -203,10 +203,12 @@ public sealed class UniversalAuthenticationTests
         await Assert.That(() => new InfisicalUniversalAuthentication(new("https://auth.test/redirect"))).Throws<ArgumentException>();
         await Assert.That(() => new InfisicalUniversalAuthentication(new("http://auth.test"))).Throws<ArgumentException>();
         using var unsafeTransport = new SocketsHttpHandler();
-        await Assert.That(() => new InfisicalUniversalAuthentication(new("https://auth.test"), unsafeTransport)).Throws<ArgumentException>();
+        using var explicitHost = new InfisicalUniversalAuthentication(new("http://auth.test"),
+            new InfisicalNetworkOptions { Transport = InfisicalTransportOptions.HostControlled(unsafeTransport) });
         using var safeTransport = new SocketsHttpHandler
         { AllowAutoRedirect = false, UseCookies = false, ActivityHeadersPropagator = null };
-        using (var client = new InfisicalUniversalAuthentication(new("https://auth.test"), safeTransport))
+        using (var client = new InfisicalUniversalAuthentication(new("https://auth.test"),
+            new InfisicalNetworkOptions { Transport = InfisicalTransportOptions.HostControlled(safeTransport) }))
             await Assert.That(client.ToString()).IsEqualTo("[InfisicalUniversalAuthentication]");
         // Disposal of the client did not dispose or freeze its host-owned handler.
         safeTransport.MaxConnectionsPerServer = 3;

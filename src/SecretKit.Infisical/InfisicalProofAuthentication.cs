@@ -173,6 +173,7 @@ public sealed class InfisicalLoginProof : IDisposable
 public sealed partial class InfisicalProofAuthentication : IDisposable
 {
     private readonly HttpClient _transport;
+    private readonly InfisicalTransportBinding _binding;
     private readonly IInfisicalProofAuthenticationWire _wire;
     private readonly Uri _origin;
     private readonly TimeProvider _time;
@@ -182,11 +183,6 @@ public sealed partial class InfisicalProofAuthentication : IDisposable
     public InfisicalProofAuthentication(Uri origin, InfisicalNetworkOptions? network = null,
         TimeProvider? timeProvider = null) : this(origin, network ?? new(), timeProvider, null, true) { }
 
-    /// <summary>Host-owned controlled transport, including host-configured client certificates.</summary>
-    public InfisicalProofAuthentication(Uri origin, SocketsHttpHandler hostTransport,
-        InfisicalNetworkOptions? network = null, TimeProvider? timeProvider = null)
-        : this(origin, network ?? new(), timeProvider, Validate(hostTransport), false) { }
-
     internal InfisicalProofAuthentication(Uri origin, HttpMessageHandler handler,
         InfisicalNetworkOptions? network = null, TimeProvider? timeProvider = null)
         : this(origin, network ?? new(), timeProvider, handler, false) { }
@@ -195,39 +191,20 @@ public sealed partial class InfisicalProofAuthentication : IDisposable
         TimeProvider? timeProvider, HttpMessageHandler? handler, bool ownsHandler)
     {
         ArgumentNullException.ThrowIfNull(origin);
-        bool development = origin.IsAbsoluteUri && origin.IsLoopback && origin.Scheme == "http" &&
-            network.AllowLoopbackDevelopmentHttp;
-        if (!origin.IsAbsoluteUri || origin.Scheme != "https" && !development ||
-            origin.UserInfo.Length != 0 || origin.AbsolutePath != "/" || origin.Query.Length != 0 ||
-            origin.Fragment.Length != 0)
-            throw new ArgumentException("A trusted HTTPS origin is required.");
+        InfisicalTransportBinding.ValidateOrigin(origin, network);
         if (network.MaximumResponseBytes is < 1024 or > 16 * 1024 * 1024)
             throw new ArgumentException("Invalid authentication response budget.");
         _origin = origin;
         _time = timeProvider ?? TimeProvider.System;
         _responseLimit = network.MaximumResponseBytes;
-        _transport = new HttpClient(handler ?? new SocketsHttpHandler
-        {
-            AllowAutoRedirect = false,
-            UseCookies = false,
-            ActivityHeadersPropagator = null,
-            Proxy = network.Proxy
-        }, disposeHandler: ownsHandler)
-        { BaseAddress = origin, Timeout = Timeout.InfiniteTimeSpan };
-        _wire = RestService.For<IInfisicalProofAuthenticationWire>(_transport, new RefitSettings
+        _binding = new(origin, network, handler, ownsHandler);
+        _transport = _binding.Client;
+        _wire = RestService.For<IInfisicalProofAuthenticationWire>(_binding.Requests, new RefitSettings
         {
             CaptureRequestContent = false,
             CaptureMethodArguments = false,
             ExceptionFactory = _ => ValueTask.FromResult<Exception?>(null)
         });
-    }
-
-    private static SocketsHttpHandler Validate(SocketsHttpHandler handler)
-    {
-        ArgumentNullException.ThrowIfNull(handler);
-        if (handler.AllowAutoRedirect || handler.UseCookies || handler.ActivityHeadersPropagator is not null)
-            throw new ArgumentException("Transport must disable redirects, cookies and activity propagation.");
-        return handler;
     }
 
     public InfisicalProofLoginReceipt CreateReceipt()
@@ -343,7 +320,7 @@ public sealed partial class InfisicalProofAuthentication : IDisposable
     public void Dispose()
     {
         _disposed = true;
-        _transport.Dispose();
+        _binding.Dispose();
     }
     public override string ToString() => "[InfisicalProofAuthentication]";
 }

@@ -262,7 +262,7 @@
     },
     {
       "file": "src/SecretKit.Infisical/InfisicalClient.cs",
-      "sha256": "2818843c8ea8258c9edef6c49e0b2fd061f91ac237341910e156e6e8469c8c96"
+      "sha256": "0e8ef08d5a921f234aac1fa0eabf20a0812f156af4da1331e825b4fb7cf29eb2"
     },
     {
       "file": "src/SecretKit.Infisical/InfisicalContractAvailability.cs",
@@ -286,15 +286,15 @@
     },
     {
       "file": "src/SecretKit.Infisical/InfisicalNetworkOptions.cs",
-      "sha256": "d14dbc22da6295955e75519e0858b1eba09a0cf4d3c277224f4f37fa04ac8bf4"
+      "sha256": "964598daba2fd8e3fd1b1bd84af826a81930ce891d9dd46fb1ebb49530933f4d"
     },
     {
       "file": "src/SecretKit.Infisical/InfisicalPeriodicTokenSession.cs",
-      "sha256": "465170507fcfd6e009284b96fc20aab452b5301cf5122959406498c74cee417c"
+      "sha256": "aeb55a5a3c6ccf7c9e41a41e7795000755c006b6049ed13c106c890c38e19c02"
     },
     {
       "file": "src/SecretKit.Infisical/InfisicalProofAuthentication.cs",
-      "sha256": "f1db74dccc6571b28b3b3f2d9599a3aa27b596d8e87f0b2395c5e8a3b27be908"
+      "sha256": "01d032ea99c7a1a797c9b0d9b7fdd9162e148c3019ddff7f71e013cf22011dbe"
     },
     {
       "file": "src/SecretKit.Infisical/InfisicalRotationApi.cs",
@@ -333,8 +333,12 @@
       "sha256": "7b65e0cd7bd186c89516e0b87236126c421744562d2418747f11e03170b58b2f"
     },
     {
+      "file": "src/SecretKit.Infisical/InfisicalTransportOptions.cs",
+      "sha256": "cbc20398170d550ae697cc9eaa8163d2fbfb847fd4d20f8f68351a1cfac476d8"
+    },
+    {
       "file": "src/SecretKit.Infisical/InfisicalUniversalAuthentication.cs",
-      "sha256": "a2c7c555f77eaa906b86a8b8423e4eeee308a074a14c89823a0dada957525541"
+      "sha256": "5b2e1a95e3e7664e84250fab9da6e16f6100c38c2f01b299503ac8d88058fbd2"
     },
     {
       "file": "src/SecretKit.Infisical/NativeAuthority.cs",
@@ -362,7 +366,7 @@
     },
     {
       "file": "src/SecretKit.Infisical/NativeWireBindings.cs",
-      "sha256": "da4fb55a5316c46e65de1c34a609f388f81ece5c3d283c32083daae0957dbf08"
+      "sha256": "0d00f3d0ec2d8f38ac14cff49dfb12356e92695e01eb698048407a00062f8cfc"
     },
     {
       "file": "src/SecretKit.Infisical/Organization.cs",

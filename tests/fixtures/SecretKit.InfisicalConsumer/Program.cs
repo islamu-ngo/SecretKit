@@ -52,10 +52,14 @@ internal static class InstalledWorkflow
         {
             AllowAutoRedirect = false, UseCookies = false, ActivityHeadersPropagator = null, UseProxy = false
         };
-        var network = new InfisicalNetworkOptions { AllowLoopbackDevelopmentHttp = true };
+        var network = new InfisicalNetworkOptions
+        {
+            AllowLoopbackDevelopmentHttp = true,
+            Transport = InfisicalTransportOptions.HostControlled(handler)
+        };
         var clock = new Clock();
         var scenarios = new List<object>();
-        using var authentication = new InfisicalUniversalAuthentication(wire.Origin, handler, network, clock);
+        using var authentication = new InfisicalUniversalAuthentication(wire.Origin, network, clock);
         using var credential = SecretMaterial.FromText("installed-bootstrap-canary");
         InfisicalUniversalLoginReceipt loginReceipt = authentication.CreateReceipt();
         using InfisicalUniversalLogin login = (await wire.Exchange(
@@ -71,12 +75,12 @@ internal static class InstalledWorkflow
             Lifetime = InfisicalTokenLifetime.Finite, ReportedMaximumTtl = TimeSpan.FromSeconds(120)
         });
         await using var session = new InfisicalPeriodicTokenSession(login, evidence,
-            TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(5), handler, network, clock);
+            TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(5), network, clock);
         login.Dispose();
         using (InfisicalAccessToken selected = (await session.GetTokenAsync(deadline.Token)).Value)
             Require(selected.Material.Reveal() == Token);
         Require(session.LastRenewal is null && session.State == InfisicalTokenSessionState.Ready);
-        await using var client = new InfisicalClient(wire.Origin, handler, session, network, clock);
+        await using var client = new InfisicalClient(wire.Origin, session, network, clock);
         SecretReference reference = Reference(client);
         long started = Stopwatch.GetTimestamp();
 
@@ -97,7 +101,7 @@ internal static class InstalledWorkflow
         scenarios.Add(new { id = "S09", subset = "two-required-denied-or-absent-no-construction", status = "passed" });
         scenarios.Add(new { id = "S10", subset = "separate-optional-absence-preserves-required-consumer", status = "passed" });
 
-        await using var replacement = new InfisicalClient(wire.Origin, handler, session, network, clock);
+        await using var replacement = new InfisicalClient(wire.Origin, session, network, clock);
         using InfisicalSecretRead same = (await wire.Exchange(
             () => replacement.ReadNativeAsync(Reference(replacement), deadline.Token).AsTask(),
             "GET", "/api/v4/secrets/" + Key, 200, SecretBody(), Token)).Value;

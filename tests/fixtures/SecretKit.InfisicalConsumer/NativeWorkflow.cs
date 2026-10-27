@@ -164,12 +164,16 @@ internal static class NativeWorkflow
             UseCookies = false,
             ActivityHeadersPropagator = null
         };
-        var network = new InfisicalNetworkOptions { AllowLoopbackDevelopmentHttp = s.AllowLoopbackDevelopmentHttp };
+        var network = new InfisicalNetworkOptions
+        {
+            AllowLoopbackDevelopmentHttp = s.AllowLoopbackDevelopmentHttp,
+            Transport = InfisicalTransportOptions.HostControlled(handler)
+        };
         Uri origin = new(s.Origin);
-        await using var reader = new InfisicalClient(origin, handler, runtime, network);
-        await using var deniedReader = new InfisicalClient(origin, handler, denied, network);
-        await using var writeClient = new InfisicalClient(origin, handler, writer, network);
-        await using var witness = new InfisicalClient(origin, handler, observer, network);
+        await using var reader = new InfisicalClient(origin, runtime, network);
+        await using var deniedReader = new InfisicalClient(origin, denied, network);
+        await using var writeClient = new InfisicalClient(origin, writer, network);
+        await using var witness = new InfisicalClient(origin, observer, network);
         SecretReference Select(InfisicalClient client, string key, int? version = null) =>
             new(client.Authority, new InfisicalSecretAddress(s.ProjectId, s.Environment, s.Folder, key, version));
         async Task Observe(string id, Func<Task<bool>> action, bool independentlyObserved = true)
@@ -370,7 +374,7 @@ internal static class NativeWorkflow
 
         async Task Authentication(LocalNativeAuthentication auth)
         {
-            using var authentication = new InfisicalUniversalAuthentication(origin, handler, network);
+            using var authentication = new InfisicalUniversalAuthentication(origin, network);
             InfisicalUniversalLogin? login = null;
             try
             {
@@ -394,8 +398,8 @@ internal static class NativeWorkflow
                         ReportedMaximumTtl = TimeSpan.FromSeconds(login.AccessTokenMaxTTL)
                     });
                     await using var session = new InfisicalPeriodicTokenSession(login, evidence,
-                        TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(10), handler, network);
-                    await using var authenticated = new InfisicalClient(origin, handler, session, network);
+                        TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(10), network);
+                    await using var authenticated = new InfisicalClient(origin, session, network);
                     await Observe("get-token", async () =>
                     {
                         var result = await authenticated.ReadNativeAsync(Select(authenticated, s.ReadKey), token);
@@ -416,7 +420,7 @@ internal static class NativeWorkflow
                             DateTimeOffset upperExpiry = DateTimeOffset.UtcNow.AddSeconds(login.ExpiresIn);
                             await Task.Delay(upperExpiry - DateTimeOffset.UtcNow, token);
                             using var expired = new LocalNativeTokens(login.Token.Material.Reveal());
-                            await using var expiredReader = new InfisicalClient(origin, handler, expired, network);
+                            await using var expiredReader = new InfisicalClient(origin, expired, network);
                             var rejected = await expiredReader.ReadNativeAsync(Select(expiredReader, s.ReadKey), token);
                             if (rejected.IsSuccess) rejected.Value.Dispose();
                             var local = await session.GetTokenAsync(token);
@@ -434,7 +438,7 @@ internal static class NativeWorkflow
                         if (!result.IsSuccess) return false;
                         using var recovered = result.Value;
                         using var selected = new LocalNativeTokens(recovered.Token.Material.Reveal());
-                        await using var recoveredReader = new InfisicalClient(origin, handler, selected, network);
+                        await using var recoveredReader = new InfisicalClient(origin, selected, network);
                         var read = await recoveredReader.ReadNativeAsync(Select(recoveredReader, s.ReadKey), token);
                         if (!read.IsSuccess) return false;
                         read.Value.Dispose();
@@ -449,7 +453,7 @@ internal static class NativeWorkflow
                                 ReportedMaximumTtl = TimeSpan.FromSeconds(recovered.AccessTokenMaxTTL)
                             });
                             await using var recoveredSession = new InfisicalPeriodicTokenSession(recovered, evidence,
-                                TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(10), handler, network);
+                                TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(10), network);
                             await Observe("renew-token", async () =>
                                 await recoveredSession.RenewAsync(token) == SecretStatus.Success &&
                                 recoveredSession.LastRenewal?.Evidence == InfisicalRenewalEvidence.Applied);

@@ -6,6 +6,9 @@ namespace SecretKit.Infisical;
 /// <summary>Standard TLS/trust-store networking; no certificate-validation bypass.</summary>
 public sealed class InfisicalNetworkOptions
 {
+    [JsonIgnore]
+    public InfisicalTransportOptions Transport { get; init; } = InfisicalTransportOptions.SafeDefault;
+
     public bool AllowLoopbackDevelopmentHttp { get; init; }
 
     public int MaximumResponseBytes { get; init; } = 1024 * 1024;

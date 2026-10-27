@@ -52,7 +52,11 @@ internal static class NativeLifetimeTrials
             // This is admission, not a new issue time. A delayed handoff cannot extend a trial.
             if (time.GetUtcNow() >= trial.IssuedAt.AddSeconds(trial.ExpiresIn - 2))
                 return new(trial.Id, "unavailable", "stale-trial");
-            var network = new InfisicalNetworkOptions { AllowLoopbackDevelopmentHttp = settings.AllowLoopbackDevelopmentHttp };
+            var network = new InfisicalNetworkOptions
+            {
+                AllowLoopbackDevelopmentHttp = settings.AllowLoopbackDevelopmentHttp,
+                Transport = InfisicalTransportOptions.HostControlled(handler)
+            };
             var origin = new Uri(settings.Origin);
             using var original = SecretMaterial.FromText(trial.Token);
             var evidence = new InfisicalTokenLifetimeEvidence
@@ -64,7 +68,7 @@ internal static class NativeLifetimeTrials
                 ReportedMaximumTtl = TimeSpan.FromSeconds(trial.MaximumTtl)
             };
             await using var session = new InfisicalPeriodicTokenSession(origin, original, evidence,
-                TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(5), handler, network, time);
+                TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(5), network, time);
             bool passed;
             switch (trial.Id)
             {
@@ -119,7 +123,7 @@ internal static class NativeLifetimeTrials
                     // Fresh process state has neither token nor bootstrap callback. Losing it
                     // cannot manufacture a login or recover from the still-live host copy.
                     await using (var lost = new InfisicalPeriodicTokenSession(origin, null, evidence,
-                        TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(5), handler, network, time))
+                        TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(5), network, time))
                     {
                         var absent = await lost.GetTokenAsync(token);
                         if (absent.IsSuccess) absent.Value.Dispose();
@@ -146,7 +150,7 @@ internal static class NativeLifetimeTrials
                             ReportedMaximumTtl = TimeSpan.FromSeconds(replacement.MaximumTtl)
                         };
                         await using var recoveredSession = new InfisicalPeriodicTokenSession(origin, material,
-                            replacementEvidence, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(5), handler, network, time);
+                            replacementEvidence, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(5), network, time);
                         await renewalObservation(null, DispatchEvidence.PossiblyDispatched, token);
                         SecretStatus renewed = await recoveredSession.RenewAsync(token);
                         NativeWorkflow.Require(renewed is SecretStatus.Success or SecretStatus.Denied);
@@ -197,7 +201,7 @@ internal static class NativeLifetimeTrials
             async Task<SecretStatus> Read(SecretMaterial material)
             {
                 using var selected = new LocalNativeTokens(material.Reveal());
-                await using var reader = new InfisicalClient(origin, handler, selected, network, time);
+                await using var reader = new InfisicalClient(origin, selected, network, time);
                 var result = await reader.ReadNativeAsync(new(reader.Authority,
                     new InfisicalSecretAddress(settings.ProjectId, settings.Environment, settings.Folder,
                         settings.ReadKey)), token);

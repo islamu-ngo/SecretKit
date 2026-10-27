@@ -21,7 +21,8 @@ internal sealed class TlsCertificateProofChannel : IDisposable
         this.handler = handler;
     }
 
-    internal InfisicalProofAuthentication CreateAuthentication() => new(origin, handler);
+    internal InfisicalProofAuthentication CreateAuthentication() => new(origin,
+        new() { Transport = InfisicalTransportOptions.HostControlled(handler) });
     public void Dispose()
     {
         // Calls and their SDK wrapper have settled before this lease ends.

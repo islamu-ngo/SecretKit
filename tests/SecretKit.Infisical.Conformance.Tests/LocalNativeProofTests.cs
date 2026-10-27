@@ -365,8 +365,12 @@ public sealed class LocalNativeProofTests
         var input = proof.AdmitProduced(await proof.ProduceAsync(CancellationToken.None));
         using var observer = new LocalNativeTokens(input.Settings.Observer.Token);
         using var handler = Handler();
-        await using var witness = new InfisicalClient(server.Origin, handler, observer,
-            new() { AllowLoopbackDevelopmentHttp = true });
+        await using var witness = new InfisicalClient(server.Origin, observer,
+            new()
+            {
+                AllowLoopbackDevelopmentHttp = true,
+                Transport = InfisicalTransportOptions.HostControlled(handler)
+            });
         var approvalReference = new SecretReference(witness.Authority,
             new InfisicalSecretAddress(input.Settings.ProjectId, input.Settings.Environment,
                 input.Settings.Folder, input.Settings.ApprovalKey!));

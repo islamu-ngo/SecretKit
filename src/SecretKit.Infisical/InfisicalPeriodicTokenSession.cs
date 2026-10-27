@@ -100,18 +100,6 @@ public sealed class InfisicalPeriodicTokenSession : IInfisicalTokenSource, IAsyn
     {
     }
 
-    /// <summary>The validated supplied transport remains host-owned.</summary>
-    public InfisicalPeriodicTokenSession(InfisicalUniversalLogin login,
-        InfisicalTokenLifetimeEvidence verifiedEvidence, TimeSpan renewBefore,
-        TimeSpan requestTimeout, SocketsHttpHandler hostTransport,
-        InfisicalNetworkOptions? network = null, TimeProvider? timeProvider = null)
-        : this((login ?? throw new ArgumentNullException(nameof(login))).Origin,
-            login.Token.Material, ValidateLoginEvidence(login, verifiedEvidence),
-            renewBefore, requestTimeout, network ?? new(), timeProvider ?? login.TimeProvider,
-            ValidateHostTransport(hostTransport), false)
-    {
-    }
-
     private static InfisicalTokenLifetimeEvidence ValidateLoginEvidence(InfisicalUniversalLogin login,
         InfisicalTokenLifetimeEvidence evidence)
     {
@@ -129,19 +117,6 @@ public sealed class InfisicalPeriodicTokenSession : IInfisicalTokenSource, IAsyn
     {
     }
 
-    /// <summary>
-    /// The supplied transport remains host-owned. It must disable redirects, cookies and
-    /// activity propagation and must not install credential logging or replay handlers.
-    /// </summary>
-    public InfisicalPeriodicTokenSession(Uri origin, SecretMaterial? existingToken,
-        InfisicalTokenLifetimeEvidence verifiedEvidence, TimeSpan renewBefore,
-        TimeSpan requestTimeout, SocketsHttpHandler hostTransport,
-        InfisicalNetworkOptions? network = null, TimeProvider? timeProvider = null)
-        : this(origin, existingToken, verifiedEvidence, renewBefore, requestTimeout,
-            network ?? new(), timeProvider, ValidateHostTransport(hostTransport), false)
-    {
-    }
-
     internal InfisicalPeriodicTokenSession(Uri origin, SecretMaterial? existingToken,
         InfisicalTokenLifetimeEvidence verifiedEvidence, TimeSpan renewBefore,
         TimeSpan requestTimeout, InfisicalNetworkOptions network, TimeProvider? timeProvider,
@@ -153,12 +128,7 @@ public sealed class InfisicalPeriodicTokenSession : IInfisicalTokenSource, IAsyn
         if (verifiedEvidence.Login is { } login &&
             (!ReferenceEquals(existingToken, login.Token.Material) || origin != login.Origin))
             throw new ArgumentException("Lifetime evidence cannot authorize another token or origin.", nameof(verifiedEvidence));
-        bool development = origin.IsAbsoluteUri && origin.IsLoopback &&
-            origin.Scheme == Uri.UriSchemeHttp && network.AllowLoopbackDevelopmentHttp;
-        if (!origin.IsAbsoluteUri || (origin.Scheme != Uri.UriSchemeHttps && !development) ||
-            origin.UserInfo.Length != 0 || origin.AbsolutePath != "/" ||
-            origin.Query.Length != 0 || origin.Fragment.Length != 0)
-            throw new ArgumentException("A trusted HTTPS origin is required.", nameof(origin));
+        InfisicalTransportBinding.ValidateOrigin(origin, network);
         if (renewBefore <= TimeSpan.Zero || renewBefore > TimeSpan.FromDays(1) ||
             requestTimeout <= TimeSpan.Zero || requestTimeout > TimeSpan.FromMinutes(1) ||
             network.MaximumResponseBytes is < 1024 or > 16 * 1024 * 1024 ||
@@ -174,29 +144,23 @@ public sealed class InfisicalPeriodicTokenSession : IInfisicalTokenSource, IAsyn
         _expiresAt = verifiedEvidence.ExpiresAt;
         _state = existingToken is not null && EstablishLifetime()
             ? InfisicalTokenSessionState.Ready : InfisicalTokenSessionState.RecoveryRequired;
-        if (_state == InfisicalTokenSessionState.Ready)
-            _token = existingToken!.Copy();
-        _transport = new HttpClient(transport ?? new SocketsHttpHandler
+        _binding = new(origin, network, transport, ownsTransport);
+        try
         {
-            AllowAutoRedirect = false,
-            UseCookies = false,
-            ActivityHeadersPropagator = null,
-            Proxy = network.Proxy
-        }, disposeHandler: ownsTransport)
+            if (_state == InfisicalTokenSessionState.Ready)
+                _token = existingToken!.Copy();
+            _transport = _binding.Client;
+            _wire = RestService.For<IInfisicalTokenRenewalWire>(_binding.Requests);
+        }
+        catch
         {
-            BaseAddress = origin,
-            Timeout = Timeout.InfiniteTimeSpan
-        };
-        _wire = RestService.For<IInfisicalTokenRenewalWire>(_transport);
+            _token?.Dispose();
+            _binding.Dispose();
+            throw;
+        }
     }
 
-    private static SocketsHttpHandler ValidateHostTransport(SocketsHttpHandler transport)
-    {
-        ArgumentNullException.ThrowIfNull(transport);
-        if (transport.AllowAutoRedirect || transport.UseCookies || transport.ActivityHeadersPropagator is not null)
-            throw new ArgumentException("Transport must disable redirects, cookies and activity propagation.", nameof(transport));
-        return transport;
-    }
+    private readonly InfisicalTransportBinding _binding;
 
     private DateTimeOffset? LifetimeLimit => _lifetime.Lifetime == InfisicalTokenLifetime.Finite
         ? _lifetime.OriginalIssuedAt + _lifetime.ReportedMaximumTtl
@@ -338,6 +302,7 @@ public sealed class InfisicalPeriodicTokenSession : IInfisicalTokenSource, IAsyn
                 content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
                 using HttpRequestMessage request = await _wire.BuildRenewalAsync(content, linked.Token)
                     .ConfigureAwait(false);
+                _binding.BindRequest(request);
                 linked.Token.ThrowIfCancellationRequested();
                 receipt.Record(InfisicalRenewalEvidence.PossiblyDispatched);
                 using HttpResponseMessage response = await _transport
@@ -485,7 +450,7 @@ public sealed class InfisicalPeriodicTokenSession : IInfisicalTokenSource, IAsyn
     private async Task DisposeCoreAsync()
     {
         try { await StopAsync().ConfigureAwait(false); }
-        finally { _transport.Dispose(); }
+        finally { _binding.Dispose(); }
     }
 
     public override string ToString() => $"[InfisicalPeriodicTokenSession:{State}]";

@@ -11,6 +11,7 @@ namespace SecretKit.Infisical;
 public sealed class InfisicalUniversalAuthentication : IDisposable
 {
     private readonly HttpClient _transport;
+    private readonly InfisicalTransportBinding _binding;
     private readonly IInfisicalUniversalAuthenticationApi _api;
     private readonly TimeProvider _time;
     private readonly int _responseLimit;
@@ -20,11 +21,6 @@ public sealed class InfisicalUniversalAuthentication : IDisposable
     public InfisicalUniversalAuthentication(Uri origin, InfisicalNetworkOptions? network = null,
         TimeProvider? timeProvider = null) : this(origin, network ?? new(), timeProvider, null, true) { }
 
-    /// <summary>The validated supplied transport remains host-owned.</summary>
-    public InfisicalUniversalAuthentication(Uri origin, SocketsHttpHandler hostTransport,
-        InfisicalNetworkOptions? network = null, TimeProvider? timeProvider = null)
-        : this(origin, network ?? new(), timeProvider, Validate(hostTransport), false) { }
-
     internal InfisicalUniversalAuthentication(Uri origin, HttpMessageHandler handler,
         InfisicalNetworkOptions? network = null, TimeProvider? timeProvider = null)
         : this(origin, network ?? new(), timeProvider, handler, false) { }
@@ -33,35 +29,16 @@ public sealed class InfisicalUniversalAuthentication : IDisposable
         TimeProvider? timeProvider, HttpMessageHandler? handler, bool ownsHandler)
     {
         ArgumentNullException.ThrowIfNull(origin);
-        bool development = origin.IsAbsoluteUri && origin.IsLoopback && origin.Scheme == "http" &&
-            network.AllowLoopbackDevelopmentHttp;
-        if (!origin.IsAbsoluteUri || origin.Scheme != "https" && !development ||
-            origin.UserInfo.Length != 0 || origin.AbsolutePath != "/" || origin.Query.Length != 0 ||
-            origin.Fragment.Length != 0)
-            throw new ArgumentException("A trusted HTTPS origin is required.");
+        InfisicalTransportBinding.ValidateOrigin(origin, network);
         if (network.MaximumResponseBytes is < 1024 or > 16 * 1024 * 1024)
             throw new ArgumentException("Invalid authentication response budget.");
         _origin = origin;
         _responseLimit = network.MaximumResponseBytes;
         _time = timeProvider ?? TimeProvider.System;
-        _transport = new HttpClient(handler ?? new SocketsHttpHandler
-        {
-            AllowAutoRedirect = false,
-            UseCookies = false,
-            ActivityHeadersPropagator = null,
-            Proxy = network.Proxy
-        }, disposeHandler: ownsHandler)
-        { BaseAddress = origin, Timeout = Timeout.InfiniteTimeSpan };
-        _api = RestService.For<IInfisicalUniversalAuthenticationApi>(_transport,
+        _binding = new(origin, network, handler, ownsHandler);
+        _transport = _binding.Client;
+        _api = RestService.For<IInfisicalUniversalAuthenticationApi>(_binding.Requests,
             new RefitSettings { ExceptionFactory = _ => ValueTask.FromResult<Exception?>(null) });
-    }
-
-    private static SocketsHttpHandler Validate(SocketsHttpHandler handler)
-    {
-        ArgumentNullException.ThrowIfNull(handler);
-        if (handler.AllowAutoRedirect || handler.UseCookies || handler.ActivityHeadersPropagator is not null)
-            throw new ArgumentException("Transport must disable redirects, cookies and activity propagation.");
-        return handler;
     }
 
     public InfisicalUniversalLoginReceipt CreateReceipt()
@@ -185,7 +162,7 @@ public sealed class InfisicalUniversalAuthentication : IDisposable
     public void Dispose()
     {
         _disposed = true;
-        _transport.Dispose();
+        _binding.Dispose();
     }
     public override string ToString() => "[InfisicalUniversalAuthentication]";
 }

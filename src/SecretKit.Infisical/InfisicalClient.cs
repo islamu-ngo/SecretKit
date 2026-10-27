@@ -17,6 +17,7 @@ public sealed partial class InfisicalClient : ISecretReader, ISecretInventory, I
     private readonly Uri _origin;
     private readonly IInfisicalTokenSource _tokens;
     private readonly HttpClient _http;
+    private readonly InfisicalTransportBinding _binding;
     private readonly IInfisicalStaticWire _staticWire;
     private readonly TimeProvider _time;
     private readonly int _responseLimit;
@@ -34,13 +35,6 @@ public sealed partial class InfisicalClient : ISecretReader, ISecretInventory, I
     {
     }
 
-    /// <summary>The validated supplied transport remains host-owned.</summary>
-    public InfisicalClient(Uri origin, SocketsHttpHandler hostTransport, IInfisicalTokenSource tokens,
-        InfisicalNetworkOptions? network = null, TimeProvider? timeProvider = null)
-        : this(origin, tokens, network ?? new(), timeProvider, ValidateReadTransport(hostTransport), false)
-    {
-    }
-
     internal InfisicalClient(Uri origin, IInfisicalTokenSource tokens,
         InfisicalNetworkOptions network, TimeProvider? timeProvider, HttpMessageHandler? testHandler)
         : this(origin, tokens, network, timeProvider, testHandler, true)
@@ -54,14 +48,7 @@ public sealed partial class InfisicalClient : ISecretReader, ISecretInventory, I
         ArgumentNullException.ThrowIfNull(origin);
         ArgumentNullException.ThrowIfNull(tokens);
         ArgumentNullException.ThrowIfNull(network);
-        bool developmentHttp = network.AllowLoopbackDevelopmentHttp && origin.IsAbsoluteUri &&
-            origin.IsLoopback && origin.Scheme == Uri.UriSchemeHttp;
-        if (!origin.IsAbsoluteUri || (origin.Scheme != Uri.UriSchemeHttps && !developmentHttp) ||
-            origin.UserInfo.Length != 0 || origin.AbsolutePath != "/" ||
-            origin.Query.Length != 0 || origin.Fragment.Length != 0)
-        {
-            throw new ArgumentException("A trusted HTTPS origin is required.", nameof(origin));
-        }
+        InfisicalTransportBinding.ValidateOrigin(origin, network);
 
         if (network.MaximumResponseBytes is < 1024 or > 16 * 1024 * 1024 ||
             network.ShutdownTimeout <= TimeSpan.Zero || network.ShutdownTimeout > TimeSpan.FromMinutes(1))
@@ -74,29 +61,9 @@ public sealed partial class InfisicalClient : ISecretReader, ISecretInventory, I
         _responseLimit = network.MaximumResponseBytes;
         _shutdownTimeout = network.ShutdownTimeout;
         _time = timeProvider ?? TimeProvider.System;
-        _http = new HttpClient(testHandler ?? new SocketsHttpHandler
-        {
-            AllowAutoRedirect = false,
-            UseCookies = false,
-            Proxy = network.Proxy,
-            ActivityHeadersPropagator = null
-        }, disposeHandler: ownsHandler)
-        { Timeout = Timeout.InfiniteTimeSpan, BaseAddress = _origin };
-        _staticWire = RestService.For<IInfisicalStaticWire>(_http);
-    }
-
-    private static SocketsHttpHandler ValidateReadTransport(SocketsHttpHandler handler)
-    {
-        ArgumentNullException.ThrowIfNull(handler);
-        if (handler.AllowAutoRedirect || handler.UseCookies || handler.ActivityHeadersPropagator is not null ||
-            handler.SslOptions.RemoteCertificateValidationCallback is not null ||
-            handler.SslOptions.CertificateChainPolicy is
-            {
-                VerificationFlags: not
-                System.Security.Cryptography.X509Certificates.X509VerificationFlags.NoFlag
-            })
-            throw new ArgumentException("Transport must preserve TLS validation and disable redirects, cookies and activity propagation.");
-        return handler;
+        _binding = new(origin, network, testHandler, ownsHandler);
+        _http = _binding.Client;
+        _staticWire = RestService.For<IInfisicalStaticWire>(_binding.Requests);
     }
 
     public SecretAuthority Authority { get; } = new();
@@ -296,6 +263,7 @@ public sealed partial class InfisicalClient : ISecretReader, ISecretInventory, I
         CancellationToken cancellationToken, MutationReceipt? receipt = null, SecretReference? target = null,
         IInfisicalTokenSource? nativeTokens = null)
     {
+        _binding.BindRequest(request);
         SecretOutcome<InfisicalAccessToken> token;
         try
         {
@@ -574,7 +542,7 @@ public sealed partial class InfisicalClient : ISecretReader, ISecretInventory, I
         }
         finally
         {
-            _http.Dispose();
+            _binding.Dispose();
             _shutdown.Dispose();
         }
     }

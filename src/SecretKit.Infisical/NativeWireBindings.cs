@@ -18,16 +18,16 @@ public sealed partial class InfisicalClient
 
     private IInfisicalOrganizationWire OrganizationWire =>
         LazyInitializer.EnsureInitialized(ref _nativeOrganizationWire,
-            () => RestService.For<IInfisicalOrganizationWire>(_http, NativeRefitSettings));
+            () => RestService.For<IInfisicalOrganizationWire>(_binding.Requests, NativeRefitSettings));
     private IInfisicalImportWire ImportWire =>
         LazyInitializer.EnsureInitialized(ref _nativeImportWire,
-            () => RestService.For<IInfisicalImportWire>(_http, NativeRefitSettings));
+            () => RestService.For<IInfisicalImportWire>(_binding.Requests, NativeRefitSettings));
     private IInfisicalBulkWire BulkWire =>
         LazyInitializer.EnsureInitialized(ref _nativeBulkWire,
-            () => RestService.For<IInfisicalBulkWire>(_http, NativeRefitSettings));
+            () => RestService.For<IInfisicalBulkWire>(_binding.Requests, NativeRefitSettings));
     private IInfisicalValidationWire ValidationWire =>
         LazyInitializer.EnsureInitialized(ref _nativeValidationWire,
-            () => RestService.For<IInfisicalValidationWire>(_http, NativeRefitSettings));
+            () => RestService.For<IInfisicalValidationWire>(_binding.Requests, NativeRefitSettings));
 
     // These switches bind protected typed addresses to the fixed handwritten interfaces.
     // No caller can choose an endpoint, arbitrary method, raw body or wire request.

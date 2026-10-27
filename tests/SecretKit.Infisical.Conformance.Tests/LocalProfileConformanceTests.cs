@@ -129,16 +129,20 @@ public sealed class LocalProfileAdmissionTests
     }
 
     [Test]
-    public async Task HostReadTransportRejectsCertificateBypassBeforeCredentialUse()
+    public async Task ExplicitHostReadTransportAdmitsDeliberatePolicyWithoutCredentialUse()
     {
         using var tokens = new LocalNativeTokens("offline-token-canary");
         using var handler = new SocketsHttpHandler
         {
-            AllowAutoRedirect = false, UseCookies = false, ActivityHeadersPropagator = null,
+            AllowAutoRedirect = false,
+            UseCookies = false,
+            ActivityHeadersPropagator = null,
             SslOptions = new() { RemoteCertificateValidationCallback = (_, _, _, _) => true }
         };
-        await Assert.That(() => new InfisicalClient(new Uri("https://provider.invalid"), handler, tokens))
-            .Throws<ArgumentException>();
+        tokens.Dispose();
+        await using var client = new InfisicalClient(new Uri("https://provider.invalid"), tokens,
+            new() { Transport = InfisicalTransportOptions.HostControlled(handler) });
+        await Assert.That(client.Authority).IsNotNull();
     }
 
     [Test]
