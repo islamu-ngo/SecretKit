@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.IO.Compression;
 using System.Text.Json;
+using System.Xml;
 using System.Xml.Linq;
 using SecretKit.TestFixtures;
 
@@ -23,6 +24,7 @@ public sealed class PackageInstallTests
             using ZipArchive archive = ZipFile.OpenRead(candidate.ArchivePath(package));
             await Assert.That(archive.GetEntry("README.md") is not null).IsTrue();
             await Assert.That(archive.GetEntry("THIRD-PARTY-NOTICES.md") is not null).IsTrue();
+            await VerifyXmlDocumentationAsync(archive, package);
             using Stream manifest = archive.GetEntry($"{package}.nuspec")!.Open();
             XDocument metadata = XDocument.Load(manifest);
             XNamespace ns = metadata.Root!.Name.Namespace;
@@ -63,6 +65,36 @@ public sealed class PackageInstallTests
         }
         string sdkVersion = (await Run(root, ["--version"])).Trim();
         await PlatformInstallTests.ObserveAsync(candidate, sourceCommit!, startedAt, 0, 0, sdkVersion);
+    }
+
+    internal static async Task VerifyXmlDocumentationAsync(ZipArchive archive, string package)
+    {
+        string[] members = package switch
+        {
+            "SecretKit.Core" =>
+                ["T:SecretKit.Core.SecretMaterial", "M:SecretKit.Core.SecretMaterial.Copy"],
+            _ => []
+        };
+        // Excluded Azure packages keep their own documentation scope.
+        if (members.Length == 0) return;
+        ZipArchiveEntry? entry = archive.GetEntry($"lib/net10.0/{package}.xml");
+        await Assert.That(entry is not null && entry.Length is > 0 and <= 4 * 1024 * 1024).IsTrue();
+        using Stream stream = entry!.Open();
+        using XmlReader reader = XmlReader.Create(stream, new XmlReaderSettings
+        {
+            DtdProcessing = DtdProcessing.Prohibit,
+            XmlResolver = null,
+            MaxCharactersInDocument = 4 * 1024 * 1024
+        });
+        XDocument documentation = XDocument.Load(reader);
+        await Assert.That(documentation.Root!.Element("assembly")!.Element("name")!.Value).IsEqualTo(package);
+        foreach (string id in members)
+        {
+            XElement? member = documentation.Root.Element("members")!.Elements("member")
+                .SingleOrDefault(element => (string?)element.Attribute("name") == id);
+            await Assert.That(member is not null &&
+                !string.IsNullOrWhiteSpace(member.Element("summary")?.Value)).IsTrue();
+        }
     }
 
     [Test]
