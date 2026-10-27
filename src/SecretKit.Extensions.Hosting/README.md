@@ -48,11 +48,13 @@ the service; the session does not invent remaining-use counts.
 
 The native session copies the input material. Each `GetTokenAsync` result owns
 another independent copy. The caller retains its original material and any
-supplied transport. A supplied `SocketsHttpHandler` must already disable
-redirects, cookies and activity propagation. The host owns proxy configuration,
-trust roots, transport instrumentation and credential access. The built-in
-transport uses normal TLS validation; HTTP requires explicit loopback-only
-development opt-in. There are no logger callbacks, arbitrary HTTP commands,
+supplied transport. Network options default to `InfisicalTransportOptions.SafeDefault`:
+normal TLS, no redirects/cookies/propagation or ambient proxy. Explicit proxies
+and `SafeWithPrivateTrust(roots)` retain normal hostname/chain checks. Select
+`HostControlled(clientOrHandler)` to deliberately retain arbitrary host
+HTTP(S)/TLS/routing/retry/instrumentation policy, without SDK network enforcement
+inside it. Borrowed resources are unchanged and host-owned. Safe HTTP requires
+explicit loopback-only development opt-in. There are no logger callbacks, arbitrary HTTP commands,
 automatic credential creation or hidden identity chains.
 
 Renewal sends `POST /api/v1/auth/token/renew` with an `accessToken` JSON body.

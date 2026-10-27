@@ -79,6 +79,8 @@ public sealed class PackageInstallTests
                 ["T:SecretKit.Infisical.Management.ManagementClient", "P:SecretKit.Infisical.Management.ManagementClient.Authority"],
             "SecretKit.Extensions.Configuration" =>
                 ["T:SecretKit.Extensions.Configuration.SecretConfigurationExport", "M:SecretKit.Extensions.Configuration.SecretConfigurationExport.Dispose"],
+            "SecretKit.Extensions.Hosting" =>
+                ["T:SecretKit.Extensions.Hosting.InfisicalAuthenticationMaintenance", "P:SecretKit.Extensions.Hosting.InfisicalAuthenticationMaintenance.State"],
             _ => []
         };
         // Excluded Azure packages keep their own documentation scope.

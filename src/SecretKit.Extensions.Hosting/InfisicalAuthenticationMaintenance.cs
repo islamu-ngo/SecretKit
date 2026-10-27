@@ -5,14 +5,22 @@ using SecretKit.Infisical;
 
 namespace SecretKit.Extensions.Hosting;
 
+/// <summary>Material-free scheduling and session evidence, not application readiness or delivery.</summary>
 public enum AuthenticationMaintenanceState
 {
+    /// <summary>No explicit start has admitted the maintenance schedule.</summary>
     NotStarted,
+    /// <summary>The started session has usable material before its renewal window.</summary>
     Ready,
+    /// <summary>The session's original lifetime evidence places it in its renewal window.</summary>
     RenewalDue,
+    /// <summary>A single shared native renewal is in flight.</summary>
     Renewing,
+    /// <summary>The current session material has expired and cannot be used.</summary>
     Expired,
+    /// <summary>Explicit authorized recovery is required; the helper never logs in or changes principal.</summary>
     RecoveryRequired,
+    /// <summary>The helper has stopped admitting scheduling; cleanup may still be pending after timeout.</summary>
     Stopped
 }
 
@@ -32,6 +40,8 @@ public sealed class InfisicalAuthenticationMaintenance : IHostedService, IHealth
     private Task? _stopTask;
     private bool _stopped;
 
+    /// <summary>Borrows a session and selects the helper's single shutdown wait budget without starting work.</summary>
+    /// <exception cref="ArgumentOutOfRangeException">The budget is not positive or exceeds one minute.</exception>
     public InfisicalAuthenticationMaintenance(InfisicalPeriodicTokenSession session, TimeSpan shutdownTimeout)
     {
         ArgumentNullException.ThrowIfNull(session);
@@ -41,6 +51,7 @@ public sealed class InfisicalAuthenticationMaintenance : IHostedService, IHealth
         _shutdownTimeout = shutdownTimeout;
     }
 
+    /// <summary>Reports whether scheduling started and the session's current bounded state, without material.</summary>
     public AuthenticationMaintenanceState State
     {
         get
@@ -62,6 +73,9 @@ public sealed class InfisicalAuthenticationMaintenance : IHostedService, IHealth
         }
     }
 
+    /// <summary>Starts the one caller-requested schedule; repeated starts share it and never acquire a new principal.</summary>
+    /// <exception cref="OperationCanceledException">The caller canceled before admission.</exception>
+    /// <exception cref="ObjectDisposedException">The helper has stopped and cannot be restarted.</exception>
     public Task StartAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -118,6 +132,13 @@ public sealed class InfisicalAuthenticationMaintenance : IHostedService, IHealth
         catch (ObjectDisposedException) when (_session.State == InfisicalTokenSessionState.Stopped) { }
     }
 
+    /// <summary>Stops scheduling and the selected session generation using one latched shutdown attempt.</summary>
+    /// <remarks>Cancellation ends only this caller's wait. Notification, drain and cleanup share the
+    /// original injected-time budget. Timeout does not abandon eventual cleanup or imply successful drain.
+    /// The helper never disposes the borrowed session or host-supplied transports.</remarks>
+    /// <exception cref="TimeoutException">The original wait budget elapsed; later callers observe the same timeout.</exception>
+    /// <exception cref="InvalidOperationException">Shutdown observed a sanitized callback or operation failure.</exception>
+    /// <exception cref="OperationCanceledException">This caller canceled its wait.</exception>
     public Task StopAsync(CancellationToken cancellationToken)
     {
         TaskCompletionSource? completion = null;
@@ -174,6 +195,9 @@ public sealed class InfisicalAuthenticationMaintenance : IHostedService, IHealth
         }
     }
 
+    /// <summary>Maps Ready to healthy, due/renewing to degraded and every other state to unhealthy.</summary>
+    /// <remarks>This check performs no provider I/O and does not establish downstream readiness.</remarks>
+    /// <exception cref="OperationCanceledException">The caller canceled the check.</exception>
     public Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context,
         CancellationToken cancellationToken = default)
     {
@@ -187,5 +211,7 @@ public sealed class InfisicalAuthenticationMaintenance : IHostedService, IHealth
         });
     }
 
+    /// <summary>Awaits the same bounded stop attempt, retaining its original timeout or sanitized failure.</summary>
+    /// <remarks>A later disposal does not reset the budget or dispose the borrowed session.</remarks>
     public async ValueTask DisposeAsync() => await StopAsync(CancellationToken.None).ConfigureAwait(false);
 }
