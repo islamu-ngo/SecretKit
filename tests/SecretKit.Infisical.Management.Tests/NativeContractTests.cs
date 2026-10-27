@@ -22,6 +22,46 @@ public sealed class NativeContractTests
     private const string OtherIdentityId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 
     [Test]
+    [Arguments(0, 1, 0, 1, SecretStatus.Unknown, false)]
+    [Arguments(2, 2, 2, 1, SecretStatus.Unknown, false)]
+    [Arguments(2, 2, 3, 2, SecretStatus.Unknown, false)]
+    [Arguments(0, 2, 3, 1, SecretStatus.Unknown, false)]
+    [Arguments(0, 2, 1, 0, SecretStatus.Unknown, false)]
+    [Arguments(0, 2, 0, 0, SecretStatus.Success, true)]
+    [Arguments(2, 2, 1, 0, SecretStatus.Success, true)]
+    [Arguments(2, 2, 2, 0, SecretStatus.Success, true)]
+    [Arguments(2, 2, 3, 1, SecretStatus.Success, true)]
+    [Arguments(2, 2, 5, 2, SecretStatus.Success, false)]
+    [Arguments(1000000, 1, 1000000, 1, SecretStatus.Unknown, false)]
+    public async Task CountedProjectPageRejectsContradictionsWithinOneResponse(
+        int offset, int limit, int total, int returned, SecretStatus expected, bool complete)
+    {
+        using var request = ScopedAccessOperations.ListGroupProjects(OrgId, GroupId,
+            GroupProjectSelection.Assigned, offset: offset, limit: limit);
+        string body = JsonSerializer.Serialize(new
+        {
+            projects = Enumerable.Range(0, returned).Select(i => new
+            {
+                id = "project-" + i,
+                name = "private",
+                slug = "project-" + i,
+                type = "secret-manager",
+                joinedGroupAt = (string?)null
+            }),
+            totalCount = total
+        });
+        var result = await Execute(request, body,
+            ScopedAccessOperations.GroupProjectListTarget(OrgId, GroupId,
+                GroupProjectSelection.Assigned, offset: offset, limit: limit));
+        await Assert.That(result.Status).IsEqualTo(expected);
+        if (expected == SecretStatus.Success)
+        {
+            await Assert.That(result.Value.IsComplete).IsEqualTo(complete);
+            await Assert.That(result.Value.NextOffset).IsEqualTo(complete ? (int?)null : offset + returned);
+        }
+    }
+
+    [Test]
     [Arguments(1, true)]
     [Arguments(2, false)]
     public async Task OrganizationIdentityListUsesOuterScopeWithoutInventingNestedEcho(int total, bool complete)

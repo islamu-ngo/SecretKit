@@ -234,7 +234,7 @@
     },
     {
       "file": "src/SecretKit.Infisical.Management/ScopedAccess.cs",
-      "sha256": "9a657f9f59aaa1365c84aea5cbd5a56ba1385505e3be4426b785f3ec23fefe88"
+      "sha256": "a7d714a41265e73761fcd88195db42d383bf126a1e47990a5d90d49a50a33bc1"
     },
     {
       "file": "src/SecretKit.Infisical.Management/WorkloadIdentityAuthentication.cs",

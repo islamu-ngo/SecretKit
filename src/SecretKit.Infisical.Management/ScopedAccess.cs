@@ -477,7 +477,7 @@ public static class ScopedAccessOperations
     {
         T[] items = ManagementJson.Array(root, field).Select(parse).ToArray();
         int count = ManagementJson.Integer(root, "totalCount");
-        if (count < 0 || items.Length > limit || (items.Length == 0 && count > offset))
+        if (count < 0 || items.Length != Math.Min(limit, Math.Max(0, count - offset)))
         {
             throw new ManagementContractException(Core.SecretStatus.Unknown);
         }

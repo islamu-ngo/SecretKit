@@ -139,6 +139,11 @@ its known receipt even when cancellation prevents returning the result; owned
 material that cannot be returned is disposed. Cancellation does not undo a remote
 effect.
 
+Counted pages reject contradictions between the returned item count, selected
+offset/limit and response total. An empty page at or beyond the total is complete;
+a short page before the reported end is not consistent success. Counts describe
+one response, not a stable snapshot across successive requests.
+
 Start with [ManagementBoundaryTests](../../../tests/SecretKit.Infisical.Management.Tests/ManagementBoundaryTests.cs)
 for exact grants, scope and retired-route rejection,
 [PostgresSecretRotationTests](../../../tests/SecretKit.Infisical.Management.Tests/PostgresSecretRotationTests.cs)
