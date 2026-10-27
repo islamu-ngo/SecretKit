@@ -253,6 +253,13 @@ recovery, not replay. The automatic retry budget is **zero**, including 429 and
 
 ## Start, observe health, stop and drain
 
+For end-to-end verification from original packages, use the separate
+[runtime-hardening profile](../internal/compatibility/runtime-hardening-profile.md).
+It exercises complete generation publication, pinned old handles, renewal,
+explicit recovery and bounded stop. Controlled installed records and explicitly
+authorized native observations remain separate. A matching token shape,
+declaration or prior report is not fresh login/policy proof.
+
 Native client/session and helper shutdown publish one shared attempt before
 running callbacks outside state locks. Notification, drain and cleanup share
 one original injected-time budget. Reentrant or repeated stop/disposal does not

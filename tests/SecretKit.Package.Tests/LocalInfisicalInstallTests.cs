@@ -17,6 +17,81 @@ public sealed class LocalInfisicalInstallTests
     [Arguments("configuration")]
     [Arguments("hosting")]
     [Arguments("full")]
+    public async Task RuntimeHardeningInstallsFreshSelectedOriginals(string mode)
+    {
+        // No historical archive/default-feed fallback for the new API profile.
+        string selected = Environment.GetEnvironmentVariable("SECRETKIT_RUNTIME_HARDENING_ORIGINALS") ??
+            throw new InvalidOperationException("runtime-hardening-originals-missing");
+        string version = Environment.GetEnvironmentVariable("SECRETKIT_RUNTIME_HARDENING_VERSION") ??
+            throw new InvalidOperationException("runtime-hardening-version-missing");
+        string root = Path.GetFullPath("../../../../../", AppContext.BaseDirectory);
+        string output = Path.Combine(root, "artifacts", "runtime-hardening", Guid.NewGuid().ToString("N"));
+        LocalPackageCandidate candidate = LocalPackageCandidate.Select(selected, version);
+        var hashes = LocalPackageCandidate.PackageIds.ToDictionary(id => id,
+            id => Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(candidate.ArchivePath(id)))));
+        foreach (string id in LocalPackageCandidate.PackageIds)
+        {
+            using ZipArchive archive = ZipFile.OpenRead(candidate.ArchivePath(id));
+            await PackageInstallTests.VerifyXmlDocumentationAsync(archive, id);
+        }
+        ConsumerInstallation installation = candidate.PrepareConsumer(output, mode);
+        string project = Path.Combine(root, "tests/fixtures/SecretKit.InfisicalConsumer/SecretKit.InfisicalConsumer.csproj");
+        await Run(root, ["restore", project, "--configfile", installation.Configuration, .. installation.Properties]);
+        string assets = Path.Combine(installation.Intermediate, "project.assets.json");
+        candidate.VerifyRestored(assets, installation.Packages, mode);
+        await Run(root, ["build", project, "--configuration", "Release", "--no-restore", .. installation.Properties]);
+        string text = await Run(root,
+            [Path.Combine(installation.Binary, "Release/net10.0/SecretKit.InfisicalConsumer.dll"),
+                "runtime-hardening", "offline"]);
+        string[] lines = text.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        using JsonDocument report = JsonDocument.Parse(lines[^1]);
+        await Assert.That(report.RootElement.GetProperty("record").GetString()).IsEqualTo("REPORT");
+        await Assert.That(report.RootElement.GetProperty("profile").GetString()).IsEqualTo("runtime-hardening");
+        await Assert.That(report.RootElement.GetProperty("packageProfile").GetString()).IsEqualTo("infisical-runtime");
+        await Assert.That(report.RootElement.GetProperty("kind").GetString()).IsEqualTo("controlled-installed-offline");
+        await Assert.That(report.RootElement.GetProperty("mode").GetString()).IsEqualTo(mode);
+        await Assert.That(report.RootElement.GetProperty("nativeQualified").GetBoolean()).IsFalse();
+        var observations = lines[..^1].Select(line => JsonSerializer.Deserialize<JsonElement>(line)).ToArray();
+        string[] expected = ["RH01", "RH04", "RH05", "RH06", "RH07", "RH08"];
+        if (mode is "configuration" or "full") expected = [.. expected, "RH02", "RH03"];
+        if (mode is "hosting" or "full") expected = [.. expected, "RH09"];
+        await Assert.That(observations.Length).IsEqualTo(expected.Length * 2);
+        foreach (string transport in new[] { "SafeDefault", "HostControlled" })
+        {
+            var cases = observations.Where(c => c.GetProperty("transport").GetString() == transport).ToArray();
+            await Assert.That(cases.Select(c => c.GetProperty("id").GetString()).Order(StringComparer.Ordinal)
+                .SequenceEqual(expected.Order(StringComparer.Ordinal))).IsTrue();
+        }
+        await Assert.That(observations.All(c => c.GetProperty("record").GetString() == "SCENARIO" &&
+            c.GetProperty("profile").GetString() == "runtime-hardening" &&
+            c.GetProperty("mode").GetString() == mode && c.GetProperty("status").GetString() == "passed" &&
+            c.GetProperty("reason").GetString() == "controlled-observed" &&
+            !c.GetProperty("nativeQualified").GetBoolean())).IsTrue();
+        candidate.VerifyRestored(assets, installation.Packages, mode);
+        foreach (string id in LocalPackageCandidate.PackageIds)
+            await Assert.That(Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(candidate.ArchivePath(id)))))
+                .IsEqualTo(hashes[id]);
+        await File.WriteAllTextAsync(Path.Combine(output, "runtime-hardening.json"), JsonSerializer.Serialize(new
+        {
+            schemaVersion = 1,
+            profile = "runtime-hardening",
+            packageProfile = "infisical-runtime",
+            kind = "controlled-installed-offline",
+            nativeQualified = false,
+            mode,
+            version,
+            originals = hashes,
+            installedPackageIds = LocalPackageCandidate.Expected(mode),
+            scenarios = observations,
+            report = report.RootElement.Clone()
+        }));
+    }
+
+    [Test]
+    [Arguments("minimal")]
+    [Arguments("configuration")]
+    [Arguments("hosting")]
+    [Arguments("full")]
     public async Task OriginalLocalProfileInstallsAndRunsIndependentModes(string mode)
     {
         string root = Path.GetFullPath("../../../../../", AppContext.BaseDirectory);
@@ -30,6 +105,11 @@ public sealed class LocalInfisicalInstallTests
                 Environment.GetEnvironmentVariable("SECRETKIT_CANDIDATE_DIRECTORY") ??
                     Path.Combine(root, "artifacts", "packages"), Path.Combine(outputs, "originals"))
             : LocalPackageCandidate.Select(selected, version);
+        foreach (string package in LocalPackageCandidate.PackageIds)
+        {
+            using ZipArchive archive = ZipFile.OpenRead(candidate.ArchivePath(package));
+            await PackageInstallTests.VerifyXmlDocumentationAsync(archive, package);
+        }
         string? qualificationDirectory = Environment.GetEnvironmentVariable("SECRETKIT_LOCAL_QUALIFICATION_DIRECTORY");
         JsonElement? qualificationBinding = null;
         string release = Path.Combine(root, "tools", "SecretKit.Release", "bin", "Release", "net10.0", "SecretKit.Release.dll");

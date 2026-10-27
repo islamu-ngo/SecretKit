@@ -8,6 +8,12 @@
 > [local profile](../internal/local/infisical-runtime.json),
 > [project map](../../PROJECTS.md), [support reference](provider-support.md)
 
+The separate [runtime-hardening evidence profile](../internal/compatibility/runtime-hardening-profile.md)
+covers explicit safe/host-controlled transport, acquired generations, renewal
+and bounded shutdown from original packages. Its controlled installed results
+are distinct from native deployment observations and do not alter the existing
+17-case functional or 21-case native denominators.
+
 SecretKit implements .NET 10 secret reads, metadata inventory, selected native
 operations and optional runtime composition for Infisical and Azure Key Vault.
 **In development. Not ready for production. APIs may change without backward

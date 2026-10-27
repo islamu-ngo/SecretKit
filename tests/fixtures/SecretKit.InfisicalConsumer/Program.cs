@@ -19,6 +19,18 @@ if (args.Length > 0 && args[0] == "native")
     return;
 }
 
+if (args is ["runtime-hardening", "offline"])
+{
+    Environment.ExitCode = await RuntimeHardeningWorkflow.RunAsync();
+    return;
+}
+
+if (args is ["runtime-hardening", "native", var report])
+{
+    Environment.ExitCode = await RuntimeHardeningWorkflow.RunNativeAsync(report);
+    return;
+}
+
 if (args is not ["offline"])
 {
     Console.Error.WriteLine("Expected offline or native workflow arguments.");
@@ -38,10 +50,10 @@ catch
 
 internal static class InstalledWorkflow
 {
-    private const string Value = "installed-material-canary";
-    private const string Token = "installed-token-canary";
-    private const string Project = "installed-project-canary";
-    private const string Key = "installed-key-canary";
+    internal const string Value = "installed-material-canary";
+    internal const string Token = "installed-token-canary";
+    internal const string Project = "installed-project-canary";
+    internal const string Key = "installed-key-canary";
     private const string Resource = "installed-resource-canary";
 
     internal static async Task<string> RunAsync()
@@ -271,7 +283,7 @@ internal static class InstalledWorkflow
                     payload.GetProperty("projectId").GetString() == Project);
     }
 
-    private static string Mode =>
+    internal static string Mode =>
 #if CONFIGURATION && HOSTING
         "full";
 #elif CONFIGURATION
@@ -282,24 +294,24 @@ internal static class InstalledWorkflow
         "minimal";
 #endif
 
-    private static SecretReference Reference(InfisicalClient client) =>
+    internal static SecretReference Reference(InfisicalClient client) =>
         new(client.Authority, new InfisicalSecretAddress(Project, "test", "/", Key));
-    private static string SecretBody(int version = 1, string resource = Resource, bool hidden = false,
+    internal static string SecretBody(int version = 1, string resource = Resource, bool hidden = false,
         string project = Project, string value = Value, string key = Key) => JsonSerializer.Serialize(new
         {
             secret = new { id = resource, workspace = project, environment = "test", secretPath = "/",
                 type = "shared", secretKey = key, version, secretValue = value, secretValueHidden = hidden }
         });
-    private static string TokenBody(string token) => JsonSerializer.Serialize(new
+    internal static string TokenBody(string token) => JsonSerializer.Serialize(new
     {
         accessToken = token, tokenType = "Bearer", expiresIn = 60, accessTokenMaxTTL = 120
     });
-    private static void Require(bool condition)
+    internal static void Require(bool condition)
     {
         if (!condition) throw new InvalidOperationException("Installed workflow assertion failed.");
     }
 
-    private sealed class Clock : TimeProvider
+    internal sealed class Clock : TimeProvider
     {
         private DateTimeOffset _now = new(2026, 10, 23, 0, 0, 0, TimeSpan.Zero);
         public override DateTimeOffset GetUtcNow() => _now;
@@ -308,7 +320,7 @@ internal static class InstalledWorkflow
 
     private sealed record RequiredConsumer(string First, string Second);
 
-    private sealed class Loopback : IAsyncDisposable
+    internal sealed class Loopback : IAsyncDisposable
     {
         private readonly TcpListener _listener = new(IPAddress.Loopback, 0);
         private readonly CancellationToken _token;
@@ -321,16 +333,16 @@ internal static class InstalledWorkflow
         internal Uri Origin { get; }
         internal int Requests { get; private set; }
         internal async Task<T> Exchange<T>(Func<Task<T>> action, string method, string path, int status,
-            string body, string? bearer, Func<JsonElement, bool>? payload = null)
+            string body, string? bearer, Func<JsonElement, bool>? payload = null, bool loseResponse = false)
         {
             // Subscribe before dispatch. Both sides use the same bounded cancellation scope.
-            Task server = Respond(method, path, status, body, bearer, payload);
+            Task server = Respond(method, path, status, body, bearer, payload, loseResponse);
             Task<T> request = action();
             await Task.WhenAll(server, request).WaitAsync(_token);
             return await request;
         }
         private async Task Respond(string method, string path, int status, string body, string? bearer,
-            Func<JsonElement, bool>? payload)
+            Func<JsonElement, bool>? payload, bool loseResponse)
         {
             using TcpClient connection = await _listener.AcceptTcpClientAsync(_token);
             using NetworkStream stream = connection.GetStream();
@@ -371,6 +383,7 @@ internal static class InstalledWorkflow
                 Array.Clear(buffer);
             }
             Requests++;
+            if (loseResponse) return;
             byte[] bytes = Encoding.UTF8.GetBytes(body);
             await stream.WriteAsync(Encoding.ASCII.GetBytes(
                 $"HTTP/1.1 {status} Result\r\nContent-Type: application/json\r\nContent-Length: {bytes.Length}\r\nConnection: close\r\n\r\n"), _token);

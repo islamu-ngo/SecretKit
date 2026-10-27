@@ -17,6 +17,19 @@ integration has been implemented or verified.
 
 ## Choose the boundary, not the entire repository
 
+Use the separate [runtime-hardening profile](../internal/compatibility/runtime-hardening-profile.md)
+to exercise newly built original archives in minimal, configuration, hosting and
+full modes. Select the original directory and exact version explicitly; the new
+workflow has no historical-cache fallback. Its `SCENARIO`/`REPORT` records use
+profile `runtime-hardening`, while archive selection stays `infisical-runtime`.
+Controlled loopback observations do not qualify a native issuer.
+
+Native execution is a separate explicit selection. It requires current
+deployment, lifetime and validating-network facts, protected authority and fresh
+Universal login with a causal token handoff. Required policy that cannot be
+observed remains unqualified; there is no administrative fallback or automatic
+promotion of declared metadata into evidence.
+
 SecretKit is **in development, not ready for production**. Independent installed
 console, worker and web applications are implemented; use
 [demos and recovery](demos-and-recovery.md) to choose one. The

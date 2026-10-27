@@ -447,3 +447,6 @@ InfisicalPeriodicRenewalGateTests and InfisicalRotationCancellationAdmissionTest
 Each class requires a positive test count. These guards preserve admission and
 evidence rules without selecting native execution or changing the existing
 17-case functional and 21-case native denominators.
+The separate runtime-hardening profile also runs its explicit
+RuntimeHardeningAdmissionTests class; its native report gate is never included
+in credential-free CI.

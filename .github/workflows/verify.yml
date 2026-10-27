@@ -63,7 +63,7 @@
         },
         {
           "id": "offline_conformance_guards",
-          "run": "dotnet restore tests/SecretKit.Infisical.Conformance.Tests/SecretKit.Infisical.Conformance.Tests.csproj --locked-mode\ndotnet build tests/SecretKit.Infisical.Conformance.Tests/SecretKit.Infisical.Conformance.Tests.csproj --configuration Release --no-restore -p:Version=\"$SECRETKIT_CANDIDATE_VERSION\"\nfor class in LocalProfileAdmissionTests LocalNativeProofTests LocalProfileFunctionalAdmissionTests LocalProfileUpdateWitnessTests InfisicalPeriodicRenewalGateTests InfisicalRotationCancellationAdmissionTests; do\n  dotnet tests/SecretKit.Infisical.Conformance.Tests/bin/Release/net10.0/SecretKit.Infisical.Conformance.Tests.dll --treenode-filter \"/*/*/$class/*\" --minimum-expected-tests 1 --zero-tests-policy strict || exit \"$?\"\ndone"
+          "run": "dotnet restore tests/SecretKit.Infisical.Conformance.Tests/SecretKit.Infisical.Conformance.Tests.csproj --locked-mode\ndotnet build tests/SecretKit.Infisical.Conformance.Tests/SecretKit.Infisical.Conformance.Tests.csproj --configuration Release --no-restore -p:Version=\"$SECRETKIT_CANDIDATE_VERSION\"\nfor class in LocalProfileAdmissionTests LocalNativeProofTests LocalProfileFunctionalAdmissionTests LocalProfileUpdateWitnessTests InfisicalPeriodicRenewalGateTests InfisicalRotationCancellationAdmissionTests RuntimeHardeningAdmissionTests; do\n  dotnet tests/SecretKit.Infisical.Conformance.Tests/bin/Release/net10.0/SecretKit.Infisical.Conformance.Tests.dll --treenode-filter \"/*/*/$class/*\" --minimum-expected-tests 1 --zero-tests-policy strict || exit \"$?\"\ndone"
         },
         {
           "id": "pack",
@@ -80,7 +80,15 @@
           }
         },
         {
+          "id": "runtime_hardening_originals",
+          "run": "test ! -e artifacts/runtime-hardening-pr-originals\nmkdir -p artifacts/runtime-hardening-pr-originals\nfor id in SecretKit.Core SecretKit.Infisical SecretKit.Extensions.Configuration SecretKit.Extensions.Hosting; do\n  name=\"$id.$SECRETKIT_CANDIDATE_VERSION.nupkg\"\n  cp \"$SECRETKIT_CANDIDATE_DIRECTORY/$name\" \"artifacts/runtime-hardening-pr-originals/$name\"\n  cmp \"$SECRETKIT_CANDIDATE_DIRECTORY/$name\" \"artifacts/runtime-hardening-pr-originals/$name\"\ndone"
+        },
+        {
           "id": "tests",
+          "env": {
+            "SECRETKIT_RUNTIME_HARDENING_ORIGINALS": "${{ github.workspace }}/artifacts/runtime-hardening-pr-originals",
+            "SECRETKIT_RUNTIME_HARDENING_VERSION": "${{ env.SECRETKIT_CANDIDATE_VERSION }}"
+          },
           "run": "status=0\nfor host in $SECRETKIT_TEST_HOSTS; do\n  if ! dotnet \"tests/$host/bin/Release/net10.0/$host.dll\" --minimum-expected-tests 1 --zero-tests-policy strict --report-trx --results-directory \"artifacts/verification/$host\"; then\n    status=1\n  fi\ndone\nexit \"$status\""
         },
         {
@@ -112,7 +120,9 @@
             "SECRETKIT_LOCAL_CANDIDATE_VERSION": "0.1.0-local.20261024.1",
             "SECRETKIT_LOCAL_CANDIDATE_DIRECTORY": "${{ github.workspace }}/artifacts/local-originals",
             "SECRETKIT_LOCAL_QUALIFICATION_DIRECTORY": "${{ github.workspace }}/artifacts/verification/local/qualification",
-            "SECRETKIT_LOCAL_INSTALL_REPORTS": "${{ github.workspace }}/artifacts/verification/local/installations"
+            "SECRETKIT_LOCAL_INSTALL_REPORTS": "${{ github.workspace }}/artifacts/verification/local/installations",
+            "SECRETKIT_RUNTIME_HARDENING_ORIGINALS": "${{ github.workspace }}/artifacts/local-originals",
+            "SECRETKIT_RUNTIME_HARDENING_VERSION": "0.1.0-local.20261024.1"
           },
           "run": "dotnet build SecretKit.slnx --configuration Release --no-restore -p:Version=\"$SECRETKIT_LOCAL_CANDIDATE_VERSION\"\ntest ! -e artifacts/local-seven-originals\ndotnet pack SecretKit.slnx --configuration Release --no-build -p:Version=\"$SECRETKIT_LOCAL_CANDIDATE_VERSION\" --output artifacts/local-seven-originals\ntest \"$(find artifacts/local-seven-originals -maxdepth 1 -name '*.nupkg' | wc -l)\" -eq 7\ntest ! -e \"$SECRETKIT_LOCAL_CANDIDATE_DIRECTORY\"\nmkdir -p \"$SECRETKIT_LOCAL_CANDIDATE_DIRECTORY\"\nfor id in SecretKit.Core SecretKit.Infisical SecretKit.Extensions.Configuration SecretKit.Extensions.Hosting; do\n  name=\"$id.$SECRETKIT_LOCAL_CANDIDATE_VERSION.nupkg\"\n  original=\"artifacts/local-seven-originals/$name\"\n  cp \"$original\" \"$SECRETKIT_LOCAL_CANDIDATE_DIRECTORY/$name\"\n  cmp \"$original\" \"$SECRETKIT_LOCAL_CANDIDATE_DIRECTORY/$name\"\ndone\ndotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll local-prepare . \"$SECRETKIT_LOCAL_CANDIDATE_DIRECTORY\" \"$SECRETKIT_LOCAL_QUALIFICATION_DIRECTORY\"\ndotnet tests/SecretKit.Package.Tests/bin/Release/net10.0/SecretKit.Package.Tests.dll --treenode-filter '/*/*/LocalInfisicalInstallTests/*' --minimum-expected-tests 25 --zero-tests-policy strict --report-trx --results-directory artifacts/verification/local/tests\ndotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll local-check . \"$SECRETKIT_LOCAL_CANDIDATE_DIRECTORY\" \"$SECRETKIT_LOCAL_QUALIFICATION_DIRECTORY\""
         },
@@ -185,6 +195,8 @@
       "env": {
         "SECRETKIT_CANDIDATE_VERSION": "${{ needs.offline.outputs.version }}",
         "SECRETKIT_CANDIDATE_DIRECTORY": "${{ github.workspace }}/artifacts/packages",
+        "SECRETKIT_RUNTIME_HARDENING_ORIGINALS": "${{ github.workspace }}/artifacts/runtime-hardening-install-originals",
+        "SECRETKIT_RUNTIME_HARDENING_VERSION": "${{ needs.offline.outputs.version }}",
         "SECRETKIT_PLATFORM_OBSERVATION": "${{ github.workspace }}/artifacts/verification/${{ matrix.platform }}/installation.json"
       },
       "steps": [
@@ -213,7 +225,7 @@
         },
         {
           "id": "test",
-          "run": "dotnet tests/SecretKit.Package.Tests/bin/Release/net10.0/SecretKit.Package.Tests.dll --minimum-expected-tests 27 --zero-tests-policy strict --report-trx --results-directory \"artifacts/verification/${{ matrix.platform }}\""
+          "run": "mkdir -p \"$SECRETKIT_RUNTIME_HARDENING_ORIGINALS\"\nfor id in SecretKit.Core SecretKit.Infisical SecretKit.Extensions.Configuration SecretKit.Extensions.Hosting; do cp \"artifacts/packages/$id.$SECRETKIT_CANDIDATE_VERSION.nupkg\" \"$SECRETKIT_RUNTIME_HARDENING_ORIGINALS/\"; cmp \"artifacts/packages/$id.$SECRETKIT_CANDIDATE_VERSION.nupkg\" \"$SECRETKIT_RUNTIME_HARDENING_ORIGINALS/$id.$SECRETKIT_CANDIDATE_VERSION.nupkg\"; done\ndotnet tests/SecretKit.Package.Tests/bin/Release/net10.0/SecretKit.Package.Tests.dll --minimum-expected-tests 27 --zero-tests-policy strict --report-trx --results-directory \"artifacts/verification/${{ matrix.platform }}\""
         },
         {
           "if": "${{ always() }}",
