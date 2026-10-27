@@ -69,14 +69,15 @@ public sealed class InfisicalBulkAuxiliaryCalibrationTests
             await using var client = env.CreateRuntimeClient();
             var target = new SecretReference(client.Authority,
                 new InfisicalBulkAddress(root.ProjectId, root.Environment, root.Folder, root.FolderId));
-            var receipt = new MutationReceipt(target);
             using var material = SecretMaterial.FromText("pre-cancelled-material");
+            InfisicalBulkSecret[] items = [new("ALPHA", material)];
+            var receipt = new InfisicalBulkReceipt(client, target, items, InfisicalBulkOperation.Create);
             using var cancel = new CancellationTokenSource();
             cancel.Cancel();
             bool cancelled = false;
             try
             {
-                await client.CreateSecretsAsync(target, [new("ALPHA", material)],
+                await client.CreateSecretsAsync(target, items,
                     new(client.Authority, env.Tokens(NativeIdentityRole.Runtime),
                         root.ProjectId, root.Environment, root.Folder), receipt, cancel.Token);
             }
@@ -140,7 +141,6 @@ public sealed class InfisicalBulkAuxiliaryCalibrationTests
                 root.Environment, root.Folder, root.FolderId));
             var authority = new InfisicalNativeAuthority(client.Authority, env.Tokens(root.Role),
                 root.ProjectId, root.Environment, root.Folder);
-            var receipt = new MutationReceipt(target);
             var items = input.Bulk.Items.Select(i =>
             {
                 SecretMaterial? material = i.Value is null ? null : SecretMaterial.FromText(i.Value);
@@ -151,6 +151,12 @@ public sealed class InfisicalBulkAuxiliaryCalibrationTests
                     i.ReminderNote, i.ReminderRepeatDays, i.ClearReminderNote, i.ClearReminderRepeatDays,
                     i.CreationMetadata, i.Type);
             }).ToArray();
+            var receipt = new InfisicalBulkReceipt(client, target, items, root.Method switch
+            {
+                "POST" => InfisicalBulkOperation.Create,
+                "PATCH" => InfisicalBulkOperation.Update,
+                _ => InfisicalBulkOperation.Delete
+            }, root.Method == "PATCH" ? input.Bulk.Mode : InfisicalBulkUpdateMode.FailOnNotFound);
             using var cancel = new CancellationTokenSource(TimeSpan.FromSeconds(15));
             bool interrupted = definition.Key.Case is "cancellation-boundary" or "lost-response-no-replay";
             provider.Source.LoseResponse = definition.Key.Case == "lost-response-no-replay";

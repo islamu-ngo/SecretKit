@@ -10,6 +10,16 @@ local goal. No Event-specific models or compatibility interfaces are introduced.
 
 The existing native organization/import and lifecycle preview follows.
 
+Bulk mutations now require `InfisicalBulkReceipt(client, target, inputs,
+operation, mode)`, constructed before awaiting. Its ordered immutable `Items`
+snapshots survive failed outcomes and cancellation. One envelope handoff marks
+all included items PossiblyDispatched; only supported rows refine them.
+Contradictory later rows never erase earlier known observations. Pending
+approval is not Applied, and an empty collection is not AllApplied.
+The receipt binds client/target/method/mode/nonmaterial selectors, stores no
+values or value hashes, and cannot be replayed after admission. See
+[bulk evidence](../../docs/internal/NATIVE_VALIDATION_BULK.md).
+
 This is an implemented, offline-exercised subset, not full Infisical support
 or remote conformance. Handwritten internal Refit 16.3.0 interfaces build native
 requests with explicit cancellation. The existing `InfisicalClient` managed

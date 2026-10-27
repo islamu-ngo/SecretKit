@@ -336,11 +336,12 @@ internal sealed class ProjectCanary(ProjectFamilyContext context, string project
         else
         {
             var reference = new SecretReference(setup.Authority, new InfisicalBulkAddress(project, environment, "/"));
-            var receipt = new MutationReceipt(reference);
+            InfisicalBulkSecret[] items = [new(key, material, tagIds: tagIds)];
+            var receipt = new InfisicalBulkReceipt(setup, reference, items, InfisicalBulkOperation.Create);
             var authority = new InfisicalNativeAuthority(setup.Authority, c.Environment.Tokens(NativeIdentityRole.Setup),
                 project, environment, "/");
             SecretOutcome<InfisicalBulkObservation> created = await setup.CreateSecretsAsync(reference,
-                [new(key, material, tagIds: tagIds)], authority, receipt, token);
+                items, authority, receipt, token);
             c.Probe.Contract(created.IsSuccess && created.Value.AllApplied && created.Value.Items.Count == 1 &&
                 receipt.Evidence == DispatchEvidence.Applied, NativeFailure.MissingPrerequisite);
         }
@@ -394,11 +395,12 @@ internal sealed class ProjectCanary(ProjectFamilyContext context, string project
         if (action == ProjectRoleAction.Delete)
         {
             var reference = new SecretReference(runtime.Authority, new InfisicalBulkAddress(project, environment, "/"));
-            var receipt = new MutationReceipt(reference);
+            InfisicalBulkSecret[] items = [new(selectedKey)];
+            var receipt = new InfisicalBulkReceipt(runtime, reference, items, InfisicalBulkOperation.Delete);
             var authority = new InfisicalNativeAuthority(runtime.Authority, context.Environment.Tokens(NativeIdentityRole.Runtime),
                 project, environment, "/");
             SecretOutcome<InfisicalBulkObservation> outcome = await runtime.DeleteSecretsAsync(reference,
-                [new(selectedKey)], authority, receipt, token);
+                items, authority, receipt, token);
             matched = allowed ? outcome.IsSuccess && outcome.Value.AllApplied && outcome.Value.Items.Count == 1 &&
                 receipt.Evidence == DispatchEvidence.Applied :
                 outcome.Status == SecretStatus.Denied && receipt.Evidence == DispatchEvidence.Rejected;

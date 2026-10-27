@@ -443,13 +443,14 @@ internal sealed class LocalNativeProof : IAsyncDisposable
             new InfisicalNetworkOptions { AllowLoopbackDevelopmentHttp = true });
         var reference = new SecretReference(client.Authority, new InfisicalBulkAddress(project, environment, folder));
         var authority = new InfisicalNativeAuthority(client.Authority, setup, project, environment, folder);
-        var receipt = new MutationReceipt(reference);
+        InfisicalBulkSecret[] items = [new InfisicalBulkSecret(key)];
+        var receipt = new InfisicalBulkReceipt(client, reference, items, InfisicalBulkOperation.Delete);
         int operation = Ledger.Begin("remove-fixture", "fixture:" + project + ":" + key);
         Ledger.Effect(operation, DispatchEvidence.PossiblyDispatched);
         bool removed = false;
         try
         {
-            var result = await client.DeleteSecretsAsync(reference, [new InfisicalBulkSecret(key)], authority, receipt, token);
+            var result = await client.DeleteSecretsAsync(reference, items, authority, receipt, token);
             removed = result.IsSuccess && result.Value.AllApplied && receipt.Evidence == DispatchEvidence.Applied;
             return removed;
         }

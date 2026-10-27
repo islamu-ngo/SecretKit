@@ -73,8 +73,14 @@ internal static class BulkAuxiliaryEffects
             await using var client = env.CreateClient(role);
             var target = new SecretReference(client.Authority,
                 new InfisicalBulkAddress(root.ProjectId, root.Environment, root.Folder, root.FolderId));
-            var receipt = new MutationReceipt(target);
             InfisicalBulkSecret[] items = CreateItems(input.Bulk.Items, root.Folder, materials);
+            var receipt = new InfisicalBulkReceipt(client, target, items, root.Method switch
+            {
+                "POST" => InfisicalBulkOperation.Create,
+                "PATCH" => InfisicalBulkOperation.Update,
+                "DELETE" => InfisicalBulkOperation.Delete,
+                _ => throw new NativeCaseFailureException("contract-mismatch")
+            }, root.Method == "PATCH" ? input.Bulk.Mode : InfisicalBulkUpdateMode.FailOnNotFound);
             var authority = new InfisicalNativeAuthority(client.Authority, env.Tokens(role),
                 root.ProjectId, root.Environment, root.Folder);
             var dispatch = await InfisicalStaticFamilies.DispatchAsync(env, definition, probe,
@@ -133,7 +139,7 @@ internal static class BulkAuxiliaryEffects
 
     internal static ValueTask<SecretOutcome<InfisicalBulkObservation>> CallAsync(InfisicalClient client,
         SecretReference target, InfisicalBulkSecret[] items, InfisicalNativeAuthority authority,
-        MutationReceipt receipt, string method, InfisicalBulkUpdateMode mode, CancellationToken token) =>
+        InfisicalBulkReceipt receipt, string method, InfisicalBulkUpdateMode mode, CancellationToken token) =>
         method switch
         {
             "POST" => client.CreateSecretsAsync(target, items, authority, receipt, token),

@@ -139,10 +139,10 @@ public sealed class ImportEffectTests
         var state = new ImportState { DestinationPolicy = pendingApproval };
         await using InfisicalClient client = Phase5TestSupport.Client(new ImportBackend(state));
         var target = BulkTarget(client);
-        var receipt = new MutationReceipt(target);
         using SecretMaterial material = SecretMaterial.FromText(state.SourceValue);
         var input = new InfisicalBulkSecret("key", material, metadata: [new("label", "protected-metadata")],
             creationMetadata: new Dictionary<string, string> { ["migration"] = "reviewed" });
+        var receipt = new InfisicalBulkReceipt(client, target, [input], InfisicalBulkOperation.Create);
         InfisicalBulkObservation result = (await client.CreateSecretsAsync(target, [input],
             Phase5TestSupport.Admin(client), receipt)).Value;
         await Assert.That(result.AllApplied).IsEqualTo(!pendingApproval);
@@ -159,9 +159,10 @@ public sealed class ImportEffectTests
         var state = new ImportState { PartialBulk = true };
         await using InfisicalClient client = Phase5TestSupport.Client(new ImportBackend(state));
         var target = BulkTarget(client);
-        var receipt = new MutationReceipt(target);
         using SecretMaterial one = SecretMaterial.FromText(state.SourceValue);
         using SecretMaterial two = SecretMaterial.FromText("second-value");
+        var receipt = new InfisicalBulkReceipt(client, target, [new("key", one), new("other", two)],
+            InfisicalBulkOperation.Create);
         InfisicalBulkObservation result = (await client.CreateSecretsAsync(target, [new("key", one), new("other", two)],
             Phase5TestSupport.Admin(client), receipt)).Value;
         await Assert.That(result.AllApplied).IsFalse();
@@ -183,14 +184,18 @@ public sealed class ImportEffectTests
         var target = BulkTarget(client);
         InfisicalNativeAuthority admin = Phase5TestSupport.Admin(client);
         using SecretMaterial value = SecretMaterial.FromText(state.SourceValue);
-        _ = (await client.CreateSecretsAsync(target, [new("key", value)], admin, new(target))).Value;
+        _ = (await client.CreateSecretsAsync(target, [new("key", value)], admin,
+            new(client, target, [new("key", value)], InfisicalBulkOperation.Create))).Value;
         using SecretMaterial replacement = SecretMaterial.FromText("changed-value");
         var update = new InfisicalBulkSecret("key", replacement, newName: "renamed", clearReminderNote: true,
             clearReminderRepeatDays: true, skipMultilineEncoding: true);
-        await Assert.That((await client.UpdateSecretsAsync(target, [update], admin, new(target), InfisicalBulkUpdateMode.Upsert)).Value.AllApplied).IsTrue();
+        await Assert.That((await client.UpdateSecretsAsync(target, [update], admin,
+            new(client, target, [update], InfisicalBulkOperation.Update, InfisicalBulkUpdateMode.Upsert),
+            InfisicalBulkUpdateMode.Upsert)).Value.AllApplied).IsTrue();
         await Assert.That(state.Values["renamed"]).IsEqualTo("changed-value");
         await Assert.That(state.LastMode).IsEqualTo("upsert");
-        await Assert.That((await client.DeleteSecretsAsync(target, [new("renamed")], admin, new(target))).Value.AllApplied).IsTrue();
+        await Assert.That((await client.DeleteSecretsAsync(target, [new("renamed")], admin,
+            new(client, target, [new("renamed")], InfisicalBulkOperation.Delete))).Value.AllApplied).IsTrue();
         await Assert.That(state.Values.ContainsKey("renamed")).IsFalse();
     }
 
@@ -202,8 +207,8 @@ public sealed class ImportEffectTests
         var state = new ImportState { Conflict = !lostResponse, DropResponse = lostResponse };
         await using InfisicalClient client = Phase5TestSupport.Client(new ImportBackend(state));
         var target = BulkTarget(client);
-        var receipt = new MutationReceipt(target);
         using SecretMaterial value = SecretMaterial.FromText(state.SourceValue);
+        var receipt = new InfisicalBulkReceipt(client, target, [new("key", value)], InfisicalBulkOperation.Create);
         SecretOutcome<InfisicalBulkObservation> result = await client.CreateSecretsAsync(target, [new("key", value)], Phase5TestSupport.Admin(client), receipt);
         await Assert.That(result.Status).IsEqualTo(lostResponse ? SecretStatus.Unknown : SecretStatus.Conflict);
         await Assert.That(receipt.Evidence).IsEqualTo(lostResponse ? DispatchEvidence.PossiblyDispatched : DispatchEvidence.Conflict);
@@ -216,9 +221,9 @@ public sealed class ImportEffectTests
         var state = new ImportState { AmbiguousApproval = true };
         await using InfisicalClient client = Phase5TestSupport.Client(new ImportBackend(state), responseLimit: 1024);
         var target = BulkTarget(client);
-        var receipt = new MutationReceipt(target);
         var forbidden = new InfisicalNativeAuthority(client.Authority, new Phase5TestSupport.Tokens("admin", true), "project");
         using SecretMaterial large = SecretMaterial.FromText(new string('v', 2048));
+        var receipt = new InfisicalBulkReceipt(client, target, [new("key", large)], InfisicalBulkOperation.Create);
         await Assert.That((await client.CreateSecretsAsync(target, [new("key", large)], forbidden, receipt)).Status).IsEqualTo(SecretStatus.Invalid);
         await Assert.That((await client.CreateSecretsAsync(target, Enumerable.Range(0, 129).Select(index => new InfisicalBulkSecret("key" + index, large)).ToArray(),
             forbidden, receipt)).Status).IsEqualTo(SecretStatus.Invalid);
@@ -237,8 +242,8 @@ public sealed class ImportEffectTests
         await using InfisicalClient client = Phase5TestSupport.Client(new ImportBackend(state));
         var target = new SecretReference(client.Authority,
             new InfisicalBulkAddress("project", "dev", "/", missingFolderIdentity ? null : Phase5TestSupport.Id));
-        var receipt = new MutationReceipt(target);
         using SecretMaterial value = SecretMaterial.FromText("value");
+        var receipt = new InfisicalBulkReceipt(client, target, [new("key", value)], InfisicalBulkOperation.Create);
         await Assert.That((await client.CreateSecretsAsync(target, [new("key", value)],
             Phase5TestSupport.Admin(client), receipt)).Status).IsEqualTo(SecretStatus.Unknown);
         await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.PossiblyDispatched);

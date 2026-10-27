@@ -156,7 +156,7 @@ internal static class BulkAuxiliaryContract
     };
     internal static string Member(string method) => "SecretKit.Infisical.InfisicalClient." + method +
         "(SecretKit.Core.SecretReference,System.Collections.Generic.IReadOnlyList<SecretKit.Infisical.InfisicalBulkSecret>," +
-        "SecretKit.Infisical.InfisicalNativeAuthority,SecretKit.Core.MutationReceipt," +
+        "SecretKit.Infisical.InfisicalNativeAuthority,SecretKit.Infisical.InfisicalBulkReceipt," +
         (method == "UpdateSecretsAsync" ? "SecretKit.Infisical.InfisicalBulkUpdateMode," : "") +
         "System.Threading.CancellationToken)";
 

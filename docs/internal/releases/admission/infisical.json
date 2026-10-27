@@ -262,7 +262,7 @@
     },
     {
       "file": "src/SecretKit.Infisical/InfisicalClient.cs",
-      "sha256": "db2f458b4ef46a0f881b823fbe368a6f7193ffe6ce3a78fcecf5c0346ed8f8ab"
+      "sha256": "5dfa6326b30c1303560a8f2e8d8d95dba9fb7fead60d6234611db62f1450fb33"
     },
     {
       "file": "src/SecretKit.Infisical/InfisicalContractAvailability.cs",
@@ -346,7 +346,7 @@
     },
     {
       "file": "src/SecretKit.Infisical/NativeBulk.cs",
-      "sha256": "d2051981a3d42fbddb05b1a4313bc50c4ade81c33b954bf54660a0668660fedb"
+      "sha256": "7e8d7902c6b1548a02d4c5dae0033a4bcf904c8b8f071493b9892869c9a9c501"
     },
     {
       "file": "src/SecretKit.Infisical/NativeDynamicDefinitionOptions.cs",
@@ -474,7 +474,7 @@
     },
     {
       "id": "i.runtime.InfisicalClient.CreateSecretsAsync",
-      "member": "SecretKit.Infisical.InfisicalClient.CreateSecretsAsync(SecretKit.Core.SecretReference,System.Collections.Generic.IReadOnlyList<SecretKit.Infisical.InfisicalBulkSecret>,SecretKit.Infisical.InfisicalNativeAuthority,SecretKit.Core.MutationReceipt,System.Threading.CancellationToken)",
+      "member": "SecretKit.Infisical.InfisicalClient.CreateSecretsAsync(SecretKit.Core.SecretReference,System.Collections.Generic.IReadOnlyList<SecretKit.Infisical.InfisicalBulkSecret>,SecretKit.Infisical.InfisicalNativeAuthority,SecretKit.Infisical.InfisicalBulkReceipt,System.Threading.CancellationToken)",
       "variants": [
         "type.Shared",
         "type.Personal",
@@ -655,7 +655,7 @@
     },
     {
       "id": "i.runtime.InfisicalClient.DeleteSecretsAsync",
-      "member": "SecretKit.Infisical.InfisicalClient.DeleteSecretsAsync(SecretKit.Core.SecretReference,System.Collections.Generic.IReadOnlyList<SecretKit.Infisical.InfisicalBulkSecret>,SecretKit.Infisical.InfisicalNativeAuthority,SecretKit.Core.MutationReceipt,System.Threading.CancellationToken)",
+      "member": "SecretKit.Infisical.InfisicalClient.DeleteSecretsAsync(SecretKit.Core.SecretReference,System.Collections.Generic.IReadOnlyList<SecretKit.Infisical.InfisicalBulkSecret>,SecretKit.Infisical.InfisicalNativeAuthority,SecretKit.Infisical.InfisicalBulkReceipt,System.Threading.CancellationToken)",
       "variants": [
         "type.Shared",
         "type.Personal",
@@ -1215,7 +1215,7 @@
     },
     {
       "id": "i.runtime.InfisicalClient.UpdateSecretsAsync",
-      "member": "SecretKit.Infisical.InfisicalClient.UpdateSecretsAsync(SecretKit.Core.SecretReference,System.Collections.Generic.IReadOnlyList<SecretKit.Infisical.InfisicalBulkSecret>,SecretKit.Infisical.InfisicalNativeAuthority,SecretKit.Core.MutationReceipt,SecretKit.Infisical.InfisicalBulkUpdateMode,System.Threading.CancellationToken)",
+      "member": "SecretKit.Infisical.InfisicalClient.UpdateSecretsAsync(SecretKit.Core.SecretReference,System.Collections.Generic.IReadOnlyList<SecretKit.Infisical.InfisicalBulkSecret>,SecretKit.Infisical.InfisicalNativeAuthority,SecretKit.Infisical.InfisicalBulkReceipt,SecretKit.Infisical.InfisicalBulkUpdateMode,System.Threading.CancellationToken)",
       "variants": [
         "mode.Ignore",
         "mode.Upsert",

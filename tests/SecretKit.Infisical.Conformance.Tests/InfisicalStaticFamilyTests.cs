@@ -106,7 +106,7 @@ public sealed class InfisicalStaticFamilyTests
         await using var backend = new OfflineBackend("good");
         var definition = new NativeCaseDefinition(new("Infisical", "i.runtime.InfisicalClient.CreateSecretsAsync",
             "type.Shared", "local", denied ? "denied-authority" : "independent-effect"),
-            "SecretKit.Infisical.InfisicalClient.CreateSecretsAsync(SecretKit.Core.SecretReference,System.Collections.Generic.IReadOnlyList<SecretKit.Infisical.InfisicalBulkSecret>,SecretKit.Infisical.InfisicalNativeAuthority,SecretKit.Core.MutationReceipt,System.Threading.CancellationToken)");
+            "SecretKit.Infisical.InfisicalClient.CreateSecretsAsync(SecretKit.Core.SecretReference,System.Collections.Generic.IReadOnlyList<SecretKit.Infisical.InfisicalBulkSecret>,SecretKit.Infisical.InfisicalNativeAuthority,SecretKit.Infisical.InfisicalBulkReceipt,System.Threading.CancellationToken)");
         var input = new NativeBulkEffects.BulkInput(Fixture(),
             [new("TARGET", "new", null, null, null, null, false, null, null, null, false, false, null,
                 InfisicalSecretType.Shared)], InfisicalBulkUpdateMode.FailOnNotFound,
@@ -151,7 +151,7 @@ public sealed class InfisicalStaticFamilyTests
         await using var backend = new OfflineBackend("good");
         var definition = new NativeCaseDefinition(new("Infisical", "i.runtime.InfisicalClient.CreateSecretsAsync",
             "metadata.encrypted", "local", "independent-effect"),
-            "SecretKit.Infisical.InfisicalClient.CreateSecretsAsync(SecretKit.Core.SecretReference,System.Collections.Generic.IReadOnlyList<SecretKit.Infisical.InfisicalBulkSecret>,SecretKit.Infisical.InfisicalNativeAuthority,SecretKit.Core.MutationReceipt,System.Threading.CancellationToken)");
+            "SecretKit.Infisical.InfisicalClient.CreateSecretsAsync(SecretKit.Core.SecretReference,System.Collections.Generic.IReadOnlyList<SecretKit.Infisical.InfisicalBulkSecret>,SecretKit.Infisical.InfisicalNativeAuthority,SecretKit.Infisical.InfisicalBulkReceipt,System.Threading.CancellationToken)");
         NativeBulkEffects.BulkMetadataInput[] metadata = [new("annotation", "protected", true)];
         var input = new NativeBulkEffects.BulkInput(Fixture(),
             [new("TARGET", "new", null, null, metadata, null, false, null, null, null, false, false, null,

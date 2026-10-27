@@ -8,7 +8,7 @@ internal static class NativeBulkEffects
     private const string Create = "i.runtime.InfisicalClient.CreateSecretsAsync";
     private const string Update = "i.runtime.InfisicalClient.UpdateSecretsAsync";
     private const string Delete = "i.runtime.InfisicalClient.DeleteSecretsAsync";
-    private const string Parameters = "(SecretKit.Core.SecretReference,System.Collections.Generic.IReadOnlyList<SecretKit.Infisical.InfisicalBulkSecret>,SecretKit.Infisical.InfisicalNativeAuthority,SecretKit.Core.MutationReceipt,";
+    private const string Parameters = "(SecretKit.Core.SecretReference,System.Collections.Generic.IReadOnlyList<SecretKit.Infisical.InfisicalBulkSecret>,SecretKit.Infisical.InfisicalNativeAuthority,SecretKit.Infisical.InfisicalBulkReceipt,";
     private const string CreateMember = "SecretKit.Infisical.InfisicalClient.CreateSecretsAsync" + Parameters + "System.Threading.CancellationToken)";
     private const string UpdateMember = "SecretKit.Infisical.InfisicalClient.UpdateSecretsAsync" + Parameters + "SecretKit.Infisical.InfisicalBulkUpdateMode,System.Threading.CancellationToken)";
     private const string DeleteMember = "SecretKit.Infisical.InfisicalClient.DeleteSecretsAsync" + Parameters + "System.Threading.CancellationToken)";
@@ -65,7 +65,6 @@ internal static class NativeBulkEffects
         NativeIdentityRole role = denied ? NativeIdentityRole.Denied : NativeIdentityRole.Runtime;
         var target = new SecretReference(client.Authority, new InfisicalBulkAddress(input.Fixture.ProjectId,
             input.Fixture.Environment, fixture.Folder, fixture.FolderId));
-        var receipt = new MutationReceipt(target);
         var materials = new List<SecretMaterial>();
         try
         {
@@ -79,6 +78,13 @@ internal static class NativeBulkEffects
                     i.ReminderNote, i.ReminderRepeatDays, i.ClearReminderNote, i.ClearReminderRepeatDays,
                     i.CreationMetadata, i.Type);
             }).ToArray();
+            var receipt = new InfisicalBulkReceipt(client, target, items, definition.Key.Operation switch
+            {
+                Create => InfisicalBulkOperation.Create,
+                Update => InfisicalBulkOperation.Update,
+                Delete => InfisicalBulkOperation.Delete,
+                _ => throw new NativeCaseFailureException("contract-mismatch")
+            }, definition.Key.Operation == Update ? input.Mode : InfisicalBulkUpdateMode.FailOnNotFound);
             InfisicalNativeAuthority authority = fixture.Authority(client, role);
             StaticDispatch<InfisicalBulkObservation> dispatch = await InfisicalStaticFamilies.DispatchAsync(
                 env, definition, probe, ct => definition.Key.Operation switch

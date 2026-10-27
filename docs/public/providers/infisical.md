@@ -116,6 +116,16 @@ contradictory keys/scope and nonpositive versions are Invalid. Returned
 is not filled from the request. A provider may have acted even when its response
 is rejected, so the receipt remains PossiblyDispatched rather than Applied.
 
+Bulk create/update/delete take a caller-held `InfisicalBulkReceipt`, not the
+static operation's Core receipt. Construct it with the exact client, target,
+ordered inputs, operation and update mode before awaiting. Inspect immutable
+`receipt.Items` snapshots after a failed outcome or cancellation; supported
+earlier rows remain known even if a later row is rejected. Included items start
+PossiblyDispatched at envelope handoff, not Applied. Approval is Pending and
+empty items cannot establish AllApplied. Receipts contain no values/value hashes
+and cannot be reused after admission. See
+[bulk evidence](../../internal/NATIVE_VALIDATION_BULK.md).
+
 ## Native API owner map
 
 All methods in the first five rows are on `InfisicalClient`. Native addresses

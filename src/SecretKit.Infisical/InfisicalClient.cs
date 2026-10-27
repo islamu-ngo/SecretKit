@@ -261,7 +261,7 @@ public sealed partial class InfisicalClient : ISecretReader, ISecretInventory, I
 
     private async ValueTask<SecretOutcome<JsonDocument>> ReadDocumentAsync(HttpRequestMessage request,
         CancellationToken cancellationToken, MutationReceipt? receipt = null, SecretReference? target = null,
-        IInfisicalTokenSource? nativeTokens = null)
+        IInfisicalTokenSource? nativeTokens = null, InfisicalBulkReceipt? bulkReceipt = null)
     {
         _binding.BindRequest(request);
         SecretOutcome<InfisicalAccessToken> token;
@@ -307,7 +307,8 @@ public sealed partial class InfisicalClient : ISecretReader, ISecretInventory, I
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
-            receipt?.BeginDispatch(target!);
+            if (bulkReceipt is not null) bulkReceipt.BeginDispatch();
+            else receipt?.BeginDispatch(target!);
             using HttpResponseMessage response = await _http.SendAsync(request,
                 HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
@@ -363,7 +364,8 @@ public sealed partial class InfisicalClient : ISecretReader, ISecretInventory, I
                 cancellationToken.ThrowIfCancellationRequested();
                 collected.Position = 0;
                 return SecretOutcome<JsonDocument>.Success(await JsonDocument.ParseAsync(collected,
-                    new JsonDocumentOptions { MaxDepth = 32, AllowDuplicateProperties = false }, cancellationToken).ConfigureAwait(false));
+                    new JsonDocumentOptions { MaxDepth = 32, AllowDuplicateProperties = bulkReceipt is not null },
+                    cancellationToken).ConfigureAwait(false));
             }
             finally
             {
@@ -444,7 +446,7 @@ public sealed partial class InfisicalClient : ISecretReader, ISecretInventory, I
 
     private async ValueTask<SecretOutcome<JsonDocument>> NativeDocumentAsync(SecretReference target,
         string path, HttpMethod method, byte[]? payload, InfisicalNativeAuthority? authority,
-        MutationReceipt? receipt, CancellationToken cancellationToken)
+        MutationReceipt? receipt, CancellationToken cancellationToken, InfisicalBulkReceipt? bulkReceipt = null)
     {
         ArgumentNullException.ThrowIfNull(target);
         try
@@ -463,7 +465,7 @@ public sealed partial class InfisicalClient : ISecretReader, ISecretInventory, I
                 using HttpRequestMessage request = await BuildNativeRequestAsync((InfisicalNativeAddress)target.Address,
                     path, method, payload, linked.Token).ConfigureAwait(false);
                 SecretOutcome<JsonDocument> outcome = await ReadDocumentAsync(request, linked.Token,
-                    receipt, target, authority?.Tokens).ConfigureAwait(false);
+                    receipt, target, authority?.Tokens, bulkReceipt).ConfigureAwait(false);
                 if (!outcome.IsSuccess && receipt?.Evidence == DispatchEvidence.PossiblyDispatched)
                 {
                     return SecretOutcome<JsonDocument>.Failure(SecretStatus.Unknown);

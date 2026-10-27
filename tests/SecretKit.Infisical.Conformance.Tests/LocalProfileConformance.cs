@@ -201,8 +201,9 @@ internal static class LocalProfileConformance
                 new InfisicalBulkAddress(settings.ProjectId, settings.Environment, settings.Folder));
             var authority = new InfisicalNativeAuthority(client.Authority, tokens,
                 settings.ProjectId, settings.Environment, settings.Folder);
-            var receipt = new MutationReceipt(reference);
-            var removed = await client.DeleteSecretsAsync(reference, [new InfisicalBulkSecret(key)], authority, receipt, ct);
+            InfisicalBulkSecret[] items = [new InfisicalBulkSecret(key)];
+            var receipt = new InfisicalBulkReceipt(client, reference, items, InfisicalBulkOperation.Delete);
+            var removed = await client.DeleteSecretsAsync(reference, items, authority, receipt, ct);
             return removed.IsSuccess && removed.Value.AllApplied && receipt.Evidence == DispatchEvidence.Applied;
         }
         async Task Recreate()
@@ -275,8 +276,11 @@ internal static class LocalProfileConformance
         {
             StartInfo = new ProcessStartInfo("dotnet")
             {
-                WorkingDirectory = root, UseShellExecute = false, RedirectStandardInput = true,
-                RedirectStandardOutput = true, RedirectStandardError = true
+                WorkingDirectory = root,
+                UseShellExecute = false,
+                RedirectStandardInput = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
             }
         };
         process.StartInfo.Environment.Clear();

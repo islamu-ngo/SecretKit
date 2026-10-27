@@ -386,8 +386,10 @@ internal static class ValidationPoliciesEffects
             {
                 var bulk = new SecretReference(f.Runtime.Authority, new InfisicalBulkAddress(f.Input.ProjectId,
                     f.Input.Environment, f.Folder, f.FolderId));
-                var deleted = await f.Runtime.DeleteSecretsAsync(bulk, [new(trial.Key)],
-                    f.Authority(f.Runtime, NativeIdentityRole.Runtime), new(bulk), token);
+                InfisicalBulkSecret[] items = [new(trial.Key)];
+                var receipt = new InfisicalBulkReceipt(f.Runtime, bulk, items, InfisicalBulkOperation.Delete);
+                var deleted = await f.Runtime.DeleteSecretsAsync(bulk, items,
+                    f.Authority(f.Runtime, NativeIdentityRole.Runtime), receipt, token);
                 p.Contract(deleted.IsSuccess && deleted.Value.AllApplied, NativeFailure.MissingPrerequisite);
                 await f.ObserveAsync([new(trial.Key, SecretStatus.Absent, null, null)], token, recordEffect: false);
             }

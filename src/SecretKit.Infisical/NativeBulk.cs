@@ -21,6 +21,84 @@ public sealed class InfisicalBulkAddress : InfisicalNativeAddress
 public enum InfisicalBulkUpdateMode { Ignore, Upsert, FailOnNotFound }
 public enum InfisicalSecretType { Shared, Personal }
 
+public enum InfisicalBulkOperation { /** <summary>Create a batch.</summary> */ Create, /** <summary>Update a batch.</summary> */ Update, /** <summary>Delete a batch.</summary> */ Delete }
+
+public sealed class InfisicalBulkReceipt
+{
+    private readonly object _gate = new();
+    private readonly InfisicalClient _owner;
+    private readonly SecretReference _target;
+    private readonly InfisicalBulkOperation _operation;
+    private readonly InfisicalBulkUpdateMode _mode;
+    private readonly Selector[] _selectors;
+    private readonly InfisicalBulkItemObservation[] _items;
+    private bool _invoked;
+    internal MutationReceipt Envelope { get; }
+
+    public InfisicalBulkReceipt(InfisicalClient client, SecretReference target,
+        IReadOnlyList<InfisicalBulkSecret> inputs, InfisicalBulkOperation operation,
+        InfisicalBulkUpdateMode mode = InfisicalBulkUpdateMode.FailOnNotFound)
+    {
+        ArgumentNullException.ThrowIfNull(client);
+        ArgumentNullException.ThrowIfNull(target);
+        ArgumentNullException.ThrowIfNull(inputs);
+        if (!target.BelongsTo(client.Authority) || target.Address is not InfisicalBulkAddress ||
+            !Enum.IsDefined(operation) || !Enum.IsDefined(mode) ||
+            inputs.Count > 128 || inputs.Any(input => input is null))
+            throw new ArgumentException("Invalid bulk receipt selection.");
+        _owner = client;
+        _target = target;
+        _operation = operation;
+        _mode = mode;
+        _selectors = inputs.Select(Select).ToArray();
+        _items = Enumerable.Range(0, inputs.Count)
+            .Select(index => new InfisicalBulkItemObservation(index, DispatchEvidence.NotDispatched, null)).ToArray();
+        Envelope = new(target);
+    }
+
+    public DispatchEvidence Evidence => Envelope.Evidence;
+
+    [JsonIgnore]
+    public IReadOnlyList<InfisicalBulkItemObservation> Items
+    {
+        get { lock (_gate) return Array.AsReadOnly(_items.ToArray()); }
+    }
+
+    internal bool Claim(InfisicalClient client, SecretReference target,
+        IReadOnlyList<InfisicalBulkSecret> inputs, InfisicalBulkOperation operation, InfisicalBulkUpdateMode mode)
+    {
+        lock (_gate)
+        {
+            if (_invoked || !ReferenceEquals(client, _owner) || !ReferenceEquals(target, _target) ||
+                operation != _operation || mode != _mode || inputs.Count != _selectors.Length ||
+                !inputs.Select(Select).SequenceEqual(_selectors))
+                return false;
+            _invoked = true;
+            return true;
+        }
+    }
+
+    internal void BeginDispatch()
+    {
+        lock (_gate)
+        {
+            Envelope.BeginDispatch(_target);
+            for (int index = 0; index < _items.Length; index++)
+                _items[index] = new(index, DispatchEvidence.PossiblyDispatched, null);
+        }
+    }
+
+    internal void RecordItem(int index, DispatchEvidence evidence, string? version)
+    {
+        lock (_gate) _items[index] = new(index, evidence, version);
+    }
+
+    private static Selector Select(InfisicalBulkSecret input) => new(input.Key, input.NewName, input.Type, input.SecretPath);
+    private sealed record Selector(string Key, string? NewName, InfisicalSecretType Type, string? SecretPath);
+
+    public override string ToString() => $"[InfisicalBulkReceipt:{Evidence}]";
+}
+
 public sealed class InfisicalSecretMetadata
 {
     public InfisicalSecretMetadata(string key, string? value = null, bool encrypted = false)
@@ -146,7 +224,7 @@ public sealed class InfisicalBulkObservation
     public IReadOnlyList<InfisicalBulkItemObservation> Items { get; }
     [JsonIgnore]
     public string? ApprovalId { get; }
-    public bool AllApplied => Items.All(item => item.Evidence == DispatchEvidence.Applied);
+    public bool AllApplied => Items.Count > 0 && Items.All(item => item.Evidence == DispatchEvidence.Applied);
     public bool ApprovalPending => ApprovalId is not null;
     public override string ToString() => "[InfisicalBulkObservation]";
 }
@@ -154,28 +232,29 @@ public sealed class InfisicalBulkObservation
 public sealed partial class InfisicalClient
 {
     public ValueTask<SecretOutcome<InfisicalBulkObservation>> CreateSecretsAsync(SecretReference target,
-        IReadOnlyList<InfisicalBulkSecret> inputs, InfisicalNativeAuthority authority, MutationReceipt receipt,
+        IReadOnlyList<InfisicalBulkSecret> inputs, InfisicalNativeAuthority authority, InfisicalBulkReceipt receipt,
         CancellationToken cancellationToken = default) =>
         BulkSecretsAsync(target, inputs, authority, receipt, HttpMethod.Post, InfisicalBulkUpdateMode.FailOnNotFound, cancellationToken);
 
     public ValueTask<SecretOutcome<InfisicalBulkObservation>> UpdateSecretsAsync(SecretReference target,
-        IReadOnlyList<InfisicalBulkSecret> inputs, InfisicalNativeAuthority authority, MutationReceipt receipt,
+        IReadOnlyList<InfisicalBulkSecret> inputs, InfisicalNativeAuthority authority, InfisicalBulkReceipt receipt,
         InfisicalBulkUpdateMode mode = InfisicalBulkUpdateMode.FailOnNotFound, CancellationToken cancellationToken = default) =>
         BulkSecretsAsync(target, inputs, authority, receipt, HttpMethod.Patch, mode, cancellationToken);
 
     public ValueTask<SecretOutcome<InfisicalBulkObservation>> DeleteSecretsAsync(SecretReference target,
-        IReadOnlyList<InfisicalBulkSecret> inputs, InfisicalNativeAuthority authority, MutationReceipt receipt,
+        IReadOnlyList<InfisicalBulkSecret> inputs, InfisicalNativeAuthority authority, InfisicalBulkReceipt receipt,
         CancellationToken cancellationToken = default) =>
         BulkSecretsAsync(target, inputs, authority, receipt, HttpMethod.Delete, InfisicalBulkUpdateMode.FailOnNotFound, cancellationToken);
 
     private async ValueTask<SecretOutcome<InfisicalBulkObservation>> BulkSecretsAsync(SecretReference target,
-        IReadOnlyList<InfisicalBulkSecret> inputs, InfisicalNativeAuthority authority, MutationReceipt receipt,
+        IReadOnlyList<InfisicalBulkSecret> inputs, InfisicalNativeAuthority authority, InfisicalBulkReceipt receipt,
         HttpMethod method, InfisicalBulkUpdateMode mode, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(inputs);
         cancellationToken.ThrowIfCancellationRequested();
         if (!Enum.IsDefined(mode) || inputs.Count is < 1 or > 128 || inputs.Any(input => input is null) ||
-            target.Address is not InfisicalBulkAddress address || !NativeTargetValid(target, authority, receipt))
+            receipt is null || target.Address is not InfisicalBulkAddress address ||
+            !NativeTargetValid(target, authority, receipt.Envelope))
         {
             return SecretOutcome<InfisicalBulkObservation>.Failure(SecretStatus.Invalid);
         }
@@ -263,11 +342,20 @@ public sealed partial class InfisicalClient
                 _ => "failOnNotFound"
             };
         }
+        InfisicalBulkOperation operation = method == HttpMethod.Post ? InfisicalBulkOperation.Create :
+            method == HttpMethod.Patch ? InfisicalBulkOperation.Update : InfisicalBulkOperation.Delete;
+        if (!receipt.Claim(this, target, owned, operation, mode))
+            return SecretOutcome<InfisicalBulkObservation>.Failure(SecretStatus.Invalid);
         SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target, "api/v4/secrets/batch",
-            method, JsonSerializer.SerializeToUtf8Bytes(requestBody), authority, receipt, cancellationToken);
+            method, JsonSerializer.SerializeToUtf8Bytes(requestBody), authority, receipt.Envelope, cancellationToken, receipt);
         if (!outcome.IsSuccess) { return SecretOutcome<InfisicalBulkObservation>.Failure(outcome.Status, outcome.RetryAfter); }
         using JsonDocument document = outcome.Value;
         JsonElement root = document.RootElement;
+        if (root.ValueKind != JsonValueKind.Object ||
+            root.EnumerateObject().Select(property => property.Name).Distinct(StringComparer.Ordinal).Count() !=
+                root.EnumerateObject().Count() ||
+            root.EnumerateObject().Any(property => property.Name != "secrets" && !UniqueBulkProperties(property.Value)))
+            return SecretOutcome<InfisicalBulkObservation>.Failure(SecretStatus.Invalid);
         if (root.ValueKind == JsonValueKind.Object && root.TryGetProperty("approval", out JsonElement approval))
         {
             if (approval.ValueKind != JsonValueKind.Object || root.TryGetProperty("secrets", out _) ||
@@ -277,16 +365,16 @@ public sealed partial class InfisicalClient
             {
                 return SecretOutcome<InfisicalBulkObservation>.Failure(SecretStatus.Unknown);
             }
-            receipt.Record(DispatchEvidence.Pending);
-            return SecretOutcome<InfisicalBulkObservation>.Success(new(
-                owned.Select((_, index) => new InfisicalBulkItemObservation(index, DispatchEvidence.Pending, null)), id));
+            receipt.Envelope.Record(DispatchEvidence.Pending);
+            for (int index = 0; index < owned.Length; index++)
+                receipt.RecordItem(index, DispatchEvidence.Pending, null);
+            return SecretOutcome<InfisicalBulkObservation>.Success(new(receipt.Items, id));
         }
-        if (!NativeArray(root, "secrets", out JsonElement items) || items.GetArrayLength() > owned.Length)
+        if (!NativeArray(root, "secrets", out JsonElement items))
         {
             return SecretOutcome<InfisicalBulkObservation>.Failure(SecretStatus.Unknown);
         }
-        var observations = owned.Select((_, index) =>
-            new InfisicalBulkItemObservation(index, DispatchEvidence.PossiblyDispatched, null)).ToArray();
+        var seen = new HashSet<int>();
         foreach (JsonElement item in items.EnumerateArray())
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -294,16 +382,34 @@ public sealed partial class InfisicalClient
             string? type = NativeString(item, "type");
             int index = Array.FindIndex(owned, input => (input.NewName ?? input.Key) == key &&
                 (input.Type == InfisicalSecretType.Shared ? "shared" : "personal") == type);
-            if (index < 0 || observations[index].Evidence != DispatchEvidence.PossiblyDispatched ||
+            if (!UniqueBulkProperties(item) || index < 0 || !seen.Add(index) ||
                 NativeString(item, "workspace") != address.ProjectId || NativeString(item, "environment") != address.Environment ||
+                item.TryGetProperty("secretPath", out JsonElement path) &&
+                    (path.ValueKind != JsonValueKind.String || path.GetString() != address.Folder) ||
                 Version(item) is not { } version)
             {
-                return SecretOutcome<InfisicalBulkObservation>.Failure(SecretStatus.Unknown);
+                return SecretOutcome<InfisicalBulkObservation>.Failure(SecretStatus.Invalid);
             }
-            observations[index] = new(index, DispatchEvidence.Applied, version);
+            receipt.RecordItem(index, DispatchEvidence.Applied, version);
         }
-        var result = new InfisicalBulkObservation(observations, null);
-        if (result.AllApplied) { receipt.Record(DispatchEvidence.Applied); }
+        var result = new InfisicalBulkObservation(receipt.Items, null);
+        if (result.AllApplied) { receipt.Envelope.Record(DispatchEvidence.Applied); }
         return SecretOutcome<InfisicalBulkObservation>.Success(result);
+    }
+
+    private static bool UniqueBulkProperties(JsonElement value)
+    {
+        if (value.ValueKind == JsonValueKind.Object)
+        {
+            var names = new HashSet<string>(StringComparer.Ordinal);
+            foreach (JsonProperty property in value.EnumerateObject())
+                if (!names.Add(property.Name) || !UniqueBulkProperties(property.Value)) return false;
+        }
+        else if (value.ValueKind == JsonValueKind.Array)
+        {
+            foreach (JsonElement item in value.EnumerateArray())
+                if (!UniqueBulkProperties(item)) return false;
+        }
+        return true;
     }
 }
