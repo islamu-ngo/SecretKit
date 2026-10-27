@@ -176,6 +176,13 @@ and a known folder GUID, not the static read's project-ID address.
 Targets come from `client.Definition(name)`. Network selection uses the same
 safe or explicit host-controlled contract as reads and authentication.
 
+`maximumItems` limits definition and lease list cardinality, not the fields or
+nested inputs of one definition. Responses independently allow at most 1024
+properties per object or elements per nested array, depth 32, property names of
+1024 characters and string values of 65536 characters; duplicate properties are
+rejected. `network.MaximumResponseBytes` bounds both response and request bytes.
+Typed create/update profiles retain their own input validation.
+
 Typed [definition profiles](../../../src/SecretKit.Infisical/NativeDynamicProfiles.cs)
 and [profile options](../../../src/SecretKit.Infisical/NativeDynamicProfileOptions.cs)
 cover the `InfisicalDynamicProvider` choices, including SQL, cloud, directory,

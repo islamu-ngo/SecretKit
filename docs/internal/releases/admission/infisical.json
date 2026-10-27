@@ -270,7 +270,7 @@
     },
     {
       "file": "src/SecretKit.Infisical/InfisicalDynamicClient.cs",
-      "sha256": "344c41167b4554fca714711b290dc698dae5764b2bb6c40dddc55a6108ee32ef"
+      "sha256": "546b6f58bfd1456e4e5203a8d0dba82923c9ef39eb6549e2636731f99cae6931"
     },
     {
       "file": "src/SecretKit.Infisical/InfisicalDynamicTypes.cs",

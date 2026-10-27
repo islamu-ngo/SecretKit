@@ -16,6 +16,7 @@ namespace SecretKit.Infisical;
 /// </summary>
 public sealed class InfisicalDynamicClient : IAsyncDisposable
 {
+    private const int MaximumSchemaMembers = 1024;
     private readonly Uri _origin;
     private readonly HttpClient _http;
     private readonly InfisicalTransportBinding _binding;
@@ -713,14 +714,14 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
         }
     }
 
-    private bool Bounded(JsonElement element)
+    private static bool Bounded(JsonElement element)
     {
         if (element.ValueKind == JsonValueKind.Object)
         {
             var names = new HashSet<string>(StringComparer.Ordinal);
             foreach (JsonProperty property in element.EnumerateObject())
             {
-                if (names.Count == _maximumItems || property.Name.Length > 1024 ||
+                if (names.Count == MaximumSchemaMembers || property.Name.Length > 1024 ||
                     !names.Add(property.Name) || !Bounded(property.Value))
                 {
                     return false;
@@ -729,7 +730,7 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
         }
         else if (element.ValueKind == JsonValueKind.Array)
         {
-            if (element.GetArrayLength() > _maximumItems)
+            if (element.GetArrayLength() > MaximumSchemaMembers)
             {
                 return false;
             }

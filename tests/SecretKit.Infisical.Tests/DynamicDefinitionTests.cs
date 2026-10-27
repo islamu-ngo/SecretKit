@@ -6,6 +6,112 @@ namespace SecretKit.Infisical.Tests;
 public sealed class DynamicDefinitionTests
 {
     [Test]
+    public async Task SingleItemBudgetAdmitsNestedDefinitionThroughReadMutationAndAcquisition()
+    {
+        using var wire = new DynamicWireFixture();
+        await using InfisicalDynamicClient client = wire.Client(maximumItems: 1);
+        using var requirements = new NativePasswordRequirements(24, 4, 4, 4, 4, "!?");
+        using var profile = new NativeSqlDefinitionProfile(NativeSqlEngine.Postgres, "db.test", 5432,
+            DynamicWireFixture.Material(), DynamicWireFixture.Material(), "db", "create", "revoke",
+            passwordRequirements: requirements);
+        InfisicalDynamicTarget target = client.Definition("single");
+        var create = new InfisicalDynamicMutationReceipt(target, InfisicalDynamicOperation.CreateDefinition);
+        var created = await client.CreateDefinitionAsync(target, profile, new(TimeSpan.FromMinutes(1)), null, create);
+        await Assert.That(created.IsSuccess).IsTrue();
+        await Assert.That(create.Evidence).IsEqualTo(DispatchEvidence.Applied);
+        InfisicalDynamicDefinition definition = created.Value;
+        await Assert.That((await client.InspectDefinitionAsync(target)).Value.Id).IsEqualTo(definition.Id);
+        await Assert.That((await client.ListDefinitionsAsync()).Value.Items.Count).IsEqualTo(1);
+        var update = new InfisicalDynamicMutationReceipt(target, InfisicalDynamicOperation.UpdateDefinition);
+        var updated = await client.UpdateDefinitionAsync(definition, new(inputs: profile), update);
+        await Assert.That(updated.IsSuccess).IsTrue();
+        await Assert.That(update.Evidence).IsEqualTo(DispatchEvidence.Applied);
+        var acquire = new InfisicalDynamicMutationReceipt(target, InfisicalDynamicOperation.Acquire);
+        using InfisicalDatabaseLease first = (await client.AcquireDatabaseAsync(updated.Value, acquire)).Value;
+        await Assert.That(acquire.Evidence).IsEqualTo(DispatchEvidence.Applied);
+        await Assert.That((await client.InspectLeaseAsync(first.Reference)).IsSuccess).IsTrue();
+        await Assert.That((await client.ListLeasesAsync(definition)).Value.Items.Count).IsEqualTo(1);
+        using InfisicalDatabaseLease second = (await client.AcquireDatabaseAsync(updated.Value,
+            new(target, InfisicalDynamicOperation.Acquire))).Value;
+        await Assert.That((await client.ListLeasesAsync(definition)).Status).IsEqualTo(SecretStatus.Invalid);
+    }
+
+    [Test]
+    public async Task SingleItemBudgetRejectsTwoOtherwiseValidDefinitions()
+    {
+        using var wire = new DynamicWireFixture();
+        await using InfisicalDynamicClient seed = wire.Client();
+        await wire.CreateDatabaseAsync(seed);
+        using var profile = new NativeSshDefinitionProfile(["first", "second"]);
+        InfisicalDynamicTarget target = seed.Definition("second");
+        await Assert.That((await seed.CreateDefinitionAsync(target, profile, new(TimeSpan.FromMinutes(1)), null,
+            new(target, InfisicalDynamicOperation.CreateDefinition))).IsSuccess).IsTrue();
+        await Assert.That((await seed.ListDefinitionsAsync()).Value.Items.Count).IsEqualTo(2);
+        await using InfisicalDynamicClient client = wire.Client(maximumItems: 1);
+        await Assert.That((await client.InspectDefinitionAsync(client.Definition("second"))).IsSuccess).IsTrue();
+        await Assert.That((await client.ListDefinitionsAsync()).Status).IsEqualTo(SecretStatus.Invalid);
+    }
+
+    [Test]
+    [Arguments("depth")]
+    [Arguments("properties")]
+    [Arguments("array")]
+    [Arguments("string")]
+    [Arguments("duplicate")]
+    [Arguments("bytes")]
+    [Arguments("valid")]
+    public async Task IndependentSchemaBudgetsValidateReadsAndMutationResponses(string limit)
+    {
+        using var wire = new DynamicWireFixture();
+        await using InfisicalDynamicClient client = wire.Client(maximumItems: 1024);
+        InfisicalDynamicDefinition definition = await wire.CreateDatabaseAsync(client);
+        string schema = limit switch
+        {
+            "depth" => new string('[', 33) + "0" + new string(']', 33),
+            "properties" => "{" + string.Join(',', Enumerable.Range(0, 1025).Select(i => $"\"p{i}\":0")) + "}",
+            "array" => "[" + string.Join(',', Enumerable.Repeat("0", 1025)) + "]",
+            "string" => JsonSerializer.Serialize(new string('x', 65537)),
+            "duplicate" => "{\"value\":0,\"value\":1}",
+            "valid" => "{\"nested\":[{\"first\":1,\"second\":2}]}",
+            _ => JsonSerializer.Serialize(new string('x', 1024 * 1024))
+        };
+        wire.RawNextResponse = "{\"dynamicSecrets\":[],\"schema\":" + schema + "}";
+        var read = await client.ListDefinitionsAsync();
+        await Assert.That(read.IsSuccess).IsEqualTo(limit == "valid");
+        if (limit != "valid")
+            await Assert.That(read.Status).IsEqualTo(SecretStatus.Invalid);
+        string returned = JsonSerializer.Serialize(new
+        {
+            id = definition.Id,
+            name = definition.Target.Name,
+            folderId = wire.FolderId,
+            type = "sql-database",
+            defaultTTL = "60s",
+            maxTTL = "120s",
+            version = 1,
+            createdAt = wire.Time.GetUtcNow(),
+            updatedAt = wire.Time.GetUtcNow()
+        });
+        using var profile = new NativeSqlDefinitionProfile(NativeSqlEngine.Postgres, "db.test", 5432,
+            DynamicWireFixture.Material(), DynamicWireFixture.Material(), "db", "create", "revoke");
+        foreach (InfisicalDynamicOperation operation in new[]
+            { InfisicalDynamicOperation.CreateDefinition, InfisicalDynamicOperation.UpdateDefinition })
+        {
+            wire.RawNextResponse = "{\"dynamicSecret\":" + returned + ",\"schema\":" + schema + "}";
+            var receipt = new InfisicalDynamicMutationReceipt(definition.Target, operation);
+            var result = operation == InfisicalDynamicOperation.CreateDefinition
+                ? await client.CreateDefinitionAsync(definition.Target, profile, new(TimeSpan.FromMinutes(1)),
+                    new(TimeSpan.FromMinutes(2)), receipt)
+                : await client.UpdateDefinitionAsync(definition, new(inputs: profile), receipt);
+            await Assert.That(result.IsSuccess).IsEqualTo(limit == "valid");
+            if (limit != "valid")
+                await Assert.That(result.Status).IsEqualTo(SecretStatus.Unknown);
+            await Assert.That(receipt.Evidence).IsEqualTo(limit == "valid"
+                ? DispatchEvidence.Applied : DispatchEvidence.PossiblyDispatched);
+        }
+    }
+
+    [Test]
     public async Task ExplicitHostControlledTransportAdmitsFixedHttpOriginWithoutCredentials()
     {
         using var wire = new DynamicWireFixture();
