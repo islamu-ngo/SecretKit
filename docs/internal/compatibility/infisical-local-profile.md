@@ -439,3 +439,11 @@ responsibility. The `cleanup` case must not be read as whole-sandbox cleanup.
 The parent owns final integrated verification, refreshed installed-mode
 evidence, public documentation and qualification status. No commit,
 publication, provisioning or database dependency is authorized by this harness.
+
+Credential-free PR CI separately restores/builds the conformance project and
+runs only LocalProfileAdmissionTests, LocalNativeProofTests,
+LocalProfileFunctionalAdmissionTests, LocalProfileUpdateWitnessTests,
+InfisicalPeriodicRenewalGateTests and InfisicalRotationCancellationAdmissionTests.
+Each class requires a positive test count. These guards preserve admission and
+evidence rules without selecting native execution or changing the existing
+17-case functional and 21-case native denominators.

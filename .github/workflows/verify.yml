@@ -62,6 +62,10 @@
           "run": "dotnet build SecretKit.slnx --configuration Release --no-restore -p:Version=\"$SECRETKIT_CANDIDATE_VERSION\""
         },
         {
+          "id": "offline_conformance_guards",
+          "run": "dotnet restore tests/SecretKit.Infisical.Conformance.Tests/SecretKit.Infisical.Conformance.Tests.csproj --locked-mode\ndotnet build tests/SecretKit.Infisical.Conformance.Tests/SecretKit.Infisical.Conformance.Tests.csproj --configuration Release --no-restore -p:Version=\"$SECRETKIT_CANDIDATE_VERSION\"\nfor class in LocalProfileAdmissionTests LocalNativeProofTests LocalProfileFunctionalAdmissionTests LocalProfileUpdateWitnessTests InfisicalPeriodicRenewalGateTests InfisicalRotationCancellationAdmissionTests; do\n  dotnet tests/SecretKit.Infisical.Conformance.Tests/bin/Release/net10.0/SecretKit.Infisical.Conformance.Tests.dll --treenode-filter \"/*/*/$class/*\" --minimum-expected-tests 1 --zero-tests-policy strict || exit \"$?\"\ndone"
+        },
+        {
           "id": "pack",
           "run": "test ! -e \"$SECRETKIT_CANDIDATE_DIRECTORY\"\ndotnet pack SecretKit.slnx --configuration Release --no-build -p:Version=\"$SECRETKIT_CANDIDATE_VERSION\" --output \"$SECRETKIT_CANDIDATE_DIRECTORY\""
         },
