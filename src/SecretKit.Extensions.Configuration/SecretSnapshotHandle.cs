@@ -20,14 +20,21 @@ public sealed class SecretSnapshotHandle : IDisposable
         Count = storage.Count;
     }
 
+    /// <summary>The loader-local generation number pinned by this handle, not a provider revision.</summary>
     public long Generation { get; }
+    /// <summary>The injected-clock time when this generation's collection began.</summary>
     public DateTimeOffset CollectionStartedAt { get; }
+    /// <summary>The injected-clock time when all required reads completed.</summary>
     public DateTimeOffset CollectionCompletedAt { get; }
+    /// <summary>The number of required consumer selections retained by this generation.</summary>
     public int Count { get; }
     /// <summary>Local coherence cannot manufacture a provider transaction.</summary>
     public bool RemoteSnapshotGuaranteed => false;
 
     /// <summary>Copies material and preserves actual provider observation metadata.</summary>
+    /// <returns>An independent read that the caller must dispose.</returns>
+    /// <exception cref="ObjectDisposedException">This handle was disposed.</exception>
+    /// <exception cref="ArgumentException">The key is not part of this generation.</exception>
     public SecretRead Read(string consumerKey)
     {
         ArgumentNullException.ThrowIfNull(consumerKey);
@@ -38,6 +45,8 @@ public sealed class SecretSnapshotHandle : IDisposable
         }
     }
 
+    /// <summary>Releases this pin; generation storage clears after its final publication or handle owner releases it.</summary>
+    /// <remarks>Already returned reads remain independently usable and caller-owned.</remarks>
     public void Dispose()
     {
         lock (_gate)
@@ -47,6 +56,7 @@ public sealed class SecretSnapshotHandle : IDisposable
         }
     }
 
+    /// <summary>Returns a bounded description without generation values or selected coordinates.</summary>
     public override string ToString() => "[SecretSnapshotHandle]";
 }
 

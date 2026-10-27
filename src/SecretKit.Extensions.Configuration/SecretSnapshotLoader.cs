@@ -17,6 +17,9 @@ public sealed class SecretSnapshotLoader : IDisposable
     private bool _disposed;
     private long _generation;
 
+    /// <summary>Freezes nonempty required selections and their case-sensitive consumer keys without performing I/O.</summary>
+    /// <remarks>Readers remain borrowed. The optional clock timestamps attempts; it installs no scheduling.</remarks>
+    /// <exception cref="ArgumentException">Selections are empty or consumer keys repeat.</exception>
     public SecretSnapshotLoader(IEnumerable<SecretSelection> selections, TimeProvider? timeProvider = null)
     {
         ArgumentNullException.ThrowIfNull(selections);
@@ -33,11 +36,15 @@ public sealed class SecretSnapshotLoader : IDisposable
         _time = timeProvider ?? TimeProvider.System;
     }
 
+    /// <summary>The latest material-free collection evidence, or null before any attempt is recorded.</summary>
     public SecretCollectionAttempt? LastAttempt
     {
         get { lock (_gate) return _lastAttempt; }
     }
 
+    /// <summary>Pins the latest complete local generation until the returned handle is disposed.</summary>
+    /// <exception cref="InvalidOperationException">No successful generation has been published.</exception>
+    /// <exception cref="ObjectDisposedException">The loader was disposed.</exception>
     public SecretSnapshotHandle Acquire()
     {
         lock (_gate)
@@ -131,6 +138,7 @@ public sealed class SecretSnapshotLoader : IDisposable
         }
     }
 
+    /// <summary>Stops publication and releases current storage without disposing borrowed readers or acquired handles.</summary>
     public void Dispose()
     {
         lock (_gate)
@@ -142,5 +150,6 @@ public sealed class SecretSnapshotLoader : IDisposable
         }
     }
 
+    /// <summary>Returns a bounded description without selected keys, material or provider coordinates.</summary>
     public override string ToString() => "[SecretSnapshotLoader]";
 }

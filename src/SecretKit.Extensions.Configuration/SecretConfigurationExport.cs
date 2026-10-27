@@ -6,6 +6,8 @@ namespace SecretKit.Extensions.Configuration;
 /// <summary>Explicit mapping from a protected consumer key to an exported configuration key.</summary>
 public sealed class SecretConfigurationMapping
 {
+    /// <summary>Maps a required generation key to a nonblank destination key; retains no material.</summary>
+    /// <exception cref="ArgumentException">Either key is blank.</exception>
     public SecretConfigurationMapping(string consumerKey, string configurationKey)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(consumerKey);
@@ -14,10 +16,13 @@ public sealed class SecretConfigurationMapping
         ConfigurationKey = configurationKey;
     }
 
+    /// <summary>The protected consumer key selected from an acquired generation.</summary>
     [JsonIgnore]
     public string ConsumerKey { get; }
+    /// <summary>The ordinary configuration destination key; collisions ignore case.</summary>
     [JsonIgnore]
     public string ConfigurationKey { get; }
+    /// <summary>Returns a bounded description without either mapped key.</summary>
     public override string ToString() => "[SecretConfigurationMapping]";
 }
 
@@ -114,6 +119,8 @@ public sealed class SecretConfigurationExport : IConfigurationSource, IDisposabl
         return strings;
     }
 
+    /// <summary>Closes the sole source/provider and clears its current dictionary, not escaped strings.</summary>
+    /// <remarks>Later builds and replacements fail. Caller-owned generation handles remain independent.</remarks>
     public void Dispose()
     {
         lock (_gate)
@@ -124,6 +131,7 @@ public sealed class SecretConfigurationExport : IConfigurationSource, IDisposabl
         }
     }
 
+    /// <summary>Returns a bounded description without exported keys or values.</summary>
     public override string ToString() => "[SecretConfigurationExport]";
 
     private sealed class ExportProvider : ConfigurationProvider, IDisposable
