@@ -501,6 +501,151 @@ public sealed class ConfigurationTests
         await Assert.That(() => export.ReplaceAcknowledgingManagedStrings(handle)).Throws<ObjectDisposedException>();
     }
 
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task ThrowingReloadCallbackCannotLeakPayloadOrRollBackCommittedValues(bool providerToken)
+    {
+        var reader = new ControlledReader();
+        using var loader = CreateLoader(reader);
+        await loader.RefreshAsync();
+        using var handle = loader.Acquire();
+        using var export = SecretConfigurationExport.CreateAcknowledgingManagedStrings(
+            handle, [new("first", "Service:Value")]);
+        IConfigurationRoot root = new ConfigurationBuilder().Add(export).Build();
+        using var lifetime = (IDisposable)root;
+        string escaped = root["Service:Value"]!;
+        string payload = NewMaterial();
+        string? observed = null;
+        var token = providerToken ? root.Providers.Single().GetReloadToken() : root.GetReloadToken();
+        using var registration = token.RegisterChangeCallback(_ =>
+        {
+            observed = root["Service:Value"];
+            throw new InvalidOperationException(payload, new Exception(payload));
+        }, null);
+        reader.Value = NewMaterial();
+        await loader.RefreshAsync();
+        using var next = loader.Acquire();
+        Exception? failure = null;
+        try { export.ReplaceAcknowledgingManagedStrings(next); }
+        catch (Exception error) { failure = error; }
+
+        await Assert.That(observed).IsEqualTo(reader.Value);
+        await Assert.That(root["Service:Value"]).IsEqualTo(reader.Value);
+        await Assert.That(token.HasChanged).IsTrue();
+        await Assert.That(escaped).IsNotEqualTo(reader.Value);
+        await Assert.That(failure is InvalidOperationException).IsTrue();
+        await Assert.That(failure!.InnerException).IsNull();
+        await Assert.That(failure.ToString().Contains(payload, StringComparison.Ordinal)).IsFalse();
+    }
+
+    [Test]
+    public async Task ReloadCallbackCanReadAndReplaceFromAnotherThreadOutsideBothGates()
+    {
+        var reader = new ControlledReader();
+        using var loader = CreateLoader(reader);
+        await loader.RefreshAsync();
+        using var initial = loader.Acquire();
+        using var export = SecretConfigurationExport.CreateAcknowledgingManagedStrings(
+            initial, [new("first", "Service:Value")]);
+        IConfigurationRoot root = new ConfigurationBuilder().Add(export).Build();
+        using var lifetime = (IDisposable)root;
+        reader.Value = NewMaterial();
+        await loader.RefreshAsync();
+        using var next = loader.Acquire();
+        string committed = reader.Value;
+        reader.Value = NewMaterial();
+        await loader.RefreshAsync();
+        using var reentrant = loader.Acquire();
+        string? observed = null;
+        using var registration = root.GetReloadToken().RegisterChangeCallback(_ =>
+        {
+            Task.Run(() =>
+            {
+                observed = root["Service:Value"];
+                export.ReplaceAcknowledgingManagedStrings(reentrant);
+            }).WaitAsync(TimeSpan.FromSeconds(10)).GetAwaiter().GetResult();
+        }, null);
+
+        await Task.Run(() => export.ReplaceAcknowledgingManagedStrings(next))
+            .WaitAsync(TimeSpan.FromSeconds(10));
+        await Assert.That(observed).IsEqualTo(committed);
+        await Assert.That(root["Service:Value"]).IsEqualTo(reader.Value);
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task DisposalDuringReloadPreventsReplacementAndResurrection(bool disposeRoot)
+    {
+        var reader = new ControlledReader();
+        using var loader = CreateLoader(reader);
+        await loader.RefreshAsync();
+        using var handle = loader.Acquire();
+        using var export = SecretConfigurationExport.CreateAcknowledgingManagedStrings(
+            handle, [new("first", "Service:Value")]);
+        IConfigurationRoot root = new ConfigurationBuilder().Add(export).Build();
+        using var lifetime = (IDisposable)root;
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        // Block before root propagation so root disposal need not wait for its own
+        // in-flight framework registration. The provider has already committed.
+        using var registration = root.Providers.Single().GetReloadToken().RegisterChangeCallback(_ =>
+        {
+            entered.TrySetResult();
+            release.Task.WaitAsync(TimeSpan.FromSeconds(10)).GetAwaiter().GetResult();
+        }, null);
+        reader.Value = NewMaterial();
+        await loader.RefreshAsync();
+        using var next = loader.Acquire();
+        Task replace = Task.Run(() => export.ReplaceAcknowledgingManagedStrings(next));
+        try
+        {
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await Assert.That(root["Service:Value"]).IsEqualTo(reader.Value);
+            await Task.Run(() =>
+            {
+                if (disposeRoot) ((IDisposable)root).Dispose();
+                else export.Dispose();
+            }).WaitAsync(TimeSpan.FromSeconds(10));
+            await Assert.That(() => export.ReplaceAcknowledgingManagedStrings(handle))
+                .Throws<ObjectDisposedException>();
+            await Assert.That(() => export.Build(new ConfigurationBuilder()))
+                .Throws<InvalidOperationException>();
+            await Assert.That(root["Service:Value"]).IsNull();
+        }
+        finally { release.TrySetResult(); }
+        await replace.WaitAsync(TimeSpan.FromSeconds(10));
+        await Assert.That(root["Service:Value"]).IsNull();
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task ReloadCallbackCanDisposeWithoutHoldingEitherGate(bool disposeRoot)
+    {
+        var reader = new ControlledReader();
+        using var loader = CreateLoader(reader);
+        await loader.RefreshAsync();
+        using var handle = loader.Acquire();
+        using var export = SecretConfigurationExport.CreateAcknowledgingManagedStrings(
+            handle, [new("first", "Service:Value")]);
+        IConfigurationRoot root = new ConfigurationBuilder().Add(export).Build();
+        using var lifetime = (IDisposable)root;
+        using var registration = root.GetReloadToken().RegisterChangeCallback(_ =>
+        {
+            // Root disposal unregisters the callback currently propagating reload;
+            // reenter it on this thread rather than joining that framework wait.
+            if (disposeRoot) ((IDisposable)root).Dispose();
+            else Task.Run(export.Dispose).WaitAsync(TimeSpan.FromSeconds(10)).GetAwaiter().GetResult();
+        }, null);
+        await Task.Run(() => export.ReplaceAcknowledgingManagedStrings(handle))
+            .WaitAsync(TimeSpan.FromSeconds(10));
+        await Assert.That(root["Service:Value"]).IsNull();
+        await Assert.That(() => export.ReplaceAcknowledgingManagedStrings(handle))
+            .Throws<ObjectDisposedException>();
+    }
+
     private sealed class FailingSource : IConfigurationSource
     {
         public IConfigurationProvider Build(IConfigurationBuilder builder) =>

@@ -61,8 +61,14 @@ the winning root. The slot is consumed when the source returns its provider;
 if a later sibling source fails, dispose the export rather than rebuilding it.
 
 `ReplaceAcknowledgingManagedStrings(nextHandle)` prepares all mapped values,
-atomically replaces the provider's string dictionary and signals reload. A failed
-replacement leaves prior strings and the reload token unchanged. The provider
+atomically replaces the provider's string dictionary and signals reload.
+Preparation failure leaves prior strings and the reload token unchanged.
+Publication is committed before notification: a throwing reload callback leaves
+the new values committed and causes a fixed `InvalidOperationException` without
+callback text or an inner exception. There is no rollback.
+Callbacks run outside source/provider gates and may reenter reads, replacement
+or disposal. Concurrent notifications mean re-read current committed state, not
+delivery of every intermediate generation. The provider
 is read-only. Disposing either the source or configuration root clears its
 dictionary references and prevents replacement or rebuild; an in-flight
 replacement cannot resurrect a disposed provider.

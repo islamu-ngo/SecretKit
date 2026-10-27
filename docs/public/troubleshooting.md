@@ -86,6 +86,10 @@ An export can build exactly one root. A rejected second Build leaves the first
 root usable; a later sibling-source failure does not reopen that slot. Create a
 new export rather than reusing or resetting an existing one.
 
+If replacement reports that values were committed but notification failed, the
+new dictionary is already visible. Callback diagnostics are sanitized; the
+exception does not mean rollback. Inspect current state before another action.
+
 ## Authentication maintenance is not running
 
 Constructing or registering a helper alone starts no worker. The host must

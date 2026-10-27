@@ -59,7 +59,14 @@ public sealed class SecretConfigurationExport : IConfigurationSource, IDisposabl
         return new SecretConfigurationExport(generation, entries);
     }
 
-    /// <summary>Replaces a complete prepared string dictionary and signals reload; no reader I/O occurs.</summary>
+    /// <summary>
+    /// Prepares and commits a complete string dictionary, then signals reload outside state gates.
+    /// Preparation failure preserves values and token. Notification failure leaves values committed.
+    /// No reader I/O occurs.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">
+    /// Values were committed, but a reload callback failed. Callback details are not retained.
+    /// </exception>
     public void ReplaceAcknowledgingManagedStrings(SecretSnapshotHandle generation)
     {
         ArgumentNullException.ThrowIfNull(generation);
@@ -68,7 +75,12 @@ public sealed class SecretConfigurationExport : IConfigurationSource, IDisposabl
             ObjectDisposedException.ThrowIf(_disposed, this);
             _provider.Publish(Prepare(generation));
         }
-        _provider.SignalReload();
+        try { _provider.SignalReload(); }
+        catch (AggregateException)
+        {
+            throw new InvalidOperationException(
+                "Configuration values were committed, but reload notification failed.");
+        }
     }
 
     /// <summary>

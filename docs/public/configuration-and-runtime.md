@@ -179,6 +179,14 @@ if (refreshed.IsSuccess)
 Replacement prepares every original mapping, atomically swaps the provider's
 string dictionary and signals reload. Missing keys, a disposed handle or another
 preparation failure leave previous strings and the reload token unchanged.
+Once the dictionary is published, notification cannot roll it back. If a reload
+callback throws, replacement throws a fixed `InvalidOperationException` stating
+that values were committed but notification failed, with no callback payload or
+inner exception. New strings remain committed, including those callbacks already
+observed; escaped strings retain their independent lifetimes.
+Callbacks execute outside source/provider gates and can reenter reads,
+replacement or disposal. Concurrent notifications tell consumers to re-read
+current committed state; they do not deliver every intermediate generation.
 Separate indexer reads can cross a reload and mix generations. Use one handle
 or construct a consumer-owned immutable settings object from one handle when
 multi-key coherence matters.
