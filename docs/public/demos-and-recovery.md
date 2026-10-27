@@ -257,6 +257,10 @@ publish for Linux x64, self-contained trimming and Native AOT separately.
 It retains full command output and exit codes in `compatibility.json`, including
 failed analysis. It does not set `IsTrimmable`/`IsAotCompatible`, change
 warnings-as-errors, suppress warnings, or regenerate the repository app lock.
+The test records observations rather than asserting compatibility: the report
+contains `observational: true` and `observedSuccess`, derived from actual
+publish/help/read exit codes. Passing the evidence-recording test does not turn
+an unsuccessful publish into support. Machine-field checks validate that meaning.
 
 Only a successful publish is followed by running that executable's help and
 actual selected read against a controlled loopback server. An analysis/publish

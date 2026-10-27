@@ -10,7 +10,7 @@ public sealed class DemoQualityTests
     [Test]
     [Arguments("trim")]
     [Arguments("aot")]
-    public async Task SelectedConsoleProfileRecordsActualPublishAndRunEvidence(string profile)
+    public async Task SelectedConsoleProfileRecordsPublishAndRunObservations(string profile)
     {
         string root = Path.GetFullPath("../../../../../", AppContext.BaseDirectory);
         string version = Environment.GetEnvironmentVariable("SECRETKIT_DEMO_CANDIDATE_VERSION") ??
@@ -92,10 +92,11 @@ public sealed class DemoQualityTests
                 read = await CaptureAsync(app, ["read"], executable, input);
             }
         }
-        bool qualified = published?.ExitCode == 0 && help?.ExitCode == 0 && read?.ExitCode == 0;
+        bool observedSuccess = published?.ExitCode == 0 && help?.ExitCode == 0 && read?.ExitCode == 0;
         var record = new
         {
             kind = "selected-console-analysis",
+            observational = true,
             profile,
             version,
             rid = "linux-x64",
@@ -103,7 +104,7 @@ public sealed class DemoQualityTests
             runtime = System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription,
             os = System.Runtime.InteropServices.RuntimeInformation.OSDescription,
             osVersion = Environment.OSVersion.VersionString,
-            qualified,
+            observedSuccess,
             scope = "Console help and controlled local read only; no library-wide compatibility claim.",
             commands,
             help,
@@ -118,7 +119,16 @@ public sealed class DemoQualityTests
         };
         string report = Path.Combine(run, "compatibility.json");
         await File.WriteAllTextAsync(report, JsonSerializer.Serialize(record));
-        await Assert.That(File.Exists(report)).IsTrue();
+        using var saved = JsonDocument.Parse(await File.ReadAllTextAsync(report));
+        JsonElement result = saved.RootElement;
+        await Assert.That(result.GetProperty("observational").GetBoolean()).IsTrue();
+        bool executionsPassed = new[] { "help", "read" }.All(name =>
+            result.GetProperty(name).ValueKind == JsonValueKind.Object &&
+            result.GetProperty(name).GetProperty("ExitCode").GetInt32() == 0);
+        bool commandsPassed = result.GetProperty("commands").EnumerateArray()
+            .All(command => command.GetProperty("result").GetProperty("ExitCode").GetInt32() == 0);
+        await Assert.That(result.GetProperty("observedSuccess").GetBoolean())
+            .IsEqualTo(commandsPassed && executionsPassed);
         Console.WriteLine("P6 compatibility record: " + report);
     }
 

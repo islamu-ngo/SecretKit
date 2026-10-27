@@ -139,7 +139,7 @@
             "SECRETKIT_DEMO_SDK": "10.0.302",
             "SECRETKIT_DEMO_INSTALL_REPORTS": "${{ github.workspace }}/artifacts/verification/local/demos"
           },
-          "run": "dotnet tests/SecretKit.Demo.Tests/bin/Release/net10.0/SecretKit.Demo.Tests.dll --minimum-expected-tests 65 --zero-tests-policy strict --report-trx --results-directory artifacts/verification/local/demo-tests"
+          "run": "dotnet tests/SecretKit.Demo.Tests/bin/Release/net10.0/SecretKit.Demo.Tests.dll --minimum-expected-tests 65 --zero-tests-policy strict --maximum-parallel-tests 2 --report-trx --results-directory artifacts/verification/local/demo-tests"
         },
         {
           "id": "metadata",
@@ -273,7 +273,7 @@
         },
         {
           "id": "test",
-          "run": "dotnet tests/SecretKit.Demo.Tests/bin/Release/net10.0/SecretKit.Demo.Tests.dll --minimum-expected-tests 65 --zero-tests-policy strict --report-trx --results-directory \"artifacts/verification/demos/${{ matrix.platform }}/tests\"\ndotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll local-demo-check . artifacts/demo-inputs \"$GITHUB_SHA\" \"$GITHUB_RUN_ID\" \"$GITHUB_RUN_ATTEMPT\" 10.0.302"
+          "run": "dotnet tests/SecretKit.Demo.Tests/bin/Release/net10.0/SecretKit.Demo.Tests.dll --minimum-expected-tests 65 --zero-tests-policy strict --maximum-parallel-tests 2 --report-trx --results-directory \"artifacts/verification/demos/${{ matrix.platform }}/tests\"\ndotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll local-demo-check . artifacts/demo-inputs \"$GITHUB_SHA\" \"$GITHUB_RUN_ID\" \"$GITHUB_RUN_ATTEMPT\" 10.0.302"
         },
         {
           "if": "${{ always() }}",
