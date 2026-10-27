@@ -5,10 +5,13 @@ using SecretKit.Core;
 
 namespace SecretKit.Infisical;
 
-public enum InfisicalOrganizationSelector { Id, Slug }
+/// <summary>Selects the native identifier or slug route, never a caller-supplied endpoint.</summary>
+public enum InfisicalOrganizationSelector { /** <summary>Select by native identifier.</summary> */ Id, /** <summary>Select by native slug.</summary> */ Slug }
 
+/// <summary>Protected project-local environment selector.</summary>
 public sealed class InfisicalEnvironmentAddress : InfisicalNativeAddress
 {
+    /// <summary>Selects an environment by explicit identifier or slug within a project.</summary>
     public InfisicalEnvironmentAddress(string projectId, string selector,
         InfisicalOrganizationSelector selection = InfisicalOrganizationSelector.Id) : base(projectId)
     {
@@ -20,14 +23,18 @@ public sealed class InfisicalEnvironmentAddress : InfisicalNativeAddress
         Selector = selector;
         Selection = selection;
     }
+    /// <summary>The protected native identifier or slug.</summary>
     [JsonIgnore]
     public string Selector { get; }
+    /// <summary>The route interpretation of Selector.</summary>
     [JsonIgnore]
     public InfisicalOrganizationSelector Selection { get; }
 }
 
+/// <summary>Protected project-local tag selector, optionally unselected for listing.</summary>
 public sealed class InfisicalTagAddress : InfisicalNativeAddress
 {
+    /// <summary>Selects a tag by identifier/slug, or no individual tag for a list.</summary>
     public InfisicalTagAddress(string projectId, string? selector = null,
         InfisicalOrganizationSelector selection = InfisicalOrganizationSelector.Id) : base(projectId)
     {
@@ -42,8 +49,10 @@ public sealed class InfisicalTagAddress : InfisicalNativeAddress
         Selector = selector;
         Selection = selection;
     }
+    /// <summary>The selected tag identifier/slug, or null for listing.</summary>
     [JsonIgnore]
     public string? Selector { get; }
+    /// <summary>The explicit native identifier or slug interpretation.</summary>
     [JsonIgnore]
     public InfisicalOrganizationSelector Selection { get; }
 }
@@ -51,6 +60,7 @@ public sealed class InfisicalTagAddress : InfisicalNativeAddress
 /// <summary>Parent folder scope, with the expected environment ID and an optional selected child.</summary>
 public sealed class InfisicalFolderAddress : InfisicalNativeAddress
 {
+    /// <summary>Selects an expected environment UUID, absolute parent path and optional child identity/name.</summary>
     public InfisicalFolderAddress(string projectId, string environment, string environmentId,
         string parentPath, string? id = null, string? name = null) : base(projectId, environment, parentPath)
     {
@@ -74,14 +84,18 @@ public sealed class InfisicalFolderAddress : InfisicalNativeAddress
         Id = id;
         Name = name;
     }
+    /// <summary>The expected native environment UUID, used for response validation.</summary>
     [JsonIgnore]
     public string EnvironmentId { get; }
+    /// <summary>The optional selected child folder UUID.</summary>
     [JsonIgnore]
     public string? Id { get; }
+    /// <summary>The optional child name without path separators.</summary>
     [JsonIgnore]
     public string? Name { get; }
 }
 
+/// <summary>Validated native environment metadata, not a permission or delivery assertion.</summary>
 public sealed class InfisicalEnvironment
 {
     internal InfisicalEnvironment(string id, string project, string name, string slug, double position,
@@ -95,23 +109,32 @@ public sealed class InfisicalEnvironment
         SoftDeletedAt = softDeletedAt;
         DeleteAfter = deleteAfter;
     }
+    /// <summary>The observed environment UUID.</summary>
     [JsonIgnore]
     public string Id { get; }
+    /// <summary>The validated project identity.</summary>
     [JsonIgnore]
     public string ProjectId { get; }
+    /// <summary>The protected display name.</summary>
     [JsonIgnore]
     public string Name { get; }
+    /// <summary>The protected native slug.</summary>
     [JsonIgnore]
     public string Slug { get; }
+    /// <summary>The provider's ordering position.</summary>
     [JsonIgnore]
     public double Position { get; }
+    /// <summary>Reported soft-deletion time, if present.</summary>
     [JsonIgnore]
     public DateTimeOffset? SoftDeletedAt { get; }
+    /// <summary>Reported scheduled deletion time, if present; not a local timer.</summary>
     [JsonIgnore]
     public DateTimeOffset? DeleteAfter { get; }
+    /// <summary>Returns a fixed label without environment details.</summary>
     public override string ToString() => "[InfisicalEnvironment]";
 }
 
+/// <summary>Validated native tag metadata with protected project coordinates.</summary>
 public sealed class InfisicalTag
 {
     internal InfisicalTag(string id, string project, string slug, string? color, string? name)
@@ -122,19 +145,26 @@ public sealed class InfisicalTag
         Color = color;
         Name = name;
     }
+    /// <summary>The observed native tag UUID.</summary>
     [JsonIgnore]
     public string Id { get; }
+    /// <summary>The validated project identity.</summary>
     [JsonIgnore]
     public string ProjectId { get; }
+    /// <summary>The protected tag slug.</summary>
     [JsonIgnore]
     public string Slug { get; }
+    /// <summary>The optional reported color.</summary>
     [JsonIgnore]
     public string? Color { get; }
+    /// <summary>The optional protected display name.</summary>
     [JsonIgnore]
     public string? Name { get; }
+    /// <summary>Returns a fixed label without tag fields.</summary>
     public override string ToString() => "[InfisicalTag]";
 }
 
+/// <summary>Observed native folder metadata correlated to an expected environment identity.</summary>
 public sealed class InfisicalFolder
 {
     internal InfisicalFolder(string id, string environmentId, string name, string? parentId,
@@ -147,23 +177,32 @@ public sealed class InfisicalFolder
         Path = path;
         Description = description;
     }
+    /// <summary>The native folder UUID.</summary>
     [JsonIgnore]
     public string Id { get; }
+    /// <summary>The validated environment UUID.</summary>
     [JsonIgnore]
     public string EnvironmentId { get; }
+    /// <summary>The protected folder name.</summary>
     [JsonIgnore]
     public string Name { get; }
+    /// <summary>The parent folder identity when returned.</summary>
     [JsonIgnore]
     public string? ParentId { get; }
+    /// <summary>The returned path, if present; no requested path is substituted.</summary>
     [JsonIgnore]
     public string? Path { get; }
+    /// <summary>The protected description when returned.</summary>
     [JsonIgnore]
     public string? Description { get; }
+    /// <summary>Returns a fixed label without folder details.</summary>
     public override string ToString() => "[InfisicalFolder]";
 }
 
+/// <summary>Bounded batch folder update; omission and explicit description clearing remain distinct.</summary>
 public sealed class InfisicalFolderUpdate
 {
+    /// <summary>Selects a folder UUID and child name, with an optional description or explicit clear.</summary>
     public InfisicalFolderUpdate(string id, string name, string? description = null, bool clearDescription = false)
     {
         if (!Guid.TryParse(id, out _))
@@ -180,17 +219,23 @@ public sealed class InfisicalFolderUpdate
         Description = description;
         ClearDescription = clearDescription;
     }
+    /// <summary>The folder UUID selected for update.</summary>
     [JsonIgnore]
     public string Id { get; }
+    /// <summary>The new child name without path separators.</summary>
     [JsonIgnore]
     public string Name { get; }
+    /// <summary>The optional new protected description.</summary>
     [JsonIgnore]
     public string? Description { get; }
+    /// <summary>Whether null must be sent to clear the description.</summary>
     [JsonIgnore]
     public bool ClearDescription { get; }
+    /// <summary>Returns a fixed label without update fields.</summary>
     public override string ToString() => "[InfisicalFolderUpdate]";
 }
 
+/// <summary>Validated move response, not a transactional view of later folder contents.</summary>
 public sealed class InfisicalFolderMove
 {
     internal InfisicalFolderMove(string id, string sourceEnvironment, string sourcePath,
@@ -202,16 +247,22 @@ public sealed class InfisicalFolderMove
         DestinationEnvironment = destinationEnvironment;
         DestinationPath = destinationPath;
     }
+    /// <summary>The validated moved folder UUID.</summary>
     [JsonIgnore]
     public string FolderId { get; }
+    /// <summary>The validated source environment.</summary>
     [JsonIgnore]
     public string SourceEnvironment { get; }
+    /// <summary>The source path reported by the provider.</summary>
     [JsonIgnore]
     public string SourcePath { get; }
+    /// <summary>The validated requested destination environment.</summary>
     [JsonIgnore]
     public string DestinationEnvironment { get; }
+    /// <summary>The validated requested destination path.</summary>
     [JsonIgnore]
     public string DestinationPath { get; }
+    /// <summary>Returns a fixed label without move coordinates.</summary>
     public override string ToString() => "[InfisicalFolderMove]";
 }
 
@@ -222,10 +273,12 @@ public sealed partial class InfisicalClient
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
 
+    /// <summary>Inspects an environment using this client's selected identity; unvalidated correspondence yields Unknown.</summary>
     public ValueTask<SecretOutcome<InfisicalEnvironment>> GetEnvironmentAsync(SecretReference target,
         CancellationToken cancellationToken = default) =>
         EnvironmentOperationAsync(target, HttpMethod.Get, null, null, null, false, false, cancellationToken);
 
+    /// <summary>Creates an environment selected by slug under explicit native authority and retained dispatch evidence.</summary>
     public ValueTask<SecretOutcome<InfisicalEnvironment>> CreateEnvironmentAsync(SecretReference target,
         string name, InfisicalNativeAuthority authority, MutationReceipt receipt, double? position = null,
         CancellationToken cancellationToken = default)
@@ -244,6 +297,7 @@ public sealed partial class InfisicalClient
             authority, receipt, false, false, cancellationToken);
     }
 
+    /// <summary>Updates supplied environment fields by native ID; cancellation does not undo a dispatched change.</summary>
     public ValueTask<SecretOutcome<InfisicalEnvironment>> UpdateEnvironmentAsync(SecretReference target,
         InfisicalNativeAuthority authority, MutationReceipt receipt, string? name = null, string? slug = null,
         double? position = null, CancellationToken cancellationToken = default)
@@ -259,11 +313,13 @@ public sealed partial class InfisicalClient
             authority, receipt, false, false, cancellationToken);
     }
 
+    /// <summary>Deletes by native ID, with hard deletion only when explicitly selected; retain receipt uncertainty.</summary>
     public ValueTask<SecretOutcome<InfisicalEnvironment>> DeleteEnvironmentAsync(SecretReference target,
         InfisicalNativeAuthority authority, MutationReceipt receipt, bool hardDelete = false,
         CancellationToken cancellationToken = default) =>
         EnvironmentOperationAsync(target, HttpMethod.Delete, null, authority, receipt, false, hardDelete, cancellationToken);
 
+    /// <summary>Explicitly restores a selected native environment; no automatic recovery or mutation replay occurs.</summary>
     public ValueTask<SecretOutcome<InfisicalEnvironment>> RestoreEnvironmentAsync(SecretReference target,
         InfisicalNativeAuthority authority, MutationReceipt receipt, CancellationToken cancellationToken = default) =>
         EnvironmentOperationAsync(target, HttpMethod.Post, null, authority, receipt, true, false, cancellationToken);
@@ -305,10 +361,12 @@ public sealed partial class InfisicalClient
             NativeDate(item, "softDeletedAt"), NativeDate(item, "deleteAfter")));
     }
 
+    /// <summary>Inspects the selected native tag without acquiring secret material.</summary>
     public ValueTask<SecretOutcome<InfisicalTag>> GetTagAsync(SecretReference target,
         CancellationToken cancellationToken = default) =>
         TagOperationAsync(target, HttpMethod.Get, null, null, null, cancellationToken);
 
+    /// <summary>Creates a slug-selected tag using explicit native authority and a caller-held mutation receipt.</summary>
     public ValueTask<SecretOutcome<InfisicalTag>> CreateTagAsync(SecretReference target, string color,
         InfisicalNativeAuthority authority, MutationReceipt receipt, CancellationToken cancellationToken = default)
     {
@@ -321,6 +379,7 @@ public sealed partial class InfisicalClient
             authority, receipt, cancellationToken);
     }
 
+    /// <summary>Updates an ID-selected tag; a missing or mismatched response leaves the outcome Unknown.</summary>
     public ValueTask<SecretOutcome<InfisicalTag>> UpdateTagAsync(SecretReference target, string slug, string color,
         InfisicalNativeAuthority authority, MutationReceipt receipt, CancellationToken cancellationToken = default)
     {
@@ -330,6 +389,7 @@ public sealed partial class InfisicalClient
             authority, receipt, cancellationToken);
     }
 
+    /// <summary>Deletes an ID-selected tag; retain the receipt across cancellation and uncertain responses.</summary>
     public ValueTask<SecretOutcome<InfisicalTag>> DeleteTagAsync(SecretReference target,
         InfisicalNativeAuthority authority, MutationReceipt receipt, CancellationToken cancellationToken = default) =>
         TagOperationAsync(target, HttpMethod.Delete, null, authority, receipt, cancellationToken);
@@ -362,6 +422,7 @@ public sealed partial class InfisicalClient
         return SecretOutcome<InfisicalTag>.Success(tag);
     }
 
+    /// <summary>Lists bounded project tag metadata using an address without an individual selector.</summary>
     public async ValueTask<SecretOutcome<InfisicalNativeList<InfisicalTag>>> ListTagsAsync(SecretReference target,
         int maximumItems = 1000, CancellationToken cancellationToken = default)
     {
@@ -391,6 +452,8 @@ public sealed partial class InfisicalClient
         return SecretOutcome<InfisicalNativeList<InfisicalTag>>.Success(new(tags, items.GetArrayLength() <= maximumItems));
     }
 
+    /// <summary>Lists bounded folders with explicitly selected recursion and modification filtering.</summary>
+    /// <remarks>Completeness indicates local response coverage, not an atomic provider snapshot.</remarks>
     public async ValueTask<SecretOutcome<InfisicalNativeList<InfisicalFolder>>> ListFoldersAsync(SecretReference target,
         int maximumItems = 1000, bool recursive = false, DateTimeOffset? lastSecretModified = null,
         CancellationToken cancellationToken = default)
@@ -422,15 +485,18 @@ public sealed partial class InfisicalClient
         return SecretOutcome<InfisicalNativeList<InfisicalFolder>>.Success(new(folders, items.GetArrayLength() <= maximumItems));
     }
 
+    /// <summary>Inspects an ID-selected folder and validates its native environment correspondence.</summary>
     public ValueTask<SecretOutcome<InfisicalFolder>> GetFolderAsync(SecretReference target,
         CancellationToken cancellationToken = default) =>
         FolderOperationAsync(target, HttpMethod.Get, null, null, null, cancellationToken);
 
+    /// <summary>Creates a named child under explicit scope and native authority; receipt evidence is retained on failure.</summary>
     public ValueTask<SecretOutcome<InfisicalFolder>> CreateFolderAsync(SecretReference target,
         InfisicalNativeAuthority authority, MutationReceipt receipt, string? description = null,
         CancellationToken cancellationToken = default) =>
         ChangeFolderAsync(target, authority, receipt, HttpMethod.Post, description, false, cancellationToken);
 
+    /// <summary>Updates an ID-selected named folder, distinguishing omitted and explicitly cleared description.</summary>
     public ValueTask<SecretOutcome<InfisicalFolder>> UpdateFolderAsync(SecretReference target,
         InfisicalNativeAuthority authority, MutationReceipt receipt, string? description = null,
         bool clearDescription = false, CancellationToken cancellationToken = default) =>
@@ -460,6 +526,7 @@ public sealed partial class InfisicalClient
             authority, receipt, cancellationToken);
     }
 
+    /// <summary>Deletes a selected folder with explicit optional force; cancellation is not remote rollback.</summary>
     public ValueTask<SecretOutcome<InfisicalFolder>> DeleteFolderAsync(SecretReference target,
         InfisicalNativeAuthority authority, MutationReceipt receipt, bool forceDelete = false,
         CancellationToken cancellationToken = default)
@@ -506,6 +573,9 @@ public sealed partial class InfisicalClient
         return SecretOutcome<InfisicalFolder>.Success(folder);
     }
 
+    /// <summary>Updates bounded distinct folder IDs while retaining partial response coverage.</summary>
+    /// <remarks>A successful list can be incomplete; only complete correspondence marks the envelope Applied.
+    /// Retain the receipt after Unknown or cancellation; this is not an atomic batch or a replay guarantee.</remarks>
     public async ValueTask<SecretOutcome<InfisicalNativeList<InfisicalFolder>>> UpdateFoldersAsync(SecretReference target,
         IReadOnlyList<InfisicalFolderUpdate> updates, InfisicalNativeAuthority authority, MutationReceipt receipt,
         CancellationToken cancellationToken = default)
@@ -555,6 +625,8 @@ public sealed partial class InfisicalClient
         return SecretOutcome<InfisicalNativeList<InfisicalFolder>>.Success(new(folders, complete));
     }
 
+    /// <summary>Moves a selected folder only within the explicit authority's source and destination scope.</summary>
+    /// <remarks>Applied evidence requires a correlated response; a lost response remains uncertain without replay.</remarks>
     public async ValueTask<SecretOutcome<InfisicalFolderMove>> MoveFolderAsync(SecretReference target,
         InfisicalFolderAddress destination, InfisicalNativeAuthority authority, MutationReceipt receipt,
         CancellationToken cancellationToken = default)

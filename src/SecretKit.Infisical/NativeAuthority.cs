@@ -6,6 +6,7 @@ namespace SecretKit.Infisical;
 /// <summary>Protected native coordinates, never an endpoint selector.</summary>
 public abstract class InfisicalNativeAddress : SecretAddress
 {
+    /// <summary>Validates protected project and optional environment/folder coordinates without granting authority.</summary>
     protected InfisicalNativeAddress(string projectId, string? environment = null, string? folder = null)
     {
         NativeText(projectId);
@@ -22,10 +23,13 @@ public abstract class InfisicalNativeAddress : SecretAddress
         Folder = folder;
     }
 
+    /// <summary>The protected project identifier.</summary>
     [JsonIgnore]
     public string ProjectId { get; }
+    /// <summary>The selected environment, or null for project-wide coordinates.</summary>
     [JsonIgnore]
     public string? Environment { get; }
+    /// <summary>The absolute folder, or null when no folder is selected.</summary>
     [JsonIgnore]
     public string? Folder { get; }
 
@@ -60,6 +64,8 @@ public sealed class InfisicalNativeAuthority
     private readonly string? _environment;
     private readonly string? _folder;
 
+    /// <summary>Binds a borrowed token source to the exact client authority and explicitly selected local scope.</summary>
+    /// <remarks>A folder requires an environment. Selection never grants server permission or supplies a fallback identity.</remarks>
     public InfisicalNativeAuthority(SecretAuthority clientAuthority, IInfisicalTokenSource tokens,
         string projectId, string? environment = null, string? folder = null)
     {
@@ -90,6 +96,7 @@ public sealed class InfisicalNativeAuthority
         (_environment is null || _environment == address.Environment) &&
         (_folder is null || _folder == address.Folder);
 
+    /// <summary>Returns a fixed label without identity or scope details.</summary>
     public override string ToString() => "[InfisicalNativeAuthority]";
 }
 
@@ -102,8 +109,11 @@ public sealed class InfisicalNativeList<T> where T : notnull
         IsComplete = complete;
     }
 
+    /// <summary>A read-only snapshot of observed items, not a provider transaction.</summary>
     [JsonIgnore]
     public IReadOnlyList<T> Items { get; }
+    /// <summary>Whether the response fit the observation's local item budget.</summary>
     public bool IsComplete { get; }
+    /// <summary>Returns a fixed label without item contents.</summary>
     public override string ToString() => "[InfisicalNativeList]";
 }

@@ -4,15 +4,21 @@ using SecretKit.Core;
 
 namespace SecretKit.Infisical;
 
-public enum InfisicalValidationKind { StaticSecrets, DynamicSecrets, SecretRotations }
+/// <summary>Native rule family; each family admits its own constraints and providers.</summary>
+public enum InfisicalValidationKind { /** <summary>Static key/value rules.</summary> */ StaticSecrets, /** <summary>Dynamic password rules.</summary> */ DynamicSecrets, /** <summary>Rotation password rules.</summary> */ SecretRotations }
+/// <summary>Closed provider selectors for supported validation-rule families.</summary>
 public enum InfisicalValidationProvider
 {
-    SqlDatabase, Milvus, PostgresCredentials, MysqlCredentials, MssqlCredentials,
-    OracleCredentials, UnixLinuxLocalAccount, LdapPassword
+    /** <summary>Dynamic SQL database passwords.</summary> */
+    SqlDatabase, /** <summary>Dynamic Milvus passwords.</summary> */ Milvus, /** <summary>PostgreSQL rotation credentials.</summary> */ PostgresCredentials, /** <summary>MySQL rotation credentials.</summary> */ MysqlCredentials, /** <summary>SQL Server rotation credentials.</summary> */ MssqlCredentials,
+    /** <summary>Oracle rotation credentials.</summary> */
+    OracleCredentials, /** <summary>Unix/Linux account rotation.</summary> */ UnixLinuxLocalAccount, /** <summary>LDAP password rotation.</summary> */ LdapPassword
 }
 
+/// <summary>Protected project/rule coordinates with explicit validation family and optional scope.</summary>
 public sealed class InfisicalValidationAddress : InfisicalNativeAddress
 {
+    /// <summary>Selects a rule family and optional rule UUID/environment/path, without granting mutation authority.</summary>
     public InfisicalValidationAddress(string projectId, InfisicalValidationKind kind,
         string? ruleId = null, string? environment = null, string? secretPath = null)
         : base(projectId, environment, secretPath)
@@ -26,7 +32,9 @@ public sealed class InfisicalValidationAddress : InfisicalNativeAddress
         Kind = kind;
         RuleId = ruleId;
     }
+    /// <summary>The explicitly selected native validation family.</summary>
     public InfisicalValidationKind Kind { get; }
+    /// <summary>The native rule UUID, or null for creation/listing.</summary>
     [JsonIgnore]
     public string? RuleId { get; }
 }
@@ -34,6 +42,7 @@ public sealed class InfisicalValidationAddress : InfisicalNativeAddress
 /// <summary>Wire constraints only. SecretKit does not execute provider regexes or enforce server policy locally.</summary>
 public sealed class InfisicalTextConstraints
 {
+    /// <summary>Validates bounded constraint inputs; family-specific admission occurs at the operation boundary.</summary>
     public InfisicalTextConstraints(int? minimumLength = null, int? maximumLength = null,
         string? regexPattern = null, string? requiredPrefix = null, string? requiredSuffix = null,
         int? uniqueAcrossLastVersions = null, bool? uniqueWithinScope = null)
@@ -57,18 +66,25 @@ public sealed class InfisicalTextConstraints
         UniqueAcrossLastVersions = uniqueAcrossLastVersions;
         UniqueWithinScope = uniqueWithinScope;
     }
+    /// <summary>Optional minimum native text length.</summary>
     [JsonIgnore]
     public int? MinimumLength { get; }
+    /// <summary>Optional maximum native text length.</summary>
     [JsonIgnore]
     public int? MaximumLength { get; }
+    /// <summary>Protected provider regex text; never executed locally.</summary>
     [JsonIgnore]
     public string? RegexPattern { get; }
+    /// <summary>Optional protected required prefix.</summary>
     [JsonIgnore]
     public string? RequiredPrefix { get; }
+    /// <summary>Optional protected required suffix.</summary>
     [JsonIgnore]
     public string? RequiredSuffix { get; }
+    /// <summary>Optional static-value uniqueness window of 1..25 versions.</summary>
     [JsonIgnore]
     public int? UniqueAcrossLastVersions { get; }
+    /// <summary>Optional static-value uniqueness within native scope.</summary>
     [JsonIgnore]
     public bool? UniqueWithinScope { get; }
     internal bool ValidFor(InfisicalValidationKind kind, bool value) =>
@@ -87,12 +103,14 @@ public sealed class InfisicalTextConstraints
         uniqueAcrossLastVersions = UniqueAcrossLastVersions,
         uniqueWithinScope = UniqueWithinScope
     };
+    /// <summary>Returns a fixed label without protected constraint text.</summary>
     public override string ToString() => "[InfisicalTextConstraints]";
 }
 
 /// <summary>Absent fields stay unchanged. Explicit clear flags send null only where the contract accepts it.</summary>
 public sealed class InfisicalValidationInput
 {
+    /// <summary>Freezes explicitly selected rule changes, rejecting contradictory clear/value pairs.</summary>
     public InfisicalValidationInput(string? name = null, string? description = null, bool? isActive = null,
         InfisicalTextConstraints? keyConstraints = null, InfisicalTextConstraints? valueConstraints = null,
         InfisicalTextConstraints? passwordConstraints = null, IReadOnlyList<InfisicalValidationProvider>? providers = null,
@@ -123,34 +141,49 @@ public sealed class InfisicalValidationInput
         ClearKeyConstraints = clearKeyConstraints;
         ClearValueConstraints = clearValueConstraints;
     }
+    /// <summary>Optional protected rule name.</summary>
     [JsonIgnore]
     public string? Name { get; }
+    /// <summary>Optional protected description; null alone means omitted.</summary>
     [JsonIgnore]
     public string? Description { get; }
+    /// <summary>Optional native activation selection.</summary>
     public bool? IsActive { get; }
+    /// <summary>Optional static-key constraints.</summary>
     [JsonIgnore]
     public InfisicalTextConstraints? KeyConstraints { get; }
+    /// <summary>Optional static-value constraints.</summary>
     [JsonIgnore]
     public InfisicalTextConstraints? ValueConstraints { get; }
+    /// <summary>Optional dynamic/rotation password constraints.</summary>
     [JsonIgnore]
     public InfisicalTextConstraints? PasswordConstraints { get; }
+    /// <summary>Frozen native provider selection for dynamic/rotation rules.</summary>
     [JsonIgnore]
     public IReadOnlyList<InfisicalValidationProvider>? Providers { get; }
+    /// <summary>Optional new environment; any scope change must match explicit authority.</summary>
     [JsonIgnore]
     public string? Environment { get; }
+    /// <summary>Optional new absolute secret path.</summary>
     [JsonIgnore]
     public string? SecretPath { get; }
+    /// <summary>Explicitly sends null to clear the description.</summary>
     [JsonIgnore]
     public bool ClearDescription { get; }
+    /// <summary>Explicitly clears the environment, requiring authority for the resulting scope.</summary>
     [JsonIgnore]
     public bool ClearEnvironment { get; }
+    /// <summary>Explicitly clears static-key constraints where admitted.</summary>
     [JsonIgnore]
     public bool ClearKeyConstraints { get; }
+    /// <summary>Explicitly clears static-value constraints where admitted.</summary>
     [JsonIgnore]
     public bool ClearValueConstraints { get; }
+    /// <summary>Returns a fixed label without rule fields.</summary>
     public override string ToString() => "[InfisicalValidationInput]";
 }
 
+/// <summary>Validated native validation-rule projection; does not enforce policy locally or prove remote effects elsewhere.</summary>
 public sealed class InfisicalValidationRule
 {
     internal InfisicalValidationRule(string id, string project, InfisicalValidationKind kind,
@@ -171,47 +204,66 @@ public sealed class InfisicalValidationRule
         PasswordConstraints = password;
         Providers = providers;
     }
+    /// <summary>The observed native rule UUID.</summary>
     [JsonIgnore]
     public string Id { get; }
+    /// <summary>The validated project identity.</summary>
     [JsonIgnore]
     public string ProjectId { get; }
+    /// <summary>The validated native rule family.</summary>
     public InfisicalValidationKind Kind { get; }
+    /// <summary>The protected returned rule name.</summary>
     [JsonIgnore]
     public string Name { get; }
+    /// <summary>The optional protected returned description.</summary>
     [JsonIgnore]
     public string? Description { get; }
+    /// <summary>The returned environment slug, or null for unscoped environment.</summary>
     [JsonIgnore]
     public string? Environment { get; }
+    /// <summary>The returned absolute rule path.</summary>
     [JsonIgnore]
     public string SecretPath { get; }
+    /// <summary>Reported activation state, or null when unreported.</summary>
     public bool? IsActive { get; }
+    /// <summary>The returned static-key constraints.</summary>
     [JsonIgnore]
     public InfisicalTextConstraints? KeyConstraints { get; }
+    /// <summary>The returned static-value constraints.</summary>
     [JsonIgnore]
     public InfisicalTextConstraints? ValueConstraints { get; }
+    /// <summary>The returned dynamic/rotation password constraints.</summary>
     [JsonIgnore]
     public InfisicalTextConstraints? PasswordConstraints { get; }
+    /// <summary>The admitted provider list for the returned rule family.</summary>
     [JsonIgnore]
     public IReadOnlyList<InfisicalValidationProvider>? Providers { get; }
+    /// <summary>Returns a fixed label without protected rule fields.</summary>
     public override string ToString() => "[InfisicalValidationRule]";
 }
 
 public sealed partial class InfisicalClient
 {
+    /// <summary>Inspects one native validation rule without executing its constraints locally.</summary>
     public ValueTask<SecretOutcome<InfisicalValidationRule>> GetValidationRuleAsync(SecretReference target,
         CancellationToken cancellationToken = default) =>
         ValidationOperationAsync(target, HttpMethod.Get, null, null, null, cancellationToken);
 
+    /// <summary>Creates a family-valid rule under explicit native authority with caller-held dispatch evidence.</summary>
+    /// <remarks>Invalid selection is rejected locally; missing or unvalidated response evidence is Unknown.
+    /// Retain the receipt after cancellation or uncertainty; no mutation replay occurs.</remarks>
     public ValueTask<SecretOutcome<InfisicalValidationRule>> CreateValidationRuleAsync(SecretReference target,
         InfisicalValidationInput input, InfisicalNativeAuthority authority, MutationReceipt receipt,
         CancellationToken cancellationToken = default) =>
         ChangeValidationRuleAsync(target, input, authority, receipt, false, cancellationToken);
 
+    /// <summary>Applies explicit rule changes and validates resulting scope against the selected authority.</summary>
     public ValueTask<SecretOutcome<InfisicalValidationRule>> UpdateValidationRuleAsync(SecretReference target,
         InfisicalValidationInput input, InfisicalNativeAuthority authority, MutationReceipt receipt,
         CancellationToken cancellationToken = default) =>
         ChangeValidationRuleAsync(target, input, authority, receipt, true, cancellationToken);
 
+    /// <summary>Deletes the selected rule with retained receipt evidence; cancellation is not rollback.</summary>
     public ValueTask<SecretOutcome<InfisicalValidationRule>> DeleteValidationRuleAsync(SecretReference target,
         InfisicalNativeAuthority authority, MutationReceipt receipt, CancellationToken cancellationToken = default) =>
         ValidationOperationAsync(target, HttpMethod.Delete, null, authority, receipt, cancellationToken);
@@ -311,6 +363,8 @@ public sealed partial class InfisicalClient
         return SecretOutcome<InfisicalValidationRule>.Success(rule);
     }
 
+    /// <summary>Lists bounded project rules for the selected family, or all admitted families when explicitly requested.</summary>
+    /// <remarks>Requires an unselected project-wide address; completeness is response coverage, not a transaction.</remarks>
     public async ValueTask<SecretOutcome<InfisicalNativeList<InfisicalValidationRule>>> ListValidationRulesAsync(
         SecretReference target, int maximumItems = 1000, bool allKinds = false, CancellationToken cancellationToken = default)
     {

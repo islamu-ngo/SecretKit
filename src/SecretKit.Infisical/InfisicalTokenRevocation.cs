@@ -7,6 +7,7 @@ namespace SecretKit.Infisical;
 
 public sealed partial class InfisicalProofAuthentication
 {
+    /// <summary>Creates single-dispatch revocation evidence bound to this authentication client.</summary>
     public InfisicalTokenRevocationReceipt CreateRevocationReceipt()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -102,9 +103,11 @@ public sealed class InfisicalTokenRevocationReceipt
     internal InfisicalTokenRevocationReceipt(object owner) => Owner = owner;
     internal object Owner { get; }
     private int _evidence;
+    /// <summary>Local dispatch or acknowledgement evidence; retain it after cancellation or transport loss.</summary>
     public DispatchEvidence Evidence => (DispatchEvidence)Volatile.Read(ref _evidence);
     internal bool TryBeginDispatch() => Interlocked.CompareExchange(ref _evidence,
         (int)DispatchEvidence.PossiblyDispatched, (int)DispatchEvidence.NotDispatched) == (int)DispatchEvidence.NotDispatched;
     internal void Record(DispatchEvidence evidence) => Volatile.Write(ref _evidence, (int)evidence);
+    /// <summary>Returns evidence without token material.</summary>
     public override string ToString() => $"[InfisicalTokenRevocationReceipt:{Evidence}]";
 }

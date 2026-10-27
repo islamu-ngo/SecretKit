@@ -19,6 +19,7 @@ public abstract class InfisicalDynamicProfile : IDisposable
     private readonly HashSet<string> _nulls = new(StringComparer.Ordinal);
     private bool _disposed;
     private protected InfisicalDynamicProfile(InfisicalDynamicProvider provider) => Provider = provider;
+    /// <summary>The closed native provider discriminator; typed inputs do not imply live qualification or issuance support.</summary>
     public InfisicalDynamicProvider Provider { get; }
     internal string WireType => Provider switch
     {
@@ -245,6 +246,7 @@ public abstract class InfisicalDynamicProfile : IDisposable
         WriteAdditional(writer, prefix);
     }
     private protected virtual void WriteAdditional(Utf8JsonWriter writer, string prefix) { }
+    /// <summary>Erases this profile's owned field and nested-option copies without provider I/O.</summary>
     public void Dispose()
     {
         lock (_gate)
@@ -263,10 +265,12 @@ public abstract class InfisicalDynamicProfile : IDisposable
         }
     }
     private protected virtual void DisposeAdditional() { }
+    /// <summary>Returns a fixed label without native inputs, credentials or coordinates.</summary>
     public sealed override string ToString() => "[InfisicalDynamicProfile]";
 }
 
-public enum NativeSqlEngine { Postgres, Mysql, Oracle, SqlServer, SapAse, Vertica }
+/// <summary>Closed SQL engine selection for provider-side dynamic definition inputs; no database driver is included.</summary>
+public enum NativeSqlEngine { /** <summary>PostgreSQL.</summary> */ Postgres, /** <summary>MySQL; not MariaDB qualification.</summary> */ Mysql, /** <summary>Oracle Database.</summary> */ Oracle, /** <summary>SQL Server.</summary> */ SqlServer, /** <summary>SAP ASE.</summary> */ SapAse, /** <summary>Vertica.</summary> */ Vertica }
 
 /// <summary>Bounded whole-number native password generation requirements, not a local generator.</summary>
 public sealed class NativePasswordRequirements : IDisposable
@@ -274,6 +278,7 @@ public sealed class NativePasswordRequirements : IDisposable
     private readonly object _gate = new();
     private readonly SecretMaterial? _allowedSymbols;
     private bool _disposed;
+    /// <summary>Validates length/count budgets and copies optional allowed symbols; requirements are sent to the provider, not executed locally.</summary>
     public NativePasswordRequirements(int length, int lowercase, int uppercase, int digits, int symbols,
         string? allowedSymbols = null)
     {
@@ -287,10 +292,15 @@ public sealed class NativePasswordRequirements : IDisposable
         Symbols = symbols;
         _allowedSymbols = allowedSymbols is null ? null : SecretMaterial.FromText(allowedSymbols);
     }
+    /// <summary>Requested whole password length, between 1 and 250.</summary>
     [JsonIgnore] public int Length { get; }
+    /// <summary>Required lowercase character count.</summary>
     [JsonIgnore] public int Lowercase { get; }
+    /// <summary>Required uppercase character count.</summary>
     [JsonIgnore] public int Uppercase { get; }
+    /// <summary>Required digit count.</summary>
     [JsonIgnore] public int Digits { get; }
+    /// <summary>Required symbol count; total required counts cannot exceed length.</summary>
     [JsonIgnore] public int Symbols { get; }
     /// <summary>Explicit plaintext export, excluded from default serialization.</summary>
     [JsonIgnore]
@@ -313,6 +323,7 @@ public sealed class NativePasswordRequirements : IDisposable
             return _allowedSymbols?.Copy();
         }
     }
+    /// <summary>Erases the owned allowed-symbol buffer, not earlier plaintext exports or profile copies.</summary>
     public void Dispose()
     {
         lock (_gate)
@@ -321,13 +332,18 @@ public sealed class NativePasswordRequirements : IDisposable
             _disposed = true; _allowedSymbols?.Dispose();
         }
     }
+    /// <summary>Returns a fixed label without password-policy contents.</summary>
     public override string ToString() => "[NativePasswordRequirements]";
 }
 
+/// <summary>Copied SQL definition inputs for provider-side execution; does not connect to a database.</summary>
 public sealed class NativeSqlDefinitionProfile : InfisicalDynamicProfile
 {
     private readonly bool _clearGatewayId;
     private readonly bool _clearGatewayPoolId;
+    /// <summary>Copies explicit engine, credentials, statements and TLS/gateway inputs; statements are never executed locally.</summary>
+    /// <remarks>Nested password requirements are copied. The caller retains all original strings/options;
+    /// disposal erases only SDK-owned copies, not the caller's strings.</remarks>
     public NativeSqlDefinitionProfile(NativeSqlEngine engine, string host, int port, string username,
         string password, string database, string creationStatement, string revocationStatement,
         string? renewalStatement = null, string? ca = null, bool? sslEnabled = null,
@@ -368,6 +384,7 @@ public sealed class NativeSqlDefinitionProfile : InfisicalDynamicProfile
     }
 }
 
+/// <summary>Shared protected database-definition inputs with provider-specific typed construction and no local driver.</summary>
 public abstract class NativeDatabaseDefinitionProfile : InfisicalDynamicProfile
 {
     private protected NativeDatabaseDefinitionProfile(InfisicalDynamicProvider provider, string host, int port,
@@ -380,8 +397,10 @@ public abstract class NativeDatabaseDefinitionProfile : InfisicalDynamicProfile
         Optional("renewStatement", renewal); Optional("ca", ca);
     }
 }
+/// <summary>Owned ClickHouse native definition fields, including optional gateway and password policy.</summary>
 public sealed class NativeClickhouseDefinitionProfile : NativeDatabaseDefinitionProfile
 {
+    /// <summary>Copies connection coordinates, credentials, lifecycle statements and selected nested options.</summary>
     public NativeClickhouseDefinitionProfile(string host, int port, string username, string password,
         string database, string creation, string revocation, string? renewal = null, string? ca = null,
         NativeGatewayOptions? gateway = null, NativePasswordRequirements? passwordRequirements = null)
@@ -390,8 +409,10 @@ public sealed class NativeClickhouseDefinitionProfile : NativeDatabaseDefinition
         Options(gateway); PasswordRequirements(passwordRequirements);
     }
 }
+/// <summary>Owned Cassandra definition fields with explicit local data center and optional keyspace.</summary>
 public sealed class NativeCassandraDefinitionProfile : NativeDatabaseDefinitionProfile
 {
+    /// <summary>Copies credentials, statements and data-center/keyspace/TLS inputs without contacting Cassandra.</summary>
     public NativeCassandraDefinitionProfile(string host, int port, string username, string password,
         string localDataCenter, string creation, string revocation, string? keyspace = null,
         string? renewal = null, string? ca = null)
@@ -400,26 +421,34 @@ public sealed class NativeCassandraDefinitionProfile : NativeDatabaseDefinitionP
         Text("localDataCenter", localDataCenter); Optional("keyspace", keyspace);
     }
 }
+/// <summary>Owned SAP ASE definition fields for provider-side lifecycle statements.</summary>
 public sealed class NativeSapAseDefinitionProfile : NativeDatabaseDefinitionProfile
 {
+    /// <summary>Copies explicit connection, credential, creation and revocation inputs.</summary>
     public NativeSapAseDefinitionProfile(string host, int port, string username, string password,
         string database, string creation, string revocation)
         : base(InfisicalDynamicProvider.SapAse, host, port, username, password, database, creation, revocation, null, null) { }
 }
+/// <summary>Owned SAP HANA definition fields with optional renewal and CA inputs.</summary>
 public sealed class NativeSapHanaDefinitionProfile : NativeDatabaseDefinitionProfile
 {
+    /// <summary>Copies connection credentials and native lifecycle statements; no database action occurs locally.</summary>
     public NativeSapHanaDefinitionProfile(string host, int port, string username, string password,
         string creation, string revocation, string? renewal = null, string? ca = null)
         : base(InfisicalDynamicProvider.SapHana, host, port, username, password, null, creation, revocation, renewal, ca) { }
 }
+/// <summary>Owned Redis definition fields with explicitly optional password, renewal and CA.</summary>
 public sealed class NativeRedisDefinitionProfile : NativeDatabaseDefinitionProfile
 {
+    /// <summary>Copies Redis connection and statement inputs without inventing absent credentials.</summary>
     public NativeRedisDefinitionProfile(string host, int port, string username, string creation,
         string revocation, string? password = null, string? renewal = null, string? ca = null)
         : base(InfisicalDynamicProvider.Redis, host, port, username, password, null, creation, revocation, renewal, ca) { }
 }
+/// <summary>Owned Vertica definition fields and optional copied gateway/password requirements.</summary>
 public sealed class NativeVerticaDefinitionProfile : NativeDatabaseDefinitionProfile
 {
+    /// <summary>Copies Vertica credentials, database and lifecycle statements; callers retain original options.</summary>
     public NativeVerticaDefinitionProfile(string host, int port, string username, string password,
         string database, string creation, string revocation, NativeGatewayOptions? gateway = null,
         NativePasswordRequirements? passwordRequirements = null)
@@ -428,8 +457,10 @@ public sealed class NativeVerticaDefinitionProfile : NativeDatabaseDefinitionPro
         Options(gateway); PasswordRequirements(passwordRequirements);
     }
 }
+/// <summary>Owned native Azure SQL definition inputs, separate from Azure Key Vault or local database access.</summary>
 public sealed class NativeAzureSqlDefinitionProfile : NativeDatabaseDefinitionProfile
 {
+    /// <summary>Copies database/master creation statements, credentials and explicitly selected TLS/gateway/password options.</summary>
     public NativeAzureSqlDefinitionProfile(string host, int port, string username, string password,
         string database, string creation, string masterCreation, string revocation,
         string? masterDatabase = null, string? renewal = null, string? ca = null,
@@ -442,8 +473,10 @@ public sealed class NativeAzureSqlDefinitionProfile : NativeDatabaseDefinitionPr
         if (sslEnabled is { } enabled) Flag("sslEnabled", enabled);
     }
 }
+/// <summary>Owned Snowflake native account and lifecycle statement inputs.</summary>
 public sealed class NativeSnowflakeDefinitionProfile : InfisicalDynamicProfile
 {
+    /// <summary>Copies explicit account/organization, credentials and statements without executing them locally.</summary>
     public NativeSnowflakeDefinitionProfile(string accountId, string organizationId, string username, string password,
         string creation, string revocation, string? renewal = null) : base(InfisicalDynamicProvider.Snowflake)
     {
@@ -452,7 +485,9 @@ public sealed class NativeSnowflakeDefinitionProfile : InfisicalDynamicProfile
         Optional("renewStatement", renewal);
     }
 }
-public enum NativeAwsCredentialKind { IamUser, Temporary }
+/// <summary>The native AWS credential shape requested by an IAM definition.</summary>
+public enum NativeAwsCredentialKind { /** <summary>IAM user credentials.</summary> */ IamUser, /** <summary>Temporary credentials.</summary> */ Temporary }
+/// <summary>Owned AWS IAM definition inputs with explicit access-key, assume-role or IRSA authority selection.</summary>
 public sealed class NativeAwsIamDefinitionProfile : InfisicalDynamicProfile
 {
     private enum RoleMethod { AssumeRole, Irsa }
@@ -470,12 +505,15 @@ public sealed class NativeAwsIamDefinitionProfile : InfisicalDynamicProfile
         Text("credentialType", credentialKind == NativeAwsCredentialKind.IamUser ? "iam-user" : "temporary-credentials");
         Options(options);
     }
+    /// <summary>Copies assume-role selectors and optional session policy; does not assume a role locally.</summary>
     public static NativeAwsIamDefinitionProfile ForAssumeRole(string roleArn, string region,
         NativeAwsCredentialKind credentialKind = NativeAwsCredentialKind.IamUser, NativeAwsIamOptions? options = null) =>
         new(RoleMethod.AssumeRole, region, roleArn, credentialKind, options);
+    /// <summary>Selects provider-side IRSA with copied region/options; session policy inputs are not admitted on this branch.</summary>
     public static NativeAwsIamDefinitionProfile ForIrsa(string region,
         NativeAwsCredentialKind credentialKind = NativeAwsCredentialKind.IamUser, NativeAwsIamOptions? options = null) =>
         new(RoleMethod.Irsa, region, null, credentialKind, options);
+    /// <summary>Copies explicit access-key credentials and native options; session policies require the assume-role branch.</summary>
     public NativeAwsIamDefinitionProfile(string accessKey, string secretAccessKey, string region,
         NativeAwsCredentialKind credentialKind = NativeAwsCredentialKind.IamUser, NativeAwsIamOptions? options = null)
         : base(InfisicalDynamicProvider.AwsIam)
@@ -496,8 +534,10 @@ public sealed class NativeAwsIamDefinitionProfile : InfisicalDynamicProfile
         Options(options);
     }
 }
+/// <summary>Owned AWS ElastiCache credentials, cluster selectors and native lifecycle statements.</summary>
 public sealed class NativeAwsElasticacheDefinitionProfile : InfisicalDynamicProfile
 {
+    /// <summary>Copies AWS credentials and explicit cluster/statement inputs without acquiring a remote lease.</summary>
     public NativeAwsElasticacheDefinitionProfile(string accessKeyId, string secretAccessKey, string region,
         string clusterName, string creation, string revocation) : base(InfisicalDynamicProvider.AwsElasticache)
     {
@@ -506,8 +546,10 @@ public sealed class NativeAwsElasticacheDefinitionProfile : InfisicalDynamicProf
         Text("revocationStatement", revocation, allowEmpty: true);
     }
 }
+/// <summary>Owned AWS MemoryDB definition inputs using the native IAM authentication shape.</summary>
 public sealed class NativeAwsMemorydbDefinitionProfile : InfisicalDynamicProfile
 {
+    /// <summary>Copies IAM keys, region, cluster and lifecycle statements without provider I/O.</summary>
     public NativeAwsMemorydbDefinitionProfile(string accessKeyId, string secretAccessKey, string region,
         string clusterName, string creation, string revocation) : base(InfisicalDynamicProvider.AwsMemorydb)
     {
@@ -516,8 +558,10 @@ public sealed class NativeAwsMemorydbDefinitionProfile : InfisicalDynamicProfile
         Text("creationStatement", creation, allowEmpty: true); Text("revocationStatement", revocation, allowEmpty: true);
     }
 }
+/// <summary>Owned native Entra ID definition inputs with explicit application and user coordinates.</summary>
 public sealed class NativeAzureEntraDefinitionProfile : InfisicalDynamicProfile
 {
+    /// <summary>Copies tenant/application credentials and user/email selectors; does not run an identity flow.</summary>
     public NativeAzureEntraDefinitionProfile(string tenantId, string applicationId, string clientSecret,
         string userId, string email) : base(InfisicalDynamicProvider.AzureEntraId)
     {
@@ -525,8 +569,10 @@ public sealed class NativeAzureEntraDefinitionProfile : InfisicalDynamicProfile
         Text("userId", userId); Text("email", email);
     }
 }
+/// <summary>Owned GCP IAM definition selectors; no host credential discovery is performed.</summary>
 public sealed class NativeGcpIamDefinitionProfile : InfisicalDynamicProfile
 {
+    /// <summary>Copies service-account email and optional token scopes for provider-side execution.</summary>
     public NativeGcpIamDefinitionProfile(string serviceAccountEmail, IReadOnlyList<string>? tokenScopes = null)
         : base(InfisicalDynamicProvider.GcpIam)
     {
@@ -538,8 +584,10 @@ public sealed class NativeGcpIamDefinitionProfile : InfisicalDynamicProfile
         if (tokenScopes is not null) { Strings("tokenScopes", tokenScopes); }
     }
 }
+/// <summary>Owned GitHub application/installation selectors and private-key input.</summary>
 public sealed class NativeGithubDefinitionProfile : InfisicalDynamicProfile
 {
+    /// <summary>Validates positive native IDs and copies the private key without minting a GitHub token.</summary>
     public NativeGithubDefinitionProfile(long applicationId, long installationId, string privateKey)
         : base(InfisicalDynamicProvider.Github)
     {
@@ -547,8 +595,10 @@ public sealed class NativeGithubDefinitionProfile : InfisicalDynamicProfile
         Text("privateKey", privateKey);
     }
 }
+/// <summary>Owned Milvus connection inputs with copied native privilege and gateway options.</summary>
 public sealed class NativeMilvusDefinitionProfile : InfisicalDynamicProfile
 {
+    /// <summary>Copies credentials and selected database/CA/gateway/privileges; selection does not grant permissions locally.</summary>
     public NativeMilvusDefinitionProfile(string host, int port, string username, string password,
         string? database = null, string? ca = null, NativeGatewayOptions? gateway = null,
         IReadOnlyList<NativeMilvusPrivilege>? privileges = null) : base(InfisicalDynamicProvider.Milvus)
@@ -558,8 +608,10 @@ public sealed class NativeMilvusDefinitionProfile : InfisicalDynamicProfile
         Options(gateway); ObjectOptions("privileges", privileges);
     }
 }
+/// <summary>Owned MongoDB definition fields with explicit omitted-versus-cleared port/CA semantics.</summary>
 public sealed class NativeMongoDefinitionProfile : InfisicalDynamicProfile
 {
+    /// <summary>Copies credentials, database and roles; rejects a value combined with a clear flag for the same field.</summary>
     public NativeMongoDefinitionProfile(string host, string username, string password, string database,
         IReadOnlyList<string> roles, int? port = null, string? ca = null,
         bool clearPort = false, bool clearCa = false) : base(InfisicalDynamicProvider.MongoDb)
@@ -573,6 +625,7 @@ public sealed class NativeMongoDefinitionProfile : InfisicalDynamicProfile
         if (clearCa) Null("ca");
     }
 }
+/// <summary>Owned Elasticsearch definition inputs with distinct API-key and user authentication branches.</summary>
 public sealed class NativeElasticsearchDefinitionProfile : InfisicalDynamicProfile
 {
     private NativeElasticsearchDefinitionProfile(string host, int port, IReadOnlyList<string> roles,
@@ -582,8 +635,10 @@ public sealed class NativeElasticsearchDefinitionProfile : InfisicalDynamicProfi
         Text("auth.apiKeyId", apiKeyId, allowEmpty: true); Text("auth.apiKey", apiKey, allowEmpty: true);
         Strings("roles", roles); Optional("ca", ca);
     }
+    /// <summary>Copies API-key authority, roles and optional CA without sending an Elasticsearch request.</summary>
     public static NativeElasticsearchDefinitionProfile ForApiKey(string host, int port, string apiKeyId,
         string apiKey, IReadOnlyList<string> roles, string? ca = null) => new(host, port, roles, apiKeyId, apiKey, ca);
+    /// <summary>Copies explicit user credentials, roles and optional CA for the native user branch.</summary>
     public NativeElasticsearchDefinitionProfile(string host, int port, string username, string password,
         IReadOnlyList<string> roles, string? ca = null) : base(InfisicalDynamicProvider.ElasticSearch)
     {
@@ -592,8 +647,10 @@ public sealed class NativeElasticsearchDefinitionProfile : InfisicalDynamicProfi
         Strings("roles", roles); Optional("ca", ca);
     }
 }
+/// <summary>Owned RabbitMQ connection and virtual-host permission inputs, not a local authorization policy.</summary>
 public sealed class NativeRabbitDefinitionProfile : InfisicalDynamicProfile
 {
+    /// <summary>Copies credentials, explicit configure/write/read permissions, tags and optional CA.</summary>
     public NativeRabbitDefinitionProfile(string host, int port, string username, string password,
         string virtualHost, string configurePermission, string writePermission, string readPermission,
         IReadOnlyList<string>? tags = null, string? ca = null) : base(InfisicalDynamicProvider.RabbitMq)
@@ -604,6 +661,7 @@ public sealed class NativeRabbitDefinitionProfile : InfisicalDynamicProfile
         Optional("ca", ca); if (tags is not null) { Strings("tags", tags, true); }
     }
 }
+/// <summary>Owned Kubernetes definition inputs for explicit static-service-account or dynamic-role selection.</summary>
 public sealed class NativeKubernetesDefinitionProfile : InfisicalDynamicProfile
 {
     private NativeKubernetesDefinitionProfile(string nameSpace, string serviceAccountName,
@@ -615,10 +673,12 @@ public sealed class NativeKubernetesDefinitionProfile : InfisicalDynamicProfile
         Strings("audiences", audiences, true); ClusterAuthority(clusterToken, url, authentication, gateway, sslEnabled);
         Optional("ca", ca); Flag("sslRejectUnauthorized", true);
     }
+    /// <summary>Copies service-account/audience and optional cluster/gateway/TLS inputs without reading host cluster credentials.</summary>
     public static NativeKubernetesDefinitionProfile ForStaticAccount(string nameSpace, string serviceAccountName,
         IReadOnlyList<string> audiences, string? clusterToken = null, string? url = null, string? ca = null,
         NativeKubernetesAuthentication? authentication = null, NativeGatewayOptions? gateway = null, bool? sslEnabled = null) =>
         new(nameSpace, serviceAccountName, audiences, clusterToken, url, ca, authentication, gateway, sslEnabled);
+    /// <summary>Copies dynamic role or cluster-role selectors and explicit native authentication inputs.</summary>
     public NativeKubernetesDefinitionProfile(string nameSpace, string role, bool clusterRole,
         IReadOnlyList<string> audiences, string? clusterToken = null, string? url = null, string? ca = null,
         NativeKubernetesAuthentication? authentication = null, NativeGatewayOptions? gateway = null, bool? sslEnabled = null)
@@ -653,6 +713,7 @@ public sealed class NativeKubernetesDefinitionProfile : InfisicalDynamicProfile
         if (sslEnabled is { } enabled) Flag("sslEnabled", enabled);
     }
 }
+/// <summary>Owned LDAP definition inputs with distinct static rotation and dynamic lifecycle forms.</summary>
 public sealed class NativeLdapDefinitionProfile : InfisicalDynamicProfile
 {
     private NativeLdapDefinitionProfile(string url, string bindDn, string bindPassword,
@@ -661,8 +722,10 @@ public sealed class NativeLdapDefinitionProfile : InfisicalDynamicProfile
         Text("credentialType", "static"); Text("url", url); Text("binddn", bindDn);
         Text("bindpass", bindPassword); Text("rotationLdif", rotationLdif); Optional("ca", ca);
     }
+    /// <summary>Copies static-account bind credentials and rotation LDIF; LDIF is not executed locally.</summary>
     public static NativeLdapDefinitionProfile ForStaticAccount(string url, string bindDn, string bindPassword,
         string rotationLdif, string? ca = null) => new(url, bindDn, bindPassword, rotationLdif, ca);
+    /// <summary>Copies dynamic-account creation/revocation and optional rollback LDIF plus bind/TLS inputs.</summary>
     public NativeLdapDefinitionProfile(string url, string bindDn, string bindPassword, string creationLdif,
         string revocationLdif, string? rollbackLdif = null, string? ca = null) : base(InfisicalDynamicProvider.Ldap)
     {
@@ -671,7 +734,9 @@ public sealed class NativeLdapDefinitionProfile : InfisicalDynamicProfile
         Optional("rollbackLdif", rollbackLdif); Optional("ca", ca);
     }
 }
-public enum NativeTotpAlgorithm { Sha1, Sha256, Sha512 }
+/// <summary>Closed native TOTP digest selection; the SDK does not generate an OTP locally.</summary>
+public enum NativeTotpAlgorithm { /** <summary>SHA-1.</summary> */ Sha1, /** <summary>SHA-256.</summary> */ Sha256, /** <summary>SHA-512.</summary> */ Sha512 }
+/// <summary>Owned TOTP definition inputs using an explicit manual secret or provisioning URL.</summary>
 public sealed class NativeTotpDefinitionProfile : InfisicalDynamicProfile
 {
     private NativeTotpDefinitionProfile(string secret, NativeTotpAlgorithm algorithm, int? digits, int? period)
@@ -688,16 +753,20 @@ public sealed class NativeTotpDefinitionProfile : InfisicalDynamicProfile
         if (digits is { } digitCount) { Number("digits", digitCount, 1, int.MaxValue); }
         if (period is { } seconds) { Number("period", seconds, 1, int.MaxValue); }
     }
+    /// <summary>Copies a manual secret and selected digest, with optional positive digit count and period.</summary>
     public static NativeTotpDefinitionProfile ForManualSecret(string secret,
         NativeTotpAlgorithm algorithm = NativeTotpAlgorithm.Sha1, int? digits = null, int? period = null) =>
         new(secret, algorithm, digits, period);
+    /// <summary>Copies an absolute provisioning URL without URI user-info; no URL is fetched locally.</summary>
     public NativeTotpDefinitionProfile(string provisioningUrl) : base(InfisicalDynamicProvider.Totp)
     {
         Text("configType", "url"); SafeUri("url", provisioningUrl);
     }
 }
+/// <summary>Owned SSH principal and optional key-algorithm inputs; no local key generation or issuance.</summary>
 public sealed class NativeSshDefinitionProfile : InfisicalDynamicProfile
 {
+    /// <summary>Validates closed algorithms and copies a bounded nonempty principal list.</summary>
     public NativeSshDefinitionProfile(IReadOnlyList<string> principals, NativeSshKeyAlgorithm? keyAlgorithm = null,
         NativeSshKeyAlgorithm? caKeyAlgorithm = null) : base(InfisicalDynamicProvider.Ssh)
     {
@@ -716,8 +785,10 @@ public sealed class NativeSshDefinitionProfile : InfisicalDynamicProfile
         _ => throw new ArgumentException("Unknown native SSH key algorithm.")
     };
 }
+/// <summary>Owned IBM API Connect authority and resource selectors with optional copied gateway options.</summary>
 public sealed class NativeIbmApiDefinitionProfile : InfisicalDynamicProfile
 {
+    /// <summary>Copies API/client credentials and explicit organization/catalog/application coordinates without I/O.</summary>
     public NativeIbmApiDefinitionProfile(string apiKey, string applicationId, string clientId, string clientSecret,
         string organizationId, string catalogId, string consumerOrganizationId, string instanceUrl,
         NativeGatewayOptions? gateway = null)
@@ -729,9 +800,12 @@ public sealed class NativeIbmApiDefinitionProfile : InfisicalDynamicProfile
         Options(gateway);
     }
 }
-public enum NativeOauthClientAuthentication { Basic, Post }
+/// <summary>Explicit native OAuth client-secret authentication method.</summary>
+public enum NativeOauthClientAuthentication { /** <summary>Client secret via HTTP Basic.</summary> */ Basic, /** <summary>Client secret in POST fields.</summary> */ Post }
+/// <summary>Owned native client-credentials OAuth definition, not a host-side OAuth client.</summary>
 public sealed class NativeOauthDefinitionProfile : InfisicalDynamicProfile
 {
+    /// <summary>Copies client authority, absolute token/revocation URLs and at most 20 typed extra parameters.</summary>
     public NativeOauthDefinitionProfile(string clientId, string clientSecret, NativeOauthClientAuthentication method,
         string tokenUrl, string revocationUrl, string? scope = null,
         IReadOnlyList<NativeOauthExtraParameter>? extraParameters = null) : base(InfisicalDynamicProvider.Oauth2)
@@ -751,6 +825,7 @@ public sealed class NativeOauthDefinitionProfile : InfisicalDynamicProfile
         ObjectOptions("extraParams", extraParameters, 20);
     }
 }
+/// <summary>Owned Tailscale inputs with explicit authority and auth-key, federated-key or OAuth-key branches.</summary>
 public sealed class NativeTailscaleDefinitionProfile : InfisicalDynamicProfile
 {
     private NativeTailscaleDefinitionProfile(string authType, string? apiKey, string? clientId,
@@ -779,21 +854,27 @@ public sealed class NativeTailscaleDefinitionProfile : InfisicalDynamicProfile
         if (scopes is not null) { Strings("scopes", scopes); }
         Options(options);
     }
+    /// <summary>Copies OAuth authority for native auth-key creation, including optional auth-key flags.</summary>
     public static NativeTailscaleDefinitionProfile ForOAuthAuthority(string clientId, string clientSecret,
         NativeTailscaleOptions? options = null) =>
         new("auth_keys", null, clientId, clientSecret, null, null, null, options);
+    /// <summary>Copies API-key authority and explicit issuer/subject/scopes for native federated keys.</summary>
     public static NativeTailscaleDefinitionProfile ForFederatedApiKey(string apiKey, string issuer, string subject,
         IReadOnlyList<string> scopes, NativeTailscaleOptions? options = null) =>
         new("federated_keys", apiKey, null, null, issuer, subject, scopes, options);
+    /// <summary>Copies OAuth authority and issuer/subject/scopes for native federated keys.</summary>
     public static NativeTailscaleDefinitionProfile ForFederatedOAuth(string clientId, string clientSecret,
         string issuer, string subject, IReadOnlyList<string> scopes, NativeTailscaleOptions? options = null) =>
         new("federated_keys", null, clientId, clientSecret, issuer, subject, scopes, options);
+    /// <summary>Copies API-key authority and scopes for native OAuth-key creation.</summary>
     public static NativeTailscaleDefinitionProfile ForOAuthKeyApiKey(string apiKey, IReadOnlyList<string> scopes,
         NativeTailscaleOptions? options = null) =>
         new("oauth_keys", apiKey, null, null, null, null, scopes, options);
+    /// <summary>Copies OAuth authority and scopes for native OAuth-key creation.</summary>
     public static NativeTailscaleDefinitionProfile ForOAuthKeyOAuth(string clientId, string clientSecret,
         IReadOnlyList<string> scopes, NativeTailscaleOptions? options = null) =>
         new("oauth_keys", null, clientId, clientSecret, null, null, scopes, options);
+    /// <summary>Copies API-key authority and explicit auth-key selectors/flags; no key is created by construction.</summary>
     public NativeTailscaleDefinitionProfile(string apiKey, string? tailnet = null, bool reusable = false,
         bool preauthorized = false, IReadOnlyList<string>? tags = null, string? description = null)
         : base(InfisicalDynamicProvider.Tailscale)
@@ -803,8 +884,10 @@ public sealed class NativeTailscaleDefinitionProfile : InfisicalDynamicProfile
         Optional("description", description, 50); if (tags is not null) { Strings("tags", tags, true); }
     }
 }
+/// <summary>Owned Couchbase cluster/role inputs with copied bucket and password requirements.</summary>
 public sealed class NativeCouchbaseDefinitionProfile : InfisicalDynamicProfile
 {
+    /// <summary>Copies API authority and cluster selectors; validates the stricter native Couchbase password requirements.</summary>
     public NativeCouchbaseDefinitionProfile(string url, string apiKey, string organizationId, string projectId,
         string clusterId, IReadOnlyList<string> roles, NativeCouchbaseBuckets? buckets = null,
         NativePasswordRequirements? passwordRequirements = null) : base(InfisicalDynamicProvider.Couchbase)
@@ -817,32 +900,44 @@ public sealed class NativeCouchbaseDefinitionProfile : InfisicalDynamicProfile
 /// <summary>Protected Atlas role/scope coordinates; no public dictionary accepts additional fields.</summary>
 public sealed class NativeAtlasRole
 {
+    /// <summary>Selects protected database/role and optional collection coordinates.</summary>
     public NativeAtlasRole(string databaseName, string roleName, string? collectionName = null)
     {
         InfisicalNativeAddress.NativeText(databaseName); InfisicalNativeAddress.NativeText(roleName);
         if (collectionName is not null) { InfisicalNativeAddress.NativeText(collectionName); }
         DatabaseName = databaseName; RoleName = roleName; CollectionName = collectionName;
     }
+    /// <summary>The protected database name.</summary>
     [JsonIgnore] public string DatabaseName { get; }
+    /// <summary>The selected native role name; not a local grant.</summary>
     [JsonIgnore] public string RoleName { get; }
+    /// <summary>The optional protected collection name.</summary>
     [JsonIgnore] public string? CollectionName { get; }
+    /// <summary>Returns a fixed label without role coordinates.</summary>
     public override string ToString() => "[NativeAtlasRole]";
 }
+/// <summary>Protected Atlas scope selectors, excluded from default serialization.</summary>
 public sealed class NativeAtlasScope
 {
+    /// <summary>Selects a bounded nonempty native scope name and type.</summary>
     public NativeAtlasScope(string name, string type)
     {
         InfisicalNativeAddress.NativeText(name); InfisicalNativeAddress.NativeText(type);
         Name = name; Type = type;
     }
+    /// <summary>The protected native scope name.</summary>
     [JsonIgnore] public string Name { get; }
+    /// <summary>The protected native scope type.</summary>
     [JsonIgnore] public string Type { get; }
+    /// <summary>Returns a fixed label without scope fields.</summary>
     public override string ToString() => "[NativeAtlasScope]";
 }
+/// <summary>Owned MongoDB Atlas definition credentials and frozen typed role/scope selections.</summary>
 public sealed class NativeAtlasDefinitionProfile : InfisicalDynamicProfile
 {
     private readonly NativeAtlasRole[] _roles;
     private readonly NativeAtlasScope[] _scopes;
+    /// <summary>Copies administrative keys and group ID, freezing bounded role/scope lists without issuing credentials.</summary>
     public NativeAtlasDefinitionProfile(string adminPublicKey, string adminPrivateKey, string groupId,
         IReadOnlyList<NativeAtlasRole> roles, IReadOnlyList<NativeAtlasScope> scopes)
         : base(InfisicalDynamicProvider.MongoDbAtlas)

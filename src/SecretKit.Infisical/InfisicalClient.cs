@@ -29,6 +29,7 @@ public sealed partial class InfisicalClient : ISecretReader, ISecretInventory, I
     private TaskCompletionSource? _drained;
     private Task? _disposeTask;
 
+    /// <summary>Creates a fixed-origin client without acquiring credentials; token source and borrowed transport remain host-owned.</summary>
     public InfisicalClient(Uri origin, IInfisicalTokenSource tokens,
         InfisicalNetworkOptions? network = null, TimeProvider? timeProvider = null)
         : this(origin, tokens, network ?? new InfisicalNetworkOptions(), timeProvider, null, true)
@@ -66,8 +67,12 @@ public sealed partial class InfisicalClient : ISecretReader, ISecretInventory, I
         _staticWire = RestService.For<IInfisicalStaticWire>(_binding.Requests);
     }
 
+    /// <summary>Exact local authority used to bind references; it grants no provider permissions.</summary>
     public SecretAuthority Authority { get; } = new();
 
+    /// <summary>Reads caller-owned material using this client's selected identity; dispose a successful read.</summary>
+    /// <remarks>Missing required evidence yields Unknown; contradictory coordinates yield Invalid.
+    /// Unreturned optional scope is not fabricated. Cancellation propagates; no fallback or replay occurs.</remarks>
     public async ValueTask<SecretOutcome<SecretRead>> ReadAsync(
         SecretReference reference, CancellationToken cancellationToken = default)
     {
@@ -79,6 +84,8 @@ public sealed partial class InfisicalClient : ISecretReader, ISecretInventory, I
     }
 
     /// <summary>Qualifies only raw, non-imported reads; resolved material has no resource-only revision.</summary>
+    /// <remarks>The caller owns the successful read. Missing resource/scope/version evidence yields Unknown;
+    /// contradictory returned scope yields Invalid. The revision proves no compare-and-swap capability.</remarks>
     public async ValueTask<SecretOutcome<InfisicalSecretRead>> ReadNativeAsync(
         SecretReference reference, CancellationToken cancellationToken = default)
     {
@@ -186,6 +193,8 @@ public sealed partial class InfisicalClient : ISecretReader, ISecretInventory, I
         }
     }
 
+    /// <summary>Observes bounded direct-folder metadata without acquiring values or recursively resolving imports.</summary>
+    /// <remarks>References belong to this exact authority. Completeness is local response coverage, not an atomic snapshot.</remarks>
     public async ValueTask<SecretOutcome<SecretInventory>> InspectAsync(
         SecretInventoryScope scope, CancellationToken cancellationToken = default)
     {
@@ -514,6 +523,10 @@ public sealed partial class InfisicalClient : ISecretReader, ISecretInventory, I
         }
     }
 
+    /// <summary>Stops admission and shares one bounded shutdown result across callers.</summary>
+    /// <remarks>Timeout may leave retained cleanup pending until callbacks and active operations finish.
+    /// Borrowed transports and token sources are not disposed; remote effects are not rolled back.</remarks>
+    /// <exception cref="TimeoutException">The original shutdown deadline elapsed; eventual cleanup remains owned.</exception>
     public ValueTask DisposeAsync()
     {
         TaskCompletionSource completion;
@@ -580,5 +593,6 @@ public sealed partial class InfisicalClient : ISecretReader, ISecretInventory, I
         }
     }
 
+    /// <summary>Returns a fixed label without origin, identity or coordinates.</summary>
     public override string ToString() => "[InfisicalClient]";
 }

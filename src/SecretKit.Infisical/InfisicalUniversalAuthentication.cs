@@ -18,6 +18,7 @@ public sealed class InfisicalUniversalAuthentication : IDisposable
     private readonly Uri _origin;
     private bool _disposed;
 
+    /// <summary>Creates a fixed-origin bootstrap client without logging in; selected borrowed transports remain host-owned.</summary>
     public InfisicalUniversalAuthentication(Uri origin, InfisicalNetworkOptions? network = null,
         TimeProvider? timeProvider = null) : this(origin, network ?? new(), timeProvider, null, true) { }
 
@@ -41,12 +42,16 @@ public sealed class InfisicalUniversalAuthentication : IDisposable
             new RefitSettings { ExceptionFactory = _ => ValueTask.FromResult<Exception?>(null) });
     }
 
+    /// <summary>Creates single-dispatch evidence bound to this authentication client before login.</summary>
     public InfisicalUniversalLoginReceipt CreateReceipt()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         return new(this);
     }
 
+    /// <summary>Exchanges explicit borrowed bootstrap material once and returns a caller-owned login on success.</summary>
+    /// <remarks>Retain the receipt after cancellation or Unknown; the bootstrap may have been consumed.
+    /// Reported TTL is not original issuance proof. No retry, principal fallback or automatic worker is started.</remarks>
     public async ValueTask<SecretOutcome<InfisicalUniversalLogin>> LoginAsync(string clientId,
         SecretMaterial clientSecret, InfisicalUniversalLoginReceipt receipt,
         string? organizationSlug = null, CancellationToken cancellationToken = default)
@@ -159,11 +164,13 @@ public sealed class InfisicalUniversalAuthentication : IDisposable
         }
     }
 
+    /// <summary>Disposes owned transport resources without revoking issued tokens or disposing borrowed pipelines.</summary>
     public void Dispose()
     {
         _disposed = true;
         _binding.Dispose();
     }
+    /// <summary>Returns a fixed label without origin or credential details.</summary>
     public override string ToString() => "[InfisicalUniversalAuthentication]";
 }
 
@@ -173,10 +180,12 @@ public sealed class InfisicalUniversalLoginReceipt
     internal InfisicalUniversalLoginReceipt(object owner) => Owner = owner;
     internal object Owner { get; }
     private int _evidence;
+    /// <summary>Latest local dispatch evidence; PossiblyDispatched preserves uncertainty across failure.</summary>
     public DispatchEvidence Evidence => (DispatchEvidence)Volatile.Read(ref _evidence);
     internal bool TryBeginDispatch() => Interlocked.CompareExchange(ref _evidence,
         (int)DispatchEvidence.PossiblyDispatched, (int)DispatchEvidence.NotDispatched) == (int)DispatchEvidence.NotDispatched;
     internal void Record(DispatchEvidence evidence) => Volatile.Write(ref _evidence, (int)evidence);
+    /// <summary>Returns dispatch evidence without bootstrap or token material.</summary>
     public override string ToString() => $"[InfisicalUniversalLoginReceipt:{Evidence}]";
 }
 
@@ -201,8 +210,11 @@ public sealed class InfisicalUniversalLogin : IDisposable
     }
     internal Uri Origin { get; }
     internal TimeProvider TimeProvider { get; }
+    /// <summary>The token owned by this login; copy its material before independent retention.</summary>
     [JsonIgnore] public InfisicalAccessToken Token { get; }
+    /// <summary>Provider-reported seconds to expiry, conservatively measured from request start locally.</summary>
     public double ExpiresIn { get; }
+    /// <summary>Provider-reported maximum TTL in seconds; zero alone does not establish periodic semantics.</summary>
     public double AccessTokenMaxTTL { get; }
     /// <summary>A conservative caller-observed bound, not proof of server issuance time.</summary>
     public DateTimeOffset RequestStartedAt { get; }
@@ -231,6 +243,8 @@ public sealed class InfisicalUniversalLogin : IDisposable
         };
     }
 
+    /// <summary>Disposes this login's token without stopping independent sessions or revoking the remote token.</summary>
     public void Dispose() => Token.Dispose();
+    /// <summary>Returns a fixed label without token or deployment details.</summary>
     public override string ToString() => "[InfisicalUniversalLogin]";
 }

@@ -9,10 +9,14 @@ using SecretKit.Core;
 
 namespace SecretKit.Infisical;
 
+/// <summary>Host-verified lifetime model for the selected token and deployment.</summary>
 public enum InfisicalTokenLifetime
 {
+    /// <summary>Policy is unestablished; a session cannot admit renewal.</summary>
     Unknown,
+    /// <summary>A positive maximum TTL bounds lifetime from original issuance.</summary>
     Finite,
+    /// <summary>Independently verified periodic renewal, optionally subject to an absolute ceiling.</summary>
     Periodic
 }
 
@@ -26,29 +30,47 @@ public enum InfisicalTokenLifetime
 public sealed class InfisicalTokenLifetimeEvidence
 {
     internal InfisicalUniversalLogin? Login { get; init; }
+    /// <summary>Verified original issuance time or explicitly conservative lower bound; never reset by renewal.</summary>
     public required DateTimeOffset OriginalIssuedAt { get; init; }
+    /// <summary>Expiry of the selected token, matching login evidence when bound to a login.</summary>
     public required DateTimeOffset ExpiresAt { get; init; }
+    /// <summary>The independently established finite or periodic policy.</summary>
     public required InfisicalTokenLifetime Lifetime { get; init; }
+    /// <summary>Reported maximum TTL; finite policy requires a positive value.</summary>
     public required TimeSpan ReportedMaximumTtl { get; init; }
+    /// <summary>Verified periodic interval, required only for periodic policy and longer than the renewal margin.</summary>
     public TimeSpan? Period { get; init; }
+    /// <summary>Optional independently established absolute ceiling for periodic policy.</summary>
     public DateTimeOffset? AbsoluteLifetimeLimit { get; init; }
 }
 
+/// <summary>Local token usability and maintenance state; no remote readiness guarantee.</summary>
 public enum InfisicalTokenSessionState
 {
+    /// <summary>The current token is locally usable before its renewal margin.</summary>
     Ready,
+    /// <summary>The usable token has entered its explicit renewal margin.</summary>
     RenewalDue,
+    /// <summary>One shared renewal request is in flight.</summary>
     Renewing,
+    /// <summary>Observed expiry or absolute lifetime ceiling has elapsed.</summary>
     Expired,
+    /// <summary>Explicitly authorized recovery is required; no fallback login occurs.</summary>
     RecoveryRequired,
+    /// <summary>Admission is closed and the session's token generation has ended.</summary>
     Stopped
 }
 
+/// <summary>Evidence for one explicit renewal, independent of a waiter's cancellation.</summary>
 public enum InfisicalRenewalEvidence
 {
+    /// <summary>No sending handoff has occurred.</summary>
     NotDispatched,
+    /// <summary>Handoff occurred; the remote outcome may be unknown.</summary>
     PossiblyDispatched,
+    /// <summary>A validated replacement token was published locally.</summary>
     Applied,
+    /// <summary>The provider returned a recognized rejection.</summary>
     Rejected
 }
 
@@ -56,8 +78,10 @@ public enum InfisicalRenewalEvidence
 public sealed class InfisicalTokenRenewal
 {
     private int _evidence;
+    /// <summary>Latest evidence retained even when a waiter cancels or shutdown begins.</summary>
     public InfisicalRenewalEvidence Evidence => (InfisicalRenewalEvidence)Volatile.Read(ref _evidence);
     internal void Record(InfisicalRenewalEvidence evidence) => Volatile.Write(ref _evidence, (int)evidence);
+    /// <summary>Returns evidence without token material.</summary>
     public override string ToString() => $"[InfisicalTokenRenewal:{Evidence}]";
 }
 
@@ -108,6 +132,8 @@ public sealed class InfisicalPeriodicTokenSession : IInfisicalTokenSource, IAsyn
         return evidence;
     }
 
+    /// <summary>Copies an explicit token under host-verified lifetime evidence; null represents loss and requires recovery.</summary>
+    /// <remarks>Construction acquires nothing and starts no worker. The host keeps its original material and borrowed pipeline.</remarks>
     public InfisicalPeriodicTokenSession(Uri origin, SecretMaterial? existingToken,
         InfisicalTokenLifetimeEvidence verifiedEvidence, TimeSpan renewBefore,
         TimeSpan requestTimeout, InfisicalNetworkOptions? network = null, TimeProvider? timeProvider = null)
@@ -192,18 +218,22 @@ public sealed class InfisicalPeriodicTokenSession : IInfisicalTokenSource, IAsyn
             _expiresAt > now;
     }
 
+    /// <summary>The clock governing expiry, renewal and the original shutdown deadline.</summary>
     public TimeProvider TimeProvider => _time;
 
+    /// <summary>Current expiry minus the configured renewal margin; reading does not schedule work.</summary>
     public DateTimeOffset RenewalDueAt
     {
         get { lock (_gate) return _expiresAt - _renewBefore; }
     }
 
+    /// <summary>The most recently started renewal receipt, or null before explicit renewal.</summary>
     public InfisicalTokenRenewal? LastRenewal
     {
         get { lock (_gate) return _lastRenewal; }
     }
 
+    /// <summary>Current local state, updated against expiry and lifetime ceilings on access.</summary>
     public InfisicalTokenSessionState State
     {
         get
@@ -233,6 +263,8 @@ public sealed class InfisicalPeriodicTokenSession : IInfisicalTokenSource, IAsyn
         }
     }
 
+    /// <summary>Returns a caller-owned copy without renewing; expired/lost sessions report RecoveryRequired.</summary>
+    /// <exception cref="ObjectDisposedException">The session has stopped accepting token reads.</exception>
     public ValueTask<SecretOutcome<InfisicalAccessToken>> GetTokenAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -436,12 +468,17 @@ public sealed class InfisicalPeriodicTokenSession : IInfisicalTokenSource, IAsyn
         return status;
     }
 
+    /// <summary>Joins the same bounded stop result as StopAsync; does not revoke the remote token.</summary>
     public ValueTask DisposeAsync() => new(StopAsync());
 
     /// <summary>
     /// Ends this credential generation and cancels/drains its shared renewal within the
     /// configured shutdown bound. Does not dispose a host-owned transport or caller copies.
     /// </summary>
+    /// <remarks>All callers share the original deadline and terminal result. Timeout does not kill
+    /// host callbacks: cleanup remains owned and completes if pending work later returns.
+    /// No late renewal can publish a token after stop.</remarks>
+    /// <exception cref="TimeoutException">The public bound elapsed before owned cleanup completed.</exception>
     public Task StopAsync()
     {
         TaskCompletionSource completion;
@@ -508,6 +545,7 @@ public sealed class InfisicalPeriodicTokenSession : IInfisicalTokenSource, IAsyn
         }
     }
 
+    /// <summary>Returns local state without token or deployment details.</summary>
     public override string ToString() => $"[InfisicalPeriodicTokenSession:{State}]";
 }
 

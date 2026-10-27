@@ -111,6 +111,7 @@ public abstract class NativeProfileOptions : IDisposable
             return _data.Copy();
         }
     }
+    /// <summary>Erases this option object's copied fields; already-created profiles retain their independent copies.</summary>
     public void Dispose()
     {
         lock (_gate)
@@ -119,11 +120,14 @@ public abstract class NativeProfileOptions : IDisposable
             _disposed = true; _data.Dispose();
         }
     }
+    /// <summary>Returns a fixed label without native option contents.</summary>
     public sealed override string ToString() => "[NativeProfileOptions]";
 }
 
+/// <summary>Explicit gateway selection or clearing for a typed native profile.</summary>
 public sealed class NativeGatewayOptions : NativeProfileOptions
 {
+    /// <summary>Copies selected gateway identifiers; clear flags send null and cannot accompany a value for the same field.</summary>
     public NativeGatewayOptions(string? gatewayId = null, string? gatewayPoolId = null,
         bool clearGatewayId = false, bool clearGatewayPoolId = false)
     {
@@ -135,17 +139,21 @@ public sealed class NativeGatewayOptions : NativeProfileOptions
     }
 }
 
+/// <summary>One copied AWS tag used in typed IAM options.</summary>
 public sealed class NativeAwsTag : NativeProfileOptions
 {
+    /// <summary>Copies a bounded nonempty tag key and optional value.</summary>
     public NativeAwsTag(string key, string? value = null)
     {
         Text("key", key, 255, true); Text("value", value, 1020);
     }
 }
 
+/// <summary>Copied AWS IAM policy, group, tag and session fields; no AWS calls or local policy enforcement.</summary>
 public sealed class NativeAwsIamOptions : NativeProfileOptions
 {
     internal bool HasSessionPolicy { get; }
+    /// <summary>Copies only explicit policy fields and nested tags; the owning profile validates session-policy compatibility.</summary>
     public NativeAwsIamOptions(string? awsPath = null, string? permissionBoundaryPolicyArn = null,
         string? policyArns = null, string? policyDocument = null, string? userGroups = null,
         IReadOnlyList<NativeAwsTag>? tags = null, string? sessionPolicyArns = null,
@@ -159,8 +167,10 @@ public sealed class NativeAwsIamOptions : NativeProfileOptions
     }
 }
 
+/// <summary>Copied native Milvus privilege selection, not a local permission grant.</summary>
 public sealed class NativeMilvusPrivilege : NativeProfileOptions
 {
+    /// <summary>Copies object type, privilege and optional object/database names.</summary>
     public NativeMilvusPrivilege(string objectType, string privilege, string? objectName = null, string? dbName = null)
     {
         Text("objectType", objectType, required: true); Text("privilege", privilege, required: true);
@@ -169,22 +179,27 @@ public sealed class NativeMilvusPrivilege : NativeProfileOptions
     }
 }
 
+/// <summary>Copied Couchbase scope and optional collection selectors.</summary>
 public sealed class NativeCouchbaseScope : NativeProfileOptions
 {
+    /// <summary>Copies a nonempty scope name and a bounded collection list.</summary>
     public NativeCouchbaseScope(string name, IReadOnlyList<string>? collections = null)
     {
         Text("name", name, required: true); Strings("collections", collections);
     }
 }
 
+/// <summary>Copied Couchbase bucket with independently owned nested scope options.</summary>
 public sealed class NativeCouchbaseBucket : NativeProfileOptions
 {
+    /// <summary>Copies the bucket name and nested scopes; callers retain their original scope objects.</summary>
     public NativeCouchbaseBucket(string name, IReadOnlyList<NativeCouchbaseScope>? scopes = null)
     {
         Text("name", name, required: true); Objects("scopes", scopes);
     }
 }
 
+/// <summary>Explicit native text or structured bucket selection, never an arbitrary object map.</summary>
 public sealed class NativeCouchbaseBuckets : NativeProfileOptions
 {
     private NativeCouchbaseBuckets(string value) => Text("buckets", value, required: true);
@@ -192,22 +207,28 @@ public sealed class NativeCouchbaseBuckets : NativeProfileOptions
     {
         ArgumentNullException.ThrowIfNull(values); Objects("buckets", values);
     }
+    /// <summary>Copies the native bucket text form.</summary>
     public static NativeCouchbaseBuckets FromText(string value) => new(value);
+    /// <summary>Copies a bounded structured bucket list and its nested fields.</summary>
     public static NativeCouchbaseBuckets FromBuckets(IReadOnlyList<NativeCouchbaseBucket> values) => new(values);
 }
 
+/// <summary>One bounded copied OAuth extra-parameter pair.</summary>
 public sealed class NativeOauthExtraParameter : NativeProfileOptions
 {
+    /// <summary>Copies a nonempty key and value without sending a token request.</summary>
     public NativeOauthExtraParameter(string key, string value)
     {
         Text("key", key, 128, true); Text("value", value, 2048, true);
     }
 }
 
+/// <summary>Copied Tailscale selectors and key flags, validated against the owning profile's credential type.</summary>
 public sealed class NativeTailscaleOptions : NativeProfileOptions
 {
     internal bool HasAuthKeyFlags { get; }
     internal bool HasAudience { get; }
+    /// <summary>Copies optional tailnet, tags, description and audience; flags are explicit native inputs, not local policy.</summary>
     public NativeTailscaleOptions(string? tailnet = null, IReadOnlyList<string>? tags = null,
         string? description = null, string? audience = null, bool? reusable = null, bool? preauthorized = null)
     {
@@ -219,5 +240,7 @@ public sealed class NativeTailscaleOptions : NativeProfileOptions
     }
 }
 
-public enum NativeSshKeyAlgorithm { Rsa2048, Rsa4096, EcPrime256v1, EcSecp384r1, Ed25519 }
-public enum NativeKubernetesAuthentication { Api, Gateway }
+/// <summary>Closed native SSH key-generation algorithm selection; no key is generated locally.</summary>
+public enum NativeSshKeyAlgorithm { /** <summary>2048-bit RSA.</summary> */ Rsa2048, /** <summary>4096-bit RSA.</summary> */ Rsa4096, /** <summary>prime256v1 elliptic curve.</summary> */ EcPrime256v1, /** <summary>secp384r1 elliptic curve.</summary> */ EcSecp384r1, /** <summary>Ed25519.</summary> */ Ed25519 }
+/// <summary>Explicit native Kubernetes authentication route.</summary>
+public enum NativeKubernetesAuthentication { /** <summary>API credential authentication.</summary> */ Api, /** <summary>Gateway authentication.</summary> */ Gateway }

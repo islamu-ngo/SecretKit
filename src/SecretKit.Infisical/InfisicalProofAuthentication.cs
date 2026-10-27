@@ -76,20 +76,26 @@ public sealed class InfisicalLoginProof : IDisposable
         });
     }
 
+    /// <summary>Copies a host-acquired Azure JWT; does not acquire credentials or infer the selected principal.</summary>
     public static InfisicalLoginProof Azure(string identityId, SecretMaterial jwt, string? organizationSlug = null) =>
         JwtProof("azure", identityId, jwt, organizationSlug);
+    /// <summary>Copies a host-acquired GCP JWT for the explicitly selected identity.</summary>
     public static InfisicalLoginProof Gcp(string identityId, SecretMaterial jwt, string? organizationSlug = null) =>
         JwtProof("gcp", identityId, jwt, organizationSlug);
+    /// <summary>Copies JWT proof without interpreting claims as token-to-principal evidence.</summary>
     public static InfisicalLoginProof Jwt(string identityId, SecretMaterial jwt, string? organizationSlug = null) =>
         JwtProof("jwt", identityId, jwt, organizationSlug);
+    /// <summary>Copies a host-supplied Kubernetes JWT without reading cluster credentials.</summary>
     public static InfisicalLoginProof Kubernetes(string identityId, SecretMaterial jwt, string? organizationSlug = null) =>
         JwtProof("kubernetes", identityId, jwt, organizationSlug);
+    /// <summary>Copies host-supplied OIDC JWT proof without running an identity flow.</summary>
     public static InfisicalLoginProof Oidc(string identityId, SecretMaterial jwt, string? organizationSlug = null) =>
         JwtProof("oidc", identityId, jwt, organizationSlug);
     /// <summary>JWT-SVID only; this route does not accept X.509-SVID.</summary>
     public static InfisicalLoginProof Spiffe(string identityId, SecretMaterial jwt, string? organizationSlug = null) =>
         JwtProof("spiffe", identityId, jwt, organizationSlug);
 
+    /// <summary>Copies an LDAP password and explicit username for the selected identity UUID.</summary>
     public static InfisicalLoginProof Ldap(string identityId, string username, SecretMaterial password,
         string? organizationSlug = null)
     {
@@ -157,6 +163,7 @@ public sealed class InfisicalLoginProof : IDisposable
         }
     }
 
+    /// <summary>Erases this proof's copied payload; the host retains its original credentials.</summary>
     public void Dispose()
     {
         lock (_gate)
@@ -166,6 +173,7 @@ public sealed class InfisicalLoginProof : IDisposable
             _payload = null;
         }
     }
+    /// <summary>Returns a fixed label without proof fields.</summary>
     public override string ToString() => "[InfisicalLoginProof]";
 }
 
@@ -180,6 +188,7 @@ public sealed partial class InfisicalProofAuthentication : IDisposable
     private readonly int _responseLimit;
     private bool _disposed;
 
+    /// <summary>Creates a fixed-origin proof client without acquiring credentials; borrowed transport stays host-owned.</summary>
     public InfisicalProofAuthentication(Uri origin, InfisicalNetworkOptions? network = null,
         TimeProvider? timeProvider = null) : this(origin, network ?? new(), timeProvider, null, true) { }
 
@@ -207,12 +216,16 @@ public sealed partial class InfisicalProofAuthentication : IDisposable
         });
     }
 
+    /// <summary>Creates caller-retainable dispatch evidence bound to this authentication client.</summary>
     public InfisicalProofLoginReceipt CreateReceipt()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         return new(this);
     }
 
+    /// <summary>Exchanges a copied host proof once and transfers a successful login to the caller.</summary>
+    /// <remarks>Cancellation propagates while the receipt retains possible dispatch. Unknown is not permission to
+    /// replay proof. The caller still owns the supplied proof and must dispose the returned login.</remarks>
     public async ValueTask<SecretOutcome<InfisicalProofLogin>> LoginAsync(InfisicalLoginProof proof,
         InfisicalProofLoginReceipt receipt, CancellationToken cancellationToken = default)
     {
@@ -317,11 +330,13 @@ public sealed partial class InfisicalProofAuthentication : IDisposable
             _ => throw new InvalidOperationException("Invalid proof login binding.")
         };
 
+    /// <summary>Releases owned transport resources without disposing borrowed pipelines or revoking logins.</summary>
     public void Dispose()
     {
         _disposed = true;
         _binding.Dispose();
     }
+    /// <summary>Returns a fixed label without identity or origin details.</summary>
     public override string ToString() => "[InfisicalProofAuthentication]";
 }
 
@@ -331,10 +346,12 @@ public sealed class InfisicalProofLoginReceipt
     internal InfisicalProofLoginReceipt(object owner) => Owner = owner;
     internal object Owner { get; }
     private int _evidence;
+    /// <summary>Local dispatch evidence that survives login failure or cancellation.</summary>
     public DispatchEvidence Evidence => (DispatchEvidence)Volatile.Read(ref _evidence);
     internal bool TryBeginDispatch() => Interlocked.CompareExchange(ref _evidence,
         (int)DispatchEvidence.PossiblyDispatched, (int)DispatchEvidence.NotDispatched) == (int)DispatchEvidence.NotDispatched;
     internal void Record(DispatchEvidence evidence) => Volatile.Write(ref _evidence, (int)evidence);
+    /// <summary>Returns evidence without proof or token material.</summary>
     public override string ToString() => $"[InfisicalProofLoginReceipt:{Evidence}]";
 }
 
@@ -347,9 +364,14 @@ public sealed class InfisicalProofLogin : IDisposable
         ExpiresIn = expiresIn;
         AccessTokenMaxTTL = maximum;
     }
+    /// <summary>The token owned by this login; explicit exports create ordinary plaintext.</summary>
     [JsonIgnore] public InfisicalAccessToken Token { get; }
+    /// <summary>Provider-reported expiry interval in seconds.</summary>
     public double ExpiresIn { get; }
+    /// <summary>Provider-reported maximum TTL in seconds, not independently verified lifetime policy.</summary>
     public double AccessTokenMaxTTL { get; }
+    /// <summary>Disposes this login's token material without remote revocation.</summary>
     public void Dispose() => Token.Dispose();
+    /// <summary>Returns a fixed label without token details.</summary>
     public override string ToString() => "[InfisicalProofLogin]";
 }

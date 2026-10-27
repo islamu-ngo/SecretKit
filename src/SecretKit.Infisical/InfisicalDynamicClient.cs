@@ -33,6 +33,8 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
     private int _active;
     private bool _disposed;
 
+    /// <summary>Creates a fixed-origin, exact-scope client without acquiring credentials or starting lifecycle work.</summary>
+    /// <remarks>The token source and borrowed transport remain host-owned; maximumItems bounds admitted list responses.</remarks>
     public InfisicalDynamicClient(Uri origin, IInfisicalTokenSource tokens, InfisicalDynamicScope scope,
         InfisicalNetworkOptions? network = null, TimeProvider? timeProvider = null,
         int maximumItems = 128)
@@ -64,9 +66,12 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
         });
     }
 
+    /// <summary>The immutable host-selected scope used for request and response correlation.</summary>
     [JsonIgnore] public InfisicalDynamicScope Scope { get; }
+    /// <summary>Creates a locally client-bound definition selector without inspecting or issuing anything.</summary>
     public InfisicalDynamicTarget Definition(string name) => new(this, name);
 
+    /// <summary>Lists bounded validated definitions without issuing leases; malformed or duplicate entries are Invalid.</summary>
     public async ValueTask<SecretOutcome<InfisicalNativeList<InfisicalDynamicDefinition>>> ListDefinitionsAsync(
         CancellationToken cancellationToken = default)
     {
@@ -100,6 +105,7 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
         return SecretOutcome<InfisicalNativeList<InfisicalDynamicDefinition>>.Success(new(definitions, true));
     }
 
+    /// <summary>Inspects a target owned by this exact client; mismatched scope or resource evidence is Invalid.</summary>
     public async ValueTask<SecretOutcome<InfisicalDynamicDefinition>> InspectDefinitionAsync(
         InfisicalDynamicTarget target, CancellationToken cancellationToken = default)
     {
@@ -115,6 +121,9 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
         return DefinitionResult(response, target, null, null, cancellationToken);
     }
 
+    /// <summary>Creates a typed definition with explicit TTL policy and caller-retained dispatch evidence.</summary>
+    /// <remarks>The profile remains caller-owned. Unvalidated mutation responses are Unknown, not proof of rollback;
+    /// cancellation propagates and the receipt remains available without automatic replay.</remarks>
     public async ValueTask<SecretOutcome<InfisicalDynamicDefinition>> CreateDefinitionAsync(
         InfisicalDynamicTarget target, InfisicalDynamicProfile profile, InfisicalLeaseDuration defaultTtl,
         InfisicalLeaseDuration? maximumTtl, InfisicalDynamicMutationReceipt receipt,
@@ -161,6 +170,8 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
             clearMaximumTtl: maximumTtl is null), receipt, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>Applies an explicit native patch, validating returned identity and provider without guessing missing evidence.</summary>
+    /// <remarks>The caller owns patch material and the receipt; uncertain mutation responses remain Unknown.</remarks>
     public async ValueTask<SecretOutcome<InfisicalDynamicDefinition>> UpdateDefinitionAsync(
         InfisicalDynamicDefinition definition, NativeDynamicDefinitionPatch patch,
         InfisicalDynamicMutationReceipt receipt, CancellationToken cancellationToken = default)
@@ -187,6 +198,7 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
         return DefinitionResult(response, returnedTarget, definition.Id, receipt, cancellationToken, definition.Provider);
     }
 
+    /// <summary>Deletes the selected definition with explicit dispatch evidence; forced removal does not prove external revocation.</summary>
     public async ValueTask<SecretOutcome<InfisicalDynamicDeletion>> DeleteDefinitionAsync(
         InfisicalDynamicDefinition definition, InfisicalDynamicMutationReceipt receipt,
         bool forceRecordRemoval = false, CancellationToken cancellationToken = default)
@@ -207,6 +219,7 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
             : SecretOutcome<InfisicalDynamicDeletion>.Failure(result.Status);
     }
 
+    /// <summary>Lists bounded lease metadata for this client's definition without acquiring credentials.</summary>
     public async ValueTask<SecretOutcome<InfisicalNativeList<InfisicalLeaseObservation>>> ListLeasesAsync(
         InfisicalDynamicDefinition definition, CancellationToken cancellationToken = default)
     {
@@ -243,6 +256,7 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
         return SecretOutcome<InfisicalNativeList<InfisicalLeaseObservation>>.Success(new(observations, true));
     }
 
+    /// <summary>Inspects a retained reference without issuance; validates exact lease and definition correspondence.</summary>
     public async ValueTask<SecretOutcome<InfisicalLeaseObservation>> InspectLeaseAsync(
         InfisicalLeaseReference reference, CancellationToken cancellationToken = default)
     {
@@ -780,6 +794,10 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
     private static bool ValidName(string? name) => !string.IsNullOrWhiteSpace(name) &&
         name.Length <= 64 && name is not ("." or "..") && !name.Any(char.IsControl);
 
+    /// <summary>Closes admission and shares one bounded drain result without revoking remote leases.</summary>
+    /// <remarks>Timeout leaves owned cleanup pending until callbacks and work return. Borrowed resources
+    /// remain host-owned; the caller must still perform explicit remote cleanup.</remarks>
+    /// <exception cref="TimeoutException">The original shutdown bound elapsed before cleanup finished.</exception>
     public ValueTask DisposeAsync()
     {
         TaskCompletionSource completion;
@@ -842,5 +860,6 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
             completion.TrySetException(new TimeoutException("Dynamic client shutdown timed out."));
         }
     }
+    /// <summary>Returns a fixed label without scope or identity.</summary>
     public override string ToString() => "[InfisicalDynamicClient]";
 }

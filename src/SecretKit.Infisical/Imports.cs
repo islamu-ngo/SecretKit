@@ -7,6 +7,7 @@ namespace SecretKit.Infisical;
 /// <summary>Destination coordinates and the known folder identity protect ID-only responses.</summary>
 public sealed class InfisicalImportAddress : InfisicalNativeAddress
 {
+    /// <summary>Selects a destination folder UUID and optional import UUID within protected native scope.</summary>
     public InfisicalImportAddress(string projectId, string environment, string folder, string folderId,
         string? importId = null) : base(projectId, environment, folder)
     {
@@ -17,14 +18,18 @@ public sealed class InfisicalImportAddress : InfisicalNativeAddress
         FolderId = folderId;
         ImportId = importId;
     }
+    /// <summary>Expected destination folder identity used to validate import responses.</summary>
     [JsonIgnore]
     public string FolderId { get; }
+    /// <summary>Selected import identity, or null for creation/listing.</summary>
     [JsonIgnore]
     public string? ImportId { get; }
 }
 
+/// <summary>Protected explicit import source coordinates; no source acquisition or recursion is implied.</summary>
 public sealed class InfisicalImportSource
 {
+    /// <summary>Selects an absolute source path and environment, optionally in another project.</summary>
     public InfisicalImportSource(string environment, string path, string? sourceProjectId = null)
     {
         InfisicalNativeAddress.NativeText(environment);
@@ -34,15 +39,20 @@ public sealed class InfisicalImportSource
         Path = path;
         ProjectId = sourceProjectId;
     }
+    /// <summary>The protected source environment slug.</summary>
     [JsonIgnore]
     public string Environment { get; }
+    /// <summary>The absolute source folder path.</summary>
     [JsonIgnore]
     public string Path { get; }
+    /// <summary>The optional explicit source project.</summary>
     [JsonIgnore]
     public string? ProjectId { get; }
+    /// <summary>Returns a fixed label without source coordinates.</summary>
     public override string ToString() => "[InfisicalImportSource]";
 }
 
+/// <summary>Observed import configuration and provider replication metadata, not delivery or approval proof.</summary>
 public sealed class InfisicalImport
 {
     internal InfisicalImport(string id, string folderId, string sourceEnvironment, string sourcePath,
@@ -60,28 +70,39 @@ public sealed class InfisicalImport
         ReplicationStatus = replicationStatus;
         LastReplicated = lastReplicated;
     }
+    /// <summary>The observed native import identity.</summary>
     [JsonIgnore]
     public string Id { get; }
+    /// <summary>The validated destination folder identity.</summary>
     [JsonIgnore]
     public string FolderId { get; }
+    /// <summary>The observed source environment slug.</summary>
     [JsonIgnore]
     public string SourceEnvironment { get; }
+    /// <summary>The observed absolute source path.</summary>
     [JsonIgnore]
     public string SourcePath { get; }
+    /// <summary>The source project if reported; not inferred when absent.</summary>
     [JsonIgnore]
     public string? SourceProjectId { get; }
+    /// <summary>The native import ordering position; local precedence is not resolved.</summary>
     [JsonIgnore]
     public double Position { get; }
+    /// <summary>Whether configuration requests replication, or null if unreported.</summary>
     public bool? IsReplication { get; }
+    /// <summary>Reported replication success only; not a fresh intended-client read.</summary>
     public bool? ReplicationReportedSuccessful { get; }
     /// <summary>Protected provider text with no established status vocabulary; never interpreted as approval evidence.</summary>
     [JsonIgnore]
     public string? ReplicationStatus { get; }
+    /// <summary>The last reported replication time, if available.</summary>
     [JsonIgnore]
     public DateTimeOffset? LastReplicated { get; }
+    /// <summary>Returns a fixed label without protected fields.</summary>
     public override string ToString() => "[InfisicalImport]";
 }
 
+/// <summary>One owned imported value with observed source coordinates; default formatting does not reveal it.</summary>
 public sealed class InfisicalImportedSecret : IDisposable
 {
     internal InfisicalImportedSecret(string key, string project, string environment, string path,
@@ -94,22 +115,31 @@ public sealed class InfisicalImportedSecret : IDisposable
         Version = version;
         Material = material;
     }
+    /// <summary>The protected observed secret key.</summary>
     [JsonIgnore]
     public string Key { get; }
+    /// <summary>The observed source project identity.</summary>
     [JsonIgnore]
     public string ProjectId { get; }
+    /// <summary>The observed source environment.</summary>
     [JsonIgnore]
     public string Environment { get; }
+    /// <summary>The source group path.</summary>
     [JsonIgnore]
     public string Path { get; }
+    /// <summary>The validated returned version.</summary>
     [JsonIgnore]
     public string? Version { get; }
+    /// <summary>The owned imported material; reveal/export creates ordinary plaintext copies.</summary>
     [JsonIgnore]
     public SecretMaterial Material { get; }
+    /// <summary>Disposes this imported value's material only.</summary>
     public void Dispose() => Material.Dispose();
+    /// <summary>Returns a fixed label without coordinates or material.</summary>
     public override string ToString() => "[InfisicalImportedSecret]";
 }
 
+/// <summary>Preserves one provider import group and its order without deduplicating or resolving precedence.</summary>
 public sealed class InfisicalImportedSecretGroup
 {
     internal InfisicalImportedSecretGroup(string environment, string path, string folderId,
@@ -120,14 +150,19 @@ public sealed class InfisicalImportedSecretGroup
         FolderId = folderId;
         Items = Array.AsReadOnly(items.ToArray());
     }
+    /// <summary>The protected source environment.</summary>
     [JsonIgnore]
     public string Environment { get; }
+    /// <summary>The observed source path.</summary>
     [JsonIgnore]
     public string Path { get; }
+    /// <summary>The observed native source folder identity.</summary>
     [JsonIgnore]
     public string FolderId { get; }
+    /// <summary>Read-only group items shared with the owning imported-secrets result.</summary>
     [JsonIgnore]
     public IReadOnlyList<InfisicalImportedSecret> Items { get; }
+    /// <summary>Returns a fixed label without group details.</summary>
     public override string ToString() => "[InfisicalImportedSecretGroup]";
 }
 
@@ -141,24 +176,33 @@ public sealed class InfisicalImportedSecrets : IDisposable
         Groups = Array.AsReadOnly(groups.ToArray());
         IsComplete = complete;
     }
+    /// <summary>Flattened observed values in provider order, owned by this result.</summary>
     [JsonIgnore]
     public IReadOnlyList<InfisicalImportedSecret> Items { get; }
+    /// <summary>Provider groups referencing the same owned items, with no local precedence resolution.</summary>
     [JsonIgnore]
     public IReadOnlyList<InfisicalImportedSecretGroup> Groups { get; }
+    /// <summary>Whether all returned values fit the local item budget; not a transactional snapshot.</summary>
     public bool IsComplete { get; }
+    /// <summary>Disposes every owned imported value; previously exported plaintext cannot be erased here.</summary>
     public void Dispose()
     {
         foreach (InfisicalImportedSecret item in Items) { item.Dispose(); }
     }
+    /// <summary>Returns a fixed label without source coordinates or values.</summary>
     public override string ToString() => "[InfisicalImportedSecrets]";
 }
 
 public sealed partial class InfisicalClient
 {
+    /// <summary>Inspects one import through this client's identity; unvalidated response correspondence yields Unknown.</summary>
     public ValueTask<SecretOutcome<InfisicalImport>> GetImportAsync(SecretReference target,
         CancellationToken cancellationToken = default) =>
         ImportOperationAsync(target, HttpMethod.Get, null, null, null, null, null, null, cancellationToken);
 
+    /// <summary>Creates import configuration under explicit native authority and caller-held dispatch evidence.</summary>
+    /// <remarks>Applied receipt evidence concerns configuration only, not replication, approval or intended delivery.
+    /// Cancellation and uncertain responses do not authorize replay.</remarks>
     public ValueTask<SecretOutcome<InfisicalImport>> CreateImportAsync(SecretReference target,
         InfisicalImportSource source, bool replication, InfisicalNativeAuthority authority, MutationReceipt receipt,
         CancellationToken cancellationToken = default)
@@ -180,6 +224,8 @@ public sealed partial class InfisicalClient
             source.Environment, source.Path, replication, cancellationToken);
     }
 
+    /// <summary>Updates explicitly supplied source/order fields; omitted fields remain unspecified.</summary>
+    /// <remarks>Retain the receipt after failure or cancellation. Configuration success does not prove destination application.</remarks>
     public ValueTask<SecretOutcome<InfisicalImport>> UpdateImportAsync(SecretReference target,
         InfisicalNativeAuthority authority, MutationReceipt receipt, string? sourceEnvironment = null,
         string? sourcePath = null, double? position = null, CancellationToken cancellationToken = default)
@@ -202,6 +248,7 @@ public sealed partial class InfisicalClient
             sourceEnvironment, sourcePath, null, cancellationToken);
     }
 
+    /// <summary>Deletes selected import configuration with explicit authority and retained receipt; no remote rollback is implied.</summary>
     public ValueTask<SecretOutcome<InfisicalImport>> DeleteImportAsync(SecretReference target,
         InfisicalNativeAuthority authority, MutationReceipt receipt, CancellationToken cancellationToken = default)
     {
@@ -249,6 +296,7 @@ public sealed partial class InfisicalClient
         return SecretOutcome<InfisicalImport>.Success(import);
     }
 
+    /// <summary>Lists bounded import configuration for a destination without inferring replication or delivery.</summary>
     public async ValueTask<SecretOutcome<InfisicalNativeList<InfisicalImport>>> ListImportsAsync(SecretReference target,
         int maximumItems = 1000, CancellationToken cancellationToken = default)
     {
@@ -278,6 +326,9 @@ public sealed partial class InfisicalClient
         return SecretOutcome<InfisicalNativeList<InfisicalImport>>.Success(new(imports, items.GetArrayLength() <= maximumItems));
     }
 
+    /// <summary>Returns caller-owned imported material in provider groups/order, without recursive acquisition or precedence resolution.</summary>
+    /// <remarks>Dispose a successful result. Unknown indicates missing or unvalidated native evidence;
+    /// incomplete local coverage is reported separately. Cancellation propagates and untransferred material is disposed.</remarks>
     public async ValueTask<SecretOutcome<InfisicalImportedSecrets>> ReadImportedSecretsAsync(SecretReference target,
         int maximumItems = 1000, CancellationToken cancellationToken = default)
     {

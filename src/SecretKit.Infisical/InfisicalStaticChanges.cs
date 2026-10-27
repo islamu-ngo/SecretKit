@@ -4,12 +4,16 @@ using SecretKit.Core;
 
 namespace SecretKit.Infisical;
 
+/// <summary>Distinguishes a validated applied response from approval submission.</summary>
 public enum InfisicalChangeDisposition
 {
+    /// <summary>The response identifies the selected secret and its applied version.</summary>
     Applied,
+    /// <summary>An approval was submitted; secret application has not been observed.</summary>
     SubmittedForApproval
 }
 
+/// <summary>Native change evidence; approval and applied version are distinct outcomes.</summary>
 public sealed class InfisicalStaticChange
 {
     internal InfisicalStaticChange(InfisicalChangeDisposition disposition, string? version, string? approvalId)
@@ -19,22 +23,31 @@ public sealed class InfisicalStaticChange
         ApprovalId = approvalId;
     }
 
+    /// <summary>Whether the response proves application or only approval submission.</summary>
     public InfisicalChangeDisposition Disposition { get; }
+    /// <summary>The validated applied version, absent for approval submission.</summary>
     [JsonIgnore]
     public string? Version { get; }
+    /// <summary>The approval identifier, absent for an applied response.</summary>
     [JsonIgnore]
     public string? ApprovalId { get; }
+    /// <summary>Returns disposition without identifiers or values.</summary>
     public override string ToString() => $"[InfisicalStaticChange:{Disposition}]";
 }
 
 public sealed partial class InfisicalClient
 {
     /// <summary>Creates a selected shared secret; provider policy may submit an approval instead.</summary>
+    /// <remarks>Copies borrowed material before awaiting. Retain the receipt across cancellation or Unknown:
+    /// dispatch may have occurred. Missing response evidence is Unknown; contradictory scope is Invalid.
+    /// Neither result authorizes replay.</remarks>
     public ValueTask<SecretOutcome<InfisicalStaticChange>> CreateAsync(SecretReference target,
         SecretMaterial material, MutationReceipt receipt, CancellationToken cancellationToken = default) =>
         ChangeValueAsync(target, material, receipt, HttpMethod.Post, cancellationToken);
 
     /// <summary>Updates a selected shared secret without pretending to provide compare-and-swap.</summary>
+    /// <remarks>The caller retains its input material and receipt. Approval is not application;
+    /// a lost response or cancellation does not undo a possibly dispatched write.</remarks>
     public ValueTask<SecretOutcome<InfisicalStaticChange>> UpdateValueAsync(SecretReference target,
         SecretMaterial material, MutationReceipt receipt, CancellationToken cancellationToken = default) =>
         ChangeValueAsync(target, material, receipt, HttpMethod.Patch, cancellationToken);

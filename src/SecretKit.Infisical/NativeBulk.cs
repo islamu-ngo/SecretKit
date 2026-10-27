@@ -4,8 +4,10 @@ using SecretKit.Core;
 
 namespace SecretKit.Infisical;
 
+/// <summary>Protected batch destination; optional folder identity enables approval correlation.</summary>
 public sealed class InfisicalBulkAddress : InfisicalNativeAddress
 {
+    /// <summary>Selects one project/environment/folder and an optional expected folder UUID.</summary>
     public InfisicalBulkAddress(string projectId, string environment, string folder, string? folderId = null) : base(projectId, environment, folder)
     {
         if (folderId is not null && !Guid.TryParse(folderId, out _))
@@ -14,15 +16,23 @@ public sealed class InfisicalBulkAddress : InfisicalNativeAddress
         }
         FolderId = folderId;
     }
+    /// <summary>Expected folder identity for approval validation, or null if not supplied.</summary>
     [JsonIgnore]
     public string? FolderId { get; }
 }
 
-public enum InfisicalBulkUpdateMode { Ignore, Upsert, FailOnNotFound }
-public enum InfisicalSecretType { Shared, Personal }
+/// <summary>Explicit native policy for update targets absent at the provider.</summary>
+public enum InfisicalBulkUpdateMode { /** <summary>Ignore missing update targets.</summary> */ Ignore, /** <summary>Create missing update targets.</summary> */ Upsert, /** <summary>Reject missing update targets.</summary> */ FailOnNotFound }
+/// <summary>Native shared or personal secret selection; operations admit only their documented subset.</summary>
+public enum InfisicalSecretType { /** <summary>A shared secret.</summary> */ Shared, /** <summary>A personal secret.</summary> */ Personal }
 
+/// <summary>The single native batch intent bound to a caller-held receipt.</summary>
 public enum InfisicalBulkOperation { /** <summary>Create a batch.</summary> */ Create, /** <summary>Update a batch.</summary> */ Update, /** <summary>Delete a batch.</summary> */ Delete }
 
+/// <summary>Retains immutable item snapshots independently of an operation return or cancellation.</summary>
+/// <remarks>Binds the exact client/target, method, update mode and ordered nonmaterial selectors.
+/// It retains no secret values or value hashes. One accepted invocation consumes it, even
+/// when token acquisition fails before dispatch. Earlier snapshots never change.</remarks>
 public sealed class InfisicalBulkReceipt
 {
     private readonly object _gate = new();
@@ -35,6 +45,8 @@ public sealed class InfisicalBulkReceipt
     private bool _invoked;
     internal MutationReceipt Envelope { get; }
 
+    /// <summary>Freezes ordered selectors before any credential acquisition or dispatch.</summary>
+    /// <exception cref="ArgumentException">The target is foreign or selectors/operation are invalid.</exception>
     public InfisicalBulkReceipt(InfisicalClient client, SecretReference target,
         IReadOnlyList<InfisicalBulkSecret> inputs, InfisicalBulkOperation operation,
         InfisicalBulkUpdateMode mode = InfisicalBulkUpdateMode.FailOnNotFound)
@@ -56,8 +68,10 @@ public sealed class InfisicalBulkReceipt
         Envelope = new(target);
     }
 
+    /// <summary>Envelope evidence does not imply all individual items were applied.</summary>
     public DispatchEvidence Evidence => Envelope.Evidence;
 
+    /// <summary>A fresh immutable snapshot in input order, including uncertain or unobserved items.</summary>
     [JsonIgnore]
     public IReadOnlyList<InfisicalBulkItemObservation> Items
     {
@@ -96,11 +110,14 @@ public sealed class InfisicalBulkReceipt
     private static Selector Select(InfisicalBulkSecret input) => new(input.Key, input.NewName, input.Type, input.SecretPath);
     private sealed record Selector(string Key, string? NewName, InfisicalSecretType Type, string? SecretPath);
 
+    /// <summary>Returns bounded evidence without selectors, material or observations.</summary>
     public override string ToString() => $"[InfisicalBulkReceipt:{Evidence}]";
 }
 
+/// <summary>Bounded native metadata; values remain protected from default JSON and formatting.</summary>
 public sealed class InfisicalSecretMetadata
 {
+    /// <summary>Selects a metadata key, optional value and provider encryption flag.</summary>
     public InfisicalSecretMetadata(string key, string? value = null, bool encrypted = false)
     {
         InfisicalNativeAddress.NativeText(key, 255);
@@ -109,18 +126,24 @@ public sealed class InfisicalSecretMetadata
         Value = value;
         IsEncrypted = encrypted;
     }
+    /// <summary>The protected metadata key.</summary>
     [JsonIgnore]
     public string Key { get; }
+    /// <summary>The optional protected metadata value.</summary>
     [JsonIgnore]
     public string? Value { get; }
+    /// <summary>Whether provider-side encrypted metadata is requested.</summary>
     [JsonIgnore]
     public bool IsEncrypted { get; }
+    /// <summary>Returns a fixed label without metadata fields.</summary>
     public override string ToString() => "[InfisicalSecretMetadata]";
 }
 
 /// <summary>Host-owned input material is copied before the first await.</summary>
 public sealed class InfisicalBulkSecret
 {
+    /// <summary>Freezes bounded nonmaterial fields; borrows material until the selected operation copies it before awaiting.</summary>
+    /// <remarks>Not all fields apply to every operation. Create/update/delete validate their own admitted input shape.</remarks>
     public InfisicalBulkSecret(string key, SecretMaterial? material = null, string? newName = null,
         string? comment = null, IReadOnlyList<InfisicalSecretMetadata>? metadata = null,
         IReadOnlyList<string>? tagIds = null, string? secretPath = null, bool? skipMultilineEncoding = null,
@@ -167,37 +190,53 @@ public sealed class InfisicalBulkSecret
             new System.Collections.ObjectModel.ReadOnlyDictionary<string, string>(new Dictionary<string, string>(creationMetadata, StringComparer.Ordinal));
         Type = type;
     }
+    /// <summary>The existing or new secret key.</summary>
     [JsonIgnore]
     public string Key { get; }
+    /// <summary>Borrowed input material; this input object never disposes it.</summary>
     [JsonIgnore]
     public SecretMaterial? Material { get; }
+    /// <summary>Optional rename for an update.</summary>
     [JsonIgnore]
     public string? NewName { get; }
+    /// <summary>Optional protected secret comment.</summary>
     [JsonIgnore]
     public string? Comment { get; }
+    /// <summary>Frozen metadata input, or null to leave it unspecified.</summary>
     [JsonIgnore]
     public IReadOnlyList<InfisicalSecretMetadata>? Metadata { get; }
+    /// <summary>Frozen tag identifiers, or null to leave them unspecified.</summary>
     [JsonIgnore]
     public IReadOnlyList<string>? TagIds { get; }
+    /// <summary>Optional path; cross-folder rows are unsupported because responses cannot correlate them.</summary>
     [JsonIgnore]
     public string? SecretPath { get; }
+    /// <summary>Optional provider multiline-encoding selection.</summary>
     [JsonIgnore]
     public bool? SkipMultilineEncoding { get; }
+    /// <summary>Optional protected reminder text.</summary>
     [JsonIgnore]
     public string? ReminderNote { get; }
+    /// <summary>Optional finite native reminder repeat interval in days.</summary>
     [JsonIgnore]
     public double? ReminderRepeatDays { get; }
+    /// <summary>Explicitly clears the reminder note rather than omitting it.</summary>
     [JsonIgnore]
     public bool ClearReminderNote { get; }
+    /// <summary>Explicitly clears the reminder interval rather than omitting it.</summary>
     [JsonIgnore]
     public bool ClearReminderRepeatDays { get; }
+    /// <summary>Frozen creation-only metadata, not receipt intent or a value hash.</summary>
     [JsonIgnore]
     public IReadOnlyDictionary<string, string>? CreationMetadata { get; }
+    /// <summary>The native secret kind; create/update currently admit shared secrets only.</summary>
     [JsonIgnore]
     public InfisicalSecretType Type { get; }
+    /// <summary>Returns a fixed label without selectors, metadata or material.</summary>
     public override string ToString() => "[InfisicalBulkSecret]";
 }
 
+/// <summary>Immutable evidence for one input position; absence of application proof remains uncertain.</summary>
 public sealed class InfisicalBulkItemObservation
 {
     internal InfisicalBulkItemObservation(int index, DispatchEvidence evidence, string? version)
@@ -206,13 +245,18 @@ public sealed class InfisicalBulkItemObservation
         Evidence = evidence;
         Version = version;
     }
+    /// <summary>Zero-based input position, independent of response row ordering.</summary>
     public int InputIndex { get; }
+    /// <summary>Evidence for this item, not the batch envelope.</summary>
     public DispatchEvidence Evidence { get; }
+    /// <summary>Validated returned version when applied; otherwise null.</summary>
     [JsonIgnore]
     public string? Version { get; }
+    /// <summary>Returns evidence without version or secret coordinates.</summary>
     public override string ToString() => $"[InfisicalBulkItemObservation:{Evidence}]";
 }
 
+/// <summary>A response snapshot that may contain partial application or pending approval, not atomic batch success.</summary>
 public sealed class InfisicalBulkObservation
 {
     internal InfisicalBulkObservation(IEnumerable<InfisicalBulkItemObservation> items, string? approvalId)
@@ -220,27 +264,40 @@ public sealed class InfisicalBulkObservation
         Items = Array.AsReadOnly(items.ToArray());
         ApprovalId = approvalId;
     }
+    /// <summary>Immutable observations in input order; retain the receipt for evidence across failure paths.</summary>
     [JsonIgnore]
     public IReadOnlyList<InfisicalBulkItemObservation> Items { get; }
+    /// <summary>Validated approval identifier when submission, rather than application, was observed.</summary>
     [JsonIgnore]
     public string? ApprovalId { get; }
+    /// <summary>True only for a nonempty snapshot whose every item has applied evidence.</summary>
     public bool AllApplied => Items.Count > 0 && Items.All(item => item.Evidence == DispatchEvidence.Applied);
+    /// <summary>Whether a validated approval response was observed; does not prove eventual application.</summary>
     public bool ApprovalPending => ApprovalId is not null;
+    /// <summary>Returns a fixed label without item or approval details.</summary>
     public override string ToString() => "[InfisicalBulkObservation]";
 }
 
 public sealed partial class InfisicalClient
 {
+    /// <summary>Creates a bounded batch under explicit native authority and a matching caller-held Create receipt.</summary>
+    /// <remarks>Material is copied before awaiting. Retain receipt snapshots after cancellation, partial
+    /// responses or malformed later rows. Envelope success does not imply every item was applied; no replay occurs.</remarks>
     public ValueTask<SecretOutcome<InfisicalBulkObservation>> CreateSecretsAsync(SecretReference target,
         IReadOnlyList<InfisicalBulkSecret> inputs, InfisicalNativeAuthority authority, InfisicalBulkReceipt receipt,
         CancellationToken cancellationToken = default) =>
         BulkSecretsAsync(target, inputs, authority, receipt, HttpMethod.Post, InfisicalBulkUpdateMode.FailOnNotFound, cancellationToken);
 
+    /// <summary>Updates a bounded batch using the exact mode and ordered selectors frozen by its receipt.</summary>
+    /// <remarks>A reused, foreign or changed-intent receipt is Invalid before dispatch.
+    /// Partial or pending evidence must be reconciled by the caller, not automatically retried.</remarks>
     public ValueTask<SecretOutcome<InfisicalBulkObservation>> UpdateSecretsAsync(SecretReference target,
         IReadOnlyList<InfisicalBulkSecret> inputs, InfisicalNativeAuthority authority, InfisicalBulkReceipt receipt,
         InfisicalBulkUpdateMode mode = InfisicalBulkUpdateMode.FailOnNotFound, CancellationToken cancellationToken = default) =>
         BulkSecretsAsync(target, inputs, authority, receipt, HttpMethod.Patch, mode, cancellationToken);
 
+    /// <summary>Deletes selected batch items with explicit native authority and a matching Delete receipt.</summary>
+    /// <remarks>Cancellation does not undo deletion; caller-held immutable snapshots preserve each observed item.</remarks>
     public ValueTask<SecretOutcome<InfisicalBulkObservation>> DeleteSecretsAsync(SecretReference target,
         IReadOnlyList<InfisicalBulkSecret> inputs, InfisicalNativeAuthority authority, InfisicalBulkReceipt receipt,
         CancellationToken cancellationToken = default) =>

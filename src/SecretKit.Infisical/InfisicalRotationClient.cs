@@ -41,6 +41,7 @@ public sealed class InfisicalRotationClient : IDisposable
         _maximumResponseBytes = network.MaximumResponseBytes;
     }
 
+    /// <summary>The exact local authority required by rotation references; not a server permission grant.</summary>
     public SecretAuthority Authority { get; }
 
     /// <summary>Disposes SDK-owned transport resources, never the host's client or handler.</summary>
@@ -95,11 +96,15 @@ public sealed class InfisicalRotationClient : IDisposable
         CancellationToken cancellationToken = default) =>
         OperationAsync(target, null, null, InfisicalRotationPrecondition.None, cancellationToken);
 
+    /// <summary>Triggers one native rotation with retained dispatch evidence; acceptance remains pending, not completion.</summary>
+    /// <remarks>Cancellation or response loss preserves uncertainty. No automatic retry, polling or consumer activation occurs.</remarks>
     public ValueTask<SecretOutcome<InfisicalRotationProgress>> RotateSecretsAsync(SecretReference target,
         InfisicalRotationReceipt receipt, InfisicalRotationPrecondition precondition = InfisicalRotationPrecondition.None,
         CancellationToken cancellationToken = default) =>
         OperationAsync(target, InfisicalRotationAction.RotateSecrets, receipt, precondition, cancellationToken);
 
+    /// <summary>Explicitly changes automatic rotation and requires the correlated response to report the requested setting.</summary>
+    /// <remarks>Compare-and-swap and idempotency requirements are Unsupported; retain receipts rather than replaying uncertainty.</remarks>
     public ValueTask<SecretOutcome<InfisicalRotationProgress>> SetAutomaticRotationAsync(SecretReference target,
         bool enabled, InfisicalRotationReceipt receipt,
         InfisicalRotationPrecondition precondition = InfisicalRotationPrecondition.None,
