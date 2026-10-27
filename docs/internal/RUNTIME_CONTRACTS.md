@@ -147,6 +147,16 @@ The helper would use injected time, bounded renewal scheduling and retries suppo
 
 Shutdown would stop scheduling, cancel/drain in-flight work within a documented bound, retain truthful outcome evidence and dispose only owned resources. Fake-time tests and event barriers would cover renewal timing, single-flight behavior, maximum lifetime, waiter cancellation and shutdown; fixed sleeps would not prove those contracts.
 
+The implemented Infisical read/dynamic/session/helper owners publish a shared
+Task before running cancellation notification or async prefixes outside gates.
+One injected-time deadline covers notification, drain and cleanup. Each caller
+may cancel its own wait without canceling shared cleanup. Timeout remains
+latched after eventual completion; callback faults cannot bypass cleanup or
+escape through diagnostic prose/inner exceptions. Renewal uses an operation-owned
+token copy and clears late candidates rather than publishing after stop.
+Owned transport cleanup waits for accepted operations; borrowed resources remain
+host-owned. A callback that never cooperates may leave cleanup pending.
+
 After process restart an in-memory token would be lost. A consumed single-use bootstrap credential could not be assumed to log in again. Explicit authorized recovery would be required; the SDK would neither loop against consumed credentials nor persist plaintext tokens to disk. Optional renewal would not imply durability or unlimited authority.
 
 ## Bulk Operations

@@ -29,6 +29,7 @@ public sealed class InfisicalAuthenticationMaintenance : IHostedService, IHealth
     private readonly CancellationTokenSource _stop = new();
     private readonly TimeSpan _shutdownTimeout;
     private Task? _worker;
+    private Task? _stopTask;
     private bool _stopped;
 
     public InfisicalAuthenticationMaintenance(InfisicalPeriodicTokenSession session, TimeSpan shutdownTimeout)
@@ -48,28 +49,47 @@ public sealed class InfisicalAuthenticationMaintenance : IHostedService, IHealth
             {
                 if (_stopped) return AuthenticationMaintenanceState.Stopped;
                 if (_worker is null) return AuthenticationMaintenanceState.NotStarted;
-                return _session.State switch
-                {
-                    InfisicalTokenSessionState.Ready => AuthenticationMaintenanceState.Ready,
-                    InfisicalTokenSessionState.RenewalDue => AuthenticationMaintenanceState.RenewalDue,
-                    InfisicalTokenSessionState.Renewing => AuthenticationMaintenanceState.Renewing,
-                    InfisicalTokenSessionState.Expired => AuthenticationMaintenanceState.Expired,
-                    InfisicalTokenSessionState.RecoveryRequired => AuthenticationMaintenanceState.RecoveryRequired,
-                    _ => AuthenticationMaintenanceState.Stopped
-                };
             }
+            return _session.State switch
+            {
+                InfisicalTokenSessionState.Ready => AuthenticationMaintenanceState.Ready,
+                InfisicalTokenSessionState.RenewalDue => AuthenticationMaintenanceState.RenewalDue,
+                InfisicalTokenSessionState.Renewing => AuthenticationMaintenanceState.Renewing,
+                InfisicalTokenSessionState.Expired => AuthenticationMaintenanceState.Expired,
+                InfisicalTokenSessionState.RecoveryRequired => AuthenticationMaintenanceState.RecoveryRequired,
+                _ => AuthenticationMaintenanceState.Stopped
+            };
         }
     }
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        TaskCompletionSource? worker = null;
         lock (_gate)
         {
             ObjectDisposedException.ThrowIf(_stopped, this);
-            _worker ??= MaintainAsync();
+            if (_worker is null)
+            {
+                worker = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                _worker = worker.Task;
+            }
         }
+        if (worker is not null) _ = RunMaintenanceAsync(worker);
         return Task.CompletedTask;
+    }
+
+    private async Task RunMaintenanceAsync(TaskCompletionSource completion)
+    {
+        try
+        {
+            await MaintainAsync().ConfigureAwait(false);
+            completion.TrySetResult();
+        }
+        catch (Exception)
+        {
+            completion.TrySetException(new InvalidOperationException("Authentication maintenance failed."));
+        }
     }
 
     private async Task MaintainAsync()
@@ -95,20 +115,63 @@ public sealed class InfisicalAuthenticationMaintenance : IHostedService, IHealth
             }
         }
         catch (OperationCanceledException) when (_stop.IsCancellationRequested) { }
+        catch (ObjectDisposedException) when (_session.State == InfisicalTokenSessionState.Stopped) { }
     }
 
-    public async Task StopAsync(CancellationToken cancellationToken)
+    public Task StopAsync(CancellationToken cancellationToken)
     {
-        Task? worker;
+        TaskCompletionSource? completion = null;
+        Task? worker = null;
+        Task stop;
         lock (_gate)
         {
-            _stopped = true;
-            _stop.Cancel();
-            worker = _worker;
+            if (_stopTask is null)
+            {
+                _stopped = true;
+                completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                _stopTask = completion.Task;
+                worker = _worker;
+            }
+            stop = _stopTask;
         }
+        if (completion is not null) _ = StopCoreAsync(worker, completion);
+        return stop.WaitAsync(cancellationToken);
+    }
+
+    private async Task StopCoreAsync(Task? worker, TaskCompletionSource completion)
+    {
+        var cleanup = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task<bool> bounded = cleanup.Task.WaitAsync(_shutdownTimeout, _session.TimeProvider);
         Task sessionStop = _session.StopAsync();
-        await Task.WhenAll(worker ?? Task.CompletedTask, sessionStop)
-            .WaitAsync(_shutdownTimeout, _session.TimeProvider, cancellationToken).ConfigureAwait(false);
+        _ = Task.Run(async () =>
+        {
+            bool succeeded = true;
+            try
+            {
+                Task notification = _stop.CancelAsync();
+                try
+                {
+                    await Task.WhenAll(notification, sessionStop, worker ?? Task.CompletedTask).ConfigureAwait(false);
+                }
+                catch (Exception) { succeeded = false; }
+            }
+            finally
+            {
+                _stop.Dispose();
+                cleanup.TrySetResult(succeeded);
+            }
+        });
+        try
+        {
+            if (await bounded.ConfigureAwait(false))
+                completion.TrySetResult();
+            else
+                completion.TrySetException(new InvalidOperationException("Authentication maintenance shutdown failed."));
+        }
+        catch (TimeoutException)
+        {
+            completion.TrySetException(new TimeoutException("Authentication maintenance shutdown timed out."));
+        }
     }
 
     public Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context,

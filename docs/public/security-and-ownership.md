@@ -54,6 +54,13 @@ keeps old material storage alive across replacement; a consumer-owned client
 lease similarly needs explicit retirement. Do not dispose a shared downstream
 client while requests still use it.
 
+Native read/dynamic clients, sessions and maintenance share one shutdown attempt
+and its original deadline per instance. External callbacks run outside state
+locks. Timeout and callback failure do not abandon owned cleanup or imply
+successful drain; cleanup continues when cooperation permits it. Arbitrary host
+callbacks cannot be killed. Repeated stop/disposal retains the original bounded
+outcome, even after eventual cleanup; canceled waiters do not cancel that cleanup.
+
 Use [configuration and runtime](configuration-and-runtime.md) for generation
 lifetimes and [authentication and hosting](authentication-and-hosting.md) for
 session shutdown. Package-only worker/web examples show application-owned

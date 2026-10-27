@@ -13,6 +13,154 @@ namespace SecretKit.Infisical.Tests;
 public sealed class InfisicalTransportOwnershipTests
 {
     [Test]
+    public async Task OneDeadlineCoversNotificationDrainAndBlockedOwnedCleanup()
+    {
+        var clock = new ShutdownClock();
+        using var tokens = new CallbackTokens();
+        using var wire = new CleanupWire { HoldCleanup = true };
+        var client = new InfisicalClient(new("https://selected.test"), tokens,
+            new() { ShutdownTimeout = TimeSpan.FromSeconds(5) }, clock, wire);
+        Task pending = client.ReadAsync(Reference(client)).AsTask();
+        Task? stop = null;
+        try
+        {
+            await tokens.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            stop = client.DisposeAsync().AsTask();
+            await clock.Armed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await tokens.CallbackEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            clock.Advance(TimeSpan.FromSeconds(2));
+            tokens.CallbackRelease.TrySetResult();
+            await tokens.CallbackFinished.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            clock.Advance(TimeSpan.FromSeconds(2));
+            await Assert.That(wire.CleanupEntered.Task.IsCompleted).IsFalse();
+            tokens.OperationRelease.TrySetResult();
+            await Assert.That(async () => await pending.WaitAsync(TimeSpan.FromSeconds(5))).Throws<OperationCanceledException>();
+            await wire.CleanupEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            clock.Advance(TimeSpan.FromSeconds(1));
+            await Assert.That(async () => await stop.WaitAsync(TimeSpan.FromSeconds(5))).Throws<TimeoutException>();
+            await Assert.That(stop.IsFaulted).IsTrue();
+            await Assert.That(wire.Cleaned.Task.IsCompleted).IsFalse();
+            wire.CleanupRelease.TrySetResult();
+            await wire.Cleaned.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await Assert.That(async () => await client.DisposeAsync()).Throws<TimeoutException>();
+        }
+        finally
+        {
+            tokens.CallbackRelease.TrySetResult();
+            tokens.OperationRelease.TrySetResult();
+            wire.CleanupRelease.TrySetResult();
+            try { await pending.WaitAsync(TimeSpan.FromSeconds(5)); } catch (OperationCanceledException) { }
+            if (stop is not null)
+                try { await stop.WaitAsync(TimeSpan.FromSeconds(5)); } catch (TimeoutException) { }
+        }
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task ShutdownDeadlineIncludesBlockedNotificationAndLatchesAfterCleanup(bool dynamic)
+    {
+        var clock = new ShutdownClock();
+        using var tokens = new CallbackTokens();
+        using var wire = new CleanupWire();
+        IAsyncDisposable client;
+        Func<Task> begin;
+        if (dynamic)
+        {
+            var native = new InfisicalDynamicClient(new("https://selected.test"), tokens,
+                new("project", "test", "/", Guid.NewGuid()),
+                new()
+                {
+                    Transport = InfisicalTransportOptions.HostControlled(wire),
+                    ShutdownTimeout = TimeSpan.FromSeconds(5)
+                }, clock);
+            client = native;
+            begin = async () => { await native.ListDefinitionsAsync(); };
+        }
+        else
+        {
+            var read = new InfisicalClient(new("https://selected.test"), tokens,
+                new() { ShutdownTimeout = TimeSpan.FromSeconds(5) }, clock, wire);
+            client = read;
+            begin = async () => { using var result = (await read.ReadAsync(Reference(read))).Value; };
+        }
+        Task pending = begin();
+        Task? stop = null;
+        try
+        {
+            await tokens.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            stop = client.DisposeAsync().AsTask();
+            await tokens.CallbackEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await clock.Armed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Task repeated = client.DisposeAsync().AsTask();
+            await Assert.That(repeated).IsSameReferenceAs(stop);
+            await Assert.That(begin).Throws<ObjectDisposedException>();
+            clock.Advance(TimeSpan.FromSeconds(5));
+            await Assert.That(async () => await stop.WaitAsync(TimeSpan.FromSeconds(5))).Throws<TimeoutException>();
+            await Assert.That(stop.IsFaulted).IsTrue();
+            await Assert.That(wire.Cleaned.Task.IsCompleted).IsFalse();
+            tokens.CallbackRelease.TrySetResult();
+            tokens.OperationRelease.TrySetResult();
+            await Assert.That(async () => await pending.WaitAsync(TimeSpan.FromSeconds(5))).Throws<OperationCanceledException>();
+            if (!dynamic) await wire.Cleaned.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await Assert.That(async () => await client.DisposeAsync()).Throws<TimeoutException>();
+            await Assert.That(wire.Sent).IsFalse();
+            await Assert.That(() => tokens.LastCopy!.Reveal()).Throws<ObjectDisposedException>();
+        }
+        finally
+        {
+            tokens.CallbackRelease.TrySetResult();
+            tokens.OperationRelease.TrySetResult();
+            try { await pending.WaitAsync(TimeSpan.FromSeconds(5)); } catch (OperationCanceledException) { }
+            if (stop is not null)
+                try { await stop.WaitAsync(TimeSpan.FromSeconds(5)); } catch (TimeoutException) { }
+        }
+    }
+
+    [Test]
+    public async Task ThrowingReentrantCallbackCannotBypassOwnedCleanupOrLeakFault()
+    {
+        var clock = new ShutdownClock();
+        using var tokens = new CallbackTokens { ThrowOnCancel = true };
+        using var wire = new CleanupWire();
+        var client = new InfisicalClient(new("https://selected.test"), tokens, new(), clock, wire);
+        Task? reentrant = null;
+        tokens.OnCancel = () => reentrant = client.DisposeAsync().AsTask();
+        Task pending = client.ReadAsync(Reference(client)).AsTask();
+        Task? stop = null;
+        try
+        {
+            await tokens.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            stop = client.DisposeAsync().AsTask();
+            await tokens.CallbackEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            tokens.CallbackRelease.TrySetResult();
+            tokens.OperationRelease.TrySetResult();
+            await Assert.That(async () => await pending.WaitAsync(TimeSpan.FromSeconds(5))).Throws<OperationCanceledException>();
+            try
+            {
+                await stop.WaitAsync(TimeSpan.FromSeconds(5));
+                throw new InvalidOperationException("Expected notification failure.");
+            }
+            catch (InvalidOperationException exception)
+            {
+                await Assert.That(exception.InnerException).IsNull();
+                await Assert.That(exception.ToString().Contains("callback-canary", StringComparison.Ordinal)).IsFalse();
+            }
+            await wire.Cleaned.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await Assert.That(stop.IsFaulted).IsTrue();
+            await Assert.That(reentrant!).IsSameReferenceAs(stop);
+        }
+        finally
+        {
+            tokens.CallbackRelease.TrySetResult();
+            tokens.OperationRelease.TrySetResult();
+            try { await pending.WaitAsync(TimeSpan.FromSeconds(5)); } catch (OperationCanceledException) { }
+            if (stop is not null)
+                try { await stop.WaitAsync(TimeSpan.FromSeconds(5)); } catch (Exception) { }
+        }
+    }
+
+    [Test]
     [Arguments(200)]
     [Arguments(403)]
     [Arguments(500)]
@@ -311,6 +459,105 @@ public sealed class InfisicalTransportOwnershipTests
     {
         public ValueTask<SecretOutcome<InfisicalAccessToken>> GetTokenAsync(CancellationToken cancellationToken) =>
             ValueTask.FromResult(SecretOutcome<InfisicalAccessToken>.Success(new(SecretMaterial.FromText("token-canary"))));
+    }
+
+    internal sealed class CallbackTokens : IInfisicalTokenSource, IDisposable
+    {
+        internal TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal TaskCompletionSource CallbackEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal TaskCompletionSource CallbackRelease { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal TaskCompletionSource CallbackFinished { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal TaskCompletionSource OperationRelease { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal bool ThrowOnCancel { get; init; }
+        internal Action? OnCancel { get; set; }
+        internal SecretMaterial? LastCopy { get; private set; }
+        public async ValueTask<SecretOutcome<InfisicalAccessToken>> GetTokenAsync(CancellationToken cancellationToken)
+        {
+            using var registration = cancellationToken.Register(() =>
+            {
+                OnCancel?.Invoke();
+                CallbackEntered.TrySetResult();
+                CallbackRelease.Task.GetAwaiter().GetResult();
+                CallbackFinished.TrySetResult();
+                if (ThrowOnCancel) throw new InvalidOperationException("callback-canary");
+            });
+            Entered.TrySetResult();
+            await OperationRelease.Task;
+            LastCopy = SecretMaterial.FromText("late-token");
+            return SecretOutcome<InfisicalAccessToken>.Success(new(LastCopy));
+        }
+        public void Dispose()
+        {
+            CallbackRelease.TrySetResult();
+            OperationRelease.TrySetResult();
+            LastCopy?.Dispose();
+        }
+    }
+
+    private sealed class CleanupWire : HttpMessageHandler
+    {
+        internal bool Sent { get; private set; }
+        internal bool HoldCleanup { get; init; }
+        internal TaskCompletionSource CleanupEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal TaskCompletionSource CleanupRelease { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal TaskCompletionSource Cleaned { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Sent = true;
+            throw new InvalidOperationException("Late token dispatched.");
+        }
+        protected override void Dispose(bool disposing)
+        {
+            CleanupEntered.TrySetResult();
+            if (HoldCleanup) CleanupRelease.Task.GetAwaiter().GetResult();
+            base.Dispose(disposing);
+            Cleaned.TrySetResult();
+        }
+    }
+
+    internal sealed class ShutdownClock : TimeProvider
+    {
+        private readonly object _gate = new();
+        private readonly List<Timer> _timers = [];
+        private DateTimeOffset _now = DateTimeOffset.UtcNow;
+        internal TaskCompletionSource Armed { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public override DateTimeOffset GetUtcNow() { lock (_gate) return _now; }
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            var timer = new Timer(this, callback, state);
+            lock (_gate) _timers.Add(timer);
+            timer.Change(dueTime, period);
+            Armed.TrySetResult();
+            return timer;
+        }
+        internal void Advance(TimeSpan amount)
+        {
+            List<Timer> due;
+            lock (_gate)
+            {
+                _now += amount;
+                due = _timers.Where(timer => timer.Due <= _now).ToList();
+                foreach (var timer in due) timer.Due = DateTimeOffset.MaxValue;
+            }
+            foreach (var timer in due) timer.Fire();
+        }
+        private sealed class Timer(ShutdownClock owner, TimerCallback callback, object? state) : ITimer
+        {
+            internal DateTimeOffset Due { get; set; }
+            private bool _disposed;
+            public bool Change(TimeSpan dueTime, TimeSpan period)
+            {
+                lock (owner._gate)
+                {
+                    if (_disposed) return false;
+                    Due = dueTime == Timeout.InfiniteTimeSpan ? DateTimeOffset.MaxValue : owner._now + dueTime;
+                    return true;
+                }
+            }
+            internal void Fire() => callback(state);
+            public void Dispose() { lock (owner._gate) { _disposed = true; owner._timers.Remove(this); } }
+            public ValueTask DisposeAsync() { Dispose(); return ValueTask.CompletedTask; }
+        }
     }
 
     private sealed class StalledTokens(TaskCompletionSource entered) : IInfisicalTokenSource

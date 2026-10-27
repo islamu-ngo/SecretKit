@@ -160,6 +160,13 @@ records all membership parents before dispatch; definite rejected renewal is
 settled, while unknown effects remain uncertain. These are controlled local
 observations, not native qualification or proof against a compromised process.
 
+Native client/session/helper shutdown retains one original public outcome across
+concurrent or reentrant stop/disposal. Notification, drain and owned cleanup
+share one injected-time deadline. Callback faults are sanitized without losing
+cleanup; timeout remains timeout after eventual completion. Late renewal cannot
+publish. These are deterministic offline invariants, not forced termination of
+arbitrary host callbacks or new deployment qualification.
+
 Full native acceptance still requires all 21 original cases, six supplements
 and complete producer cleanup. Pending approval exposes a concrete contract gap:
 the current typed surface reports submission but does not establish owned request

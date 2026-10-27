@@ -85,7 +85,6 @@ public sealed class InfisicalPeriodicTokenSession : IInfisicalTokenSource, IAsyn
     private Task<SecretStatus>? _renewalTask;
     private InfisicalTokenRenewal? _lastRenewal;
     private Task? _stopTask;
-    private Task? _disposeTask;
 
     /// <summary>
     /// Copies this login's token using evidence bound by BindLifetimeEvidence. The login
@@ -209,20 +208,20 @@ public sealed class InfisicalPeriodicTokenSession : IInfisicalTokenSource, IAsyn
     {
         get
         {
+            DateTimeOffset now = _time.GetUtcNow();
             lock (_gate)
             {
-                UpdateDeadline();
+                UpdateDeadline(now);
                 return _state;
             }
         }
     }
 
-    private void UpdateDeadline()
+    private void UpdateDeadline(DateTimeOffset now)
     {
         if (_state is InfisicalTokenSessionState.Ready or InfisicalTokenSessionState.RenewalDue or
             InfisicalTokenSessionState.Renewing)
         {
-            DateTimeOffset now = _time.GetUtcNow();
             if (now >= _expiresAt || LifetimeLimit is { } limit && now >= limit)
             {
                 _state = InfisicalTokenSessionState.Expired;
@@ -237,10 +236,11 @@ public sealed class InfisicalPeriodicTokenSession : IInfisicalTokenSource, IAsyn
     public ValueTask<SecretOutcome<InfisicalAccessToken>> GetTokenAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        DateTimeOffset now = _time.GetUtcNow();
         lock (_gate)
         {
             ObjectDisposedException.ThrowIf(_state == InfisicalTokenSessionState.Stopped, this);
-            UpdateDeadline();
+            UpdateDeadline(now);
             if (_state is InfisicalTokenSessionState.Expired or InfisicalTokenSessionState.RecoveryRequired)
                 return ValueTask.FromResult(SecretOutcome<InfisicalAccessToken>.Failure(SecretStatus.RecoveryRequired));
             return ValueTask.FromResult(SecretOutcome<InfisicalAccessToken>.Success(
@@ -256,29 +256,58 @@ public sealed class InfisicalPeriodicTokenSession : IInfisicalTokenSource, IAsyn
     public async ValueTask<SecretStatus> RenewAsync(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        DateTimeOffset now = _time.GetUtcNow();
         Task<SecretStatus> task;
+        TaskCompletionSource<SecretStatus>? completion = null;
+        SecretMaterial? ownedToken = null;
+        DateTimeOffset expiresAt = default;
+        InfisicalTokenRenewal? receipt = null;
         lock (_gate)
         {
             ObjectDisposedException.ThrowIf(_state == InfisicalTokenSessionState.Stopped, this);
-            UpdateDeadline();
+            UpdateDeadline(now);
             if (_state is InfisicalTokenSessionState.Expired or InfisicalTokenSessionState.RecoveryRequired)
                 return SecretStatus.RecoveryRequired;
             if (_renewalTask is { IsCompleted: false })
                 task = _renewalTask;
             else
             {
-                _lastRenewal = new InfisicalTokenRenewal();
+                receipt = _lastRenewal = new InfisicalTokenRenewal();
+                ownedToken = _token!.Copy();
+                expiresAt = _expiresAt;
                 _state = InfisicalTokenSessionState.Renewing;
-                task = _renewalTask = RenewCoreAsync(_lastRenewal);
+                completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                task = _renewalTask = completion.Task;
             }
         }
+        if (completion is not null)
+            _ = CompleteRenewalAsync(completion, receipt!, ownedToken!, expiresAt);
         return await task.WaitAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    private async Task<SecretStatus> RenewCoreAsync(InfisicalTokenRenewal receipt)
+    private async Task CompleteRenewalAsync(TaskCompletionSource<SecretStatus> completion,
+        InfisicalTokenRenewal receipt, SecretMaterial ownedToken, DateTimeOffset expiresAt)
+    {
+        using (ownedToken)
+        {
+            try
+            {
+                completion.TrySetResult(await RenewCoreAsync(receipt, ownedToken, expiresAt).ConfigureAwait(false));
+            }
+            catch (OperationCanceledException exception) { completion.TrySetCanceled(exception.CancellationToken); }
+            catch (Exception)
+            {
+                FailRecovery();
+                completion.TrySetException(new InvalidOperationException("Token renewal failed."));
+            }
+        }
+    }
+
+    private async Task<SecretStatus> RenewCoreAsync(InfisicalTokenRenewal receipt,
+        SecretMaterial ownedToken, DateTimeOffset expiresAt)
     {
         DateTimeOffset sentAt = _time.GetUtcNow();
-        TimeSpan remaining = _expiresAt - sentAt;
+        TimeSpan remaining = expiresAt - sentAt;
         if (remaining <= TimeSpan.Zero) return FailRecovery();
         using var deadline = new CancellationTokenSource(
             remaining < _requestTimeout ? remaining : _requestTimeout, _time);
@@ -287,7 +316,7 @@ public sealed class InfisicalPeriodicTokenSession : IInfisicalTokenSource, IAsyn
         try
         {
             using var payload = new MemoryStream();
-            char[] characters = _token!.ExportCharacters();
+            char[] characters = ownedToken.ExportCharacters();
             try
             {
                 if (characters.Length is < 1 or > 16384 || characters.Any(char.IsControl))
@@ -356,10 +385,11 @@ public sealed class InfisicalPeriodicTokenSession : IInfisicalTokenSource, IAsyn
                     if (expires - _time.GetUtcNow() <= _renewBefore)
                         return FailRecovery();
                     candidate = SecretMaterial.FromText(text);
+                    DateTimeOffset observedAt = _time.GetUtcNow();
                     lock (_gate)
                     {
                         linked.Token.ThrowIfCancellationRequested();
-                        UpdateDeadline();
+                        UpdateDeadline(observedAt);
                         if (_state is InfisicalTokenSessionState.Expired or InfisicalTokenSessionState.RecoveryRequired or
                             InfisicalTokenSessionState.Stopped)
                             return FailRecovery();
@@ -406,14 +436,7 @@ public sealed class InfisicalPeriodicTokenSession : IInfisicalTokenSource, IAsyn
         return status;
     }
 
-    public ValueTask DisposeAsync()
-    {
-        lock (_gate)
-        {
-            _disposeTask ??= DisposeCoreAsync();
-            return new ValueTask(_disposeTask);
-        }
-    }
+    public ValueTask DisposeAsync() => new(StopAsync());
 
     /// <summary>
     /// Ends this credential generation and cancels/drains its shared renewal within the
@@ -421,36 +444,68 @@ public sealed class InfisicalPeriodicTokenSession : IInfisicalTokenSource, IAsyn
     /// </summary>
     public Task StopAsync()
     {
+        TaskCompletionSource completion;
+        Task? pending;
+        SecretMaterial? detached;
         lock (_gate)
         {
+            if (_stopTask is not null) return _stopTask;
+            completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            _stopTask = completion.Task;
             _state = InfisicalTokenSessionState.Stopped;
-            _shutdown.Cancel();
-            return _stopTask ??= DrainAsync();
+            pending = _renewalTask;
+            detached = _token;
+            _token = null;
         }
+        detached?.Dispose();
+        _ = DrainAsync(pending, completion);
+        return completion.Task;
     }
 
-    private async Task DrainAsync()
+    private async Task DrainAsync(Task? pending, TaskCompletionSource completion)
     {
+        var cleanup = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task<bool> bounded = cleanup.Task.WaitAsync(_shutdownTimeout, _time);
+        _ = Task.Run(async () =>
+        {
+            bool succeeded = true;
+            try
+            {
+                try { await _shutdown.CancelAsync().ConfigureAwait(false); }
+                catch (Exception) { succeeded = false; }
+            }
+            finally
+            {
+                try
+                {
+                    if (pending is not null)
+                        try { await pending.ConfigureAwait(false); }
+                        catch (OperationCanceledException) { }
+                        catch (Exception) { succeeded = false; }
+                }
+                finally
+                {
+                    try { _binding.Dispose(); }
+                    catch (Exception) { succeeded = false; }
+                    finally
+                    {
+                        _shutdown.Dispose();
+                        cleanup.TrySetResult(succeeded);
+                    }
+                }
+            }
+        });
         try
         {
-            if (_renewalTask is { } pending)
-                await pending.WaitAsync(_shutdownTimeout, _time).ConfigureAwait(false);
+            if (await bounded.ConfigureAwait(false))
+                completion.TrySetResult();
+            else
+                completion.TrySetException(new InvalidOperationException("Token session shutdown failed."));
         }
-        catch (OperationCanceledException) { }
-        finally
+        catch (TimeoutException)
         {
-            lock (_gate)
-            {
-                _token?.Dispose();
-                _token = null;
-            }
+            completion.TrySetException(new TimeoutException("Token session shutdown timed out."));
         }
-    }
-
-    private async Task DisposeCoreAsync()
-    {
-        try { await StopAsync().ConfigureAwait(false); }
-        finally { _binding.Dispose(); }
     }
 
     public override string ToString() => $"[InfisicalPeriodicTokenSession:{State}]";

@@ -96,6 +96,16 @@ expecting automatic login, persistence or replay.
 
 See [authentication and hosting](authentication-and-hosting.md).
 
+## Shutdown times out or a cancellation callback fails
+
+Admission stops before external callbacks run. Notification, drain and cleanup
+use one original deadline; canceling one caller's wait does not cancel shared
+cleanup. Timeout is not successful drain. Noncooperative host callbacks cannot
+be killed, so owned cleanup remains pending until safe completion is possible.
+Later cleanup does not change the original timeout; repeated stop/disposal
+observes the same bounded outcome. Fixed callback-failure diagnostics contain
+no callback prose or inner exception. Do not reset the budget or infer rollback.
+
 Rotation token-acquisition transport/I/O failures also return bounded outcomes
 without source exception text. Preserve a receipt that remains NotDispatched;
 caller cancellation still propagates rather than becoming an ordinary failure.

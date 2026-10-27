@@ -781,6 +781,8 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
 
     public ValueTask DisposeAsync()
     {
+        TaskCompletionSource completion;
+        Task drained;
         lock (_gate)
         {
             if (_disposeTask is not null)
@@ -793,21 +795,50 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
             {
                 _drained.SetResult();
             }
-            _disposeTask = ShutdownAsync(_drained.Task);
-            return new(_disposeTask);
+            drained = _drained.Task;
+            completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            _disposeTask = completion.Task;
         }
+        _ = ShutdownAsync(drained, completion);
+        return new(completion.Task);
     }
-    private async Task ShutdownAsync(Task drained)
+    private async Task ShutdownAsync(Task drained, TaskCompletionSource completion)
     {
-        await _shutdown.CancelAsync().ConfigureAwait(false);
+        var cleanup = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task<bool> bounded = cleanup.Task.WaitAsync(_shutdownTimeout, _time);
+        _ = Task.Run(async () =>
+        {
+            bool succeeded = true;
+            try
+            {
+                try { await _shutdown.CancelAsync().ConfigureAwait(false); }
+                catch (Exception) { succeeded = false; }
+            }
+            finally
+            {
+                try
+                {
+                    await drained.ConfigureAwait(false);
+                    _binding.Dispose();
+                }
+                catch (Exception) { succeeded = false; }
+                finally
+                {
+                    _shutdown.Dispose();
+                    cleanup.TrySetResult(succeeded);
+                }
+            }
+        });
         try
         {
-            await drained.WaitAsync(_shutdownTimeout).ConfigureAwait(false);
+            if (await bounded.ConfigureAwait(false))
+                completion.TrySetResult();
+            else
+                completion.TrySetException(new InvalidOperationException("Dynamic client shutdown failed."));
         }
-        finally
+        catch (TimeoutException)
         {
-            _binding.Dispose();
-            _shutdown.Dispose();
+            completion.TrySetException(new TimeoutException("Dynamic client shutdown timed out."));
         }
     }
     public override string ToString() => "[InfisicalDynamicClient]";

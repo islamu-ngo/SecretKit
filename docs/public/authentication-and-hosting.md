@@ -253,6 +253,15 @@ recovery, not replay. The automatic retry budget is **zero**, including 429 and
 
 ## Start, observe health, stop and drain
 
+Native client/session and helper shutdown publish one shared attempt before
+running callbacks outside state locks. Notification, drain and cleanup share
+one original injected-time budget. Reentrant or repeated stop/disposal does not
+start another attempt or reset that budget. Caller cancellation only ends that
+caller's wait. If host callbacks or transport work do not cooperate, timeout
+does not mean successful drain: eventual cleanup remains retained and observed,
+and late tokens cannot publish. Later cleanup cannot change the original timeout
+to success. Callback fault messages and inner exceptions are not exposed.
+
 `InfisicalAuthenticationMaintenance(session, shutdownTimeout)` implements
 `IHostedService`, `IHealthCheck` and `IAsyncDisposable`. Its shutdown bound is
 positive and at most one minute, separate from the session's native drain budget.

@@ -262,7 +262,7 @@
     },
     {
       "file": "src/SecretKit.Infisical/InfisicalClient.cs",
-      "sha256": "0e8ef08d5a921f234aac1fa0eabf20a0812f156af4da1331e825b4fb7cf29eb2"
+      "sha256": "6411c2aff441aadb5d635ae7f57924f2649b7c116343d27b968bb76669a63b7a"
     },
     {
       "file": "src/SecretKit.Infisical/InfisicalContractAvailability.cs",
@@ -270,7 +270,7 @@
     },
     {
       "file": "src/SecretKit.Infisical/InfisicalDynamicClient.cs",
-      "sha256": "e4b1ff86b1dc66f1a5e40871c518d434afdd48c88fb2cf1c4f551bfcf9cf44cb"
+      "sha256": "344c41167b4554fca714711b290dc698dae5764b2bb6c40dddc55a6108ee32ef"
     },
     {
       "file": "src/SecretKit.Infisical/InfisicalDynamicTypes.cs",
@@ -290,7 +290,7 @@
     },
     {
       "file": "src/SecretKit.Infisical/InfisicalPeriodicTokenSession.cs",
-      "sha256": "aeb55a5a3c6ccf7c9e41a41e7795000755c006b6049ed13c106c890c38e19c02"
+      "sha256": "8b76306e7b8e65462e70e98ebbef63710aa089c5a7a4919ca39eb11138de1d62"
     },
     {
       "file": "src/SecretKit.Infisical/InfisicalProofAuthentication.cs",

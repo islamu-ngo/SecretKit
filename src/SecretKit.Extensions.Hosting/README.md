@@ -73,7 +73,15 @@ replaying an unknown side effect. This package is not a retry/relogin scheduler.
 in-flight renewal within the configured bound and stops scheduling. Share one
 helper per session lifecycle. It does not dispose the host's session object,
 transport, original token or returned copies. The host disposes its session.
-Disposal is idempotent. Expiry, rejected or ambiguous renewal, unknown metadata
+Stop/disposal share one original injected-time deadline and one latched outcome.
+Cancellation ends only that caller's wait. External callbacks run outside state
+locks; blocked callbacks cannot be forcibly killed. A timeout means admission
+stopped but notification/drain/cleanup did not finish within the budget.
+Cleanup remains retained and observed until cooperation permits it; later cleanup
+does not convert the original timeout into success or reset a repeated stop's
+budget. Callback failures have fixed diagnostics without callback prose/inner
+exceptions. Late renewal material is disposed rather than published.
+Expiry, rejected or ambiguous renewal, unknown metadata
 and process restart after losing a token require a new explicitly authorized
 token/session. A null input token explicitly represents a restart with lost
 in-memory material and reports recovery-required without dispatch. A consumed

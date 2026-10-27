@@ -15,6 +15,190 @@ public sealed class TokenMaintenanceTests
     private static readonly DateTimeOffset Epoch = new(2040, 1, 1, 0, 0, 0, TimeSpan.Zero);
 
     [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task BlockedNotificationUsesOriginalDeadlineAndIndependentStopWaiters(bool hosted)
+    {
+        var time = new ManualTime(Epoch);
+        var entered = Signal();
+        var callbackEntered = Signal();
+        var callbackRelease = Signal();
+        var operationRelease = Signal();
+        using var wire = new Wire(async (_, token) =>
+        {
+            using var registration = token.Register(() =>
+            {
+                callbackEntered.TrySetResult();
+                callbackRelease.Task.GetAwaiter().GetResult();
+            });
+            entered.TrySetResult();
+            await operationRelease.Task;
+            return Json("must-not-publish");
+        });
+        var session = Session(time, wire);
+        var helper = new InfisicalAuthenticationMaintenance(session, TimeSpan.FromSeconds(5));
+        using var independent = new CancellationTokenSource();
+        Task<SecretStatus> renewal = session.RenewAsync().AsTask();
+        Task? stop = null;
+        try
+        {
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Task armed = time.WatchTimer(Epoch.AddSeconds(5));
+            stop = Task.Run(() => hosted ? helper.StopAsync(CancellationToken.None) : session.StopAsync());
+            await callbackEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await armed.WaitAsync(TimeSpan.FromSeconds(5));
+            Task concurrentStop = session.StopAsync();
+            Task concurrentDispose = session.DisposeAsync().AsTask();
+            await Assert.That(concurrentDispose).IsSameReferenceAs(concurrentStop);
+            Task cancelledWait = hosted ? helper.StopAsync(independent.Token) : session.StopAsync().WaitAsync(independent.Token);
+            independent.Cancel();
+            await Assert.That(async () => await cancelledWait.WaitAsync(TimeSpan.FromSeconds(5)))
+                .Throws<OperationCanceledException>();
+            await Assert.That(session.State).IsEqualTo(InfisicalTokenSessionState.Stopped);
+            await Assert.That(async () => await session.RenewAsync()).Throws<ObjectDisposedException>();
+            time.Advance(TimeSpan.FromSeconds(5));
+            await Assert.That(async () => await stop.WaitAsync(TimeSpan.FromSeconds(5))).Throws<TimeoutException>();
+            await Assert.That(stop.IsFaulted).IsTrue();
+            await Assert.That(async () => await concurrentStop.WaitAsync(TimeSpan.FromSeconds(5))).Throws<TimeoutException>();
+            await Assert.That(async () => await concurrentDispose.WaitAsync(TimeSpan.FromSeconds(5))).Throws<TimeoutException>();
+            callbackRelease.TrySetResult();
+            operationRelease.TrySetResult();
+            await Assert.That(async () => await renewal.WaitAsync(TimeSpan.FromSeconds(5))).Throws<OperationCanceledException>();
+            await Assert.That(session.LastRenewal!.Evidence).IsEqualTo(InfisicalRenewalEvidence.PossiblyDispatched);
+            await Assert.That(async () => await session.GetTokenAsync(CancellationToken.None)).Throws<ObjectDisposedException>();
+            await Assert.That(async () => await session.StopAsync()).Throws<TimeoutException>();
+            await Assert.That(async () => await session.DisposeAsync()).Throws<TimeoutException>();
+            if (hosted)
+            {
+                await Assert.That(async () => await helper.StopAsync(CancellationToken.None)).Throws<TimeoutException>();
+                await Assert.That(async () => await helper.DisposeAsync()).Throws<TimeoutException>();
+            }
+            await Assert.That(wire.Disposed).IsFalse();
+        }
+        finally
+        {
+            callbackRelease.TrySetResult();
+            operationRelease.TrySetResult();
+            try { await renewal.WaitAsync(TimeSpan.FromSeconds(5)); } catch (OperationCanceledException) { }
+            if (stop is not null)
+                try { await stop.WaitAsync(TimeSpan.FromSeconds(5)); } catch (Exception) { }
+            try { await session.DisposeAsync(); } catch (Exception) { }
+        }
+    }
+
+    [Test]
+    public async Task SynchronousRenewalPrefixDoesNotHoldSessionOrHelperGate()
+    {
+        var time = new ManualTime(Epoch.AddSeconds(50));
+        var entered = Signal();
+        var release = Signal();
+        using var wire = new Wire((_, _) =>
+        {
+            entered.TrySetResult();
+            release.Task.GetAwaiter().GetResult();
+            return Task.FromResult(Json("late-prefix"));
+        });
+        var session = Session(time, wire);
+        var helper = new InfisicalAuthenticationMaintenance(session, TimeSpan.FromSeconds(5));
+        Task start = Task.Run(() => helper.StartAsync(CancellationToken.None));
+        Task? stop = null;
+        try
+        {
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Task armed = time.WatchTimer(time.GetUtcNow().AddSeconds(5));
+            stop = Task.Run(() => helper.StopAsync(CancellationToken.None));
+            await armed.WaitAsync(TimeSpan.FromSeconds(5));
+            await Assert.That(await Task.Run(() => helper.State).WaitAsync(TimeSpan.FromSeconds(5)))
+                .IsEqualTo(AuthenticationMaintenanceState.Stopped);
+            time.Advance(TimeSpan.FromSeconds(5));
+            await Assert.That(async () => await stop.WaitAsync(TimeSpan.FromSeconds(5))).Throws<TimeoutException>();
+            await Assert.That(stop.IsFaulted).IsTrue();
+        }
+        finally
+        {
+            release.TrySetResult();
+            await start.WaitAsync(TimeSpan.FromSeconds(5));
+            if (stop is not null)
+                try { await stop.WaitAsync(TimeSpan.FromSeconds(5)); } catch (Exception) { }
+            try { await session.DisposeAsync(); } catch (TimeoutException) { }
+        }
+    }
+
+    [Test]
+    public async Task ThrowingReentrantNotificationIsSanitizedAndCannotPublishLateToken()
+    {
+        var time = new ManualTime(Epoch);
+        var entered = Signal();
+        var callbackEntered = Signal();
+        var release = Signal();
+        Task? reentrant = null;
+        InfisicalPeriodicTokenSession? session = null;
+        using var wire = new Wire(async (_, token) =>
+        {
+            using var registration = token.Register(() =>
+            {
+                reentrant = session!.StopAsync();
+                callbackEntered.TrySetResult();
+                throw new InvalidOperationException("callback-canary");
+            });
+            entered.TrySetResult();
+            await release.Task;
+            return Json("late-faulted");
+        });
+        session = Session(time, wire);
+        Task<SecretStatus> renewal = session.RenewAsync().AsTask();
+        Task? stop = null;
+        try
+        {
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            stop = Task.Run(session.StopAsync);
+            await callbackEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            release.TrySetResult();
+            await Assert.That(async () => await renewal.WaitAsync(TimeSpan.FromSeconds(5))).Throws<OperationCanceledException>();
+            try { await stop.WaitAsync(TimeSpan.FromSeconds(5)); }
+            catch (InvalidOperationException exception)
+            {
+                await Assert.That(exception.InnerException).IsNull();
+                await Assert.That(exception.ToString().Contains("callback-canary", StringComparison.Ordinal)).IsFalse();
+            }
+            await Assert.That(stop.IsFaulted).IsTrue();
+            await Assert.That(reentrant!).IsSameReferenceAs(session.StopAsync());
+            await Assert.That(session.State).IsEqualTo(InfisicalTokenSessionState.Stopped);
+            await Assert.That(wire.Disposed).IsFalse();
+        }
+        finally
+        {
+            release.TrySetResult();
+            try { await renewal.WaitAsync(TimeSpan.FromSeconds(5)); } catch (OperationCanceledException) { }
+            if (stop is not null)
+                try { await stop.WaitAsync(TimeSpan.FromSeconds(5)); } catch (Exception) { }
+            try { await session.DisposeAsync(); } catch (Exception) { }
+        }
+    }
+
+    [Test]
+    public async Task CancelledStartLeavesHelperUnstartedAndHealthFollowsSessionState()
+    {
+        var time = new ManualTime(Epoch);
+        await using var session = Session(time, new Wire((_, _) => Task.FromResult(Json("renewed"))));
+        await using var helper = new InfisicalAuthenticationMaintenance(session, TimeSpan.FromSeconds(5));
+        using var cancelled = new CancellationTokenSource();
+        cancelled.Cancel();
+        await Assert.That(async () => await helper.StartAsync(cancelled.Token)).Throws<OperationCanceledException>();
+        await Assert.That(helper.State).IsEqualTo(AuthenticationMaintenanceState.NotStarted);
+        await Assert.That((await helper.CheckHealthAsync(new())).Status)
+            .IsEqualTo(Microsoft.Extensions.Diagnostics.HealthChecks.HealthStatus.Unhealthy);
+        Task scheduled = time.WatchTimer(Epoch.AddSeconds(50));
+        await helper.StartAsync(CancellationToken.None);
+        await scheduled.WaitAsync(TimeSpan.FromSeconds(5));
+        await Assert.That((await helper.CheckHealthAsync(new())).Status)
+            .IsEqualTo(Microsoft.Extensions.Diagnostics.HealthChecks.HealthStatus.Healthy);
+        await helper.StopAsync(CancellationToken.None);
+        await Assert.That((await helper.CheckHealthAsync(new())).Status)
+            .IsEqualTo(Microsoft.Extensions.Diagnostics.HealthChecks.HealthStatus.Unhealthy);
+    }
+
+    [Test]
     public async Task ValidTokenHandedOffInsideRenewalWindowRemainsUsableAndCanRenew()
     {
         var time = new ManualTime(Epoch.AddSeconds(55));
@@ -544,7 +728,8 @@ public sealed class TokenMaintenanceTests
                 Lifetime = mode,
                 ReportedMaximumTtl = TimeSpan.FromSeconds(120),
                 Period = mode == InfisicalTokenLifetime.Periodic ? TimeSpan.FromSeconds(60) : null
-            }, TimeSpan.FromSeconds(10), TimeSpan.FromMinutes(1), new InfisicalNetworkOptions(),
+            }, TimeSpan.FromSeconds(10), TimeSpan.FromMinutes(1),
+            new InfisicalNetworkOptions { ShutdownTimeout = TimeSpan.FromSeconds(5) },
             time, transport, false);
     }
 
