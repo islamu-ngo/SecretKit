@@ -246,10 +246,20 @@ public sealed class IdentityAuthenticationTests
     {
         string data = mode switch
         {
-            "foreign-identity" => Token.Replace("\"identityId\":\"identity\"", "\"identityId\":\"foreign\"", StringComparison.Ordinal),
+            "foreign-identity" => Token.Replace(TokenIdentity,
+                "33333333-3333-4333-8333-333333333333", StringComparison.Ordinal),
             "foreign-token" => Token.Replace("\"id\":\"token\"", "\"id\":\"foreign\"", StringComparison.Ordinal),
             _ => Token
         };
+        if (mode == "foreign-identity")
+        {
+            using var original = JsonDocument.Parse(Token);
+            using var mutated = JsonDocument.Parse(data);
+            await Assert.That(original.RootElement.GetProperty("identityId").GetString())
+                .IsEqualTo(TokenIdentity);
+            await Assert.That(mutated.RootElement.GetProperty("identityId").GetString())
+                .IsEqualTo("33333333-3333-4333-8333-333333333333");
+        }
         string response = "{\"token\":" + data + (mode == "duplicate" ? ",\"token\":" + data : "") + "}";
         if (mode == "oversize") response = new string('x', 1024 * 1024 + 1);
         var wire = new Wire(HttpMethod.Patch, "/api/v1/auth/token-auth/tokens/token", response, mode == "lost");
