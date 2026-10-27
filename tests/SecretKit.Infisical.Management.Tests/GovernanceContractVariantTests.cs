@@ -11,6 +11,34 @@ public sealed class GovernanceContractVariantTests
     private const string User = "33333333-3333-4333-8333-333333333333";
 
     [Test]
+    public async Task DisposedSharePasswordFailsBeforeDispatchWithoutOwningCallerValue()
+    {
+        var server = new Server(Share);
+        using var transport = Transport(server);
+        var client = new ManagementClient(transport);
+        var tokens = new Tokens();
+        var authority = new ManagementAuthority(client.Authority, tokens, Org);
+        using var material = SecretMaterial.FromText("private-value");
+        using var independent = SecretMaterial.FromText("private-value");
+        using var password = SecretMaterial.FromText("private-password");
+        password.Dispose();
+
+        await Assert.That(async () =>
+        {
+            using var request = SharingOperations.CreateShare(Org, "share", material, 5,
+                ShareAudience.Organization, password: password);
+            using var result = (await client.ExecuteAsync(request, authority,
+                authority.IssueGrant(request.OperationId, request.Target), client.CreateReceipt(request))).Value;
+        }).Throws<ObjectDisposedException>();
+
+        await Assert.That(tokens.Acquired).IsFalse();
+        await Assert.That(server.Dispatched).IsFalse();
+        await Assert.That(material.Reveal()).IsEqualTo("private-value");
+        material.Dispose();
+        await Assert.That(independent.Reveal()).IsEqualTo("private-value");
+    }
+
+    [Test]
     public async Task DifferentShareMaterialCannotUseSelectedGrant()
     {
         var server = new Server(Share);

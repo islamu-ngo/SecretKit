@@ -353,9 +353,10 @@ public static class SharingOperations
             address.Address != email)))
             throw new ArgumentException("Invalid sharing email selectors.");
         char[] value = material.ExportCharacters();
-        char[]? proof = password?.ExportCharacters();
+        char[]? proof = null;
         try
         {
+            proof = password?.ExportCharacters();
             if (value.Length > 10000 || proof?.Length > 4096)
             {
                 throw new ArgumentException("Sharing material exceeds its input budget.");

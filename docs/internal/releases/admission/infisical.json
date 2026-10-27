@@ -50,7 +50,7 @@
     },
     {
       "file": "src/SecretKit.Infisical.Management/Governance.cs",
-      "sha256": "3e3a01c70f324d6cce9d9e3af1ed911d26cd89da4696e526303dd7007e48a84d"
+      "sha256": "d946d00ff334d8d22008ae0185cfefe698215848c7b04a531ebb3c1db8fbdae4"
     },
     {
       "file": "src/SecretKit.Infisical.Management/Identities.cs",
