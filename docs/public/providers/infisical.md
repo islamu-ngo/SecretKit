@@ -13,21 +13,20 @@ Administration factories live in [the management package](management.md).
 
 ## Construct a client and bind an address
 
-The public constructors are:
+The read-client constructor is:
 
 ```csharp
 InfisicalClient(Uri origin, IInfisicalTokenSource tokens,
     InfisicalNetworkOptions? network = null, TimeProvider? timeProvider = null)
-InfisicalClient(Uri origin, SocketsHttpHandler hostTransport,
-    IInfisicalTokenSource tokens, InfisicalNetworkOptions? network = null,
-    TimeProvider? timeProvider = null)
 ```
 
-These are signature references, not standalone statements. `origin` must be a
-trusted HTTPS origin with no credentials, path prefix, query or fragment.
-`AllowLoopbackDevelopmentHttp` permits only explicit loopback development HTTP.
-The host owns the token source and any supplied handler. `DisposeAsync` shuts
-down the client wrapper and accepted work, not the host's handler or credentials.
+This is a signature reference, not a standalone statement. The fixed origin
+has no credentials, path prefix, query or fragment. Safe mode requires HTTPS or
+explicit `AllowLoopbackDevelopmentHttp`. Select an arbitrary host pipeline with
+`network.Transport = InfisicalTransportOptions.HostControlled(clientOrHandler)`;
+it also admits HTTP and retains the host's TLS/routing/retry/diagnostic policy.
+Omission selects `SafeDefault`. The host owns the token source and any supplied
+client/handler; SDK disposal does not dispose or reconfigure them.
 
 `InfisicalSecretAddress(projectId, environment, folder, key, version: null,
 resolution: InfisicalResolution.Raw, includeImports: false)` selects a shared
@@ -154,11 +153,11 @@ and [ImportEffectTests](../../../tests/SecretKit.Infisical.Tests/ImportEffectTes
 ### Dynamic definitions are broader than credential acquisition
 
 Construct `InfisicalDynamicClient(origin, tokens, scope, network: null,
-timeProvider: null, transport: null, maximumItems: 128)`. Its
+timeProvider: null, maximumItems: 128)`. Its
 `InfisicalDynamicScope(projectSlug, environmentSlug, path, folderId)` uses slugs
 and a known folder GUID, not the static read's project-ID address.
-Targets come from `client.Definition(name)`. A supplied `HttpMessageHandler`
-remains host-owned; configure it to preserve trusted transport behavior.
+Targets come from `client.Definition(name)`. Network selection uses the same
+safe or explicit host-controlled contract as reads and authentication.
 
 Typed [definition profiles](../../../src/SecretKit.Infisical/NativeDynamicProfiles.cs)
 and [profile options](../../../src/SecretKit.Infisical/NativeDynamicProfileOptions.cs)
@@ -180,10 +179,11 @@ Evidence: [LeaseLifecycleTests](../../../tests/SecretKit.Infisical.Tests/LeaseLi
 
 ### Rotation trigger acceptance is not completion
 
-Construct `InfisicalRotationClient(trustedOrigin, hostHttpClient, authority,
-administration, maximumResponseBytes: 1024 * 1024)` with a matching
-`InfisicalNativeAuthority`. The host owns and must secure the supplied `HttpClient`
-(redirects, cookies, retries and instrumentation); construction performs no I/O.
+Construct `InfisicalRotationClient(trustedOrigin, authority, administration,
+network: null)` with a matching `InfisicalNativeAuthority`. It defaults to safe
+networking; `network.MaximumResponseBytes` selects the byte budget and
+`network.Transport` selects any explicit host-controlled pipeline. Construction
+performs no I/O. Dispose the rotation client to release its SDK-owned resources.
 `InfisicalRotationAddress` selects project, environment, path, native profile
 and rotation UUID. The profile enum routes existing operations; it does not
 provide configuration schemas for every profile.
@@ -199,10 +199,14 @@ Evidence: [RotationOutcomeTests](../../../tests/SecretKit.Infisical.Tests/Rotati
 
 ## Transport and remaining gaps
 
-The common client's supplied `SocketsHttpHandler` must disable redirects, cookies
-and activity propagation; certificate-validation callbacks and verification bypass
-flags are rejected. Use OS trust or a validating custom-root policy. Keep handler
-configuration stable. `MaximumResponseBytes` permits 1 KiB..16 MiB; caller
+All native entrypoints default to `SafeDefault`: normal HTTPS validation,
+no redirects/cookies/propagation, no ambient proxy or SDK replay. Select private
+issuers with `SafeWithPrivateTrust(roots)` and an explicit proxy with
+`network.Proxy`. Private trust copies public certificate data and retains
+hostname/chain checks with the normal handler no-revocation-lookup default.
+`HostControlled(clientOrHandler)` is deliberately arbitrary networking, not an
+SDK-enforced TLS or no-retry guarantee. Keep host configuration stable; do not
+combine it with SDK proxy settings. `MaximumResponseBytes` permits 1 KiB..16 MiB; caller
 cancellation supplies the operation deadline through token acquisition, send and
 body reading. There is no implicit read timeout/retry. Host DNS, proxy and
 instrumentation remain host responsibilities.

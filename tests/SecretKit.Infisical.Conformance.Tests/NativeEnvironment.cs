@@ -27,7 +27,7 @@ internal sealed class NativeEnvironment : IDisposable
         // Controlled split-plane fixtures can serve setup/observer resources on
         // a separately owned loopback origin. Native JSON never selects this seam.
         requestOrigin = fixtureControlOrigin ?? origin;
-        managementTransport = new(requestOrigin, allowLoopbackDevelopmentHttp: loopback);
+        managementTransport = new(requestOrigin, new() { AllowLoopbackDevelopmentHttp = loopback });
         RotationPermissionRuntime = new(origin, new HttpClient(new SocketsHttpHandler
         {
             AllowAutoRedirect = false,

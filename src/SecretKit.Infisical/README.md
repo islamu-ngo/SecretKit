@@ -121,19 +121,28 @@ Raw parser strings and explicit exports remain ordinary managed plaintext.
 
 ### Host-owned networking and deadlines
 
-The `InfisicalClient(origin, hostTransport, tokens, network, timeProvider)`
-overload accepts a host-owned `SocketsHttpHandler`; disposal closes only the
-SDK's HttpClient wrapper and drains accepted work. The handler must disable
-redirects, cookies and activity propagation. Certificate-validation callbacks
-and chain-policy verification bypass flags are rejected before token acquisition.
-Configure private trust through standard trust stores or a validating custom
-root chain policy. Keep supplied handler configuration stable while in use;
-host proxy, DNS and instrumentation remain host responsibilities.
+All native clients, login and renewal use `InfisicalNetworkOptions.Transport`.
+Omission selects `InfisicalTransportOptions.SafeDefault`. For private trust use
+`SafeWithPrivateTrust(roots)`; the SDK copies public certificate data and retains
+hostname, validity and chain checks. Roots replace system issuer trust, without
+changing the handler's default no-revocation-lookup policy. An explicit
+`network.Proxy` selects routing; otherwise safe mode disables ambient proxies.
+
+Select `HostControlled(httpClient)` or `HostControlled(handler)` to deliberately
+use a host pipeline, including HTTP, custom TLS, redirects, retries, cookies or
+instrumentation. These networking decisions are not SDK-enforced in that mode.
+Supplied resources stay host-owned and unmodified; dispose the SDK client to
+release only its created wrappers. `InfisicalRotationClient` is now disposable
+because it can own a safe transport. Typed authority, response budgets and
+receipts remain enforced in both modes. The old public injection overloads are
+removed rather than retained as aliases.
 
 The caller supplies an operation deadline with its cancellation token. It
 applies through credential acquisition, send and body reads. No read retry,
 IPv4 override, implicit login or mutation replay is added. Default transports
-use `network.Proxy`; supplied handlers retain their own proxy configuration.
+reuse connections with a two-minute pooled lifetime; host-controlled pipelines
+retain their own DNS/pooling/proxy policy. Do not combine host-controlled
+selection with `network.Proxy`.
 
 Bind every native address to the client's `SecretAuthority` through a
 `SecretReference`. Native mutations also require an independently supplied

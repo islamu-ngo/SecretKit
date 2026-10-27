@@ -28,7 +28,7 @@ not infer the application's authorization policy.
 | --- | --- | --- |
 | Identity | Uses explicitly supplied credentials/token sources | Inject least-privilege runtime identities; select administration separately |
 | Scope | Binds references to client instances and checks returned coordinates | Authorize tenant-to-project/vault/environment/path mappings |
-| Networking | Bounds SDK-controlled responses and preserves TLS validation | DNS, proxies, private trust, external instrumentation and deployment reachability |
+| Networking | Safe mode preserves TLS and restricts SDK networking; explicit host-controlled mode borrows the chosen pipeline | Choose the mode and own DNS, proxy/trust policy, external instrumentation and deployment reachability |
 | Secret lifetime | Owns disposable character buffers and independent read copies | Dispose reads and manage any copies made by consumers |
 | Configuration | Explicitly exports strings and publishes local generations | Precedence, debug views, options, reload scheduling and client activation |
 | Mutations | Preserves caller-held dispatch evidence without automatic replay | Authorization, durable reconciliation, approvals and cleanup decisions |
@@ -83,14 +83,30 @@ checks, error pages or issue reports.
 
 ## Transport and cancellation
 
-Use trusted HTTPS origins and normal certificate validation. Infisical accepts
-development HTTP only with explicit loopback-only opt-in. A proxy configuration
-is not permission to bypass certificates.
+All Infisical entrypoints select networking through
+`InfisicalNetworkOptions.Transport`. Omission selects
+`InfisicalTransportOptions.SafeDefault`: HTTPS, normal TLS validation, no
+redirects/cookies/activity propagation, no ambient proxy and no SDK replay.
+Safe development HTTP requires explicit loopback-only opt-in. Select a proxy
+with `network.Proxy`; use `SafeWithPrivateTrust(roots)` for private issuers.
+Private trust copies public certificate data, uses only those roots and retains
+hostname, validity and usage checks. Revocation uses the normal
+`SocketsHttpHandler` default (no revocation lookup); it is not a revocation claim.
 
-Supplied Infisical `SocketsHttpHandler` instances must disable redirects,
-cookies and activity propagation and preserve certificate validation.
-Keep their configuration stable during use. Host-installed HTTP/credential
-instrumentation remains outside SDK-owned diagnostic controls.
+`HostControlled(httpClient)` or `HostControlled(handler)` is a separate,
+explicit choice. It accepts arbitrary fixed HTTP(S) origins and host policies,
+including deliberate TLS relaxation, redirects, cookies, retries or diagnostics.
+The SDK does not certify or restrict behavior inside that pipeline. Proxy
+configuration alongside this choice is rejected; configure the host pipeline
+itself. Both modes retain typed authority/reference checks, parsing budgets and
+receipt evidence. A receipt records SDK handoff, not the host's network attempts.
+
+Supplied clients/handlers remain host-owned. The SDK does not change a borrowed
+client's base address, timeout or default headers. Requests use the selected
+absolute origin independently. Keep host configuration stable while in use.
+SDK-owned connections are reused with a two-minute pooled connection lifetime;
+host-controlled pipelines retain their own pooling and DNS policy. SDK controls
+do not suppress runtime EventSource, profilers, dumps or host instrumentation.
 
 The read client has no automatic operation deadline: supply a cancellation token
 with your request/shutdown deadline. Construction and DI registration do not

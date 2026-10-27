@@ -6,44 +6,48 @@ using SecretKit.Core;
 namespace SecretKit.Infisical;
 
 /// <summary>
-/// Native v2 rotation metadata and explicit controls. The host owns transport and token source,
-/// including disabling redirects, retries, diagnostics containing coordinates, and cookies.
+/// Native v2 rotation metadata and explicit controls. SDK-safe transport is the default.
+/// Borrowed transport and token sources remain host-owned; arbitrary host-controlled pipeline
+/// HTTP, TLS, retries and logging policy is not enforced by the SDK.
 /// Construction performs no I/O. No polling, runtime refresh or consumer activation is performed.
 /// </summary>
-public sealed class InfisicalRotationClient
+public sealed class InfisicalRotationClient : IDisposable
 {
     private readonly Uri _origin;
     private readonly HttpClient _transport;
+    private readonly InfisicalTransportBinding _binding;
     private readonly InfisicalNativeAuthority _administration;
     private readonly int _maximumResponseBytes;
 
-    public InfisicalRotationClient(Uri trustedOrigin, HttpClient transport,
+    /// <summary>Creates a fixed-origin rotation client bound to explicit local and administrative authority, without I/O.</summary>
+    public InfisicalRotationClient(Uri trustedOrigin,
         SecretAuthority authority, InfisicalNativeAuthority administration,
-        int maximumResponseBytes = 1024 * 1024)
+        InfisicalNetworkOptions? network = null)
     {
         ArgumentNullException.ThrowIfNull(trustedOrigin);
-        ArgumentNullException.ThrowIfNull(transport);
         ArgumentNullException.ThrowIfNull(authority);
         ArgumentNullException.ThrowIfNull(administration);
-        if (!trustedOrigin.IsAbsoluteUri || trustedOrigin.Scheme != Uri.UriSchemeHttps ||
-            trustedOrigin.UserInfo.Length != 0 || trustedOrigin.AbsolutePath != "/" ||
-            trustedOrigin.Query.Length != 0 || trustedOrigin.Fragment.Length != 0)
-        {
-            throw new ArgumentException("A fixed trusted HTTPS origin is required.");
-        }
-        if (maximumResponseBytes is < 1024 or > 16 * 1024 * 1024)
+        network ??= new();
+        InfisicalTransportBinding.ValidateOrigin(trustedOrigin, network);
+        if (network.MaximumResponseBytes is < 1024 or > 16 * 1024 * 1024)
         {
             throw new ArgumentException("Invalid native response budget.");
         }
         _origin = trustedOrigin;
-        _transport = transport;
+        _binding = new(trustedOrigin, network);
+        _transport = _binding.Client;
         Authority = authority;
         _administration = administration;
-        _maximumResponseBytes = maximumResponseBytes;
+        _maximumResponseBytes = network.MaximumResponseBytes;
     }
 
     public SecretAuthority Authority { get; }
 
+    /// <summary>Disposes SDK-owned transport resources, never the host's client or handler.</summary>
+    public void Dispose() => _binding.Dispose();
+
+    /// <summary>Observes bounded native rotation metadata for an explicitly authorized project scope.</summary>
+    /// <remarks>Completeness reflects local response coverage; no pagination or operation completion is invented.</remarks>
     public async ValueTask<SecretOutcome<InfisicalNativeList<InfisicalRotationProgress>>> ListAsync(
         SecretReference scope, int maximumItems = 128, CancellationToken cancellationToken = default)
     {

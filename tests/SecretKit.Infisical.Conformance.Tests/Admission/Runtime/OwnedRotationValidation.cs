@@ -50,8 +50,8 @@ internal sealed class OwnedRotationValidation : IAsyncDisposable
         // Only an injected offline handler accepts the scheme-adjusted loopback
         // URI. Native execution retains the configured trusted HTTPS origin.
         var origin = offlineTransport is null ? env.Origin : new UriBuilder(env.Origin) { Scheme = "https" }.Uri;
-        client = new(origin, http, authority, new(authority, env.Tokens(NativeIdentityRole.Administrative),
-            folder.Input.ProjectId));
+        client = new(origin, authority, new(authority, env.Tokens(NativeIdentityRole.Administrative),
+            folder.Input.ProjectId), new() { Transport = InfisicalTransportOptions.HostControlled(http) });
     }
 
     internal static async ValueTask AdmitAsync(NativeEnvironment env, ValidationPoliciesEffects.PolicyInput input,

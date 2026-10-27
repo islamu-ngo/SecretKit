@@ -62,7 +62,17 @@ rejected. There is no automatic replay, rollback or transaction. `Applied`
 means a valid native success projection, not runtime delivery, credential
 effects or permission for another principal.
 
-The host owns the injected transport and token source. Internal handwritten
+`ManagementTransport(origin, network)` uses the same explicit
+`InfisicalNetworkOptions.Transport` selection as native runtime clients.
+Omission is SDK-safe (normal TLS, no redirects/cookies/ambient proxy); explicit
+`HostControlled(client)` or `HostControlled(handler)` retains the host's complete
+network policy, including deliberate relaxations. Private issuer trust and
+explicit proxies belong to safe mode. See
+[transport ownership](../../docs/public/security-and-ownership.md#transport-and-cancellation).
+Dispose `ManagementTransport` after accepted execution finishes; borrowed clients
+and handlers remain usable and their configuration is unchanged.
+
+The host owns the token source. Internal handwritten
 Refit bindings construct fixed requests; the controlled client owns dispatch,
 cancellation and bounded raw response parsing. There is no arbitrary HTTP/JSON
 executor, vendor-generated schema client, fallback principal or hidden cache.

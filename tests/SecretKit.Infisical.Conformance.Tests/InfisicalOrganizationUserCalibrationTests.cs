@@ -202,7 +202,7 @@ public sealed class InfisicalOrganizationUserCalibrationTests
         }
         async Task Read(IInfisicalTokenSource tokens, string user, string? credential, string hash, bool allowed)
         {
-            using var transport = new ManagementTransport(env.Origin, allowLoopbackDevelopmentHttp: true);
+            using var transport = new ManagementTransport(env.Origin, new() { AllowLoopbackDevelopmentHttp = true });
             var fresh = new ManagementClient(transport);
             var auth = new ManagementAuthority(fresh.Authority, tokens, root.OrganizationId);
             using var request = ScopedAccessOperations.GetGroup(root.OrganizationId, issued.CanaryId);

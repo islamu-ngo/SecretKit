@@ -45,7 +45,7 @@ public sealed class InfisicalShareObserverTests
     public async Task ShareUsesTypedSdkMetadataAndMeasuredRecipientViewsAndExpiry()
     {
         await using var sdk = new SdkBackend();
-        using var transport = new ManagementTransport(sdk.Origin, allowLoopbackDevelopmentHttp: true);
+        using var transport = new ManagementTransport(sdk.Origin, new() { AllowLoopbackDevelopmentHttp = true });
         using var handler = new Handler(async (request, token) =>
         {
             JsonObject body = JsonNode.Parse(await request.Content!.ReadAsByteArrayAsync(token))!.AsObject();

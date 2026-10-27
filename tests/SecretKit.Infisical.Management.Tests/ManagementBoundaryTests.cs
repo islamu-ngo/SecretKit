@@ -1,5 +1,9 @@
 using System.Net;
+using System.Net.Security;
+using System.Net.Sockets;
+using System.Security.Authentication;
 using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Json;
 using SecretKit.Core;
@@ -15,6 +19,90 @@ public sealed class ManagementBoundaryTests
     private const string OtherAuditId = "55555555-5555-4555-8555-555555555555";
     private const string OrgId = "11111111-1111-4111-8111-111111111111";
     private const string ForeignId = "99999999-9999-4999-8999-999999999999";
+
+    [Test]
+    [Arguments(false, false)]
+    [Arguments(true, false)]
+    [Arguments(true, true)]
+    public async Task SafeManagementTransportValidatesPrivateIssuerAndHostname(bool trustRoot, bool wrongHostname)
+    {
+        using RSA rootKey = RSA.Create(2048);
+        var rootRequest = new CertificateRequest("CN=Management Test Issuer", rootKey,
+            HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        rootRequest.CertificateExtensions.Add(new X509BasicConstraintsExtension(true, false, 0, true));
+        rootRequest.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.KeyCertSign, true));
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        using X509Certificate2 root = rootRequest.CreateSelfSigned(now.AddDays(-1), now.AddDays(2));
+        using RSA serverKey = RSA.Create(2048);
+        var serverRequest = new CertificateRequest("CN=Management Loopback", serverKey,
+            HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        var names = new SubjectAlternativeNameBuilder();
+        if (wrongHostname) names.AddDnsName("unselected.invalid");
+        else names.AddIpAddress(IPAddress.Loopback);
+        serverRequest.CertificateExtensions.Add(names.Build());
+        serverRequest.CertificateExtensions.Add(new X509BasicConstraintsExtension(false, false, 0, true));
+        serverRequest.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.DigitalSignature, true));
+        serverRequest.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension(
+            new OidCollection { new("1.3.6.1.5.5.7.3.1") }, true));
+        using X509Certificate2 issued = serverRequest.Create(root, now.AddHours(-1), now.AddDays(1),
+            RandomNumberGenerator.GetBytes(16));
+        using X509Certificate2 certificate = issued.CopyWithPrivateKey(serverKey);
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var origin = new Uri($"https://127.0.0.1:{((IPEndPoint)listener.LocalEndpoint).Port}/");
+        Task<TcpClient> accepted = listener.AcceptTcpClientAsync(deadline.Token).AsTask();
+        Task<bool> server = ReceiveAsync();
+        try
+        {
+            using var transport = new ManagementTransport(origin, new()
+            {
+                Transport = trustRoot
+                    ? InfisicalTransportOptions.SafeWithPrivateTrust(root)
+                    : InfisicalTransportOptions.SafeDefault
+            });
+            var client = new ManagementClient(transport);
+            var authority = new ManagementAuthority(client.Authority, new Tokens(), OrgId);
+            using var request = ScopedAccessOperations.GetGroup(OrgId, GroupId);
+            var result = await client.ExecuteAsync(request, authority,
+                authority.IssueGrant(request.OperationId, new(OrgId, resourceId: GroupId)),
+                cancellationToken: deadline.Token);
+            await Assert.That(await server.WaitAsync(TimeSpan.FromSeconds(10))).IsEqualTo(trustRoot && !wrongHostname);
+            // An empty response is deliberately not native success evidence.
+            await Assert.That(result.IsSuccess).IsFalse();
+        }
+        finally
+        {
+            await deadline.CancelAsync();
+            listener.Stop();
+            await server.WaitAsync(TimeSpan.FromSeconds(10));
+        }
+
+        async Task<bool> ReceiveAsync()
+        {
+            try
+            {
+                using TcpClient socket = await accepted;
+                await using var tls = new SslStream(socket.GetStream());
+                await tls.AuthenticateAsServerAsync(new SslServerAuthenticationOptions
+                {
+                    ServerCertificate = certificate
+                }, deadline.Token);
+                using var reader = new StreamReader(tls, Encoding.UTF8, false, 1024, leaveOpen: true);
+                string? start = await reader.ReadLineAsync(deadline.Token);
+                bool credential = false;
+                while (await reader.ReadLineAsync(deadline.Token) is { Length: > 0 } header)
+                    credential |= header.StartsWith("Authorization: Bearer ", StringComparison.OrdinalIgnoreCase);
+                await tls.WriteAsync(Encoding.ASCII.GetBytes(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}"),
+                    deadline.Token);
+                return credential && start == $"GET /api/v1/groups/{GroupId} HTTP/1.1";
+            }
+            catch (AuthenticationException) { return false; }
+            catch (IOException) { return false; }
+            catch (OperationCanceledException) when (deadline.IsCancellationRequested) { return false; }
+        }
+    }
 
     [Test]
     [Arguments("infisical.get.v1.app.connections", "/api/v1/app-connections")]

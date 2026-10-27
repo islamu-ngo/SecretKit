@@ -13,7 +13,7 @@ public sealed class NativeTokenPolicyTests
         string organization, string identity, string project, string key, SecretMaterial expected,
         Action<string, string> record, CancellationToken cancellationToken)
     {
-        using var transport = new ManagementTransport(origin, allowLoopbackDevelopmentHttp: true);
+        using var transport = new ManagementTransport(origin, new() { AllowLoopbackDevelopmentHttp = true });
         var management = new ManagementClient(transport);
         var authority = new ManagementAuthority(management.Authority, administrator, organization);
         var network = new InfisicalNetworkOptions { AllowLoopbackDevelopmentHttp = true };

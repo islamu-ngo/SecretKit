@@ -134,7 +134,7 @@ internal static class OrganizationUserEffects
                 // The selected consumer is the privately issued fresh user, not
                 // any of the five preexisting host role credentials.
                 using var transport = new ManagementTransport(c.Environment.Origin,
-                    allowLoopbackDevelopmentHttp: c.Environment.AllowLoopbackDevelopmentHttp);
+                    new() { AllowLoopbackDevelopmentHttp = c.Environment.AllowLoopbackDevelopmentHttp });
                 var consumer = new ManagementClient(transport);
                 var authority = new ManagementAuthority(consumer.Authority, tokens, c.OrganizationId);
                 using var request = ScopedAccessOperations.GetGroup(c.OrganizationId, trial.Issued.CanaryId);

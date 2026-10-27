@@ -246,7 +246,8 @@ public sealed class InfisicalDynamicAlternativeProfileInputTests
     }
 
     private static InfisicalDynamicClient Client(CaptureTransport handler) => new(new("https://dynamic.test"),
-        new Tokens(), new("project", "environment", "/folder", CaptureTransport.FolderId), transport: handler);
+        new Tokens(), new("project", "environment", "/folder", CaptureTransport.FolderId),
+        new() { Transport = InfisicalTransportOptions.HostControlled(handler) });
 
     private static async Task<JsonElement> Capture(InfisicalDynamicProfile profile)
     {

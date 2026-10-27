@@ -110,7 +110,24 @@ Injected provider clients, `TokenCredential`, HTTP clients/handlers and other tr
 
 Immutable instance configuration would bind trusted endpoint/cloud, authority, credential generation and namespace. Supported reusable SDK clients would be shared only where their documented thread-safety contract permitted it. Mutable builders/options would not be shared as runtime state. Material ownership and credential ownership would remain separate.
 
-Caller-supplied clients would have to demonstrate compatible security/retry configuration; otherwise the adapter would reject the required guarantee before dispatch. Merely wrapping an uncontrolled client would not establish diagnostic redaction or no-replay.
+Infisical uses one provider-local transport binding across reads, Universal/proof
+login, renewal, dynamic lifecycle, rotation and management. SafeDefault owns its
+transport, validates HTTPS (or explicit loopback development HTTP), disables
+redirects/cookies/propagation, selects no ambient proxy and adds no replay.
+SafeWithPrivateTrust copies public issuer data and preserves normal hostname,
+validity and chain checks using only the selected roots. Revocation retains the
+SocketsHttpHandler default NoCheck policy. SDK connections have a two-minute
+pooled lifetime. Optional Proxy is explicit.
+
+HostControlled(HttpClient/HttpMessageHandler) is deliberately arbitrary,
+host-owned networking; HTTP, TLS relaxation, redirects/retries/cookies and
+instrumentation may be selected by the host. No SDK enforcement is claimed inside
+it. Reject conflicting SDK proxy settings. Build selected absolute requests on a
+separate request-builder-only client; never mutate borrowed clients or nest two
+sending HttpClient calls. Both modes retain typed authority, response budgets
+and material/receipt contracts. Construction acquires no credentials. Receipts
+identify SDK handoff, not a host pipeline's final destination or send count.
+Process-wide diagnostics and already exported plaintext remain host boundaries.
 
 For Azure, the proposed pipelines would disable upstream SDK-owned logging, content logging and distributed tracing through supported diagnostics options. Side-effect retries would have `Retry.MaxRetries = 0`; separately configured read/status operations could use bounded retries after admission. A status query would not resubmit an LRO-start request. Challenge-resource verification would remain enabled; `DisableChallengeResourceVerification` would not be enabled.
 

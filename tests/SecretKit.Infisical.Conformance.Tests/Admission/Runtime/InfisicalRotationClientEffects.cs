@@ -92,8 +92,9 @@ internal static class InfisicalRotationClientEffects
             using var http = new HttpClient(transport) { Timeout = Timeout.InfiniteTimeSpan };
             var authority = new SecretAuthority();
             var role = denied ? NativeIdentityRole.Denied : NativeIdentityRole.Runtime;
-            var client = new InfisicalRotationClient(env.Origin, http, authority,
-                new(authority, env.Tokens(role), address.ProjectId));
+            var client = new InfisicalRotationClient(env.Origin, authority,
+                new(authority, env.Tokens(role), address.ProjectId),
+                new() { Transport = InfisicalTransportOptions.HostControlled(http) });
             var target = new SecretReference(authority, address);
             InfisicalRotationReceipt? receipt = mutation ? new(target, method == "RotateSecretsAsync" ?
                 InfisicalRotationAction.RotateSecrets : enabled ? InfisicalRotationAction.EnableAutomaticRotation :
@@ -102,8 +103,9 @@ internal static class InfisicalRotationClientEffects
             using var observerHttp = new HttpClient(new LifecycleTransport(transport: offlineTransport))
             { Timeout = Timeout.InfiniteTimeSpan };
             var observerAuthority = new SecretAuthority();
-            var observer = new InfisicalRotationClient(env.Origin, observerHttp, observerAuthority,
-                new(observerAuthority, env.Tokens(NativeIdentityRole.Observer), address.ProjectId));
+            var observer = new InfisicalRotationClient(env.Origin, observerAuthority,
+                new(observerAuthority, env.Tokens(NativeIdentityRole.Observer), address.ProjectId),
+                new() { Transport = InfisicalTransportOptions.HostControlled(observerHttp) });
             var observerTarget = new SecretReference(observerAuthority, address);
             var before = await observer.GetAsync(observerTarget, token);
             probe.Contract(before.IsSuccess, NativeFailure.ObserverUnavailable);

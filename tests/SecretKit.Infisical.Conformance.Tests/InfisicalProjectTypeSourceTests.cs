@@ -138,7 +138,7 @@ public sealed class InfisicalProjectTypeSourceTests
         await using var provider = new InfisicalProjectTypeFixture();
         using var env = provider.Environment(InfisicalProjectTypeCalibrationTests.Families());
         await InfisicalProjectTypeCalibrationTests.DirectAsync(provider, env, "type.Kms", "selected-contract");
-        using var transport = new ManagementTransport(env.Origin, allowLoopbackDevelopmentHttp: true);
+        using var transport = new ManagementTransport(env.Origin, new() { AllowLoopbackDevelopmentHttp = true });
         var client = new ManagementClient(transport);
         var authority = env.CreateManagementAuthority(client, NativeIdentityRole.Administrative, InfisicalProjectTypeFixture.Org);
         using var request = ProjectOperations.ListProjects(InfisicalProjectTypeFixture.Org, ProjectType.Kms, false);

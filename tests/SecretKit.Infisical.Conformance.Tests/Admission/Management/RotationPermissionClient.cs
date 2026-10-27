@@ -59,8 +59,8 @@ internal static class RotationPermissionClient
                 new InfisicalNetworkOptions { AllowLoopbackDevelopmentHttp = env.AllowLoopbackDevelopmentHttp });
             var target = new SecretReference(client.Authority, row.Address);
             var authority = new InfisicalNativeAuthority(client.Authority, tokens, row.Project);
-            var native = new InfisicalRotationClient(runtime!.Origin, runtime.Transport,
-                client.Authority, authority);
+            var native = new InfisicalRotationClient(runtime!.Origin, client.Authority, authority,
+                new() { Transport = InfisicalTransportOptions.HostControlled(runtime.Transport) });
             var receipt = new InfisicalRotationReceipt(target, InfisicalRotationAction.RotateSecrets);
             var result = await native.RotateSecretsAsync(target, receipt, cancellationToken: token);
             return new(row, tokens.Hash, result.Status, null, receipt.Dispatch, [], true, []);

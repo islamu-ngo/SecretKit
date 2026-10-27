@@ -684,7 +684,8 @@ public sealed class InfisicalRotationValidationWitnessTests
             using var http = new HttpClient(wire, disposeHandler: false);
             var authority = new SecretAuthority();
             var client = new InfisicalRotationClient(new UriBuilder(wire.Origin) { Scheme = "https" }.Uri,
-                http, authority, new(authority, env.Tokens(NativeIdentityRole.Administrative), "project"));
+                authority, new(authority, env.Tokens(NativeIdentityRole.Administrative), "project"),
+                new() { Transport = InfisicalTransportOptions.HostControlled(http) });
             var target = new SecretReference(authority, address);
             var first = await client.RotateSecretsAsync(target, new(target, InfisicalRotationAction.RotateSecrets));
             await Assert.That(first.IsSuccess).IsTrue();

@@ -432,7 +432,11 @@ public sealed class InfisicalNonSqlInputEffectTests
         var scope = new InfisicalDynamicScope("project-slug", "env", "/borrowed/" + name, Guid.Parse(folder.Value.Id));
         using var transport = new LifecycleTransport(cancelBoundary ? "cancellation-boundary" : "selected-contract");
         await using var client = new InfisicalDynamicClient(fixture.Origin, environment.Tokens(NativeIdentityRole.Setup),
-            scope, new() { AllowLoopbackDevelopmentHttp = true }, transport: transport);
+            scope, new()
+            {
+                AllowLoopbackDevelopmentHttp = true,
+                Transport = InfisicalTransportOptions.HostControlled(transport)
+            });
         try
         {
             var target = client.Definition(name);

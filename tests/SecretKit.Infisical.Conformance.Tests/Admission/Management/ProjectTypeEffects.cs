@@ -47,7 +47,7 @@ internal static class ProjectTypeEffects
             {
                 // No secret material or process-local inventory cache is involved.
                 using var transport = new ManagementTransport(c.Environment.Origin,
-                    allowLoopbackDevelopmentHttp: c.Environment.AllowLoopbackDevelopmentHttp);
+                    new() { AllowLoopbackDevelopmentHttp = c.Environment.AllowLoopbackDevelopmentHttp });
                 var fresh = new ManagementClient(transport);
                 using var request = ProjectOperations.ListProjects(c.OrganizationId, query.Type, query.IncludeRoles);
                 var authority = c.Environment.CreateManagementAuthority(fresh, role, c.OrganizationId);

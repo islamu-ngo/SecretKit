@@ -266,7 +266,11 @@ internal static class InfisicalDynamicClientEffects
         using var transport = new LifecycleTransport(row.Key.Case);
         var selected = new LifecycleSelectedTokens(env, NativeIdentityRole.Setup);
         await using var client = new InfisicalDynamicClient(env.Origin, selected, scope,
-            new() { AllowLoopbackDevelopmentHttp = env.AllowLoopbackDevelopmentHttp }, transport: transport);
+            new()
+            {
+                AllowLoopbackDevelopmentHttp = env.AllowLoopbackDevelopmentHttp,
+                Transport = InfisicalTransportOptions.HostControlled(transport)
+            });
         await using var observer = new InfisicalDynamicClient(env.Origin, env.Tokens(NativeIdentityRole.Observer),
             scope, new() { AllowLoopbackDevelopmentHttp = env.AllowLoopbackDevelopmentHttp });
         string name = "definition-" + Guid.NewGuid().ToString("N");

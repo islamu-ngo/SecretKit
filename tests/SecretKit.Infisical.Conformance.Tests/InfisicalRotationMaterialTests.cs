@@ -120,8 +120,9 @@ public sealed class InfisicalRotationMaterialTests
             var arm = await source.ArmAsync(binding, CancellationToken.None);
             using var http = new HttpClient(fixture.MetadataTransport, disposeHandler: false);
             var authority = new SecretAuthority();
-            var client = new InfisicalRotationClient(environment.Origin, http, authority,
-                new(authority, environment.Tokens(NativeIdentityRole.Runtime), input.ProjectId));
+            var client = new InfisicalRotationClient(environment.Origin, authority,
+                new(authority, environment.Tokens(NativeIdentityRole.Runtime), input.ProjectId),
+                new() { Transport = InfisicalTransportOptions.HostControlled(http) });
             var got = await client.GetAsync(new(authority, new InfisicalRotationAddress(input.ProjectId,
                 input.Environment, input.Folder, profile, input.RotationId)));
             await Assert.That(got.Status).IsEqualTo(SecretStatus.Success);
@@ -285,8 +286,9 @@ public sealed class InfisicalRotationMaterialTests
         using var boundary = new LifecycleTransport("lost-response-no-replay", fixture.MetadataTransport);
         using var http = new HttpClient(boundary);
         var authority = new SecretAuthority();
-        var client = new InfisicalRotationClient(environment.Origin, http, authority,
-            new(authority, environment.Tokens(NativeIdentityRole.Runtime), input.ProjectId));
+        var client = new InfisicalRotationClient(environment.Origin, authority,
+            new(authority, environment.Tokens(NativeIdentityRole.Runtime), input.ProjectId),
+            new() { Transport = InfisicalTransportOptions.HostControlled(http) });
         boundary.Arm();
         var result = await client.GetAsync(new(authority, new InfisicalRotationAddress(input.ProjectId,
             input.Environment, input.Folder, input.Profile, input.RotationId)));

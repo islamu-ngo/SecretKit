@@ -313,7 +313,7 @@ public sealed class RotationOutcomeTests
             "https://rotation.example/private-path", "https://rotation.example?private=query"
         })
         {
-            await Assert.That(() => new InfisicalRotationClient(new(invalid), http, authority, admin))
+            await Assert.That(() => new InfisicalRotationClient(new(invalid), authority, admin))
                 .Throws<ArgumentException>();
         }
         await Assert.That(() => new InfisicalRotationAddress(new string('p', 1025), "env", "/",
@@ -348,8 +348,9 @@ public sealed class RotationOutcomeTests
         string? environment = null, string? path = null)
     {
         var authority = new SecretAuthority();
-        return new(new Uri("https://rotation.example"), http, authority,
-            new(authority, tokens, "private-project", environment, path), responseLimit);
+        return new(new Uri("https://rotation.example"), authority,
+            new(authority, tokens, "private-project", environment, path),
+            new() { Transport = InfisicalTransportOptions.HostControlled(http), MaximumResponseBytes = responseLimit });
     }
 
     private static SecretReference Target(InfisicalRotationClient client,

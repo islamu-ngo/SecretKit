@@ -106,7 +106,7 @@
     },
     {
       "file": "src/SecretKit.Infisical.Management/ManagementClient.cs",
-      "sha256": "d4c9f7beed94f6ec68d62e3fed7a30e4e9059c790aab2914eec4147f52faa1a0"
+      "sha256": "e3e9f7f6f6c843f8b2e1ebed956a40090f5c505764df16e0528ee17dc2336e1e"
     },
     {
       "file": "src/SecretKit.Infisical.Management/ManagementContracts.cs",
@@ -270,7 +270,7 @@
     },
     {
       "file": "src/SecretKit.Infisical/InfisicalDynamicClient.cs",
-      "sha256": "36755e27553cc995a1e8b9c5be754e781c2df42c09ba1baf35c14b291d4d6f7e"
+      "sha256": "e4b1ff86b1dc66f1a5e40871c518d434afdd48c88fb2cf1c4f551bfcf9cf44cb"
     },
     {
       "file": "src/SecretKit.Infisical/InfisicalDynamicTypes.cs",
@@ -278,7 +278,7 @@
     },
     {
       "file": "src/SecretKit.Infisical/InfisicalDynamicWire.cs",
-      "sha256": "004f917c7688feeb15e957b163fc250a7d9e08b29d15447d6cae261b325eba70"
+      "sha256": "25be8f7a722ba450a2186a4d5776b9e0b305d2ea778ec3c567f3a0423b1c0869"
     },
     {
       "file": "src/SecretKit.Infisical/InfisicalLeaseTypes.cs",
@@ -302,7 +302,7 @@
     },
     {
       "file": "src/SecretKit.Infisical/InfisicalRotationClient.cs",
-      "sha256": "ba419cf1b44aa8801a1c0e434c6ee2bc60ba52214940134e5c7e82a8cb3abc31"
+      "sha256": "9cc0443df0a107f8f7696f7b9ad66d01c4b8ea32369524d456fa56f25bbe2bce"
     },
     {
       "file": "src/SecretKit.Infisical/InfisicalRotationModels.cs",

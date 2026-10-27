@@ -345,7 +345,7 @@ public sealed class NativeContractTests
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         Task<TcpClient> accepted = server.AcceptTcpClientAsync(timeout.Token).AsTask();
         using var transport = new ManagementTransport(new Uri($"http://127.0.0.1:{port}"),
-            allowLoopbackDevelopmentHttp: true);
+            new() { AllowLoopbackDevelopmentHttp = true });
         var client = new ManagementClient(transport);
         var authority = new ManagementAuthority(client.Authority, new TokenSource(), OrgId);
         using var request = ScopedAccessOperations.GetGroup(OrgId, GroupId);

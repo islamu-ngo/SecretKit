@@ -57,7 +57,7 @@ public sealed class InfisicalGatewayObserverTests
     public async Task GatewayMeasurementsUseTypedReadSelectedMaterialAndOwnedCleanup()
     {
         await using var sdk = new SdkBackend("owned");
-        using var transport = new ManagementTransport(sdk.Origin, allowLoopbackDevelopmentHttp: true);
+        using var transport = new ManagementTransport(sdk.Origin, new() { AllowLoopbackDevelopmentHttp = true });
         var client = new ManagementClient(transport);
         bool exists = true;
         int enrolled = 0;
@@ -156,7 +156,7 @@ public sealed class InfisicalGatewayObserverTests
     public async Task GatewayRejectsSubstitutedMeasurementsAndIncompleteCleanup(string mode)
     {
         await using var sdk = new SdkBackend("owned");
-        using var transport = new ManagementTransport(sdk.Origin, allowLoopbackDevelopmentHttp: true);
+        using var transport = new ManagementTransport(sdk.Origin, new() { AllowLoopbackDevelopmentHttp = true });
         var client = new ManagementClient(transport);
         var source = new Source("selected");
         using ManagementRequest<GatewaySummary> request = GatewayAdministrationOperations.Get("org", Gateway);
@@ -216,7 +216,7 @@ public sealed class InfisicalGatewayObserverTests
     public async Task GatewayLookupRejectsSubstitutedOwnershipBeforeReturningSdkSummary(string mode)
     {
         await using var sdk = new SdkBackend(mode == "sdk-name" ? "other" : "owned");
-        using var transport = new ManagementTransport(sdk.Origin, allowLoopbackDevelopmentHttp: true);
+        using var transport = new ManagementTransport(sdk.Origin, new() { AllowLoopbackDevelopmentHttp = true });
         using var handler = new Handler(async (message, token) =>
         {
             JsonObject body = JsonNode.Parse(await message.Content!.ReadAsByteArrayAsync(token))!.AsObject();

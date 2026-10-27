@@ -11,13 +11,15 @@ namespace SecretKit.Infisical;
 
 /// <summary>
 /// Explicit native lifecycle in one exact scope. Token source and injected handler remain host-owned.
-/// Injected handlers must not redirect, retry, capture payloads or propagate diagnostics.
+/// Safe networking is the default; explicit host-controlled pipelines retain host policy.
 /// No automatic leases, cleanup requests, persistence, fallback or background work.
 /// </summary>
 public sealed class InfisicalDynamicClient : IAsyncDisposable
 {
     private readonly Uri _origin;
     private readonly HttpClient _http;
+    private readonly InfisicalTransportBinding _binding;
+    private readonly IInfisicalTokenSource _tokens;
     private readonly IInfisicalDynamicWire _wire;
     private readonly TimeProvider _time;
     private readonly int _byteLimit;
@@ -32,20 +34,13 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
 
     public InfisicalDynamicClient(Uri origin, IInfisicalTokenSource tokens, InfisicalDynamicScope scope,
         InfisicalNetworkOptions? network = null, TimeProvider? timeProvider = null,
-        HttpMessageHandler? transport = null, int maximumItems = 128)
+        int maximumItems = 128)
     {
         ArgumentNullException.ThrowIfNull(origin);
         ArgumentNullException.ThrowIfNull(tokens);
         ArgumentNullException.ThrowIfNull(scope);
         network ??= new InfisicalNetworkOptions();
-        bool development = origin.IsAbsoluteUri && origin.IsLoopback &&
-            origin.Scheme == Uri.UriSchemeHttp && network.AllowLoopbackDevelopmentHttp;
-        if (!origin.IsAbsoluteUri || (origin.Scheme != Uri.UriSchemeHttps && !development) ||
-            origin.UserInfo.Length != 0 || origin.AbsolutePath != "/" ||
-            origin.Query.Length != 0 || origin.Fragment.Length != 0)
-        {
-            throw new ArgumentException("A trusted HTTPS origin is required.");
-        }
+        InfisicalTransportBinding.ValidateOrigin(origin, network);
         if (network.MaximumResponseBytes is < 1024 or > 16 * 1024 * 1024 ||
             maximumItems is < 1 or > 1024 || network.ShutdownTimeout <= TimeSpan.Zero ||
             network.ShutdownTimeout > TimeSpan.FromMinutes(1))
@@ -53,24 +48,15 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
             throw new ArgumentException("Invalid native lifecycle budget.");
         }
         _origin = origin;
+        _tokens = tokens;
         Scope = scope;
         _time = timeProvider ?? TimeProvider.System;
         _byteLimit = network.MaximumResponseBytes;
         _maximumItems = maximumItems;
         _shutdownTimeout = network.ShutdownTimeout;
-        HttpMessageHandler handler = transport ?? new SocketsHttpHandler
-        {
-            AllowAutoRedirect = false,
-            UseCookies = false,
-            Proxy = network.Proxy,
-            ActivityHeadersPropagator = null
-        };
-        _http = new HttpClient(new InfisicalDynamicDispatchHandler(origin, tokens, _time, handler, transport is null))
-        {
-            BaseAddress = origin,
-            Timeout = Timeout.InfiniteTimeSpan
-        };
-        _wire = RestService.For<IInfisicalDynamicWire>(_http, new RefitSettings
+        _binding = new(origin, network);
+        _http = _binding.Client;
+        _wire = RestService.For<IInfisicalDynamicWire>(_binding.Requests, new RefitSettings
         {
             CaptureMethodArguments = false,
             CaptureRequestContent = false
@@ -603,7 +589,26 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
                 }
                 linked.Token.ThrowIfCancellationRequested();
                 using HttpRequestMessage request = await operation(content, receipt, linked.Token).ConfigureAwait(false);
+                _binding.BindRequest(request);
+                SecretOutcome<InfisicalAccessToken> supplied =
+                    await _tokens.GetTokenAsync(linked.Token).ConfigureAwait(false);
+                if (!supplied.IsSuccess)
+                {
+                    linked.Token.ThrowIfCancellationRequested();
+                    return Failure(supplied.Status, receipt);
+                }
+                using InfisicalAccessToken access = supplied.Value;
                 linked.Token.ThrowIfCancellationRequested();
+                if (access.ExpiresAt <= _time.GetUtcNow())
+                    return Failure(SecretStatus.Expired, receipt);
+                string bearer = access.Material.Reveal();
+                if (bearer.Length is < 1 or > 16384 ||
+                    !bearer.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_' or '.' or '~' or '+' or '/' or '='))
+                    return Failure(SecretStatus.Invalid, receipt);
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
+                linked.Token.ThrowIfCancellationRequested();
+                if (receipt is not null && !receipt.Begin())
+                    return Failure(SecretStatus.Invalid, receipt);
                 using HttpResponseMessage response = await _http.SendAsync(request,
                     HttpCompletionOption.ResponseHeadersRead, linked.Token).ConfigureAwait(false);
                 linked.Token.ThrowIfCancellationRequested();
@@ -683,11 +688,6 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
         catch (OperationCanceledException)
         {
             throw new OperationCanceledException(token);
-        }
-        catch (InfisicalDynamicTransportFailure failure)
-        {
-            token.ThrowIfCancellationRequested();
-            return Failure(failure.Status, receipt);
         }
         catch (HttpRequestException)
         {
@@ -806,7 +806,7 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
         }
         finally
         {
-            _http.Dispose();
+            _binding.Dispose();
             _shutdown.Dispose();
         }
     }

@@ -288,7 +288,11 @@ internal sealed class DynamicWireFixture : HttpMessageHandler
     internal JsonElement Inputs(string name) { lock (_gate) { return _definitions[name].Inputs; } }
     internal InfisicalDynamicClient Client(int maximumItems = 128, int maximumBytes = 1024 * 1024) =>
         new(new Uri("https://dynamic.test"), new Tokens(), new(Project, Environment, FolderPath, FolderId),
-            new InfisicalNetworkOptions { MaximumResponseBytes = maximumBytes }, Time, this, maximumItems);
+            new InfisicalNetworkOptions
+            {
+                MaximumResponseBytes = maximumBytes,
+                Transport = InfisicalTransportOptions.HostControlled(this)
+            }, Time, maximumItems);
     internal TaskCompletionSource ArmCommitBarrier()
     {
         _committed = new(TaskCreationOptions.RunContinuationsAsynchronously);

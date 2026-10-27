@@ -21,7 +21,7 @@ public sealed class RotationProgressTests
             "CREATE ROLE sdk_rotation_a LOGIN; CREATE ROLE sdk_rotation_b LOGIN; " +
                 "GRANT SELECT ON sdk_probe TO sdk_rotation_a, sdk_rotation_b;", cancellationToken);
         await Assert.That(roles.ExitCode).IsEqualTo(0);
-        using var transport = new ManagementTransport(origin, allowLoopbackDevelopmentHttp: true);
+        using var transport = new ManagementTransport(origin, new() { AllowLoopbackDevelopmentHttp = true });
         var management = new ManagementClient(transport);
         var authority = new ManagementAuthority(management.Authority, administrator, organization, project);
         // Test-only prerequisite provisioning, not an SDK connector API or conformance claim.

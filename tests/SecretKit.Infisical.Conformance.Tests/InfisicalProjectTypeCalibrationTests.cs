@@ -154,7 +154,7 @@ public sealed class InfisicalProjectTypeCalibrationTests
                 await trial.ObserveAsync(phase, all!, [selected!, runtime!, recheck!], access.ToArray(), CancellationToken.None);
                 async Task<ManagementPage<ProjectSummary>?> Read(NativeIdentityRole role, ProjectTypeQuery query, bool allowed)
                 {
-                    using var transport = new ManagementTransport(env.Origin, allowLoopbackDevelopmentHttp: true);
+                    using var transport = new ManagementTransport(env.Origin, new() { AllowLoopbackDevelopmentHttp = true });
                     var fresh = new ManagementClient(transport);
                     var auth = env.CreateManagementAuthority(fresh, role, root.OrganizationId);
                     using var list = ProjectOperations.ListProjects(root.OrganizationId, query.Type, query.IncludeRoles);

@@ -59,8 +59,9 @@ internal static class RotationMaterialEffects
         using var transport = new LifecycleTransport(row.Key.Case, offlineTransport);
         using var http = new HttpClient(transport) { Timeout = Timeout.InfiniteTimeSpan };
         var authority = new SecretAuthority();
-        var client = new InfisicalRotationClient(env.Origin, http, authority,
-            new(authority, env.Tokens(denied ? NativeIdentityRole.Denied : NativeIdentityRole.Runtime), input.ProjectId));
+        var client = new InfisicalRotationClient(env.Origin, authority,
+            new(authority, env.Tokens(denied ? NativeIdentityRole.Denied : NativeIdentityRole.Runtime), input.ProjectId),
+            new() { Transport = InfisicalTransportOptions.HostControlled(http) });
         var address = new InfisicalRotationAddress(input.ProjectId, input.Environment, input.Folder,
             input.Profile, input.RotationId);
         using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(token);

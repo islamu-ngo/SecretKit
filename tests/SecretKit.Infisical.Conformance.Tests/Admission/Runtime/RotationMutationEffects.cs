@@ -57,8 +57,9 @@ internal static class RotationMutationEffects
         using var transport = new BoundaryTransport(cancel, lost, offlineTransport);
         using var http = new HttpClient(transport) { Timeout = Timeout.InfiniteTimeSpan };
         var authority = new SecretAuthority();
-        var client = new InfisicalRotationClient(env.Origin, http, authority,
-            new(authority, env.Tokens(denied ? NativeIdentityRole.Denied : NativeIdentityRole.Runtime), m.ProjectId));
+        var client = new InfisicalRotationClient(env.Origin, authority,
+            new(authority, env.Tokens(denied ? NativeIdentityRole.Denied : NativeIdentityRole.Runtime), m.ProjectId),
+            new() { Transport = InfisicalTransportOptions.HostControlled(http) });
         var target = new SecretReference(authority,
             new InfisicalRotationAddress(m.ProjectId, m.Environment, m.Folder, m.Profile, m.RotationId));
         var receipt = new InfisicalRotationReceipt(target, action);

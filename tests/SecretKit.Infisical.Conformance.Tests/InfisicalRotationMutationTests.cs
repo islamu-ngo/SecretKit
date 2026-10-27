@@ -113,8 +113,9 @@ public sealed class InfisicalRotationMutationTests
             var arm = await source.ArmAsync(binding, deadline.Token);
             using var http = new HttpClient(fixture.Transport, disposeHandler: false);
             var authority = new SecretAuthority();
-            var client = new InfisicalRotationClient(environment.Origin, http, authority,
-                new(authority, environment.Tokens(NativeIdentityRole.Runtime), m.ProjectId));
+            var client = new InfisicalRotationClient(environment.Origin, authority,
+                new(authority, environment.Tokens(NativeIdentityRole.Runtime), m.ProjectId),
+                new() { Transport = InfisicalTransportOptions.HostControlled(http) });
             var target = new SecretReference(authority, new InfisicalRotationAddress(m.ProjectId,
                 m.Environment, m.Folder, profile, m.RotationId));
             var receipt = new InfisicalRotationReceipt(target, action);
@@ -383,8 +384,9 @@ public sealed class InfisicalRotationMutationTests
             using var transport = new RotationMutationEffects.BoundaryTransport(boundary == "canceled", boundary == "lost", fixture.Transport);
             using var http = new HttpClient(transport);
             var authority = new SecretAuthority();
-            var client = new InfisicalRotationClient(environment.Origin, http, authority,
-                new(authority, environment.Tokens(NativeIdentityRole.Runtime), m.ProjectId));
+            var client = new InfisicalRotationClient(environment.Origin, authority,
+                new(authority, environment.Tokens(NativeIdentityRole.Runtime), m.ProjectId),
+                new() { Transport = InfisicalTransportOptions.HostControlled(http) });
             var target = new SecretReference(authority, new InfisicalRotationAddress(m.ProjectId, m.Environment, m.Folder, m.Profile, m.RotationId));
             var receipt = new InfisicalRotationReceipt(target, root.Action);
             using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(deadline.Token);

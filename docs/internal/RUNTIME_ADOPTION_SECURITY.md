@@ -42,7 +42,7 @@ The following identifiers describe requirements, not completed observations.
 | S08 | Worker awaits admission before work, starts maintenance explicitly and drains before disposing app-owned resources. |
 | S09 | One request pins one accepted generation; replaced/rejected clients retire exactly once after leases release, with awaited asynchronous completion. |
 | S10 | Success/failure/startup/cancellation/shutdown do not emit credentials, material, protected coordinates or hostile provider prose to controlled sinks. |
-| S11 | Origin/TLS/redirect/body budgets/cancellation/transport ownership remain enforced; no mutation retry or trust bypass. |
+| S11 | Safe-mode origin/TLS/redirect policy is enforced; explicit host-controlled transport retains host network policy. Both retain typed authority, body budgets, cancellation, ownership and truthful SDK handoff evidence; the SDK adds no replay. |
 | S12 | Installed minimal/configuration/hosting/full graphs remain independent; web framework dependency is confined to its app. |
 | S13 | Native actor/policy evidence requires owned causal issuance and native challenges, not labels, token hashes or JWT decoding. |
 | S14 | Independent actors observe actual values/effects, approval state and lifetime limits; acknowledgements alone are insufficient. |
@@ -65,6 +65,16 @@ authorized setup operator are roots, not independently attested facts.
 Untrusted inputs/responses, concurrent callers, cross-scope references, forged
 or stale evidence and substituted archives must fail closed. Process-memory
 compromise is not an SDK protection claim.
+
+Infisical networking is selected explicitly through NetworkOptions.Transport.
+SafeDefault and SafeWithPrivateTrust retain normal issuer/hostname checks,
+disable redirects/cookies/propagation, and omit ambient proxies. Explicit Proxy
+selects safe routing; private roots are copied as public data and use the
+handler's default no-revocation-lookup policy. HostControlled accepts a supplied
+HttpClient or handler unchanged, including arbitrary HTTP(S), TLS, redirect,
+retry and diagnostic policy. SDK-side typed authority/parsing/material/receipt
+boundaries remain active, but no network guarantee is made inside that pipeline.
+Borrowed resources are never disposed or reconfigured by the SDK.
 
 Protected input must be bounded, reject duplicate/unknown fields and unsafe
 file links, and never put credentials in command-line arguments or reports.

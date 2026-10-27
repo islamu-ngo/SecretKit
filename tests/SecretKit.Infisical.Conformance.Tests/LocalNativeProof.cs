@@ -41,7 +41,7 @@ internal sealed class LocalNativeProof : IAsyncDisposable
         time = timeProvider ?? TimeProvider.System;
         using var material = sandbox.CopySetupToken();
         setup = new(material.Reveal());
-        transport = new(sandbox.Origin, allowLoopbackDevelopmentHttp: true);
+        transport = new(sandbox.Origin, new() { AllowLoopbackDevelopmentHttp = true });
         management = new(transport, time);
         Ledger = new(selection.Owner, RunId, ledgerPath);
     }

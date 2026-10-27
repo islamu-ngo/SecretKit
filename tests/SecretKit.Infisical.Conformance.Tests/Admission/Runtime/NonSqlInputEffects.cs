@@ -39,7 +39,11 @@ internal static class NonSqlInputEffects
         using var transport = new LifecycleTransport(row.Key.Case);
         var identities = new LifecycleSelectedTokens(env, NativeIdentityRole.Setup);
         await using var client = new InfisicalDynamicClient(env.Origin, identities, scope,
-            new() { AllowLoopbackDevelopmentHttp = env.AllowLoopbackDevelopmentHttp }, transport: transport);
+            new()
+            {
+                AllowLoopbackDevelopmentHttp = env.AllowLoopbackDevelopmentHttp,
+                Transport = InfisicalTransportOptions.HostControlled(transport)
+            });
         await using var observer = new InfisicalDynamicClient(env.Origin, env.Tokens(NativeIdentityRole.Observer),
             scope, new() { AllowLoopbackDevelopmentHttp = env.AllowLoopbackDevelopmentHttp });
         string name = "definition-" + Guid.NewGuid().ToString("N");

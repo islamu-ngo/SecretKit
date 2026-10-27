@@ -6,47 +6,46 @@ using SecretKit.Core;
 namespace SecretKit.Infisical.Management;
 
 /// <summary>
-/// Host-owned fixed-origin transport. Clients never dispose it. No cookies,
-/// redirects, certificate bypass, fallback identity, or application retry.
+/// Fixed-origin administrative transport disposed by its owner, never by clients.
+/// Safe modes enforce network safeguards; an explicitly host-controlled pipeline
+/// retains the host's policies and ownership.
 /// </summary>
 public sealed class ManagementTransport : IDisposable
 {
     private readonly HttpClient _http;
+    private readonly InfisicalTransportBinding _binding;
     private readonly ManagementRequestBuilder _requests;
     internal int ResponseLimit { get; }
 
-    public ManagementTransport(Uri origin, int maximumResponseBytes = 1024 * 1024,
-        IWebProxy? proxy = null, bool allowLoopbackDevelopmentHttp = false)
-        : this(origin, maximumResponseBytes, proxy, allowLoopbackDevelopmentHttp, null)
+    /// <summary>Creates a bounded transport for the selected origin and network policy; null selects safe defaults.</summary>
+    public ManagementTransport(Uri origin, InfisicalNetworkOptions? network = null)
+        : this(origin, network ?? new(), null)
     {
     }
 
     internal ManagementTransport(Uri origin, int maximumResponseBytes, IWebProxy? proxy,
         bool allowLoopbackDevelopmentHttp, HttpMessageHandler? handler)
+        : this(origin, new InfisicalNetworkOptions
+        {
+            MaximumResponseBytes = maximumResponseBytes,
+            Proxy = proxy,
+            AllowLoopbackDevelopmentHttp = allowLoopbackDevelopmentHttp
+        }, handler)
+    {
+    }
+
+    private ManagementTransport(Uri origin, InfisicalNetworkOptions network, HttpMessageHandler? handler)
     {
         ArgumentNullException.ThrowIfNull(origin);
-        if (!origin.IsAbsoluteUri ||
-            (origin.Scheme != "https" && !(allowLoopbackDevelopmentHttp &&
-                origin.Scheme == "http" && origin.IsLoopback)) ||
-            origin.UserInfo.Length != 0 || origin.AbsolutePath != "/" ||
-            origin.Query.Length != 0 || origin.Fragment.Length != 0)
-        {
-            throw new ArgumentException("A fixed trusted HTTPS origin is required.");
-        }
-        if (maximumResponseBytes is < 1024 or > 16 * 1024 * 1024)
+        InfisicalTransportBinding.ValidateOrigin(origin, network);
+        if (network.MaximumResponseBytes is < 1024 or > 16 * 1024 * 1024)
         {
             throw new ArgumentException("Invalid response byte budget.");
         }
-        ResponseLimit = maximumResponseBytes;
-        _http = new HttpClient(handler ?? new SocketsHttpHandler
-        {
-            AllowAutoRedirect = false,
-            UseCookies = false,
-            Proxy = proxy,
-            ActivityHeadersPropagator = null
-        }, disposeHandler: true)
-        { Timeout = Timeout.InfiniteTimeSpan, BaseAddress = origin };
-        _requests = new ManagementRequestBuilder(_http);
+        ResponseLimit = network.MaximumResponseBytes;
+        _binding = new(origin, network, handler);
+        _http = _binding.Client;
+        _requests = new ManagementRequestBuilder(_binding.Requests);
     }
 
     internal Task<HttpRequestMessage> BuildAsync<T>(ManagementRequest<T> request,
@@ -56,7 +55,9 @@ public sealed class ManagementTransport : IDisposable
     internal Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
         _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
 
-    public void Dispose() => _http.Dispose();
+    /// <summary>Releases owned transport resources without disposing borrowed host clients or handlers.</summary>
+    public void Dispose() => _binding.Dispose();
+    /// <summary>Returns a redacted marker without origin or transport configuration.</summary>
     public override string ToString() => "[ManagementTransport]";
 }
 

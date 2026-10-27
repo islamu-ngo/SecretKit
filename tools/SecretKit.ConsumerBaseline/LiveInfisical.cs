@@ -15,7 +15,7 @@ internal static class LiveInfisical
         string organization = Required("SECRETKIT_LIVE_ORGANIZATION");
         var tokens = new SelectedToken(Required("SECRETKIT_LIVE_ADMIN_TOKEN"));
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(60));
-        using var transport = new ManagementTransport(origin, allowLoopbackDevelopmentHttp: true);
+        using var transport = new ManagementTransport(origin, new() { AllowLoopbackDevelopmentHttp = true });
         var administration = new ManagementClient(transport);
         var authority = new ManagementAuthority(administration.Authority, tokens, organization);
         string slug = "sdk-live-" + Guid.NewGuid().ToString("N")[..12];

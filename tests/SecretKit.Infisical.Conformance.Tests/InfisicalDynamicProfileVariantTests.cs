@@ -501,7 +501,8 @@ public sealed class InfisicalDynamicProfileVariantTests
     {
         using var transport = new CaptureTransport();
         await using var client = new InfisicalDynamicClient(new("https://dynamic.test"), new Tokens(),
-            new("project", "environment", "/folder", CaptureTransport.FolderId), transport: transport);
+            new("project", "environment", "/folder", CaptureTransport.FolderId),
+            new() { Transport = InfisicalTransportOptions.HostControlled(transport) });
         var target = client.Definition("offline");
         var outcome = await client.CreateDefinitionAsync(target, profile, new(TimeSpan.FromSeconds(60)),
             new(TimeSpan.FromSeconds(120)), new(target, InfisicalDynamicOperation.CreateDefinition));

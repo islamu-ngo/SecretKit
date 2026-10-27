@@ -88,7 +88,11 @@ public sealed class DynamicSqlLifecycleTests
         {
             using var fault = new AcquireFaultTransport(cancelAfterCommit);
             await using var uncertain = new InfisicalDynamicClient(origin, administrator, lifecycle.Scope,
-                network, transport: fault);
+                new()
+                {
+                    AllowLoopbackDevelopmentHttp = network.AllowLoopbackDevelopmentHttp,
+                    Transport = InfisicalTransportOptions.HostControlled(fault)
+                });
             var faultTarget = uncertain.Definition("sdk-sql");
             var observedDefinition = await uncertain.InspectDefinitionAsync(faultTarget, cancellationToken);
             Require(observedDefinition.Status, "fault-definition-inspection", DispatchEvidence.NotDispatched);

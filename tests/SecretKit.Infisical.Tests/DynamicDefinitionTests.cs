@@ -6,6 +6,17 @@ namespace SecretKit.Infisical.Tests;
 public sealed class DynamicDefinitionTests
 {
     [Test]
+    public async Task ExplicitHostControlledTransportAdmitsFixedHttpOriginWithoutCredentials()
+    {
+        using var wire = new DynamicWireFixture();
+        await using var selected = wire.Client();
+        await using var client = new InfisicalDynamicClient(new Uri("http://dynamic.test"),
+            new FailingSource(), selected.Scope,
+            new() { Transport = InfisicalTransportOptions.HostControlled(wire) });
+        await Assert.That(ReferenceEquals(client.Scope, selected.Scope)).IsTrue();
+    }
+
+    [Test]
     [Arguments("omitted")]
     [Arguments("selected")]
     [Arguments("cleared")]

@@ -32,7 +32,7 @@ public sealed class IdentitySetupTests
                 Access = FileAccess.Write,
                 UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite
             });
-        using var transport = new ManagementTransport(sandbox.Origin, allowLoopbackDevelopmentHttp: true);
+        using var transport = new ManagementTransport(sandbox.Origin, new() { AllowLoopbackDevelopmentHttp = true });
         var management = new ManagementClient(transport);
         using var setupTokens = new SelectedTokens(setupMaterial);
         var receipts = new List<ManagementReceipt>();

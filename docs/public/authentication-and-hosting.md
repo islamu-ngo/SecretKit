@@ -175,13 +175,15 @@ Provider error prose is not returned. These are the SDK's accepted wire subset,
 not a claim of every server response shape.
 
 Authentication/session constructors accept network options, optional
-`TimeProvider`, and overloads with a host-owned `SocketsHttpHandler`. Use a
-trusted HTTPS origin with no userinfo, path beyond `/`, query or fragment.
-HTTP requires explicit `AllowLoopbackDevelopmentHttp` and a loopback origin.
-Supplied handlers must disable redirects, cookies and activity propagation.
-They remain host-owned; trust, proxy settings, certificate presentation and
-instrumentation are host responsibilities. Do not add credential logging or
-replay handlers.
+`TimeProvider`, and the shared `network.Transport` selection. SafeDefault uses
+normal HTTPS trust, no redirects/cookies/propagation or ambient proxy; HTTP
+requires explicit loopback development opt-in. Private issuers use
+`SafeWithPrivateTrust(roots)` and retain hostname/chain checks; explicit proxies
+use `network.Proxy`. `HostControlled(clientOrHandler)` deliberately accepts
+arbitrary host HTTP(S)/TLS/redirect/retry/diagnostic policy without enforcing
+network guarantees inside it. Both modes keep a fixed origin without userinfo,
+path beyond `/`, query or fragment. Borrowed clients/handlers remain unmodified
+and host-owned; the old public injection overloads are removed.
 
 ## Establish lifetime before renewal
 
@@ -209,8 +211,7 @@ login and checks matching expiry, maximum TTL and original timing no later than
 constructor requires the bound result and rejects cross-wired login/token/origin
 evidence.
 
-The session has two public constructor families, each also offering a
-host-transport overload:
+The session has two public constructor families, both using network options:
 
 ```csharp
 // Token and lifetime facts come from an authorized host handoff.

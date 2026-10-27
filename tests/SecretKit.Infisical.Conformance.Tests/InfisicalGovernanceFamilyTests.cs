@@ -1173,7 +1173,7 @@ public sealed class InfisicalGovernanceFamilyTests
         internal async ValueTask<SecretOutcome<T>> ReadAsync<T>(Func<ManagementRequest<T>> factory, string organizationId,
             IInfisicalTokenSource tokens, CancellationToken token) where T : notnull
         {
-            using var transport = new ManagementTransport(Origin, allowLoopbackDevelopmentHttp: true);
+            using var transport = new ManagementTransport(Origin, new() { AllowLoopbackDevelopmentHttp = true });
             var client = new ManagementClient(transport);
             using ManagementRequest<T> request = factory();
             var authority = new ManagementAuthority(client.Authority, tokens, organizationId, request.Target.ProjectId);
