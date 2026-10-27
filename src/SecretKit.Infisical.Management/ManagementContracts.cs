@@ -35,8 +35,6 @@ public sealed class ManagementRequest<T> : IDisposable where T : notnull
             try
             {
                 ManagementResponseContracts.Validate(operationId, root);
-                ManagementResponseUuids.Validate(operationId, root);
-                ManagementResponseDates.Validate(operationId, root);
                 return result;
             }
             catch

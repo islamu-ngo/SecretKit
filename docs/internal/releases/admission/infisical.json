@@ -110,7 +110,7 @@
     },
     {
       "file": "src/SecretKit.Infisical.Management/ManagementContracts.cs",
-      "sha256": "8325dd0cbb869cc5e8a2474538dc91fdac2b80db5e53bd28fcdef9c27c67dd98"
+      "sha256": "ba3d91f122d30aa204dae0e9e0361965026c65bd0d3e46a8336bcb133af0f036"
     },
     {
       "file": "src/SecretKit.Infisical.Management/ManagementRequestBuilder.cs",
@@ -118,15 +118,15 @@
     },
     {
       "file": "src/SecretKit.Infisical.Management/ManagementResponseContracts.cs",
-      "sha256": "c0f2fa1846ad167fe7cfe1c051828fa194a31d978a69eb6fd0e09bca2dadb0b7"
+      "sha256": "743b8d5a6e81fe6206ee302bd4c6152454824f1a4940d85e78aee82113af55c7"
     },
     {
       "file": "src/SecretKit.Infisical.Management/ManagementResponseDates.cs",
-      "sha256": "d565c476d7164f7a9b20337d8ff566071a9875d8d436dbcdc22928eb6860c81a"
+      "sha256": "cc31101ba256cb1523838742e3db9eba509fc7202b45c1d4e60e8288903da0f4"
     },
     {
       "file": "src/SecretKit.Infisical.Management/ManagementResponseUuids.cs",
-      "sha256": "02245de9e6e463abc8f14b540b9bb803afb3d4000aededf6ae9f41225928137a"
+      "sha256": "54d7eaf1f5fac60401c9dbf72953945a540024947f27c308d03cb1d01747a19d"
     },
     {
       "file": "src/SecretKit.Infisical.Management/MembershipMetadataVariants.cs",

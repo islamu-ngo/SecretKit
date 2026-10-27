@@ -3,11 +3,12 @@ using SecretKit.Core;
 
 namespace SecretKit.Infisical.Management;
 
-// Closed member sets from the admitted public response field contracts in
-// docs/internal/providers/infisical-operations.json. No runtime manifest loading.
+// Family-owned response profiles from the admitted in-repository field contracts.
+// Each operation selects closure, UUID and date rules together; typed projections
+// still own presence, nullability and scope. No runtime manifest loading.
 internal static class ManagementResponseContracts
 {
-    private sealed record Shape(string[]? Members, (string Name, Shape Value)[] Children,
+    internal sealed record Shape(string[]? Members, (string Name, Shape Value)[] Children,
         Shape? Element = null, string? Discriminator = null, (string Name, Shape Value)[]? Branches = null);
 
     private static Shape Object(string[]? members, params (string Name, Shape Value)[] children) => new(members, children);
@@ -15,337 +16,492 @@ internal static class ManagementResponseContracts
     private static Shape Branch(string discriminator, params (string Name, Shape Value)[] branches) =>
         new(null, [], Discriminator: discriminator, Branches: branches);
 
-    private static readonly Shape Shape0 = Object(["action", "conditions", "inverted", "subject"]);
-    private static readonly Shape Shape1 = Elements(Shape0);
-    private static readonly Shape Shape2 = Object(["createdAt", "id", "isTemporary", "permissions", "projectMembershipId", "slug", "temporaryAccessEndTime", "temporaryAccessStartTime", "temporaryMode", "temporaryRange", "updatedAt"], ("permissions", Shape1));
-    private static readonly Shape Shape3 = Object(["privilege"], ("privilege", Shape2));
-    private static readonly Shape Shape4 = Elements(Shape2);
-    private static readonly Shape Shape5 = Object(["privileges"], ("privileges", Shape4));
-    private static readonly Shape Shape6 = Object(["createdAt", "id", "name", "orgId", "role", "roleId", "slug", "updatedAt"]);
-    private static readonly Shape Shape7 = Elements(Shape6);
-    private static readonly Shape Shape8 = Object(["createdAt", "id", "name", "orgId", "slug", "updatedAt"]);
-    private static readonly Shape Shape9 = Object(["createdAt", "customRoleSlug", "id", "name", "orgId", "role", "roleId", "slug", "updatedAt"]);
-    private static readonly Shape Shape10 = Object(["id", "isPartOfGroup", "joinedGroupAt", "name"]);
-    private static readonly Shape Shape11 = Elements(Shape10);
-    private static readonly Shape Shape12 = Object(["machineIdentities", "totalCount"], ("machineIdentities", Shape11));
-    private static readonly Shape Shape13 = Object(["id"]);
-    private static readonly Shape Shape14 = Object(["id", "name"]);
-    private static readonly Shape Shape15 = Object(["id", "joinedGroupAt", "machineIdentity", "type"], ("machineIdentity", Shape14));
-    private static readonly Shape Shape16 = Object(["email", "firstName", "id", "lastName", "username"]);
-    private static readonly Shape Shape17 = Object(["id", "joinedGroupAt", "type", "user"], ("user", Shape16));
-    private static readonly Shape Shape18 = Branch("type", ("machineIdentity", Shape15), ("user", Shape17));
-    private static readonly Shape Shape19 = Elements(Shape18);
-    private static readonly Shape Shape20 = Object(["members", "totalCount"], ("members", Shape19));
-    private static readonly Shape Shape21 = Object(["description", "id", "joinedGroupAt", "name", "slug", "type"]);
-    private static readonly Shape Shape22 = Elements(Shape21);
-    private static readonly Shape Shape23 = Object(["projects", "totalCount"], ("projects", Shape22));
-    private static readonly Shape Shape24 = Object(["email", "firstName", "id", "isPartOfGroup", "joinedGroupAt", "lastName", "username"]);
-    private static readonly Shape Shape25 = Elements(Shape24);
-    private static readonly Shape Shape26 = Object(["totalCount", "users"], ("users", Shape25));
-    private static readonly Shape Shape27 = Object(["description", "id", "name", "permissions", "slug"]);
-    private static readonly Shape Shape28 = Object(["authMethods", "hasDeleteProtection", "id", "name"]);
-    private static readonly Shape Shape29 = Object(["createdAt", "customRole", "id", "identity", "identityId", "lastLoginAuthMethod", "lastLoginTime", "orgId", "role", "roleId", "updatedAt"], ("customRole", Shape27), ("identity", Shape28));
-    private static readonly Shape Shape30 = Elements(Shape29);
-    private static readonly Shape Shape31 = Object(["identities", "totalCount"], ("identities", Shape30));
-    private static readonly Shape Shape32 = Object(["id", "key", "value"]);
-    private static readonly Shape Shape33 = Elements(Shape32);
-    private static readonly Shape Shape34 = Object(["authMethod", "authMethods", "createdAt", "hasDeleteProtection", "id", "metadata", "name", "orgId", "projectId", "updatedAt"], ("metadata", Shape33));
-    private static readonly Shape Shape35 = Object(["identity"], ("identity", Shape34));
-    private static readonly Shape Shape36 = Object(["authMethod", "createdAt", "hasDeleteProtection", "id", "name", "orgId", "projectId", "updatedAt"]);
-    private static readonly Shape Shape37 = Object(["identity"], ("identity", Shape36));
-    private static readonly Shape Shape38 = Object(["activeLockoutAuthMethods", "authMethods", "hasDeleteProtection", "id", "name", "orgId"]);
-    private static readonly Shape Shape39 = Object(["createdAt", "customRole", "id", "identity", "identityId", "lastLoginAuthMethod", "lastLoginTime", "metadata", "orgId", "role", "roleId", "updatedAt"], ("customRole", Shape27), ("identity", Shape38), ("metadata", Shape33));
-    private static readonly Shape Shape40 = Object(["identity"], ("identity", Shape39));
-    private static readonly Shape Shape41 = Object(["authMethod", "createdAt", "hasDeleteProtection", "id", "metadata", "name", "orgId", "projectId", "updatedAt"], ("metadata", Shape33));
-    private static readonly Shape Shape42 = Object(["identity"], ("identity", Shape41));
-    private static readonly Shape Shape43 = Object(["id", "name", "slug"]);
-    private static readonly Shape Shape44 = Object(["organization"], ("organization", Shape43));
-    private static readonly Shape Shape45 = Object(["identityDetails"], ("identityDetails", Shape44));
-    private static readonly Shape Shape46 = Object(["allowedAudience", "caCert", "gatewayId", "gatewayPoolId", "hasTokenReviewerJwt", "kubernetesHost", "tokenReviewMode", "verifyTlsCertificate"]);
-    private static readonly Shape Shape47 = Object(["authMethod", "createdAt", "id", "name", "orgId", "templateFields", "updatedAt"], ("templateFields", Shape46));
-    private static readonly Shape Shape48 = Object(["bindDN", "hasBindPass", "ldapCaCertificate", "searchBase", "url"]);
-    private static readonly Shape Shape49 = Object(["authMethod", "createdAt", "id", "name", "orgId", "templateFields", "updatedAt"], ("templateFields", Shape48));
-    private static readonly Shape Shape50 = Object(["boundAudiences", "boundIssuer", "caCert", "oidcDiscoveryUrl"]);
-    private static readonly Shape Shape51 = Object(["authMethod", "createdAt", "id", "name", "orgId", "templateFields", "updatedAt"], ("templateFields", Shape50));
-    private static readonly Shape Shape52 = Branch("authMethod", ("kubernetes", Shape47), ("ldap", Shape49), ("oidc", Shape51));
-    private static readonly Shape Shape53 = Elements(Shape52);
-    private static readonly Shape Shape54 = Object(["message"]);
-    private static readonly Shape Shape55 = Object(["authId", "identityId", "identityName"]);
-    private static readonly Shape Shape56 = Elements(Shape55);
-    private static readonly Shape Shape57 = Object(["identityId", "identityName"]);
-    private static readonly Shape Shape58 = Elements(Shape57);
-    private static readonly Shape Shape59 = Object(["templates", "totalCount"], ("templates", Shape53));
-    private static readonly Shape Shape60 = Object(["eventClass", "isEnabled"]);
-    private static readonly Shape Shape61 = Elements(Shape60);
-    private static readonly Shape Shape62 = Object(["eventClasses", "shouldUseNewPrivilegeSystem"], ("eventClasses", Shape61));
-    private static readonly Shape Shape63 = Object(["auditLogSettings"], ("auditLogSettings", Shape62));
-    private static readonly Shape Shape64 = Object(["auditLogs"]);
-    private static readonly Shape Shape65 = Elements(Shape43);
-    private static readonly Shape Shape66 = Object(["groups"], ("groups", Shape65));
-    private static readonly Shape Shape67 = Elements(Shape14);
-    private static readonly Shape Shape68 = Object(["identities"], ("identities", Shape67));
-    private static readonly Shape Shape69 = Object(["createdAt", "description", "id", "name", "orgId", "slug", "updatedAt"]);
-    private static readonly Shape Shape70 = Elements(Shape69);
-    private static readonly Shape Shape71 = Object(["roles"], ("roles", Shape70));
-    private static readonly Shape Shape72 = Object(["createdAt", "description", "id", "name", "orgId", "permissions", "slug", "updatedAt"], ("permissions", Shape1));
-    private static readonly Shape Shape73 = Object(["role"], ("role", Shape72));
-    private static readonly Shape Shape74 = Object(["id", "name", "orgId", "slug"]);
-    private static readonly Shape Shape75 = Object(["createdAt", "customRoleId", "customRoleName", "customRoleSlug", "id", "isTemporary", "role", "temporaryAccessEndTime", "temporaryAccessStartTime", "temporaryMode", "temporaryRange", "updatedAt"]);
-    private static readonly Shape Shape76 = Elements(Shape75);
-    private static readonly Shape Shape77 = Object(["createdAt", "group", "groupId", "id", "roles", "updatedAt"], ("group", Shape74), ("roles", Shape76));
-    private static readonly Shape Shape78 = Elements(Shape77);
-    private static readonly Shape Shape79 = Object(["groupMemberships", "totalCount"], ("groupMemberships", Shape78));
-    private static readonly Shape Shape80 = Object(["createdAt", "groupId", "id", "orgId", "updatedAt"]);
-    private static readonly Shape Shape81 = Object(["groupMembership"], ("groupMembership", Shape80));
-    private static readonly Shape Shape82 = Object(["groupMembership"], ("groupMembership", Shape77));
-    private static readonly Shape Shape83 = Object(["name", "position", "slug"]);
-    private static readonly Shape Shape84 = Elements(Shape83);
-    private static readonly Shape Shape85 = Object(["groupSlug", "roles"]);
-    private static readonly Shape Shape86 = Elements(Shape85);
-    private static readonly Shape Shape87 = Object(["identityId", "identityName", "roles"]);
-    private static readonly Shape Shape88 = Elements(Shape87);
-    private static readonly Shape Shape89 = Object(["name", "roles"]);
-    private static readonly Shape Shape90 = Elements(Shape89);
-    private static readonly Shape Shape91 = Object(["name", "permissions", "slug"], ("permissions", Shape1));
-    private static readonly Shape Shape92 = Elements(Shape91);
-    private static readonly Shape Shape93 = Object(["roles", "username"]);
-    private static readonly Shape Shape94 = Elements(Shape93);
-    private static readonly Shape Shape95 = Object(["createdAt", "description", "environments", "groups", "id", "identities", "name", "orgId", "projectManagedIdentities", "roles", "type", "updatedAt", "users"], ("environments", Shape84), ("groups", Shape86), ("identities", Shape88), ("projectManagedIdentities", Shape90), ("roles", Shape92), ("users", Shape94));
-    private static readonly Shape Shape96 = Elements(Shape95);
-    private static readonly Shape Shape97 = Object(["projectTemplates"], ("projectTemplates", Shape96));
-    private static readonly Shape Shape98 = Object(["projectTemplate"], ("projectTemplate", Shape95));
-    private static readonly Shape Shape99 = Object(["id", "name", "type"]);
-    private static readonly Shape Shape100 = Object(["email", "firstName", "id", "lastName", "type", "username"]);
-    private static readonly Shape Shape101 = Branch("type", ("identity", Shape99), ("user", Shape100));
-    private static readonly Shape Shape102 = Object(["deleteAfter", "deletedBy", "id", "name", "slug", "softDeletedAt"], ("deletedBy", Shape101));
-    private static readonly Shape Shape103 = Elements(Shape102);
-    private static readonly Shape Shape104 = Object(["createdAt", "description", "id", "name", "permissions", "projectId", "slug", "updatedAt", "version"]);
-    private static readonly Shape Shape105 = Elements(Shape104);
-    private static readonly Shape Shape106 = Object(["_id", "auditLogsRetentionDays", "autoCapitalization", "createdAt", "defaultProduct", "deletedEnvironments", "description", "enforceEncryptedSecretManagerSecretMetadata", "environments", "hasDeleteProtection", "id", "isLegacyAdditionalPrivilegesEnabled", "kmsCertificateKeyId", "kmsSecretManagerKeyId", "name", "orgId", "pitVersionLimit", "roles", "secretBlindIndexEnabled", "secretDetectionIgnoreValues", "secretSharing", "showSnapshotsLegacy", "slug", "type", "updatedAt", "upgradeStatus", "version"], ("deletedEnvironments", Shape103), ("environments", Shape65), ("roles", Shape105));
-    private static readonly Shape Shape107 = Elements(Shape106);
-    private static readonly Shape Shape108 = Object(["projects"], ("projects", Shape107));
-    private static readonly Shape Shape109 = Object(["_id", "auditLogsRetentionDays", "autoCapitalization", "createdAt", "defaultProduct", "deletedEnvironments", "description", "enforceEncryptedSecretManagerSecretMetadata", "environments", "hasDeleteProtection", "id", "isLegacyAdditionalPrivilegesEnabled", "kmsCertificateKeyId", "kmsSecretManagerKeyId", "name", "orgId", "pitVersionLimit", "secretBlindIndexEnabled", "secretDetectionIgnoreValues", "secretSharing", "showSnapshotsLegacy", "slug", "type", "updatedAt", "upgradeStatus", "version"], ("deletedEnvironments", Shape103), ("environments", Shape65));
-    private static readonly Shape Shape110 = Object(["project"], ("project", Shape109));
-    private static readonly Shape Shape111 = Object(["auditLogsRetentionDays", "autoCapitalization", "createdAt", "defaultProduct", "description", "enforceEncryptedSecretManagerSecretMetadata", "hasDeleteProtection", "id", "isLegacyAdditionalPrivilegesEnabled", "kmsCertificateKeyId", "kmsSecretManagerKeyId", "name", "orgId", "pitVersionLimit", "secretBlindIndexEnabled", "secretDetectionIgnoreValues", "secretSharing", "showSnapshotsLegacy", "slug", "type", "updatedAt", "upgradeStatus", "version"]);
-    private static readonly Shape Shape112 = Object(["project"], ("project", Shape111));
-    private static readonly Shape Shape113 = Object(["accountId", "createdAt", "id", "integration", "metadata", "namespace", "projectId", "teamId", "updatedAt", "url"]);
-    private static readonly Shape Shape114 = Elements(Shape113);
-    private static readonly Shape Shape115 = Object(["authorizations"], ("authorizations", Shape114));
-    private static readonly Shape Shape116 = Object(["createdAt", "deleteAfter", "deletedByIdentityId", "deletedByUserId", "id", "name", "position", "projectId", "slug", "softDeletedAt", "updatedAt"]);
-    private static readonly Shape Shape117 = Object(["environment", "message", "projectId"], ("environment", Shape116));
-    private static readonly Shape Shape118 = Object(["environment"], ("environment", Shape116));
-    private static readonly Shape Shape119 = Object(["activeLockoutAuthMethods", "authMethods", "createdAt", "hasDeleteProtection", "id", "metadata", "name", "orgId", "projectId", "updatedAt"], ("metadata", Shape33));
-    private static readonly Shape Shape120 = Elements(Shape119);
-    private static readonly Shape Shape121 = Object(["identities", "totalCount"], ("identities", Shape120));
-    private static readonly Shape Shape122 = Object(["identity"], ("identity", Shape119));
-    private static readonly Shape Shape123 = Object(["app", "appId", "createdAt", "envId", "environment", "id", "integration", "integrationAuthId", "isActive", "isSynced", "lastSyncJobId", "lastUsed", "metadata", "owner", "path", "region", "scope", "secretPath", "syncMessage", "targetEnvironment", "targetEnvironmentId", "targetService", "targetServiceId", "updatedAt", "url"], ("environment", Shape43));
-    private static readonly Shape Shape124 = Elements(Shape123);
-    private static readonly Shape Shape125 = Object(["integrations"], ("integrations", Shape124));
-    private static readonly Shape Shape126 = Object(["createdAt", "id", "projectId", "updatedAt", "userId"]);
-    private static readonly Shape Shape127 = Elements(Shape126);
-    private static readonly Shape Shape128 = Object(["memberships"], ("memberships", Shape127));
-    private static readonly Shape Shape129 = Object(["customRoleId", "customRoleName", "customRoleSlug", "id", "isTemporary", "role", "temporaryAccessEndTime", "temporaryAccessStartTime", "temporaryMode", "temporaryRange"]);
-    private static readonly Shape Shape130 = Elements(Shape129);
-    private static readonly Shape Shape131 = Object(["authMethods", "email", "firstName", "id", "isEmailVerified", "lastName", "publicKey", "username"]);
-    private static readonly Shape Shape132 = Object(["createdAt", "id", "projectId", "roles", "user", "userId"], ("roles", Shape130), ("user", Shape131));
-    private static readonly Shape Shape133 = Elements(Shape132);
-    private static readonly Shape Shape134 = Object(["memberships"], ("memberships", Shape133));
-    private static readonly Shape Shape135 = Object(["createdAt", "customRoleId", "id", "isTemporary", "projectMembershipId", "role", "temporaryAccessEndTime", "temporaryAccessStartTime", "temporaryMode", "temporaryRange", "updatedAt"]);
-    private static readonly Shape Shape136 = Elements(Shape135);
-    private static readonly Shape Shape137 = Object(["roles"], ("roles", Shape136));
-    private static readonly Shape Shape138 = Object(["id", "projectId", "roles", "user", "userId"], ("roles", Shape130), ("user", Shape131));
-    private static readonly Shape Shape139 = Object(["membership"], ("membership", Shape138));
-    private static readonly Shape Shape140 = Object(["createdAt", "group", "groupId", "id", "projectId", "roles", "updatedAt"], ("group", Shape74), ("roles", Shape76));
-    private static readonly Shape Shape141 = Elements(Shape140);
-    private static readonly Shape Shape142 = Object(["groupMemberships"], ("groupMemberships", Shape141));
-    private static readonly Shape Shape143 = Object(["createdAt", "groupId", "id", "projectId", "updatedAt"]);
-    private static readonly Shape Shape144 = Object(["groupMembership"], ("groupMembership", Shape143));
-    private static readonly Shape Shape145 = Object(["groupMembership"], ("groupMembership", Shape140));
-    private static readonly Shape Shape146 = Object(["activeLockoutAuthMethods", "authMethods", "id", "name", "orgId", "projectId"]);
-    private static readonly Shape Shape147 = Object(["createdAt", "id", "identity", "identityId", "roles", "updatedAt"], ("identity", Shape146), ("roles", Shape130));
-    private static readonly Shape Shape148 = Elements(Shape147);
-    private static readonly Shape Shape149 = Object(["identityMemberships", "totalCount"], ("identityMemberships", Shape148));
-    private static readonly Shape Shape150 = Object(["createdAt", "id", "identityId", "projectId", "updatedAt"]);
-    private static readonly Shape Shape151 = Object(["identityMembership"], ("identityMembership", Shape150));
-    private static readonly Shape Shape152 = Object(["authMethods", "id", "metadata", "name", "orgId", "projectId"], ("metadata", Shape33));
-    private static readonly Shape Shape153 = Object(["createdAt", "id", "identity", "lastLoginAuthMethod", "lastLoginTime", "roles", "updatedAt"], ("identity", Shape152), ("roles", Shape130));
-    private static readonly Shape Shape154 = Object(["identityMembership"], ("identityMembership", Shape153));
-    private static readonly Shape Shape155 = Object(["createdAt", "description", "id", "name", "projectId", "slug", "updatedAt"]);
-    private static readonly Shape Shape156 = Elements(Shape155);
-    private static readonly Shape Shape157 = Object(["roles"], ("roles", Shape156));
-    private static readonly Shape Shape158 = Object(["createdAt", "description", "id", "name", "permissions", "projectId", "slug", "updatedAt"], ("permissions", Shape1));
-    private static readonly Shape Shape159 = Object(["role"], ("role", Shape158));
-    private static readonly Shape Shape160 = Object(["color", "createdAt", "createdBy", "createdByActorType", "id", "projectId", "slug", "updatedAt"]);
-    private static readonly Shape Shape161 = Elements(Shape160);
-    private static readonly Shape Shape162 = Object(["tags"], ("tags", Shape161));
-    private static readonly Shape Shape163 = Object(["tag"], ("tag", Shape160));
-    private static readonly Shape Shape164 = Object(["color", "createdAt", "createdBy", "createdByActorType", "id", "name", "projectId", "slug", "updatedAt"]);
-    private static readonly Shape Shape165 = Object(["tag"], ("tag", Shape164));
-    private static readonly Shape Shape166 = Object(["accessType", "allowExternalEmails", "authorizedEmails", "createdAt", "expiresAfterViews", "expiresAt", "id", "identityId", "lastViewedAt", "name", "orgId", "type", "updatedAt", "userId"]);
-    private static readonly Shape Shape167 = Elements(Shape166);
-    private static readonly Shape Shape168 = Object(["secrets", "totalCount"], ("secrets", Shape167));
-    private static readonly Shape Shape169 = Object(["accessType", "allowExternalEmails", "authorizedEmails", "createdAt", "expiresAfterViews", "expiresAt", "id", "identityId", "lastViewedAt", "name", "orgId", "sharedSecretLink", "type", "updatedAt", "userId"]);
-    private static readonly Shape Shape170 = Object(["accessType", "createdAt", "expiresAfterViews", "expiresAt", "id", "identityId", "isAuthorizedUser", "isPasswordProtected", "lastViewedAt", "name", "orgId", "type", "updatedAt", "userId"]);
-    private static readonly Shape Shape171 = Object(["accessType", "allowExternalEmails", "authorizedEmails", "createdAt", "expiresAfterViews", "expiresAt", "id", "identityId", "lastViewedAt", "name", "orgId", "orgName", "secretValue", "type", "updatedAt", "userId"]);
-    private static readonly Shape Shape172 = Object(["id", "name", "slug", "type"]);
-    private static readonly Shape Shape173 = Object(["customRoleDescription", "customRoleId", "customRoleName", "customRoleSlug", "id", "isTemporary", "role", "temporaryAccessEndTime", "temporaryAccessStartTime", "temporaryMode", "temporaryRange"]);
-    private static readonly Shape Shape174 = Elements(Shape173);
-    private static readonly Shape Shape175 = Object(["createdAt", "id", "identity", "identityId", "lastLoginAuthMethod", "lastLoginTime", "orgId", "project", "projectId", "roles", "scope", "updatedAt"], ("identity", Shape38), ("project", Shape172), ("roles", Shape174));
-    private static readonly Shape Shape176 = Elements(Shape175);
-    private static readonly Shape Shape177 = Object(["identities", "totalCount"], ("identities", Shape176));
-    private static readonly Shape Shape178 = Object(["organization", "project"]);
-    private static readonly Shape Shape179 = Object(["counts"], ("counts", Shape178));
-    private static readonly Shape Shape180 = Object(["createdAt", "id", "isTemporary", "slug", "temporaryAccessEndTime", "temporaryAccessStartTime", "temporaryMode", "temporaryRange", "updatedAt"]);
-    private static readonly Shape Shape181 = Elements(Shape180);
-    private static readonly Shape Shape182 = Object(["privileges"], ("privileges", Shape181));
-    private static readonly Shape Shape183 = Object(["createdAt", "id", "isTemporary", "permissions", "slug", "temporaryAccessEndTime", "temporaryAccessStartTime", "temporaryMode", "temporaryRange", "updatedAt"], ("permissions", Shape1));
-    private static readonly Shape Shape184 = Object(["privilege"], ("privilege", Shape183));
-    private static readonly Shape Shape185 = Object(["createdAt", "id", "inviteEmail", "isActive", "lastInvitedAt", "lastLoginAuthMethod", "lastLoginTime", "orgId", "projectFavorites", "role", "roleId", "status", "updatedAt", "userId"]);
-    private static readonly Shape Shape186 = Elements(Shape185);
-    private static readonly Shape Shape187 = Object(["memberships"], ("memberships", Shape186));
-    private static readonly Shape Shape188 = Object(["id", "inviteEmail", "isActive", "lastInvitedAt", "lastLoginAuthMethod", "lastLoginTime", "orgId", "projectFavorites", "role", "roleId", "status", "user", "userId"], ("user", Shape131));
-    private static readonly Shape Shape189 = Elements(Shape188);
-    private static readonly Shape Shape190 = Object(["users"], ("users", Shape189));
-    private static readonly Shape Shape191 = Object(["membership"], ("membership", Shape185));
-    private static readonly Shape Shape192 = Object(["authMethods", "id", "name", "orgId"]);
-    private static readonly Shape Shape193 = Object(["createdAt", "customRole", "id", "identity", "identityId", "lastLoginAuthMethod", "lastLoginTime", "orgId", "role", "roleId", "updatedAt"], ("customRole", Shape27), ("identity", Shape192));
-    private static readonly Shape Shape194 = Elements(Shape193);
-    private static readonly Shape Shape195 = Object(["identityMemberships", "totalCount"], ("identityMemberships", Shape194));
-    private static readonly Shape Shape196 = Object(["metadata", "type"]);
-    private static readonly Shape Shape197 = Object(["class", "metadata", "type"]);
-    private static readonly Shape Shape198 = Object(["actor", "createdAt", "event", "expiresAt", "id", "ipAddress", "orgId", "projectId", "projectName", "updatedAt", "userAgent", "userAgentType"], ("actor", Shape196), ("event", Shape197));
+    internal sealed record ResponseContract(Shape Closure, ManagementResponseUuids.Shape? Uuids,
+        ManagementResponseDates.Shape? Dates);
+
+    private static class Common
+    {
+        internal static readonly Shape Permission = Object(["action", "conditions", "inverted", "subject"]);
+        internal static readonly Shape Permissions = Elements(Permission);
+        internal static readonly Shape Identifier = Object(["id"]);
+        internal static readonly Shape NamedIdentity = Object(["id", "name"]);
+        internal static readonly Shape UserSummary = Object(["email", "firstName", "id", "lastName", "username"]);
+        internal static readonly Shape CustomRole = Object(["description", "id", "name", "permissions", "slug"]);
+        internal static readonly Shape MetadataEntry = Object(["id", "key", "value"]);
+        internal static readonly Shape Metadata = Elements(MetadataEntry);
+        internal static readonly Shape NamedSlug = Object(["id", "name", "slug"]);
+        internal static readonly Shape Message = Object(["message"]);
+        internal static readonly Shape NamedSlugs = Elements(NamedSlug);
+        internal static readonly Shape NamedIdentities = Elements(NamedIdentity);
+        internal static readonly Shape GroupSummary = Object(["id", "name", "orgId", "slug"]);
+        internal static readonly Shape MembershipRole = Object(["createdAt", "customRoleId", "customRoleName", "customRoleSlug", "id", "isTemporary", "role", "temporaryAccessEndTime", "temporaryAccessStartTime", "temporaryMode", "temporaryRange", "updatedAt"]);
+        internal static readonly Shape MembershipRoles = Elements(MembershipRole);
+        internal static readonly Shape TemporaryRole = Object(["customRoleId", "customRoleName", "customRoleSlug", "id", "isTemporary", "role", "temporaryAccessEndTime", "temporaryAccessStartTime", "temporaryMode", "temporaryRange"]);
+        internal static readonly Shape TemporaryRoles = Elements(TemporaryRole);
+        internal static readonly Shape MembershipUser = Object(["authMethods", "email", "firstName", "id", "isEmailVerified", "lastName", "publicKey", "username"]);
+    }
+
+    private static class IdentityPrivileges
+    {
+        internal static readonly Shape MembershipPrivilege = Object(["createdAt", "id", "isTemporary", "permissions", "projectMembershipId", "slug", "temporaryAccessEndTime", "temporaryAccessStartTime", "temporaryMode", "temporaryRange", "updatedAt"], ("permissions", Common.Permissions));
+        internal static readonly Shape MembershipPrivilegeEnvelope = Object(["privilege"], ("privilege", MembershipPrivilege));
+        internal static readonly Shape MembershipPrivilegeRows = Elements(MembershipPrivilege);
+        internal static readonly Shape MembershipPrivilegePage = Object(["privileges"], ("privileges", MembershipPrivilegeRows));
+        internal static readonly Shape ProjectPrivilegeSummary = Object(["createdAt", "id", "isTemporary", "slug", "temporaryAccessEndTime", "temporaryAccessStartTime", "temporaryMode", "temporaryRange", "updatedAt"]);
+        internal static readonly Shape ProjectPrivilegeRows = Elements(ProjectPrivilegeSummary);
+        internal static readonly Shape ProjectPrivilegePage = Object(["privileges"], ("privileges", ProjectPrivilegeRows));
+        internal static readonly Shape ProjectPrivilege = Object(["createdAt", "id", "isTemporary", "permissions", "slug", "temporaryAccessEndTime", "temporaryAccessStartTime", "temporaryMode", "temporaryRange", "updatedAt"], ("permissions", Common.Permissions));
+        internal static readonly Shape ProjectPrivilegeEnvelope = Object(["privilege"], ("privilege", ProjectPrivilege));
+
+        internal static readonly ResponseContract MembershipPrivilegeEnvelopeResponse = new(MembershipPrivilegeEnvelope, ManagementResponseUuids.PrivilegeEnvelope, ManagementResponseDates.PrivilegeEnvelope);
+        internal static readonly ResponseContract MembershipPrivilegePageResponse = new(MembershipPrivilegePage, ManagementResponseUuids.PrivilegePage, ManagementResponseDates.PrivilegePage);
+        internal static readonly ResponseContract ProjectPrivilegePageResponse = new(ProjectPrivilegePage, ManagementResponseUuids.ProjectPrivilegePage, ManagementResponseDates.PrivilegePage);
+        internal static readonly ResponseContract ProjectPrivilegeEnvelopeResponse = new(ProjectPrivilegeEnvelope, ManagementResponseUuids.ProjectPrivilegeEnvelope, ManagementResponseDates.PrivilegeEnvelope);
+    }
+
+    private static class Groups
+    {
+        internal static readonly Shape InventoryGroup = Object(["createdAt", "id", "name", "orgId", "role", "roleId", "slug", "updatedAt"]);
+        internal static readonly Shape InventoryRows = Elements(InventoryGroup);
+        internal static readonly Shape MutationGroup = Object(["createdAt", "id", "name", "orgId", "slug", "updatedAt"]);
+        internal static readonly Shape DetailGroup = Object(["createdAt", "customRoleSlug", "id", "name", "orgId", "role", "roleId", "slug", "updatedAt"]);
+        internal static readonly Shape MachineIdentity = Object(["id", "isPartOfGroup", "joinedGroupAt", "name"]);
+        internal static readonly Shape MachineIdentityRows = Elements(MachineIdentity);
+        internal static readonly Shape MachineIdentityPage = Object(["machineIdentities", "totalCount"], ("machineIdentities", MachineIdentityRows));
+        internal static readonly Shape MachineMember = Object(["id", "joinedGroupAt", "machineIdentity", "type"], ("machineIdentity", Common.NamedIdentity));
+        internal static readonly Shape UserMember = Object(["id", "joinedGroupAt", "type", "user"], ("user", Common.UserSummary));
+        internal static readonly Shape MemberBranch = Branch("type", ("machineIdentity", MachineMember), ("user", UserMember));
+        internal static readonly Shape MemberRows = Elements(MemberBranch);
+        internal static readonly Shape MemberPage = Object(["members", "totalCount"], ("members", MemberRows));
+        internal static readonly Shape Project = Object(["description", "id", "joinedGroupAt", "name", "slug", "type"]);
+        internal static readonly Shape ProjectRows = Elements(Project);
+        internal static readonly Shape ProjectPage = Object(["projects", "totalCount"], ("projects", ProjectRows));
+        internal static readonly Shape User = Object(["email", "firstName", "id", "isPartOfGroup", "joinedGroupAt", "lastName", "username"]);
+        internal static readonly Shape UserRows = Elements(User);
+        internal static readonly Shape UserPage = Object(["totalCount", "users"], ("users", UserRows));
+
+        internal static readonly ResponseContract InventoryRowsResponse = new(InventoryRows, ManagementResponseUuids.IdAndOrganizationRows, ManagementResponseDates.CreatedAndUpdatedRows);
+        internal static readonly ResponseContract MutationGroupResponse = new(MutationGroup, ManagementResponseUuids.IdAndOrganization, ManagementResponseDates.CreatedAndUpdated);
+        internal static readonly ResponseContract DetailGroupResponse = new(DetailGroup, ManagementResponseUuids.IdAndOrganization, ManagementResponseDates.CreatedAndUpdated);
+        internal static readonly ResponseContract MachineIdentityPageResponse = new(MachineIdentityPage, ManagementResponseUuids.MachineIdentityPage, ManagementResponseDates.MachineIdentityPage);
+        internal static readonly ResponseContract MachineIdentityMutationResponse = new(Common.Identifier, null, null);
+        internal static readonly ResponseContract MemberPageResponse = new(MemberPage, ManagementResponseUuids.MemberPage, ManagementResponseDates.MemberPage);
+        internal static readonly ResponseContract ProjectPageResponse = new(ProjectPage, null, ManagementResponseDates.GroupProjects);
+        internal static readonly ResponseContract UserPageResponse = new(UserPage, ManagementResponseUuids.UserPage, ManagementResponseDates.GroupUsers);
+        internal static readonly ResponseContract UserMutationResponse = new(Common.UserSummary, ManagementResponseUuids.Id, null);
+    }
+
+    private static class Identities
+    {
+        internal static readonly Shape ListedIdentity = Object(["authMethods", "hasDeleteProtection", "id", "name"]);
+        internal static readonly Shape ListedMembership = Object(["createdAt", "customRole", "id", "identity", "identityId", "lastLoginAuthMethod", "lastLoginTime", "orgId", "role", "roleId", "updatedAt"], ("customRole", Common.CustomRole), ("identity", ListedIdentity));
+        internal static readonly Shape ListedMembershipRows = Elements(ListedMembership);
+        internal static readonly Shape ListPage = Object(["identities", "totalCount"], ("identities", ListedMembershipRows));
+        internal static readonly Shape CreatedIdentity = Object(["authMethod", "authMethods", "createdAt", "hasDeleteProtection", "id", "metadata", "name", "orgId", "projectId", "updatedAt"], ("metadata", Common.Metadata));
+        internal static readonly Shape CreatedEnvelope = Object(["identity"], ("identity", CreatedIdentity));
+        internal static readonly Shape DeletedIdentity = Object(["authMethod", "createdAt", "hasDeleteProtection", "id", "name", "orgId", "projectId", "updatedAt"]);
+        internal static readonly Shape DeletedEnvelope = Object(["identity"], ("identity", DeletedIdentity));
+        internal static readonly Shape LockoutIdentity = Object(["activeLockoutAuthMethods", "authMethods", "hasDeleteProtection", "id", "name", "orgId"]);
+        internal static readonly Shape DetailedMembership = Object(["createdAt", "customRole", "id", "identity", "identityId", "lastLoginAuthMethod", "lastLoginTime", "metadata", "orgId", "role", "roleId", "updatedAt"], ("customRole", Common.CustomRole), ("identity", LockoutIdentity), ("metadata", Common.Metadata));
+        internal static readonly Shape DetailEnvelope = Object(["identity"], ("identity", DetailedMembership));
+        internal static readonly Shape UpdatedIdentity = Object(["authMethod", "createdAt", "hasDeleteProtection", "id", "metadata", "name", "orgId", "projectId", "updatedAt"], ("metadata", Common.Metadata));
+        internal static readonly Shape UpdatedEnvelope = Object(["identity"], ("identity", UpdatedIdentity));
+        internal static readonly Shape OrganizationEnvelope = Object(["organization"], ("organization", Common.NamedSlug));
+        internal static readonly Shape DetailsEnvelope = Object(["identityDetails"], ("identityDetails", OrganizationEnvelope));
+        internal static readonly Shape ProjectIdentity = Object(["activeLockoutAuthMethods", "authMethods", "createdAt", "hasDeleteProtection", "id", "metadata", "name", "orgId", "projectId", "updatedAt"], ("metadata", Common.Metadata));
+        internal static readonly Shape ProjectRows = Elements(ProjectIdentity);
+        internal static readonly Shape ProjectListPage = Object(["identities", "totalCount"], ("identities", ProjectRows));
+        internal static readonly Shape ProjectEnvelope = Object(["identity"], ("identity", ProjectIdentity));
+
+        internal static readonly ResponseContract ListPageResponse = new(ListPage, ManagementResponseUuids.IdentityPage, ManagementResponseDates.IdentityPage);
+        internal static readonly ResponseContract CreatedEnvelopeResponse = new(CreatedEnvelope, ManagementResponseUuids.IdentityEnvelope, ManagementResponseDates.IdentityEnvelope);
+        internal static readonly ResponseContract DeletedEnvelopeResponse = new(DeletedEnvelope, ManagementResponseUuids.IdentityEnvelope, ManagementResponseDates.IdentityEnvelope);
+        internal static readonly ResponseContract DetailEnvelopeResponse = new(DetailEnvelope, ManagementResponseUuids.DetailedIdentityEnvelope, ManagementResponseDates.DetailedIdentityEnvelope);
+        internal static readonly ResponseContract UpdatedEnvelopeResponse = new(UpdatedEnvelope, ManagementResponseUuids.IdentityEnvelope, ManagementResponseDates.IdentityEnvelope);
+        internal static readonly ResponseContract DetailsEnvelopeResponse = new(DetailsEnvelope, null, null);
+        internal static readonly ResponseContract ProjectListPageResponse = new(ProjectListPage, ManagementResponseUuids.ProjectIdentities, ManagementResponseDates.ProjectIdentities);
+        internal static readonly ResponseContract ProjectEnvelopeResponse = new(ProjectEnvelope, ManagementResponseUuids.IdentityEnvelope, ManagementResponseDates.IdentityEnvelope);
+    }
+
+    private static class IdentityTemplates
+    {
+        internal static readonly Shape KubernetesFields = Object(["allowedAudience", "caCert", "gatewayId", "gatewayPoolId", "hasTokenReviewerJwt", "kubernetesHost", "tokenReviewMode", "verifyTlsCertificate"]);
+        internal static readonly Shape Kubernetes = Object(["authMethod", "createdAt", "id", "name", "orgId", "templateFields", "updatedAt"], ("templateFields", KubernetesFields));
+        internal static readonly Shape LdapFields = Object(["bindDN", "hasBindPass", "ldapCaCertificate", "searchBase", "url"]);
+        internal static readonly Shape Ldap = Object(["authMethod", "createdAt", "id", "name", "orgId", "templateFields", "updatedAt"], ("templateFields", LdapFields));
+        internal static readonly Shape OidcFields = Object(["boundAudiences", "boundIssuer", "caCert", "oidcDiscoveryUrl"]);
+        internal static readonly Shape Oidc = Object(["authMethod", "createdAt", "id", "name", "orgId", "templateFields", "updatedAt"], ("templateFields", OidcFields));
+        internal static readonly Shape AuthMethod = Branch("authMethod", ("kubernetes", Kubernetes), ("ldap", Ldap), ("oidc", Oidc));
+        internal static readonly Shape Rows = Elements(AuthMethod);
+        internal static readonly Shape DeletedUsage = Object(["authId", "identityId", "identityName"]);
+        internal static readonly Shape DeletedUsageRows = Elements(DeletedUsage);
+        internal static readonly Shape Usage = Object(["identityId", "identityName"]);
+        internal static readonly Shape UsageRows = Elements(Usage);
+        internal static readonly Shape SearchPage = Object(["templates", "totalCount"], ("templates", Rows));
+
+        internal static readonly ResponseContract RowsResponse = new(Rows, ManagementResponseUuids.TemplateRows, ManagementResponseDates.TemplateRows);
+        internal static readonly ResponseContract AuthMethodResponse = new(AuthMethod, ManagementResponseUuids.TemplateBranch, ManagementResponseDates.TemplateBranch);
+        internal static readonly ResponseContract DeleteResponse = new(Common.Message, null, null);
+        internal static readonly ResponseContract DeletedUsageRowsResponse = new(DeletedUsageRows, null, null);
+        internal static readonly ResponseContract UsageRowsResponse = new(UsageRows, null, null);
+        internal static readonly ResponseContract SearchPageResponse = new(SearchPage, ManagementResponseUuids.TemplateSearchPage, ManagementResponseDates.TemplateSearchPage);
+    }
+
+    private static class Audit
+    {
+        internal static readonly Shape ClassSetting = Object(["eventClass", "isEnabled"]);
+        internal static readonly Shape ClassSettings = Elements(ClassSetting);
+        internal static readonly Shape Settings = Object(["eventClasses", "shouldUseNewPrivilegeSystem"], ("eventClasses", ClassSettings));
+        internal static readonly Shape SettingsEnvelope = Object(["auditLogSettings"], ("auditLogSettings", Settings));
+        internal static readonly Shape Envelope = Object(["auditLogs"]);
+        internal static readonly Shape Actor = Object(["metadata", "type"]);
+        internal static readonly Shape Event = Object(["class", "metadata", "type"]);
+        internal static readonly Shape Row = Object(["actor", "createdAt", "event", "expiresAt", "id", "ipAddress", "orgId", "projectId", "projectName", "updatedAt", "userAgent", "userAgentType"], ("actor", Actor), ("event", Event));
+
+        internal static readonly ResponseContract SettingsEnvelopeResponse = new(SettingsEnvelope, null, null);
+        internal static readonly ResponseContract EnvelopeResponse = new(Envelope, null, null);
+        internal static readonly ResponseContract RowResponse = new(Row, ManagementResponseUuids.IdAndOrganization, ManagementResponseDates.Expiring);
+    }
+
+    private static class OrganizationAccess
+    {
+        internal static readonly Shape AvailableGroups = Object(["groups"], ("groups", Common.NamedSlugs));
+        internal static readonly Shape AvailableIdentities = Object(["identities"], ("identities", Common.NamedIdentities));
+
+        internal static readonly ResponseContract AvailableGroupsResponse = new(AvailableGroups, ManagementResponseUuids.AvailableGroups, null);
+        internal static readonly ResponseContract AvailableIdentitiesResponse = new(AvailableIdentities, ManagementResponseUuids.AvailableIdentities, null);
+    }
+
+    private static class OrganizationRoles
+    {
+        internal static readonly Shape InventoryRole = Object(["createdAt", "description", "id", "name", "orgId", "slug", "updatedAt"]);
+        internal static readonly Shape InventoryRows = Elements(InventoryRole);
+        internal static readonly Shape InventoryEnvelope = Object(["roles"], ("roles", InventoryRows));
+        internal static readonly Shape Role = Object(["createdAt", "description", "id", "name", "orgId", "permissions", "slug", "updatedAt"], ("permissions", Common.Permissions));
+        internal static readonly Shape Envelope = Object(["role"], ("role", Role));
+
+        internal static readonly ResponseContract InventoryEnvelopeResponse = new(InventoryEnvelope, ManagementResponseUuids.OrganizationRoles, null);
+        internal static readonly ResponseContract EnvelopeResponse = new(Envelope, ManagementResponseUuids.OrganizationRole, null);
+    }
+
+    private static class Memberships
+    {
+        internal static readonly Shape OrganizationGroup = Object(["createdAt", "group", "groupId", "id", "roles", "updatedAt"], ("group", Common.GroupSummary), ("roles", Common.MembershipRoles));
+        internal static readonly Shape OrganizationGroupRows = Elements(OrganizationGroup);
+        internal static readonly Shape OrganizationGroupPage = Object(["groupMemberships", "totalCount"], ("groupMemberships", OrganizationGroupRows));
+        internal static readonly Shape RemovedOrganizationGroup = Object(["createdAt", "groupId", "id", "orgId", "updatedAt"]);
+        internal static readonly Shape RemovedOrganizationGroupEnvelope = Object(["groupMembership"], ("groupMembership", RemovedOrganizationGroup));
+        internal static readonly Shape OrganizationGroupEnvelope = Object(["groupMembership"], ("groupMembership", OrganizationGroup));
+        internal static readonly Shape ProjectUserMutation = Object(["createdAt", "id", "projectId", "updatedAt", "userId"]);
+        internal static readonly Shape ProjectUserMutationRows = Elements(ProjectUserMutation);
+        internal static readonly Shape ProjectUserMutationEnvelope = Object(["memberships"], ("memberships", ProjectUserMutationRows));
+        internal static readonly Shape ProjectUser = Object(["createdAt", "id", "projectId", "roles", "user", "userId"], ("roles", Common.TemporaryRoles), ("user", Common.MembershipUser));
+        internal static readonly Shape ProjectUserRows = Elements(ProjectUser);
+        internal static readonly Shape ProjectUserEnvelope = Object(["memberships"], ("memberships", ProjectUserRows));
+        internal static readonly Shape UpdatedRole = Object(["createdAt", "customRoleId", "id", "isTemporary", "projectMembershipId", "role", "temporaryAccessEndTime", "temporaryAccessStartTime", "temporaryMode", "temporaryRange", "updatedAt"]);
+        internal static readonly Shape UpdatedRoles = Elements(UpdatedRole);
+        internal static readonly Shape UpdatedRolesEnvelope = Object(["roles"], ("roles", UpdatedRoles));
+        internal static readonly Shape ProjectUserDetails = Object(["id", "projectId", "roles", "user", "userId"], ("roles", Common.TemporaryRoles), ("user", Common.MembershipUser));
+        internal static readonly Shape ProjectUserDetailsEnvelope = Object(["membership"], ("membership", ProjectUserDetails));
+        internal static readonly Shape ProjectGroup = Object(["createdAt", "group", "groupId", "id", "projectId", "roles", "updatedAt"], ("group", Common.GroupSummary), ("roles", Common.MembershipRoles));
+        internal static readonly Shape ProjectGroupRows = Elements(ProjectGroup);
+        internal static readonly Shape ProjectGroupList = Object(["groupMemberships"], ("groupMemberships", ProjectGroupRows));
+        internal static readonly Shape RemovedProjectGroup = Object(["createdAt", "groupId", "id", "projectId", "updatedAt"]);
+        internal static readonly Shape RemovedProjectGroupEnvelope = Object(["groupMembership"], ("groupMembership", RemovedProjectGroup));
+        internal static readonly Shape ProjectGroupEnvelope = Object(["groupMembership"], ("groupMembership", ProjectGroup));
+        internal static readonly Shape ProjectIdentity = Object(["activeLockoutAuthMethods", "authMethods", "id", "name", "orgId", "projectId"]);
+        internal static readonly Shape ProjectIdentityMembership = Object(["createdAt", "id", "identity", "identityId", "roles", "updatedAt"], ("identity", ProjectIdentity), ("roles", Common.TemporaryRoles));
+        internal static readonly Shape ProjectIdentityRows = Elements(ProjectIdentityMembership);
+        internal static readonly Shape ProjectIdentityPage = Object(["identityMemberships", "totalCount"], ("identityMemberships", ProjectIdentityRows));
+        internal static readonly Shape MutatedProjectIdentity = Object(["createdAt", "id", "identityId", "projectId", "updatedAt"]);
+        internal static readonly Shape ProjectIdentityMutationEnvelope = Object(["identityMembership"], ("identityMembership", MutatedProjectIdentity));
+        internal static readonly Shape DetailedProjectIdentity = Object(["authMethods", "id", "metadata", "name", "orgId", "projectId"], ("metadata", Common.Metadata));
+        internal static readonly Shape DetailedProjectIdentityMembership = Object(["createdAt", "id", "identity", "lastLoginAuthMethod", "lastLoginTime", "roles", "updatedAt"], ("identity", DetailedProjectIdentity), ("roles", Common.TemporaryRoles));
+        internal static readonly Shape ProjectIdentityEnvelope = Object(["identityMembership"], ("identityMembership", DetailedProjectIdentityMembership));
+        internal static readonly Shape OrganizationUser = Object(["createdAt", "id", "inviteEmail", "isActive", "lastInvitedAt", "lastLoginAuthMethod", "lastLoginTime", "orgId", "projectFavorites", "role", "roleId", "status", "updatedAt", "userId"]);
+        internal static readonly Shape OrganizationUserRows = Elements(OrganizationUser);
+        internal static readonly Shape OrganizationUserMutationEnvelope = Object(["memberships"], ("memberships", OrganizationUserRows));
+        internal static readonly Shape OrganizationUserDetails = Object(["id", "inviteEmail", "isActive", "lastInvitedAt", "lastLoginAuthMethod", "lastLoginTime", "orgId", "projectFavorites", "role", "roleId", "status", "user", "userId"], ("user", Common.MembershipUser));
+        internal static readonly Shape OrganizationUserDetailRows = Elements(OrganizationUserDetails);
+        internal static readonly Shape OrganizationUserPage = Object(["users"], ("users", OrganizationUserDetailRows));
+        internal static readonly Shape OrganizationUserEnvelope = Object(["membership"], ("membership", OrganizationUser));
+        internal static readonly Shape OrganizationIdentity = Object(["authMethods", "id", "name", "orgId"]);
+        internal static readonly Shape OrganizationIdentityMembership = Object(["createdAt", "customRole", "id", "identity", "identityId", "lastLoginAuthMethod", "lastLoginTime", "orgId", "role", "roleId", "updatedAt"], ("customRole", Common.CustomRole), ("identity", OrganizationIdentity));
+        internal static readonly Shape OrganizationIdentityRows = Elements(OrganizationIdentityMembership);
+        internal static readonly Shape OrganizationIdentityPage = Object(["identityMemberships", "totalCount"], ("identityMemberships", OrganizationIdentityRows));
+
+        internal static readonly ResponseContract OrganizationGroupPageResponse = new(OrganizationGroupPage, ManagementResponseUuids.GroupMembershipPage, ManagementResponseDates.GroupMembershipPage);
+        internal static readonly ResponseContract RemovedOrganizationGroupEnvelopeResponse = new(RemovedOrganizationGroupEnvelope, ManagementResponseUuids.RemovedGroupEnvelope, ManagementResponseDates.RemovedGroupEnvelope);
+        internal static readonly ResponseContract OrganizationGroupEnvelopeResponse = new(OrganizationGroupEnvelope, ManagementResponseUuids.GroupMembershipEnvelope, ManagementResponseDates.GroupMembershipEnvelope);
+        internal static readonly ResponseContract ProjectUserMutationEnvelopeResponse = new(ProjectUserMutationEnvelope, ManagementResponseUuids.UserMembershipMutationEnvelope, ManagementResponseDates.UserMembershipMutations);
+        internal static readonly ResponseContract ProjectUserEnvelopeResponse = new(ProjectUserEnvelope, ManagementResponseUuids.UserMembershipPage, ManagementResponseDates.UserMembershipPage);
+        internal static readonly ResponseContract UpdatedRolesEnvelopeResponse = new(UpdatedRolesEnvelope, ManagementResponseUuids.MembershipRolesEnvelope, ManagementResponseDates.UpdatedMembershipRoles);
+        internal static readonly ResponseContract ProjectUserDetailsEnvelopeResponse = new(ProjectUserDetailsEnvelope, ManagementResponseUuids.UserMembershipEnvelope, ManagementResponseDates.UserMembershipEnvelope);
+        internal static readonly ResponseContract ProjectGroupListResponse = new(ProjectGroupList, ManagementResponseUuids.GroupMembershipPage, ManagementResponseDates.GroupMembershipPage);
+        internal static readonly ResponseContract RemovedProjectGroupEnvelopeResponse = new(RemovedProjectGroupEnvelope, ManagementResponseUuids.RemovedGroupEnvelope, ManagementResponseDates.RemovedGroupEnvelope);
+        internal static readonly ResponseContract ProjectGroupEnvelopeResponse = new(ProjectGroupEnvelope, ManagementResponseUuids.GroupMembershipEnvelope, ManagementResponseDates.GroupMembershipEnvelope);
+        internal static readonly ResponseContract ProjectIdentityPageResponse = new(ProjectIdentityPage, ManagementResponseUuids.ProjectIdentityPage, ManagementResponseDates.IdentityMembershipPage);
+        internal static readonly ResponseContract ProjectIdentityMutationEnvelopeResponse = new(ProjectIdentityMutationEnvelope, ManagementResponseUuids.IdentityMembershipMutationEnvelope, ManagementResponseDates.IdentityMembershipMutationEnvelope);
+        internal static readonly ResponseContract ProjectIdentityEnvelopeResponse = new(ProjectIdentityEnvelope, ManagementResponseUuids.ProjectIdentityEnvelope, ManagementResponseDates.IdentityMembershipEnvelope);
+        internal static readonly ResponseContract OrganizationUserMutationEnvelopeResponse = new(OrganizationUserMutationEnvelope, ManagementResponseUuids.OrganizationUserMembershipPage, ManagementResponseDates.UserMembershipMutations);
+        internal static readonly ResponseContract OrganizationUserPageResponse = new(OrganizationUserPage, ManagementResponseUuids.OrganizationUserPage, null);
+        internal static readonly ResponseContract OrganizationUserEnvelopeResponse = new(OrganizationUserEnvelope, ManagementResponseUuids.OrganizationUserMembershipEnvelope, ManagementResponseDates.OrganizationUserMembershipEnvelope);
+        internal static readonly ResponseContract OrganizationIdentityPageResponse = new(OrganizationIdentityPage, ManagementResponseUuids.OrganizationIdentityPage, ManagementResponseDates.OrganizationIdentityPage);
+    }
+
+    private static class ProjectTemplates
+    {
+        internal static readonly Shape Environment = Object(["name", "position", "slug"]);
+        internal static readonly Shape Environments = Elements(Environment);
+        internal static readonly Shape Group = Object(["groupSlug", "roles"]);
+        internal static readonly Shape Groups = Elements(Group);
+        internal static readonly Shape Identity = Object(["identityId", "identityName", "roles"]);
+        internal static readonly Shape Identities = Elements(Identity);
+        internal static readonly Shape ManagedIdentity = Object(["name", "roles"]);
+        internal static readonly Shape ManagedIdentities = Elements(ManagedIdentity);
+        internal static readonly Shape Role = Object(["name", "permissions", "slug"], ("permissions", Common.Permissions));
+        internal static readonly Shape Roles = Elements(Role);
+        internal static readonly Shape User = Object(["roles", "username"]);
+        internal static readonly Shape Users = Elements(User);
+        internal static readonly Shape Template = Object(["createdAt", "description", "environments", "groups", "id", "identities", "name", "orgId", "projectManagedIdentities", "roles", "type", "updatedAt", "users"], ("environments", Environments), ("groups", Groups), ("identities", Identities), ("projectManagedIdentities", ManagedIdentities), ("roles", Roles), ("users", Users));
+        internal static readonly Shape Rows = Elements(Template);
+        internal static readonly Shape ListEnvelope = Object(["projectTemplates"], ("projectTemplates", Rows));
+        internal static readonly Shape Envelope = Object(["projectTemplate"], ("projectTemplate", Template));
+
+        internal static readonly ResponseContract ListEnvelopeResponse = new(ListEnvelope, ManagementResponseUuids.ProjectTemplates, ManagementResponseDates.ProjectTemplates);
+        internal static readonly ResponseContract EnvelopeResponse = new(Envelope, ManagementResponseUuids.ProjectTemplate, ManagementResponseDates.ProjectTemplate);
+    }
+
+    private static class Projects
+    {
+        internal static readonly Shape DeletingIdentity = Object(["id", "name", "type"]);
+        internal static readonly Shape DeletingUser = Object(["email", "firstName", "id", "lastName", "type", "username"]);
+        internal static readonly Shape DeletingActor = Branch("type", ("identity", DeletingIdentity), ("user", DeletingUser));
+        internal static readonly Shape DeletedEnvironment = Object(["deleteAfter", "deletedBy", "id", "name", "slug", "softDeletedAt"], ("deletedBy", DeletingActor));
+        internal static readonly Shape DeletedEnvironments = Elements(DeletedEnvironment);
+        internal static readonly Shape Role = Object(["createdAt", "description", "id", "name", "permissions", "projectId", "slug", "updatedAt", "version"]);
+        internal static readonly Shape Roles = Elements(Role);
+        internal static readonly Shape InventoryProject = Object(["_id", "auditLogsRetentionDays", "autoCapitalization", "createdAt", "defaultProduct", "deletedEnvironments", "description", "enforceEncryptedSecretManagerSecretMetadata", "environments", "hasDeleteProtection", "id", "isLegacyAdditionalPrivilegesEnabled", "kmsCertificateKeyId", "kmsSecretManagerKeyId", "name", "orgId", "pitVersionLimit", "roles", "secretBlindIndexEnabled", "secretDetectionIgnoreValues", "secretSharing", "showSnapshotsLegacy", "slug", "type", "updatedAt", "upgradeStatus", "version"], ("deletedEnvironments", DeletedEnvironments), ("environments", Common.NamedSlugs), ("roles", Roles));
+        internal static readonly Shape InventoryRows = Elements(InventoryProject);
+        internal static readonly Shape ListEnvelope = Object(["projects"], ("projects", InventoryRows));
+        internal static readonly Shape DetailedProject = Object(["_id", "auditLogsRetentionDays", "autoCapitalization", "createdAt", "defaultProduct", "deletedEnvironments", "description", "enforceEncryptedSecretManagerSecretMetadata", "environments", "hasDeleteProtection", "id", "isLegacyAdditionalPrivilegesEnabled", "kmsCertificateKeyId", "kmsSecretManagerKeyId", "name", "orgId", "pitVersionLimit", "secretBlindIndexEnabled", "secretDetectionIgnoreValues", "secretSharing", "showSnapshotsLegacy", "slug", "type", "updatedAt", "upgradeStatus", "version"], ("deletedEnvironments", DeletedEnvironments), ("environments", Common.NamedSlugs));
+        internal static readonly Shape DetailEnvelope = Object(["project"], ("project", DetailedProject));
+        internal static readonly Shape MutatedProject = Object(["auditLogsRetentionDays", "autoCapitalization", "createdAt", "defaultProduct", "description", "enforceEncryptedSecretManagerSecretMetadata", "hasDeleteProtection", "id", "isLegacyAdditionalPrivilegesEnabled", "kmsCertificateKeyId", "kmsSecretManagerKeyId", "name", "orgId", "pitVersionLimit", "secretBlindIndexEnabled", "secretDetectionIgnoreValues", "secretSharing", "showSnapshotsLegacy", "slug", "type", "updatedAt", "upgradeStatus", "version"]);
+        internal static readonly Shape MutationEnvelope = Object(["project"], ("project", MutatedProject));
+        internal static readonly Shape Authorization = Object(["accountId", "createdAt", "id", "integration", "metadata", "namespace", "projectId", "teamId", "updatedAt", "url"]);
+        internal static readonly Shape AuthorizationRows = Elements(Authorization);
+        internal static readonly Shape AuthorizationEnvelope = Object(["authorizations"], ("authorizations", AuthorizationRows));
+        internal static readonly Shape Environment = Object(["createdAt", "deleteAfter", "deletedByIdentityId", "deletedByUserId", "id", "name", "position", "projectId", "slug", "softDeletedAt", "updatedAt"]);
+        internal static readonly Shape EnvironmentMutationEnvelope = Object(["environment", "message", "projectId"], ("environment", Environment));
+        internal static readonly Shape EnvironmentEnvelope = Object(["environment"], ("environment", Environment));
+        internal static readonly Shape Integration = Object(["app", "appId", "createdAt", "envId", "environment", "id", "integration", "integrationAuthId", "isActive", "isSynced", "lastSyncJobId", "lastUsed", "metadata", "owner", "path", "region", "scope", "secretPath", "syncMessage", "targetEnvironment", "targetEnvironmentId", "targetService", "targetServiceId", "updatedAt", "url"], ("environment", Common.NamedSlug));
+        internal static readonly Shape IntegrationRows = Elements(Integration);
+        internal static readonly Shape IntegrationEnvelope = Object(["integrations"], ("integrations", IntegrationRows));
+
+        internal static readonly ResponseContract ListEnvelopeResponse = new(ListEnvelope, ManagementResponseUuids.ProjectPage, ManagementResponseDates.ProjectPage);
+        internal static readonly ResponseContract DetailEnvelopeResponse = new(DetailEnvelope, ManagementResponseUuids.ProjectEnvelope, ManagementResponseDates.ProjectEnvelope);
+        internal static readonly ResponseContract MutationEnvelopeResponse = new(MutationEnvelope, ManagementResponseUuids.ProjectEnvelope, ManagementResponseDates.ProjectMutationEnvelope);
+        internal static readonly ResponseContract AuthorizationEnvelopeResponse = new(AuthorizationEnvelope, ManagementResponseUuids.Authorizations, ManagementResponseDates.Authorizations);
+        internal static readonly ResponseContract EnvironmentMutationEnvelopeResponse = new(EnvironmentMutationEnvelope, ManagementResponseUuids.EnvironmentEnvelope, ManagementResponseDates.EnvironmentEnvelope);
+        internal static readonly ResponseContract EnvironmentEnvelopeResponse = new(EnvironmentEnvelope, ManagementResponseUuids.EnvironmentEnvelope, ManagementResponseDates.EnvironmentEnvelope);
+        internal static readonly ResponseContract IntegrationEnvelopeResponse = new(IntegrationEnvelope, ManagementResponseUuids.Integrations, ManagementResponseDates.Integrations);
+        internal static readonly ResponseContract DetailedProjectResponse = new(DetailedProject, ManagementResponseUuids.Project, ManagementResponseDates.DetailedProject);
+    }
+
+    private static class ProjectRoles
+    {
+        internal static readonly Shape InventoryRole = Object(["createdAt", "description", "id", "name", "projectId", "slug", "updatedAt"]);
+        internal static readonly Shape InventoryRows = Elements(InventoryRole);
+        internal static readonly Shape InventoryEnvelope = Object(["roles"], ("roles", InventoryRows));
+        internal static readonly Shape Role = Object(["createdAt", "description", "id", "name", "permissions", "projectId", "slug", "updatedAt"], ("permissions", Common.Permissions));
+        internal static readonly Shape Envelope = Object(["role"], ("role", Role));
+
+        internal static readonly ResponseContract InventoryEnvelopeResponse = new(InventoryEnvelope, ManagementResponseUuids.ProjectRoles, null);
+        internal static readonly ResponseContract EnvelopeResponse = new(Envelope, ManagementResponseUuids.ProjectRole, null);
+    }
+
+    private static class Tags
+    {
+        internal static readonly Shape Tag = Object(["color", "createdAt", "createdBy", "createdByActorType", "id", "projectId", "slug", "updatedAt"]);
+        internal static readonly Shape Rows = Elements(Tag);
+        internal static readonly Shape ListEnvelope = Object(["tags"], ("tags", Rows));
+        internal static readonly Shape Envelope = Object(["tag"], ("tag", Tag));
+        internal static readonly Shape DetailedTag = Object(["color", "createdAt", "createdBy", "createdByActorType", "id", "name", "projectId", "slug", "updatedAt"]);
+        internal static readonly Shape DetailEnvelope = Object(["tag"], ("tag", DetailedTag));
+
+        internal static readonly ResponseContract ListEnvelopeResponse = new(ListEnvelope, ManagementResponseUuids.TagPage, ManagementResponseDates.Tags);
+        internal static readonly ResponseContract EnvelopeResponse = new(Envelope, ManagementResponseUuids.TagEnvelope, ManagementResponseDates.TagEnvelope);
+        internal static readonly ResponseContract DetailEnvelopeResponse = new(DetailEnvelope, ManagementResponseUuids.TagEnvelope, ManagementResponseDates.TagEnvelope);
+    }
+
+    private static class Sharing
+    {
+        internal static readonly Shape Metadata = Object(["accessType", "allowExternalEmails", "authorizedEmails", "createdAt", "expiresAfterViews", "expiresAt", "id", "identityId", "lastViewedAt", "name", "orgId", "type", "updatedAt", "userId"]);
+        internal static readonly Shape Rows = Elements(Metadata);
+        internal static readonly Shape ListPage = Object(["secrets", "totalCount"], ("secrets", Rows));
+        internal static readonly Shape Created = Object(["accessType", "allowExternalEmails", "authorizedEmails", "createdAt", "expiresAfterViews", "expiresAt", "id", "identityId", "lastViewedAt", "name", "orgId", "sharedSecretLink", "type", "updatedAt", "userId"]);
+        internal static readonly Shape Details = Object(["accessType", "createdAt", "expiresAfterViews", "expiresAt", "id", "identityId", "isAuthorizedUser", "isPasswordProtected", "lastViewedAt", "name", "orgId", "type", "updatedAt", "userId"]);
+        internal static readonly Shape Accessed = Object(["accessType", "allowExternalEmails", "authorizedEmails", "createdAt", "expiresAfterViews", "expiresAt", "id", "identityId", "lastViewedAt", "name", "orgId", "orgName", "secretValue", "type", "updatedAt", "userId"]);
+
+        internal static readonly ResponseContract ListPageResponse = new(ListPage, ManagementResponseUuids.SharePage, ManagementResponseDates.SharePage);
+        internal static readonly ResponseContract CreatedResponse = new(Created, ManagementResponseUuids.Share, ManagementResponseDates.Share);
+        internal static readonly ResponseContract MetadataResponse = new(Metadata, ManagementResponseUuids.Share, ManagementResponseDates.Share);
+        internal static readonly ResponseContract DetailsResponse = new(Details, ManagementResponseUuids.Share, ManagementResponseDates.Share);
+        internal static readonly ResponseContract AccessedResponse = new(Accessed, ManagementResponseUuids.Share, ManagementResponseDates.Share);
+    }
+
+    private static class IdentitySearch
+    {
+        internal static readonly Shape Project = Object(["id", "name", "slug", "type"]);
+        internal static readonly Shape Role = Object(["customRoleDescription", "customRoleId", "customRoleName", "customRoleSlug", "id", "isTemporary", "role", "temporaryAccessEndTime", "temporaryAccessStartTime", "temporaryMode", "temporaryRange"]);
+        internal static readonly Shape Roles = Elements(Role);
+        internal static readonly Shape Membership = Object(["createdAt", "id", "identity", "identityId", "lastLoginAuthMethod", "lastLoginTime", "orgId", "project", "projectId", "roles", "scope", "updatedAt"], ("identity", Identities.LockoutIdentity), ("project", Project), ("roles", Roles));
+        internal static readonly Shape Rows = Elements(Membership);
+        internal static readonly Shape Page = Object(["identities", "totalCount"], ("identities", Rows));
+        internal static readonly Shape Counts = Object(["organization", "project"]);
+        internal static readonly Shape CountEnvelope = Object(["counts"], ("counts", Counts));
+
+        internal static readonly ResponseContract PageResponse = new(Page, ManagementResponseUuids.IdentitySearchPage, ManagementResponseDates.IdentitySearchPage);
+        internal static readonly ResponseContract CountEnvelopeResponse = new(CountEnvelope, null, null);
+    }
 
     internal static void Validate(string operationId, JsonElement value)
     {
-        Shape? shape = operationId switch
+        ResponseContract? contract = operationId switch
         {
-            "infisical.delete.v1.additional.privilege.identity" => Shape3,
-            "infisical.get.v1.additional.privilege.identity" => Shape5,
-            "infisical.patch.v1.additional.privilege.identity" => Shape3,
-            "infisical.get.v1.additional.privilege.identity.by.privilegeSlug" => Shape3,
-            "infisical.post.v1.additional.privilege.identity.permanent" => Shape3,
-            "infisical.post.v1.additional.privilege.identity.temporary" => Shape3,
-            "infisical.get.v1.groups" => Shape7,
-            "infisical.post.v1.groups" => Shape8,
-            "infisical.delete.v1.groups.by.id" => Shape8,
-            "infisical.get.v1.groups.by.id" => Shape9,
-            "infisical.patch.v1.groups.by.id" => Shape8,
-            "infisical.get.v1.groups.by.id.machine.identities" => Shape12,
-            "infisical.delete.v1.groups.by.id.machine.identities.by.machineIdentityId" => Shape13,
-            "infisical.post.v1.groups.by.id.machine.identities.by.machineIdentityId" => Shape13,
-            "infisical.get.v1.groups.by.id.members" => Shape20,
-            "infisical.get.v1.groups.by.id.projects" => Shape23,
-            "infisical.get.v1.groups.by.id.users" => Shape26,
-            "infisical.delete.v1.groups.by.id.users.by.username" => Shape16,
-            "infisical.post.v1.groups.by.id.users.by.username" => Shape16,
-            "infisical.get.v1.identities" => Shape31,
-            "infisical.post.v1.identities" => Shape35,
-            "infisical.delete.v1.identities.by.identityId" => Shape37,
-            "infisical.get.v1.identities.by.identityId" => Shape40,
-            "infisical.patch.v1.identities.by.identityId" => Shape42,
-            "infisical.get.v1.identities.details" => Shape45,
-            "infisical.get.v1.identity.templates" => Shape53,
-            "infisical.post.v1.identity.templates" => Shape52,
-            "infisical.delete.v1.identity.templates.by.templateId" => Shape54,
-            "infisical.get.v1.identity.templates.by.templateId" => Shape52,
-            "infisical.patch.v1.identity.templates.by.templateId" => Shape52,
-            "infisical.post.v1.identity.templates.by.templateId.delete.usage" => Shape56,
-            "infisical.get.v1.identity.templates.by.templateId.usage" => Shape58,
-            "infisical.get.v1.identity.templates.search" => Shape59,
-            "infisical.get.v1.organization.audit.log.settings" => Shape63,
-            "infisical.put.v1.organization.audit.log.settings" => Shape63,
-            "infisical.get.v1.organization.audit.logs" => Shape64,
-            "infisical.get.v1.organization.available.groups" => Shape66,
-            "infisical.get.v1.organization.available.identities" => Shape68,
-            "infisical.get.v1.organization.roles" => Shape71,
-            "infisical.post.v1.organization.roles" => Shape73,
-            "infisical.delete.v1.organization.roles.by.roleId" => Shape73,
-            "infisical.get.v1.organization.roles.by.roleId" => Shape73,
-            "infisical.patch.v1.organization.roles.by.roleId" => Shape73,
-            "infisical.get.v1.organization.roles.slug.by.roleSlug" => Shape73,
-            "infisical.get.v1.organizations.memberships.groups" => Shape79,
-            "infisical.delete.v1.organizations.memberships.groups.by.groupId" => Shape81,
-            "infisical.get.v1.organizations.memberships.groups.by.groupId" => Shape82,
-            "infisical.patch.v1.organizations.memberships.groups.by.groupId" => Shape82,
-            "infisical.post.v1.organizations.memberships.groups.by.groupId" => Shape82,
-            "infisical.get.v1.project.templates" => Shape97,
-            "infisical.post.v1.project.templates" => Shape98,
-            "infisical.delete.v1.project.templates.by.templateId" => Shape98,
-            "infisical.get.v1.project.templates.by.templateId" => Shape98,
-            "infisical.patch.v1.project.templates.by.templateId" => Shape98,
-            "infisical.get.v1.projects" => Shape108,
-            "infisical.post.v1.projects" => Shape110,
-            "infisical.delete.v1.projects.by.projectId" => Shape112,
-            "infisical.get.v1.projects.by.projectId" => Shape110,
-            "infisical.patch.v1.projects.by.projectId" => Shape112,
-            "infisical.get.v1.projects.by.projectId.audit.log.settings" => Shape63,
-            "infisical.put.v1.projects.by.projectId.audit.log.settings" => Shape63,
-            "infisical.get.v1.projects.by.projectId.authorizations" => Shape115,
-            "infisical.post.v1.projects.by.projectId.environments" => Shape117,
-            "infisical.get.v1.projects.by.projectId.environments.by.envId" => Shape118,
-            "infisical.delete.v1.projects.by.projectId.environments.by.id" => Shape117,
-            "infisical.patch.v1.projects.by.projectId.environments.by.id" => Shape117,
-            "infisical.post.v1.projects.by.projectId.environments.by.id.restore" => Shape117,
-            "infisical.get.v1.projects.by.projectId.environments.slug.by.envSlug" => Shape118,
-            "infisical.get.v1.projects.by.projectId.identities" => Shape121,
-            "infisical.post.v1.projects.by.projectId.identities" => Shape122,
-            "infisical.delete.v1.projects.by.projectId.identities.by.identityId" => Shape122,
-            "infisical.get.v1.projects.by.projectId.identities.by.identityId" => Shape122,
-            "infisical.patch.v1.projects.by.projectId.identities.by.identityId" => Shape122,
-            "infisical.get.v1.projects.by.projectId.integrations" => Shape125,
-            "infisical.delete.v1.projects.by.projectId.memberships" => Shape128,
-            "infisical.get.v1.projects.by.projectId.memberships" => Shape134,
-            "infisical.post.v1.projects.by.projectId.memberships" => Shape128,
-            "infisical.patch.v1.projects.by.projectId.memberships.by.membershipId" => Shape137,
-            "infisical.get.v1.projects.by.projectId.memberships.available.identities" => Shape68,
-            "infisical.post.v1.projects.by.projectId.memberships.details" => Shape139,
-            "infisical.get.v1.projects.by.projectId.memberships.groups" => Shape142,
-            "infisical.delete.v1.projects.by.projectId.memberships.groups.by.groupId" => Shape144,
-            "infisical.get.v1.projects.by.projectId.memberships.groups.by.groupId" => Shape145,
-            "infisical.patch.v1.projects.by.projectId.memberships.groups.by.groupId" => Shape137,
-            "infisical.post.v1.projects.by.projectId.memberships.groups.by.groupId" => Shape145,
-            "infisical.get.v1.projects.by.projectId.memberships.identities" => Shape149,
-            "infisical.delete.v1.projects.by.projectId.memberships.identities.by.identityId" => Shape151,
-            "infisical.get.v1.projects.by.projectId.memberships.identities.by.identityId" => Shape154,
-            "infisical.patch.v1.projects.by.projectId.memberships.identities.by.identityId" => Shape151,
-            "infisical.post.v1.projects.by.projectId.memberships.identities.by.identityId" => Shape151,
-            "infisical.get.v1.projects.by.projectId.roles" => Shape157,
-            "infisical.post.v1.projects.by.projectId.roles" => Shape159,
-            "infisical.delete.v1.projects.by.projectId.roles.by.roleId" => Shape159,
-            "infisical.patch.v1.projects.by.projectId.roles.by.roleId" => Shape159,
-            "infisical.get.v1.projects.by.projectId.roles.slug.by.roleSlug" => Shape159,
-            "infisical.get.v1.projects.by.projectId.tags" => Shape162,
-            "infisical.post.v1.projects.by.projectId.tags" => Shape163,
-            "infisical.delete.v1.projects.by.projectId.tags.by.tagId" => Shape163,
-            "infisical.get.v1.projects.by.projectId.tags.by.tagId" => Shape165,
-            "infisical.patch.v1.projects.by.projectId.tags.by.tagId" => Shape163,
-            "infisical.get.v1.projects.by.projectId.tags.slug.by.tagSlug" => Shape165,
-            "infisical.get.v1.projects.roles.by.roleId" => Shape159,
-            "infisical.get.v1.projects.slug.by.slug" => Shape109,
-            "infisical.get.v1.shared.secrets" => Shape168,
-            "infisical.post.v1.shared.secrets" => Shape169,
-            "infisical.delete.v1.shared.secrets.by.id" => Shape166,
-            "infisical.get.v1.shared.secrets.by.id" => Shape170,
-            "infisical.post.v1.shared.secrets.by.id.access" => Shape171,
-            "infisical.post.v2.identities.search" => Shape177,
-            "infisical.post.v2.identities.search.count" => Shape179,
-            "infisical.get.v2.identity.project.additional.privilege" => Shape182,
-            "infisical.post.v2.identity.project.additional.privilege" => Shape184,
-            "infisical.delete.v2.identity.project.additional.privilege.by.id" => Shape184,
-            "infisical.get.v2.identity.project.additional.privilege.by.id" => Shape184,
-            "infisical.patch.v2.identity.project.additional.privilege.by.id" => Shape184,
-            "infisical.get.v2.identity.project.additional.privilege.slug.by.privilegeSlug" => Shape184,
-            "infisical.delete.v2.organizations.by.organizationId.memberships" => Shape187,
-            "infisical.get.v2.organizations.by.organizationId.memberships" => Shape190,
-            "infisical.delete.v2.organizations.by.organizationId.memberships.by.membershipId" => Shape191,
-            "infisical.patch.v2.organizations.by.organizationId.memberships.by.membershipId" => Shape191,
-            "infisical.get.v2.organizations.by.orgId.identity.memberships" => Shape195,
+            "infisical.delete.v1.additional.privilege.identity" => IdentityPrivileges.MembershipPrivilegeEnvelopeResponse,
+            "infisical.get.v1.additional.privilege.identity" => IdentityPrivileges.MembershipPrivilegePageResponse,
+            "infisical.patch.v1.additional.privilege.identity" => IdentityPrivileges.MembershipPrivilegeEnvelopeResponse,
+            "infisical.get.v1.additional.privilege.identity.by.privilegeSlug" => IdentityPrivileges.MembershipPrivilegeEnvelopeResponse,
+            "infisical.post.v1.additional.privilege.identity.permanent" => IdentityPrivileges.MembershipPrivilegeEnvelopeResponse,
+            "infisical.post.v1.additional.privilege.identity.temporary" => IdentityPrivileges.MembershipPrivilegeEnvelopeResponse,
+            "infisical.get.v1.groups" => Groups.InventoryRowsResponse,
+            "infisical.post.v1.groups" => Groups.MutationGroupResponse,
+            "infisical.delete.v1.groups.by.id" => Groups.MutationGroupResponse,
+            "infisical.get.v1.groups.by.id" => Groups.DetailGroupResponse,
+            "infisical.patch.v1.groups.by.id" => Groups.MutationGroupResponse,
+            "infisical.get.v1.groups.by.id.machine.identities" => Groups.MachineIdentityPageResponse,
+            "infisical.delete.v1.groups.by.id.machine.identities.by.machineIdentityId" => Groups.MachineIdentityMutationResponse,
+            "infisical.post.v1.groups.by.id.machine.identities.by.machineIdentityId" => Groups.MachineIdentityMutationResponse,
+            "infisical.get.v1.groups.by.id.members" => Groups.MemberPageResponse,
+            "infisical.get.v1.groups.by.id.projects" => Groups.ProjectPageResponse,
+            "infisical.get.v1.groups.by.id.users" => Groups.UserPageResponse,
+            "infisical.delete.v1.groups.by.id.users.by.username" => Groups.UserMutationResponse,
+            "infisical.post.v1.groups.by.id.users.by.username" => Groups.UserMutationResponse,
+            "infisical.get.v1.identities" => Identities.ListPageResponse,
+            "infisical.post.v1.identities" => Identities.CreatedEnvelopeResponse,
+            "infisical.delete.v1.identities.by.identityId" => Identities.DeletedEnvelopeResponse,
+            "infisical.get.v1.identities.by.identityId" => Identities.DetailEnvelopeResponse,
+            "infisical.patch.v1.identities.by.identityId" => Identities.UpdatedEnvelopeResponse,
+            "infisical.get.v1.identities.details" => Identities.DetailsEnvelopeResponse,
+            "infisical.get.v1.identity.templates" => IdentityTemplates.RowsResponse,
+            "infisical.post.v1.identity.templates" => IdentityTemplates.AuthMethodResponse,
+            "infisical.delete.v1.identity.templates.by.templateId" => IdentityTemplates.DeleteResponse,
+            "infisical.get.v1.identity.templates.by.templateId" => IdentityTemplates.AuthMethodResponse,
+            "infisical.patch.v1.identity.templates.by.templateId" => IdentityTemplates.AuthMethodResponse,
+            "infisical.post.v1.identity.templates.by.templateId.delete.usage" => IdentityTemplates.DeletedUsageRowsResponse,
+            "infisical.get.v1.identity.templates.by.templateId.usage" => IdentityTemplates.UsageRowsResponse,
+            "infisical.get.v1.identity.templates.search" => IdentityTemplates.SearchPageResponse,
+            "infisical.get.v1.organization.audit.log.settings" => Audit.SettingsEnvelopeResponse,
+            "infisical.put.v1.organization.audit.log.settings" => Audit.SettingsEnvelopeResponse,
+            "infisical.get.v1.organization.audit.logs" => Audit.EnvelopeResponse,
+            "infisical.get.v1.organization.available.groups" => OrganizationAccess.AvailableGroupsResponse,
+            "infisical.get.v1.organization.available.identities" => OrganizationAccess.AvailableIdentitiesResponse,
+            "infisical.get.v1.organization.roles" => OrganizationRoles.InventoryEnvelopeResponse,
+            "infisical.post.v1.organization.roles" => OrganizationRoles.EnvelopeResponse,
+            "infisical.delete.v1.organization.roles.by.roleId" => OrganizationRoles.EnvelopeResponse,
+            "infisical.get.v1.organization.roles.by.roleId" => OrganizationRoles.EnvelopeResponse,
+            "infisical.patch.v1.organization.roles.by.roleId" => OrganizationRoles.EnvelopeResponse,
+            "infisical.get.v1.organization.roles.slug.by.roleSlug" => OrganizationRoles.EnvelopeResponse,
+            "infisical.get.v1.organizations.memberships.groups" => Memberships.OrganizationGroupPageResponse,
+            "infisical.delete.v1.organizations.memberships.groups.by.groupId" => Memberships.RemovedOrganizationGroupEnvelopeResponse,
+            "infisical.get.v1.organizations.memberships.groups.by.groupId" => Memberships.OrganizationGroupEnvelopeResponse,
+            "infisical.patch.v1.organizations.memberships.groups.by.groupId" => Memberships.OrganizationGroupEnvelopeResponse,
+            "infisical.post.v1.organizations.memberships.groups.by.groupId" => Memberships.OrganizationGroupEnvelopeResponse,
+            "infisical.get.v1.project.templates" => ProjectTemplates.ListEnvelopeResponse,
+            "infisical.post.v1.project.templates" => ProjectTemplates.EnvelopeResponse,
+            "infisical.delete.v1.project.templates.by.templateId" => ProjectTemplates.EnvelopeResponse,
+            "infisical.get.v1.project.templates.by.templateId" => ProjectTemplates.EnvelopeResponse,
+            "infisical.patch.v1.project.templates.by.templateId" => ProjectTemplates.EnvelopeResponse,
+            "infisical.get.v1.projects" => Projects.ListEnvelopeResponse,
+            "infisical.post.v1.projects" => Projects.DetailEnvelopeResponse,
+            "infisical.delete.v1.projects.by.projectId" => Projects.MutationEnvelopeResponse,
+            "infisical.get.v1.projects.by.projectId" => Projects.DetailEnvelopeResponse,
+            "infisical.patch.v1.projects.by.projectId" => Projects.MutationEnvelopeResponse,
+            "infisical.get.v1.projects.by.projectId.audit.log.settings" => Audit.SettingsEnvelopeResponse,
+            "infisical.put.v1.projects.by.projectId.audit.log.settings" => Audit.SettingsEnvelopeResponse,
+            "infisical.get.v1.projects.by.projectId.authorizations" => Projects.AuthorizationEnvelopeResponse,
+            "infisical.post.v1.projects.by.projectId.environments" => Projects.EnvironmentMutationEnvelopeResponse,
+            "infisical.get.v1.projects.by.projectId.environments.by.envId" => Projects.EnvironmentEnvelopeResponse,
+            "infisical.delete.v1.projects.by.projectId.environments.by.id" => Projects.EnvironmentMutationEnvelopeResponse,
+            "infisical.patch.v1.projects.by.projectId.environments.by.id" => Projects.EnvironmentMutationEnvelopeResponse,
+            "infisical.post.v1.projects.by.projectId.environments.by.id.restore" => Projects.EnvironmentMutationEnvelopeResponse,
+            "infisical.get.v1.projects.by.projectId.environments.slug.by.envSlug" => Projects.EnvironmentEnvelopeResponse,
+            "infisical.get.v1.projects.by.projectId.identities" => Identities.ProjectListPageResponse,
+            "infisical.post.v1.projects.by.projectId.identities" => Identities.ProjectEnvelopeResponse,
+            "infisical.delete.v1.projects.by.projectId.identities.by.identityId" => Identities.ProjectEnvelopeResponse,
+            "infisical.get.v1.projects.by.projectId.identities.by.identityId" => Identities.ProjectEnvelopeResponse,
+            "infisical.patch.v1.projects.by.projectId.identities.by.identityId" => Identities.ProjectEnvelopeResponse,
+            "infisical.get.v1.projects.by.projectId.integrations" => Projects.IntegrationEnvelopeResponse,
+            "infisical.delete.v1.projects.by.projectId.memberships" => Memberships.ProjectUserMutationEnvelopeResponse,
+            "infisical.get.v1.projects.by.projectId.memberships" => Memberships.ProjectUserEnvelopeResponse,
+            "infisical.post.v1.projects.by.projectId.memberships" => Memberships.ProjectUserMutationEnvelopeResponse,
+            "infisical.patch.v1.projects.by.projectId.memberships.by.membershipId" => Memberships.UpdatedRolesEnvelopeResponse,
+            "infisical.get.v1.projects.by.projectId.memberships.available.identities" => OrganizationAccess.AvailableIdentitiesResponse,
+            "infisical.post.v1.projects.by.projectId.memberships.details" => Memberships.ProjectUserDetailsEnvelopeResponse,
+            "infisical.get.v1.projects.by.projectId.memberships.groups" => Memberships.ProjectGroupListResponse,
+            "infisical.delete.v1.projects.by.projectId.memberships.groups.by.groupId" => Memberships.RemovedProjectGroupEnvelopeResponse,
+            "infisical.get.v1.projects.by.projectId.memberships.groups.by.groupId" => Memberships.ProjectGroupEnvelopeResponse,
+            "infisical.patch.v1.projects.by.projectId.memberships.groups.by.groupId" => Memberships.UpdatedRolesEnvelopeResponse,
+            "infisical.post.v1.projects.by.projectId.memberships.groups.by.groupId" => Memberships.ProjectGroupEnvelopeResponse,
+            "infisical.get.v1.projects.by.projectId.memberships.identities" => Memberships.ProjectIdentityPageResponse,
+            "infisical.delete.v1.projects.by.projectId.memberships.identities.by.identityId" => Memberships.ProjectIdentityMutationEnvelopeResponse,
+            "infisical.get.v1.projects.by.projectId.memberships.identities.by.identityId" => Memberships.ProjectIdentityEnvelopeResponse,
+            "infisical.patch.v1.projects.by.projectId.memberships.identities.by.identityId" => Memberships.ProjectIdentityMutationEnvelopeResponse,
+            "infisical.post.v1.projects.by.projectId.memberships.identities.by.identityId" => Memberships.ProjectIdentityMutationEnvelopeResponse,
+            "infisical.get.v1.projects.by.projectId.roles" => ProjectRoles.InventoryEnvelopeResponse,
+            "infisical.post.v1.projects.by.projectId.roles" => ProjectRoles.EnvelopeResponse,
+            "infisical.delete.v1.projects.by.projectId.roles.by.roleId" => ProjectRoles.EnvelopeResponse,
+            "infisical.patch.v1.projects.by.projectId.roles.by.roleId" => ProjectRoles.EnvelopeResponse,
+            "infisical.get.v1.projects.by.projectId.roles.slug.by.roleSlug" => ProjectRoles.EnvelopeResponse,
+            "infisical.get.v1.projects.by.projectId.tags" => Tags.ListEnvelopeResponse,
+            "infisical.post.v1.projects.by.projectId.tags" => Tags.EnvelopeResponse,
+            "infisical.delete.v1.projects.by.projectId.tags.by.tagId" => Tags.EnvelopeResponse,
+            "infisical.get.v1.projects.by.projectId.tags.by.tagId" => Tags.DetailEnvelopeResponse,
+            "infisical.patch.v1.projects.by.projectId.tags.by.tagId" => Tags.EnvelopeResponse,
+            "infisical.get.v1.projects.by.projectId.tags.slug.by.tagSlug" => Tags.DetailEnvelopeResponse,
+            "infisical.get.v1.projects.roles.by.roleId" => ProjectRoles.EnvelopeResponse,
+            "infisical.get.v1.projects.slug.by.slug" => Projects.DetailedProjectResponse,
+            "infisical.get.v1.shared.secrets" => Sharing.ListPageResponse,
+            "infisical.post.v1.shared.secrets" => Sharing.CreatedResponse,
+            "infisical.delete.v1.shared.secrets.by.id" => Sharing.MetadataResponse,
+            "infisical.get.v1.shared.secrets.by.id" => Sharing.DetailsResponse,
+            "infisical.post.v1.shared.secrets.by.id.access" => Sharing.AccessedResponse,
+            "infisical.post.v2.identities.search" => IdentitySearch.PageResponse,
+            "infisical.post.v2.identities.search.count" => IdentitySearch.CountEnvelopeResponse,
+            "infisical.get.v2.identity.project.additional.privilege" => IdentityPrivileges.ProjectPrivilegePageResponse,
+            "infisical.post.v2.identity.project.additional.privilege" => IdentityPrivileges.ProjectPrivilegeEnvelopeResponse,
+            "infisical.delete.v2.identity.project.additional.privilege.by.id" => IdentityPrivileges.ProjectPrivilegeEnvelopeResponse,
+            "infisical.get.v2.identity.project.additional.privilege.by.id" => IdentityPrivileges.ProjectPrivilegeEnvelopeResponse,
+            "infisical.patch.v2.identity.project.additional.privilege.by.id" => IdentityPrivileges.ProjectPrivilegeEnvelopeResponse,
+            "infisical.get.v2.identity.project.additional.privilege.slug.by.privilegeSlug" => IdentityPrivileges.ProjectPrivilegeEnvelopeResponse,
+            "infisical.delete.v2.organizations.by.organizationId.memberships" => Memberships.OrganizationUserMutationEnvelopeResponse,
+            "infisical.get.v2.organizations.by.organizationId.memberships" => Memberships.OrganizationUserPageResponse,
+            "infisical.delete.v2.organizations.by.organizationId.memberships.by.membershipId" => Memberships.OrganizationUserEnvelopeResponse,
+            "infisical.patch.v2.organizations.by.organizationId.memberships.by.membershipId" => Memberships.OrganizationUserEnvelopeResponse,
+            "infisical.get.v2.organizations.by.orgId.identity.memberships" => Memberships.OrganizationIdentityPageResponse,
             _ => null
         };
-        if (shape is not null) Validate(value, shape, 0);
+        if (contract is null) return;
+        Validate(value, contract.Closure, 0);
+        if (contract.Uuids is { } uuids) ManagementResponseUuids.Validate(value, uuids, 0);
+        if (contract.Dates is { } dates) ManagementResponseDates.Validate(value, dates, 0);
     }
 
-    internal static void ValidateAuditRow(JsonElement value) => Validate(value, Shape198, 0);
+    // Audit rows are isolated by their typed parser before the envelope is validated.
+    internal static ResponseContract AuditRow => Audit.RowResponse;
+
+    internal static void ValidateAuditRow(JsonElement value) => Validate(value, AuditRow.Closure, 0);
 
     private static void Validate(JsonElement value, Shape shape, int depth)
     {
