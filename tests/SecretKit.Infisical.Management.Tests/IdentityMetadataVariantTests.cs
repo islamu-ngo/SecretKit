@@ -74,7 +74,8 @@ public sealed class IdentityMetadataVariantTests
                 break;
             case "organization-memberships":
                 using (var request = OrganizationIdentityMembershipOperations.ListOrganizationIdentityMemberships(Org))
-                    await Verify(request, new(Org), "identityMemberships", true, membership);
+                    await Verify(request, OrganizationIdentityMembershipOperations.OrganizationIdentityMembershipListTarget(Org),
+                        "identityMemberships", true, membership);
                 break;
             case "search":
                 membership["orgId"] = Org;
@@ -373,7 +374,8 @@ public sealed class IdentityMetadataVariantTests
         };
         var result = await Execute(request,
             $$$$$"""{"identityMemberships":[{"id":"{{{{{Membership}}}}}","identityId":"{{{{{Identity}}}}}","orgId":"{{{{{Org}}}}}","role":"member","createdAt":"2026-10-10T00:00:00Z","updatedAt":"2026-10-10T00:00:00Z","identity":{"id":"{{{{{Identity}}}}}","name":"service","orgId":"{{{{{Org}}}}}","authMethods":["token-auth"]}"""
-            + extra + "}],\"totalCount\":1}", new(Org));
+            + extra + "}],\"totalCount\":1}",
+            OrganizationIdentityMembershipOperations.OrganizationIdentityMembershipListTarget(Org));
         await Assert.That(result.Status).IsEqualTo(SecretStatus.Success);
         var membership = result.Value.Items.Single();
         await Assert.That(membership.Identity.AuthMethods.Value.Single()).IsEqualTo("token-auth");

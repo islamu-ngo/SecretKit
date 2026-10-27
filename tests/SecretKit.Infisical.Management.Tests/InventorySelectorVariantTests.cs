@@ -14,6 +14,25 @@ public sealed class InventorySelectorVariantTests
     private const string ForeignId = "99999999-9999-4999-8999-999999999999";
 
     [Test]
+    [Arguments("offset")]
+    [Arguments("limit")]
+    [Arguments("search")]
+    [Arguments("empty-search")]
+    [Arguments("orderBy")]
+    [Arguments("order")]
+    public async Task OrganizationIdentitySelectorsCannotReuseAnIndependentGrant(string difference)
+    {
+        var approved = OrganizationIdentityMembershipOperations.OrganizationIdentityMembershipListTarget(OrgId);
+        using var incoming = OrganizationIdentityMembershipOperations.ListOrganizationIdentityMemberships(OrgId,
+            offset: difference == "offset" ? 1 : 0,
+            limit: difference == "limit" ? 1 : 100,
+            orderBy: difference == "orderBy" ? OrganizationIdentityOrder.Role : OrganizationIdentityOrder.Name,
+            order: difference == "order" ? ManagementListOrder.Descending : ManagementListOrder.Ascending,
+            search: difference == "search" ? "selected" : difference == "empty-search" ? "" : null);
+        await RejectIntent(incoming, approved);
+    }
+
+    [Test]
     [Arguments(null)]
     [Arguments("")]
     [Arguments("private+service & name")]

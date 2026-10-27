@@ -17,7 +17,9 @@ public sealed class OrganizationIdentityMembershipTests
         using var request = OrganizationIdentityMembershipOperations.ListOrganizationIdentityMemberships(
             Org, limit: 1, orderBy: OrganizationIdentityOrder.Role,
             order: ManagementListOrder.Descending, search: "private+service");
-        var outcome = await Execute(request, Response(), new(Org),
+        var outcome = await Execute(request, Response(),
+            OrganizationIdentityMembershipOperations.OrganizationIdentityMembershipListTarget(Org, limit: 1,
+                orderBy: OrganizationIdentityOrder.Role, order: ManagementListOrder.Descending, search: "private+service"),
             "?offset=0&limit=1&orderBy=role&orderDirection=desc&search=private%2Bservice");
         await Assert.That(outcome.Status).IsEqualTo(SecretStatus.Success);
         await Assert.That(outcome.Value.IsComplete).IsFalse();
@@ -35,8 +37,42 @@ public sealed class OrganizationIdentityMembershipTests
     public async Task ForeignMembershipCoordinatesFailClosed(string defect)
     {
         using var request = OrganizationIdentityMembershipOperations.ListOrganizationIdentityMemberships(Org, limit: 1);
-        var outcome = await Execute(request, Response(defect), new(Org));
+        var outcome = await Execute(request, Response(defect),
+            OrganizationIdentityMembershipOperations.OrganizationIdentityMembershipListTarget(Org, limit: 1));
         await Assert.That(outcome.Status).IsEqualTo(SecretStatus.Invalid);
+    }
+
+    [Test]
+    [Arguments(null)]
+    [Arguments("")]
+    [Arguments("private+service & name")]
+    public async Task IndependentlySelectedIdentityInventoryPreservesSearchAlternatives(string? search)
+    {
+        using var request = OrganizationIdentityMembershipOperations.ListOrganizationIdentityMemberships(
+            Org, offset: 1, limit: 1, search: search);
+        var target = OrganizationIdentityMembershipOperations.OrganizationIdentityMembershipListTarget(
+            Org, offset: 1, limit: 1, search: search);
+        var result = await Execute(request, Response(), target,
+            "?offset=1&limit=1&orderBy=name&orderDirection=asc" +
+            (search is null ? "" : "&search=" + Uri.EscapeDataString(search)));
+        await Assert.That(result.Status).IsEqualTo(SecretStatus.Success);
+        await Assert.That(result.Value.IsComplete).IsTrue();
+        await Assert.That(result.Value.NextOffset).IsNull();
+        await Assert.That(JsonSerializer.Serialize(target)).IsEqualTo("{}");
+    }
+
+    [Test]
+    public async Task CoordinateOnlyGrantCannotAuthorizeIdentityInventory()
+    {
+        using var request = OrganizationIdentityMembershipOperations.ListOrganizationIdentityMemberships(Org);
+        var tokens = new Tokens();
+        using var transport = Transport(Response());
+        var client = new ManagementClient(transport);
+        var authority = new ManagementAuthority(client.Authority, tokens, Org);
+        var result = await client.ExecuteAsync(request, authority,
+            authority.IssueGrant(request.OperationId, new(Org)));
+        await Assert.That(result.Status).IsEqualTo(SecretStatus.Denied);
+        await Assert.That(tokens.Acquired).IsFalse();
     }
 
     [Test]

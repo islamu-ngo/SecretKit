@@ -53,6 +53,24 @@ public static class OrganizationIdentityMembershipOperations
         OrganizationIdentityOrder orderBy = OrganizationIdentityOrder.Name,
         ManagementListOrder order = ManagementListOrder.Ascending, string? search = null)
     {
+        string query = OrganizationIdentityMembershipQuery(offset, limit, orderBy, order, search);
+        return new("infisical.get.v2.organizations.by.orgId.identity.memberships", HttpMethod.Get,
+            "/api/v2/organizations/" + ManagementJson.Escape(organizationId) + "/identity-memberships?" + query,
+            InventorySelectorWire.Intent(organizationId, null, query), null,
+            root => ScopedAccessOperations.CountedPage(root, "identityMemberships",
+                value => new OrganizationIdentityMembershipSummary(value, organizationId), offset, limit), false);
+    }
+
+    public static ManagementTarget OrganizationIdentityMembershipListTarget(
+        string organizationId, int offset = 0, int limit = 100,
+        OrganizationIdentityOrder orderBy = OrganizationIdentityOrder.Name,
+        ManagementListOrder order = ManagementListOrder.Ascending, string? search = null) =>
+        InventorySelectorWire.Intent(organizationId, null,
+            OrganizationIdentityMembershipQuery(offset, limit, orderBy, order, search));
+
+    private static string OrganizationIdentityMembershipQuery(int offset, int limit,
+        OrganizationIdentityOrder orderBy, ManagementListOrder order, string? search)
+    {
         string column = orderBy switch
         {
             OrganizationIdentityOrder.Name => "name",
@@ -66,12 +84,8 @@ public static class OrganizationIdentityMembershipOperations
             _ => throw new ArgumentOutOfRangeException(nameof(order))
         };
         string query = ManagementJson.Paging(offset, limit) + "&orderBy=" + column + "&orderDirection=" + direction;
-        if (search is not null) query += "&search=" + ManagementJson.Escape(search);
-        return new("infisical.get.v2.organizations.by.orgId.identity.memberships", HttpMethod.Get,
-            "/api/v2/organizations/" + ManagementJson.Escape(organizationId) + "/identity-memberships?" + query,
-            new(organizationId), null,
-            root => ScopedAccessOperations.CountedPage(root, "identityMemberships",
-                value => new OrganizationIdentityMembershipSummary(value, organizationId), offset, limit), false);
+        if (search is not null) query += "&search=" + InventorySelectorWire.Escape(search);
+        return query;
     }
 }
 

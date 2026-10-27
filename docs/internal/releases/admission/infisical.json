@@ -170,7 +170,7 @@
     },
     {
       "file": "src/SecretKit.Infisical.Management/OrganizationIdentityMemberships.cs",
-      "sha256": "4cce6990320bb09806e59fe3aa3db2397bc3cb026dccbbb87bb45f0a7f1dc773"
+      "sha256": "dfa503e27752082404ebd2b6e7f4403f88e10183cf8c7830f4320e3f5ffa1071"
     },
     {
       "file": "src/SecretKit.Infisical.Management/OrganizationMemberships.cs",

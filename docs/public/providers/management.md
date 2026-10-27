@@ -42,6 +42,11 @@ acquisition. Grants assert local trusted intent, not provider membership or
 effective permission. Some targets encode query/body choices as well as IDs;
 use the factory's matching target helper instead of reducing them to a resource
 ID. Implicit-scope server responses are not token-to-organization attestation.
+For `ListOrganizationIdentityMemberships`, independently approve the organization,
+offset, limit, search (including omission versus empty), order column and direction
+through `OrganizationIdentityMembershipListTarget`. A coordinate-only grant or
+any changed selector is rejected before token acquisition; this binds local intent,
+not the remote token's principal or permissions.
 Sources: [authorization](../../../src/SecretKit.Infisical.Management/ManagementAuthorization.cs),
 [request ownership](../../../src/SecretKit.Infisical.Management/ManagementContracts.cs),
 [executor](../../../src/SecretKit.Infisical.Management/ManagementClient.cs).
