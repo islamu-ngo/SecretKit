@@ -46,6 +46,21 @@ coverage, permission or live conformance.
 
 ## Four-package local runtime closure
 
+### Explicit dependency injection registration
+
+Reviewed 2026-11-01: Hosting now directly selects
+Microsoft.Extensions.DependencyInjection.Abstractions **10.0.12**, previously
+transitive in the same runtime closure. The nonpackable Hosting test project
+also directly selects Microsoft.Extensions.DependencyInjection **10.0.12** to
+exercise real container disposal. This does not add the full Generic Host or
+ASP.NET framework to the library.
+
+Both installed NuGet nuspecs declare MIT, Microsoft Corporation copyright and
+`dotnet/dotnet` revision `95017c711e6afc1085133d440e42b4bd78155701`.
+Retain their attribution and MIT/runtime notice payloads recorded below.
+Exact direct/transitive roles and content hashes belong to tool-generated locks;
+metadata review does not establish advisory clearance or publication authority.
+
 ### Generic Host worker application closure
 
 The nonpackable `samples/Infisical.WorkerDemo` separately pins

@@ -10,10 +10,41 @@ See [current support](../../docs/public/provider-support.md) for current
 offline evidence and the separate native renewal/entitlement limits.
 
 This optional package references Core, the native Infisical provider,
-Hosting.Abstractions and HealthChecks.Abstractions. It does not require the
+Hosting.Abstractions, DependencyInjection.Abstractions and HealthChecks.Abstractions. It does not require the
 configuration adapter. Merely constructing or registering a session/helper
 starts no worker. A host must explicitly call `StartAsync`, or explicitly
 register this helper as its hosted service so host startup calls it.
+
+## Register an already opened runtime
+
+With an application-owned `InfisicalRuntimeSession runtime` and an
+`IServiceCollection services`, choose explicitly:
+
+```csharp
+using Microsoft.Extensions.DependencyInjection;
+
+services.AddInfisicalRuntime(runtime);
+// Optional: host startup may start this runtime's one dedicated maintenance helper.
+services.AddInfisicalAuthenticationMaintenance(runtime, TimeSpan.FromSeconds(10));
+```
+
+Registration/resolution performs no login, read or worker startup. The runtime,
+native client, reader/inventory and token-source/session aliases are borrowed
+implementation instances; container disposal does not take ownership of them.
+The application retires the runtime after host shutdown. Identical repeat
+registration is idempotent; another owner or maintenance budget conflicts.
+
+Only the newly constructed helper is container-owned. It is exposed through
+`IHostedService` and `IHealthCheck`; application health endpoints still choose
+their own checks and readiness policy. Explicit helper stop ends this dedicated
+session generation, even though aggregate disposal remains application-owned.
+Asynchronously dispose a standalone service provider that resolved maintenance.
+Token health does not establish downstream application readiness.
+
+Hosting retains its actual Infisical dependency. A provider-neutral package split
+requires a genuine second hosting contract, not an empty abstraction.
+
+## Advanced direct helper ownership
 
 ```csharp
 using SecretKit.Core;

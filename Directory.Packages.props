@@ -12,6 +12,8 @@
     <PackageVersion Include="Azure.ResourceManager.Authorization" Version="1.1.7" />
     <PackageVersion Include="Azure.ResourceManager.EventGrid" Version="1.1.0" />
     <PackageVersion Include="Microsoft.Extensions.Configuration" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.12" />
     <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.12" />
     <PackageVersion Include="Microsoft.Extensions.Diagnostics.HealthChecks.Abstractions" Version="10.0.12" />
   </ItemGroup>
