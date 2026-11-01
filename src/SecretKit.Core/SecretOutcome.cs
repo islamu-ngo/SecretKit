@@ -42,18 +42,23 @@ public sealed class SecretOutcome<T> where T : notnull
 {
     private readonly T? _value;
 
-    private SecretOutcome(SecretStatus status, T? value, TimeSpan? retryAfter)
+    private SecretOutcome(SecretStatus status, T? value, TimeSpan? retryAfter,
+        SecretFailureReason reason = SecretFailureReason.None)
     {
         Status = status;
         _value = value;
         RetryAfter = retryAfter;
+        Reason = reason;
     }
 
     /// <summary>Gets the operation category; only Success permits value access.</summary>
     public SecretStatus Status { get; }
 
-    /// <summary>Gets optional nonnegative throttling advice, not an automatic retry or replay instruction.</summary>
+    /// <summary>Gets optional nonnegative throttling or unavailability advice, not a retry or replay instruction.</summary>
     public TimeSpan? RetryAfter { get; }
+
+    /// <summary>Gets closed failure detail without material, coordinates or provider text.</summary>
+    public SecretFailureReason Reason { get; }
 
     /// <summary>Gets whether this outcome contains a successful value.</summary>
     public bool IsSuccess => Status == SecretStatus.Success;
@@ -75,22 +80,30 @@ public sealed class SecretOutcome<T> where T : notnull
 
     /// <summary>Creates a non-success outcome with no value or provider payload.</summary>
     /// <param name="status">A defined category other than Success.</param>
-    /// <param name="retryAfter">Optional nonnegative advice, valid only for Throttled.</param>
+    /// <param name="retryAfter">Optional nonnegative advice, valid only for Throttled or Unavailable.</param>
+    /// <param name="reason">Optional closed failure detail.</param>
     /// <returns>A failure outcome whose Value cannot be accessed.</returns>
     /// <exception cref="ArgumentException">The status or retry timing violates these constraints.</exception>
-    public static SecretOutcome<T> Failure(SecretStatus status, TimeSpan? retryAfter = null)
+    public static SecretOutcome<T> Failure(SecretStatus status, TimeSpan? retryAfter = null,
+        SecretFailureReason reason = SecretFailureReason.None)
     {
         if (status == SecretStatus.Success || !Enum.IsDefined(status))
         {
             throw new ArgumentException("A failure requires a defined non-success status.", nameof(status));
         }
 
-        if (retryAfter is not null && (status != SecretStatus.Throttled || retryAfter < TimeSpan.Zero))
+        if (!Enum.IsDefined(reason))
         {
-            throw new ArgumentException("Retry timing is only valid for throttled outcomes.", nameof(retryAfter));
+            throw new ArgumentException("A failure requires a defined reason.", nameof(reason));
         }
 
-        return new(status, default, retryAfter);
+        if (retryAfter is not null &&
+            (status is not (SecretStatus.Throttled or SecretStatus.Unavailable) || retryAfter < TimeSpan.Zero))
+        {
+            throw new ArgumentException("Retry timing requires throttling or unavailability and nonnegative advice.", nameof(retryAfter));
+        }
+
+        return new(status, default, retryAfter, reason);
     }
 
     /// <summary>Returns the status category without formatting the successful value.</summary>

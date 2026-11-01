@@ -3,7 +3,7 @@
 > **Audience:** .NET application developers and adapter authors
 > **Status:** Implemented `SecretKit.Core` contract
 > **Owner:** SecretKit maintainers
-> **Last verified:** 2026-10-27 reader contract source review and ConfigurationTests; Core suite not rerun, no native qualification implied
+> **Last verified:** 2026-11-01 source review and 20 passing offline Core tests; no native qualification
 > **Source anchors:** [Core source](../../src/SecretKit.Core/), [Core tests](../../tests/SecretKit.Core.Tests/)
 
 `SecretKit.Core` defines common reads, metadata, material ownership and bounded
@@ -18,6 +18,7 @@ specialized lifecycle operations remain provider-native.
 | `ISecretInventory`, `SecretInventory` | Bounded metadata collection; [declarations](../../src/SecretKit.Core/ISecretInventory.cs) |
 | `SecretAuthority`, `SecretAddress`, `SecretReference`, `SecretInventoryScope` | Instance authority and provider-owned coordinates; [declarations](../../src/SecretKit.Core/SecretReference.cs) |
 | `SecretOutcome<T>`, `SecretStatus` | Success-only value access and failure categories; [declarations](../../src/SecretKit.Core/SecretOutcome.cs) |
+| `SecretFailureReason` | Closed material-free failure detail; [declaration](../../src/SecretKit.Core/SecretFailureReason.cs) |
 | `SecretMaterial` | Clearable owned characters and explicit exports; [declaration](../../src/SecretKit.Core/SecretMaterial.cs) |
 | `SecretRead`, `SecretObservation`, `SecretValidity` | Owned read plus value-free observations; [declarations](../../src/SecretKit.Core/SecretObservation.cs) |
 | `MutationReceipt`, `DispatchEvidence` | Caller-held mutation dispatch evidence; [declarations](../../src/SecretKit.Core/MutationReceipt.cs) |
@@ -82,9 +83,16 @@ These are contract categories, not a universal HTTP mapping. Not every adapter
 or operation produces every status. Consult its native guide for response
 mapping and supported variants.
 
-`Success(value)` rejects null. `Failure(status, retryAfter)` rejects `Success`,
-undefined enum values, negative timing, and retry timing on a status other than
-`Throttled`. `RetryAfter` may be null.
+`Success(value)` rejects null and has `Reason=None`. `Failure(status, retryAfter,
+reason)` rejects `Success`, undefined status/reason values, negative timing, and
+retry timing on a status other than `Throttled` or `Unavailable`. `RetryAfter`
+may be null. Provider adapters clamp their HTTP retry advice to 24 hours.
+
+`SecretFailureReason` supplies closed detail: deadline, transport, response size,
+invalid response, authority mismatch, unavailable credential, unsupported contract,
+request size or collection limit. `None` means no finer evidence. Reasons do not
+carry provider text or identify secrets. Advice never schedules work or grants
+permission to replay a mutation with an uncertain effect.
 
 Caller cancellation propagates as `OperationCanceledException`. Invalid
 constructor arguments, disposed-object use and other programming errors can
@@ -101,6 +109,9 @@ Built-in successful reads return independent owned material.
 | `SecretMaterial` member | Ownership |
 | --- | --- |
 | `FromText(ReadOnlySpan<char>)` | Copies input into an owned character array; cannot erase the input |
+| `FromUtf8(ReadOnlySpan<byte>)` | Strictly decodes into independent clearable characters; malformed input throws a sanitized `ArgumentException` |
+| `GetUtf8ByteCount()` | Counts encoded payload bytes under the disposal gate without exporting a string |
+| `TryCopyUtf8To(Span<byte>, out int)` | Writes the complete encoding or returns false with zero bytes; caller owns and clears destination |
 | `Copy()` | Returns an independently owned material object; dispose it separately |
 | `Reveal()` | Creates an ordinary managed plaintext string with an independent lifetime |
 | `ExportCharacters()` | Returns an independent array; the caller must clear it |
@@ -109,6 +120,13 @@ Built-in successful reads return independent owned material.
 Copying, revealing or exporting after disposal throws `ObjectDisposedException`.
 Copies already made survive original disposal. Do not treat the outcome as
 disposable: dispose its successful read.
+
+Empty UTF-8 input is valid. `FromText` preserves characters without normalizing
+or validating them; UTF-8 count/export rejects unpaired UTF-16 surrogates.
+Invalid encoding and insufficient capacity leave the destination unchanged.
+Encoding errors contain neither fallback exceptions nor rejected input.
+Exports racing disposal produce a complete copy or `ObjectDisposedException`.
+Byte counts describe payload size, not total process memory or secure erasure.
 
 This standalone Core fragment demonstrates the array-export boundary with
 synthetic, non-secret text:
