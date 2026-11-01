@@ -140,8 +140,9 @@ public sealed class IdentityAuthenticationConfiguration
         LockoutThreshold = universal ? AuthenticationJson.OptionalNumber(value, "lockoutThreshold") : null;
         LockoutDurationSeconds = universal ? AuthenticationJson.OptionalNumber(value, "lockoutDurationSeconds") : null;
         LockoutCounterResetSeconds = universal ? AuthenticationJson.OptionalNumber(value, "lockoutCounterResetSeconds") : null;
-        // Public response schemas deliberately give these fields no established shape.
-        // Do not convert them into a guessed trusted-IP policy or effective authorization.
+        AccessTokenTrustedIps = AuthenticationJson.JsonField(value, "accessTokenTrustedIps");
+        ClientSecretTrustedIps = universal ? AuthenticationJson.JsonField(value, "clientSecretTrustedIps") : default;
+        // Retaining returned JSON does not establish trusted-IP policy or enforcement semantics.
         HasUnestablishedTrustedIpProjection = value.TryGetProperty("accessTokenTrustedIps", out _) ||
             universal && value.TryGetProperty("clientSecretTrustedIps", out _);
     }
@@ -171,6 +172,12 @@ public sealed class IdentityAuthenticationConfiguration
     [JsonIgnore] public double? LockoutDurationSeconds { get; }
     /// <summary>Gets returned counter reset seconds, or null when not projected.</summary>
     [JsonIgnore] public double? LockoutCounterResetSeconds { get; }
+    /// <summary>Gets detached returned JSON, preserving omission and null without interpreting trusted-IP policy.</summary>
+    /// <remarks>Value explicitly exposes a GC-owned JSON snapshot; it is not clearable secret storage or authorization proof.</remarks>
+    [JsonIgnore] public ProjectField<JsonElement> AccessTokenTrustedIps { get; }
+    /// <summary>Gets detached Universal Auth client-secret trusted-IP JSON; Token Auth leaves this absent.</summary>
+    /// <remarks>Value explicitly exposes a GC-owned JSON snapshot, not a validated network policy.</remarks>
+    [JsonIgnore] public ProjectField<JsonElement> ClientSecretTrustedIps { get; }
     /// <summary>Gets whether a trusted-IP node exists whose shape is deliberately not interpreted as policy.</summary>
     [JsonIgnore] public bool HasUnestablishedTrustedIpProjection { get; }
     /// <summary>Returns a marker without client or policy metadata.</summary>
@@ -356,6 +363,9 @@ public sealed class IdentityAuthenticationAcknowledgement
 
 internal static class AuthenticationJson
 {
+    internal static ProjectField<JsonElement> JsonField(JsonElement value, string field) =>
+        ProjectWire.Field(value, field, child => child.Clone(), nullable: true);
+
     internal static void Uuid(ProjectField<string> value)
     {
         if (value.IsPresent && !value.IsNull) Uuid(value.Value);

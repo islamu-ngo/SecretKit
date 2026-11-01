@@ -291,7 +291,7 @@ public sealed class KubernetesAuthConfigurationInput : IDisposable
     public override string ToString() => "[KubernetesAuthConfigurationInput]";
 }
 
-/// <summary>Known native fields only, never a provider permission attestation.</summary>
+/// <summary>Native metadata and uninterpreted returned JSON, never a provider permission attestation.</summary>
 public abstract class WorkloadAuthConfiguration
 {
     private protected WorkloadAuthConfiguration(JsonElement value, string identityId)
@@ -306,6 +306,7 @@ public abstract class WorkloadAuthConfiguration
         AccessTokenTTL = WorkloadAuthJson.Number(value, "accessTokenTTL");
         AccessTokenMaxTTL = WorkloadAuthJson.Number(value, "accessTokenMaxTTL");
         AccessTokenNumUsesLimit = WorkloadAuthJson.Number(value, "accessTokenNumUsesLimit");
+        AccessTokenTrustedIps = AuthenticationJson.JsonField(value, "accessTokenTrustedIps");
         HasUnestablishedTrustedIpProjection = value.TryGetProperty("accessTokenTrustedIps", out _);
     }
     /// <summary>Gets the returned authentication-configuration identifier.</summary>
@@ -322,6 +323,9 @@ public abstract class WorkloadAuthConfiguration
     [JsonIgnore] public double? AccessTokenMaxTTL { get; }
     /// <summary>Gets reported token-use limit, or null when absent.</summary>
     [JsonIgnore] public double? AccessTokenNumUsesLimit { get; }
+    /// <summary>Gets detached returned JSON, preserving omission and null without interpreting trusted-IP policy.</summary>
+    /// <remarks>Value explicitly exposes a GC-owned JSON snapshot; it is not clearable secret storage or authorization proof.</remarks>
+    [JsonIgnore] public ProjectField<JsonElement> AccessTokenTrustedIps { get; }
     /// <summary>Gets whether an unestablished trusted-IP node exists; does not interpret its values.</summary>
     [JsonIgnore] public bool HasUnestablishedTrustedIpProjection { get; }
     /// <summary>Returns a marker without identity configuration details.</summary>
@@ -339,6 +343,7 @@ public sealed class JwtAuthConfiguration : WorkloadAuthConfiguration
         BoundAudiences = ManagementJson.Required(value, "boundAudiences");
         BoundSubject = ManagementJson.Required(value, "boundSubject");
         AccessTokenPeriod = WorkloadAuthJson.Number(value, "accessTokenPeriod");
+        BoundClaims = AuthenticationJson.JsonField(value, "boundClaims");
         HasUnestablishedBoundClaimsProjection = value.TryGetProperty("boundClaims", out _);
         if (!deleted)
         {
@@ -362,7 +367,10 @@ public sealed class JwtAuthConfiguration : WorkloadAuthConfiguration
     [JsonIgnore] public string BoundSubject { get; }
     /// <summary>Gets reported token period seconds, or null when absent.</summary>
     [JsonIgnore] public double? AccessTokenPeriod { get; }
-    /// <summary>Gets whether a bound-claims node exists whose values are deliberately not projected.</summary>
+    /// <summary>Gets detached bound-claims JSON, preserving omission and null without input-schema or matching assumptions.</summary>
+    /// <remarks>Value explicitly exposes a GC-owned JSON snapshot, not evidence that an issuer proof is accepted.</remarks>
+    [JsonIgnore] public ProjectField<JsonElement> BoundClaims { get; }
+    /// <summary>Gets whether a bound-claims node exists whose matching semantics remain unestablished.</summary>
     [JsonIgnore] public bool HasUnestablishedBoundClaimsProjection { get; }
 }
 
@@ -377,6 +385,8 @@ public sealed class OidcAuthConfiguration : WorkloadAuthConfiguration
         BoundSubject = WorkloadAuthJson.NullableResponse(value, "boundSubject");
         TemplateId = WorkloadAuthJson.NullableResponse(value, "templateId");
         AuthenticationJson.Uuid(TemplateId);
+        BoundClaims = AuthenticationJson.JsonField(value, "boundClaims");
+        ClaimMetadataMapping = AuthenticationJson.JsonField(value, "claimMetadataMapping");
         HasUnestablishedBoundClaimsProjection = value.TryGetProperty("boundClaims", out _);
         HasUnestablishedClaimMetadataMappingProjection = value.TryGetProperty("claimMetadataMapping", out _);
         if (!deleted) CaCert = ManagementJson.Required(value, "caCert");
@@ -393,6 +403,12 @@ public sealed class OidcAuthConfiguration : WorkloadAuthConfiguration
     [JsonIgnore] public ProjectField<string> TemplateId { get; }
     /// <summary>Gets returned CA text; deletion responses leave it null.</summary>
     [JsonIgnore] public string? CaCert { get; }
+    /// <summary>Gets detached bound-claims JSON, preserving omission and null without input-schema or matching assumptions.</summary>
+    /// <remarks>Value explicitly exposes a GC-owned JSON snapshot, not evidence that an issuer proof is accepted.</remarks>
+    [JsonIgnore] public ProjectField<JsonElement> BoundClaims { get; }
+    /// <summary>Gets detached claim-mapping JSON, preserving omission and null without interpreting mapping semantics.</summary>
+    /// <remarks>Value explicitly exposes a GC-owned JSON snapshot, not effective identity metadata or permission proof.</remarks>
+    [JsonIgnore] public ProjectField<JsonElement> ClaimMetadataMapping { get; }
     /// <summary>Gets whether an unestablished bound-claims node was included.</summary>
     [JsonIgnore] public bool HasUnestablishedBoundClaimsProjection { get; }
     /// <summary>Gets whether an unestablished claim-mapping node was included.</summary>
