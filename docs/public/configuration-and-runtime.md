@@ -3,7 +3,7 @@
 > **Audience:** .NET application developers, operators and AI coding assistants
 > **Status:** Implemented composition APIs; in development, not ready for production
 > **Owner:** SecretKit maintainers
-> **Last verified:** 2026-10-27 against source and ConfigurationTests; other linked suites not rerun
+> **Last verified:** 2026-11-01 source review and 69 passing offline Configuration tests; no native qualification
 > **Source anchors:** [Loader](../../src/SecretKit.Extensions.Configuration/SecretSnapshotLoader.cs), [selection](../../src/SecretKit.Extensions.Configuration/SecretSelection.cs), [handle](../../src/SecretKit.Extensions.Configuration/SecretSnapshotHandle.cs), [export](../../src/SecretKit.Extensions.Configuration/SecretConfigurationExport.cs)
 
 Use `SecretKit.Extensions.Configuration` to collect required values asynchronously
@@ -12,21 +12,28 @@ only when ordinary plaintext strings are acceptable. The package does not choose
 an identity, install refresh policy, start a worker or activate application clients.
 Core/provider reads do not require this optional package.
 
+The [prepared owner](../../src/SecretKit.Extensions.Configuration/PreparedSecretConfiguration.cs)
+and [collection options](../../src/SecretKit.Extensions.Configuration/SecretCollectionOptions.cs)
+compose the same loader/generation/export boundaries, not a second lifecycle.
+
 ## Select required groups explicitly
 
-Each `SecretSelection(consumerKey, reader, reference)` binds an application key to
+Each `SecretSelection(consumerKey, reader, reference, presencePolicy)` binds an application key to
 one `ISecretReader` and a `SecretReference` belonging to that reader's authority.
 An authority mismatch throws during selection construction. A loader requires
 at least one selection, copies the selection list and rejects duplicate consumer
 keys with **ordinal, case-sensitive** comparison. `Password` and `password` are
 different consumer keys; reads through a handle require the exact spelling.
 
-Every selection in a loader is required. There is no optional flag, fallback
-principal or local-default rescue path. Put startup-required settings in one
-loader and each independent optional feature's required settings in another.
-Failure of an optional group can leave that feature disabled without invalidating
-the already prepared startup group. This is application policy, not a different
-loader mode.
+The default presence policy is `SecretPresencePolicy.Required`. Select
+`SecretPresencePolicy.Optional` only when an explicit provider `Absent` result
+is acceptable. Denied, invalid, expired and unavailable inputs still reject the
+whole collection. An absence-only optional generation is complete and replaces
+old presence. There is no fallback principal or local-default rescue path.
+
+Keep independent optional feature groups in separate loaders when their failure
+must not block startup-required settings. Optional absence and application
+feature activation remain different decisions.
 
 Use references and readers selected by trusted application configuration. An
 administrative read does not prove delivery to the intended runtime identity.
@@ -36,10 +43,23 @@ The [provider guides](providers/infisical.md) describe native references;
 
 ## Await collection before constructing dependent services
 
-`RefreshAsync(CancellationToken)` performs the selected reads serially and
-serializes concurrent collections on the same loader. It returns
+`RefreshAsync(CancellationToken)` defaults to serial reads and always serializes
+concurrent collections on the same loader. It returns
 `SecretOutcome<long>`: success contains the newly published local generation
-number; failure contains `Status` and optional `RetryAfter`.
+number; failure preserves `Status`, `Reason` and optional `RetryAfter`.
+
+Pass `SecretCollectionOptions` as the loader's optional third argument to choose
+bounded concurrency (default 1, range 1-32), selection count (default 1000, range
+1-10000), UTF-8 payload bytes (default 16 MiB, range 1 KiB-64 MiB), and collection
+timeout (default one minute, positive and at most ten minutes). Timeout starts
+after serialized admission, not while waiting behind another collection.
+
+The contiguous ordinal window bounds unresolved/staged reads. Outcomes and
+material accounting follow input order, not completion order. A terminal failure
+stops admission, and already started work drains without canceling earlier
+ordinals solely because a later read failed. One complete valid candidate is
+published; local coherence is not remote transaction isolation. Payload limits
+do not bound total heap use, upstream allocations or pinned older generations.
 
 This fragment accepts an already selected reader and two authority-bound
 references. It returns a caller-owned handle; disposing the temporary loader
@@ -86,7 +106,8 @@ generation. Before the first successful collection, `Acquire()` throws
 
 ### Failure and cancellation
 
-Publication requires every read to succeed with `SecretValidity.Valid`. Unknown
+Publication requires each present read to succeed with `SecretValidity.Valid`
+and every absence to be explicitly optional. Unknown
 or other non-valid validity becomes `Invalid`; expired validity becomes `Expired`.
 The loader requires the returned observation to retain the exact requested
 `SecretReference` object and rechecks all supplied expiry deadlines at collection
@@ -98,14 +119,18 @@ remain usable.
 A failed refresh preserves the previous generation. An unexpected reader
 exception becomes `Unavailable` without exposing its message or inner exception.
 `LastAttempt` records bounded collection timing, status, retry timing and
-cancellation evidence, not values, keys or provider exception text. `RetryAfter`
+cancellation evidence and `Reason`, not values, keys or provider exception text. `RetryAfter`
 is evidence for host policy, not an automatic retry instruction.
 
 Cancellation propagates as `OperationCanceledException`, disposes candidate
 material and preserves the previous generation. Cancelling a queued collection
 does not cancel the one already running; a cancellation before entering collection
 does not create a new attempt record. Give remote reads a caller-controlled
-deadline. Loader disposal prevents publication and future acquisition, but does
+deadline. Caller cancellation takes precedence over a collection deadline;
+deadline failure is `Unavailable/DeadlineExceeded`. A reader ignoring cancellation
+can delay safe drainage; the timeout does not forcibly terminate it. Unexpected
+reader cancellation is a sanitized transport failure unless caller/deadline
+cancellation is observable. Loader disposal prevents publication and future acquisition, but does
 not itself cancel reader I/O or dispose supplied readers/transports.
 
 ## Pin one generation, then release each owner
@@ -115,6 +140,12 @@ not itself cancel reader I/O or dispose supplied readers/transports.
 `SecretObservation`; dispose every returned read. A key not selected in that
 generation throws `ArgumentException`.
 
+`handle.ReadOutcome(consumerKey)` returns an independently owned successful read
+or `Absent` for a declared optional absence. Dispose a successful result's value.
+`Read` throws a fixed `InvalidOperationException` for absence. Unknown keys and
+disposed handles remain misuse. `Count` counts present selections;
+`SelectionCount` includes declared absent selections.
+
 Replacing or disposing the loader releases its ownership of the old storage,
 but handles keep it alive. Disposing a handle is idempotent and prevents further
 reads through that handle; copies already returned remain valid until their own
@@ -122,7 +153,7 @@ disposal. Dispose handles promptly rather than retaining retired generations
 indefinitely. SDK-owned character buffers clear on final release; this cannot
 erase upstream parser strings or caller-created plaintext.
 
-`Generation`, `CollectionStartedAt`, `CollectionCompletedAt` and `Count` describe
+`Generation`, `CollectionStartedAt`, `CollectionCompletedAt`, `Count` and `SelectionCount` describe
 the local collected set. Each read retains its observed provider version,
 reference and validity metadata. Unknown provider versions remain unknown.
 `RemoteSnapshotGuaranteed` is always `false`: serial reads may observe different
@@ -136,11 +167,30 @@ failure and readiness budgets, including during long-running operations.
 
 ## Opt into plaintext IConfiguration separately
 
+For one-shot ownership, first await
+`PreparedSecretConfiguration.PrepareAsync(selections, options: options,
+cancellationToken: cancellationToken)`. On success, dispose the returned owner.
+`Read` and `ReadOutcome` provide material-only acquisition. Only an explicit
+`ExportAcknowledgingManagedStrings(mapping)` creates the single borrowed root;
+the prepared owner disposes root/export before its pinned handle and loader.
+Borrowed readers and caller-held read copies retain independent lifetimes.
+
 `SecretConfigurationMapping(consumerKey, configurationKey)` names each exported
 key explicitly. Destination keys use **ordinal, case-insensitive** collision
 checks before any material is read. Mapping `username` to `Service:User` and
 `password` to `service:user` therefore fails even though the consumer keys differ.
 There is no automatic secret-name conversion.
+
+Every mapped selection is validated before any material is revealed. A declared
+absent optional selection exports an explicit null entry, masking lower-priority
+configuration instead of resurrecting an old/default secret. Unselected keys
+remain misuse; absence is not an implicit mapping wildcard.
+
+When layering defaults, add the `SecretConfigurationExport` source directly after
+the lower-priority providers. `AddConfiguration(preparedRoot)` chains through the
+`IConfiguration` indexer and treats null as not found, so it cannot preserve that
+explicit-null mask. A prepared root still retains null presence in its own
+provider; use the direct export-source API when composing a fallback hierarchy.
 
 Given an acquired `generation` containing the two keys above:
 
