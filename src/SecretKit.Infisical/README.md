@@ -1,5 +1,28 @@
 # SecretKit.Infisical
 
+## Explicit runtime ownership
+
+`InfisicalRuntimeSession.OpenUniversalAsync` accepts immutable runtime options,
+caller-owned bootstrap material and a caller-created single-use
+`InfisicalRuntimeOpenAttempt`. Retain the attempt: its actual `LoginReceipt`
+survives failure or cancellation and never grants automatic retry authority.
+Opening binds independent finite/periodic lifetime policy to the returned login;
+zero maximum TTL alone is not evidence of periodic renewal.
+
+`CreateFromToken` copies caller-held token material using independently admitted
+lifetime evidence, with no authentication dispatch or bootstrap `ClientId`.
+Missing/unusable timing returns `RecoveryRequired`; token-only clients without
+such evidence can retain the direct token-source/client path.
+
+The aggregate owns its `Client` and `TokenSession`; these properties are borrowed
+advanced access. `StopAsync` shares the original `Network.ShutdownTimeout` result,
+starts both child retirements before awaiting either, and retains eventual cleanup
+after timeout. Borrowed transports and independent material copies remain
+host-owned. No bootstrap is retained, no relogin or maintenance starts implicitly.
+
+Hosting's optional registration borrows this already opened owner. See
+[authentication and hosting](../../docs/public/authentication-and-hosting.md).
+
 The immediate priority is [Infisical-first local-package readiness](../../docs/public/local-packages.md):
 selected reads, native revision/provenance, explicit authentication lifetime,
 selected mutations and reusable .NET composition. Qualified native revision
@@ -61,10 +84,12 @@ TLS certificate presentation belongs to the host-owned controlled transport.
 Returned token expiry follows reported `expiresIn`; `accessTokenMaxTTL` remains
 metadata rather than an inferred expiry ceiling.
 
-Login and token-renewal responses enforce the declared four-member root:
-`accessToken`, `accessTokenMaxTTL`, `expiresIn` and `tokenType`. Extra members
-retain uncertain dispatch evidence; renewal requires explicit recovery rather
-than publishing unverified material.
+Login and token-renewal responses require `accessToken`, `accessTokenMaxTTL`,
+`expiresIn` and `tokenType` with their exact types and lifetime rules. Unrelated
+root metadata is ignored within the response byte/depth limits and is never
+retained in a login or session. Duplicate root members, including unknown names,
+remain invalid. Local credentials and qualification inputs retain their own
+strict input contracts.
 
 These exchanges have 50 focused offline tests, with 262 native regression tests
 passing at delivery. External issuer/signature acceptance, actual mTLS chain and
@@ -147,12 +172,38 @@ because it can own a safe transport. Typed authority, response budgets and
 receipts remain enforced in both modes. The old public injection overloads are
 removed rather than retained as aliases.
 
-The caller supplies an operation deadline with its cancellation token. It
-applies through credential acquisition, send and body reads. No read retry,
-IPv4 override, implicit login or mutation replay is added. Default transports
+`OperationTimeout` defaults to 30 seconds and accepts positive durations up to
+one minute. It covers credential acquisition, request construction, send, parse
+and publication. `MaximumRequestBytes` independently defaults to 1 MiB and accepts
+1 KiB through 16 MiB; `MaximumResponseBytes` has the same independent range.
+These limits count encoded body bytes, not headers or process memory. Smaller
+token/proof limits still apply. Renewal uses the earliest operation, renewal
+request and actual-expiry deadline.
+
+Caller cancellation takes precedence and propagates without provider text.
+An SDK deadline yields bounded failure evidence; unresolved mutations retain
+their actual receipts and are never replayed. Late unpublished material is
+disposed. Cancellation is cooperative: synchronous serialization, arbitrary token
+sources and host pipelines cannot be forcibly stopped, and owned cleanup must
+settle before return. A borrowed `HttpClient.Timeout` remains host policy, not
+proof of the SDK deadline. No read retry, IPv4 override, implicit login or mutation replay is added. Default transports
 reuse connections with a two-minute pooled lifetime; host-controlled pipelines
 retain their own DNS/pooling/proxy policy. Do not combine host-controlled
 selection with `network.Proxy`.
+
+Failed outcomes preserve their closed `Reason` through common/native reads and
+native projections. Read responses may carry `RetryAfter` for throttling or
+unavailability; 429/503 delta/date advice is clamped to 0–24 hours using the
+selected clock. Advice schedules no work and grants no mutation replay authority.
+
+Opt-in BCL listeners can observe the `SecretKit.Infisical` ActivitySource and
+Meter (`infisical.operations`, `infisical.duration`). SDK tags are limited to
+`operation`, `outcome`, `reason` and `dispatch`, all closed categories. Emission
+follows classification and owned cleanup, outside state locks. Throwing listeners
+cannot change outcomes or receipts. No exporters, logging configuration, queues
+or arbitrary diagnostic payloads are installed. A nonreturning host listener can
+block its invoking thread; this is not a hard return-time or global redaction
+guarantee for host-controlled networking.
 
 Bind every native address to the client's `SecretAuthority` through a
 `SecretReference`. Native mutations also require an independently supplied
