@@ -3,21 +3,34 @@ using SecretKit.Core;
 
 namespace SecretKit.Extensions.Configuration;
 
-/// <summary>Explicitly selects one required consumer key and its reader authority.</summary>
+/// <summary>Whether an explicit absence can be admitted into a generation.</summary>
+public enum SecretPresencePolicy
+{
+    /// <summary>A successful valid read is required.</summary>
+    Required,
+    /// <summary>Explicit absence is admitted; other failures still reject the generation.</summary>
+    Optional
+}
+
+/// <summary>Explicitly selects one consumer key, presence policy and reader authority.</summary>
 public sealed class SecretSelection
 {
     /// <summary>Binds a nonblank consumer key to the exact reader-owned reference, without reading it.</summary>
     /// <exception cref="ArgumentException">The key is blank or the reference has a different authority.</exception>
-    public SecretSelection(string consumerKey, ISecretReader reader, SecretReference reference)
+    public SecretSelection(string consumerKey, ISecretReader reader, SecretReference reference,
+        SecretPresencePolicy presencePolicy = SecretPresencePolicy.Required)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(consumerKey);
         ArgumentNullException.ThrowIfNull(reader);
         ArgumentNullException.ThrowIfNull(reference);
+        if (!Enum.IsDefined(presencePolicy))
+            throw new ArgumentOutOfRangeException(nameof(presencePolicy), "Presence policy must be defined.");
         if (!reference.BelongsTo(reader.Authority))
             throw new ArgumentException("Reference does not belong to the selected reader.");
         ConsumerKey = consumerKey;
         Reader = reader;
         Reference = reference;
+        PresencePolicy = presencePolicy;
     }
 
     /// <summary>The protected, case-sensitive key used to retrieve this selection from a generation.</summary>
@@ -29,6 +42,8 @@ public sealed class SecretSelection
     /// <summary>The exact reference that successful reader observations must preserve.</summary>
     [JsonIgnore]
     public SecretReference Reference { get; }
+    /// <summary>The explicit presence policy; Required is the default.</summary>
+    public SecretPresencePolicy PresencePolicy { get; }
 
     /// <summary>Returns a bounded description without selected keys or coordinates.</summary>
     public override string ToString() => "[SecretSelection]";
@@ -38,13 +53,15 @@ public sealed class SecretSelection
 public sealed class SecretCollectionAttempt
 {
     internal SecretCollectionAttempt(DateTimeOffset started, DateTimeOffset completed,
-        SecretStatus status, TimeSpan? retryAfter = null, bool wasCanceled = false)
+        SecretStatus status, TimeSpan? retryAfter = null, bool wasCanceled = false,
+        SecretFailureReason reason = SecretFailureReason.None)
     {
         StartedAt = started;
         CompletedAt = completed;
         Status = status;
         RetryAfter = retryAfter;
         WasCanceled = wasCanceled;
+        Reason = reason;
     }
 
     /// <summary>The injected-clock time immediately before this serialized collection.</summary>
@@ -57,6 +74,8 @@ public sealed class SecretCollectionAttempt
     public TimeSpan? RetryAfter { get; }
     /// <summary>Whether collection cancellation propagated instead of returning an ordinary outcome.</summary>
     public bool WasCanceled { get; }
+    /// <summary>The bounded failure detail, without provider diagnostics.</summary>
+    public SecretFailureReason Reason { get; }
     /// <summary>Returns only bounded collection status, without keys or provider diagnostics.</summary>
     public override string ToString() => $"[SecretCollectionAttempt:{Status}]";
 }

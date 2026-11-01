@@ -18,6 +18,7 @@ public sealed class SecretSnapshotHandle : IDisposable
         CollectionStartedAt = storage.StartedAt;
         CollectionCompletedAt = storage.CompletedAt;
         Count = storage.Count;
+        SelectionCount = storage.SelectionCount;
     }
 
     /// <summary>The loader-local generation number pinned by this handle, not a provider revision.</summary>
@@ -26,8 +27,10 @@ public sealed class SecretSnapshotHandle : IDisposable
     public DateTimeOffset CollectionStartedAt { get; }
     /// <summary>The injected-clock time when all required reads completed.</summary>
     public DateTimeOffset CollectionCompletedAt { get; }
-    /// <summary>The number of required consumer selections retained by this generation.</summary>
+    /// <summary>The number of present consumer selections retained by this generation.</summary>
     public int Count { get; }
+    /// <summary>The number of declared selections, including absent optional selections.</summary>
+    public int SelectionCount { get; }
     /// <summary>Local coherence cannot manufacture a provider transaction.</summary>
     public bool RemoteSnapshotGuaranteed => false;
 
@@ -37,11 +40,28 @@ public sealed class SecretSnapshotHandle : IDisposable
     /// <exception cref="ArgumentException">The key is not part of this generation.</exception>
     public SecretRead Read(string consumerKey)
     {
+        SecretOutcome<SecretRead> outcome = ReadOutcome(consumerKey);
+        return outcome.IsSuccess ? outcome.Value :
+            throw new InvalidOperationException("Selected value is absent from this generation.");
+    }
+
+    /// <summary>Returns an owned read or explicit absence for a declared key.</summary>
+    public SecretOutcome<SecretRead> ReadOutcome(string consumerKey)
+    {
         ArgumentNullException.ThrowIfNull(consumerKey);
         lock (_gate)
         {
             ObjectDisposedException.ThrowIf(_storage is null, this);
-            return _storage.Read(consumerKey);
+            return _storage.ReadOutcome(consumerKey);
+        }
+    }
+
+    internal void ValidateKeys(IEnumerable<string> keys)
+    {
+        lock (_gate)
+        {
+            ObjectDisposedException.ThrowIf(_storage is null, this);
+            foreach (string key in keys) _storage.ValidateKey(key);
         }
     }
 
@@ -63,11 +83,11 @@ public sealed class SecretSnapshotHandle : IDisposable
 internal sealed class SecretSnapshotGeneration
 {
     private readonly object _gate = new();
-    private readonly Dictionary<string, SecretRead> _entries;
+    private readonly Dictionary<string, SecretRead?> _entries;
     // One initial reference belongs to the current-publication pointer.
     private int _references = 1;
 
-    internal SecretSnapshotGeneration(long generation, Dictionary<string, SecretRead> entries,
+    internal SecretSnapshotGeneration(long generation, Dictionary<string, SecretRead?> entries,
         DateTimeOffset startedAt, DateTimeOffset completedAt)
     {
         Generation = generation;
@@ -79,7 +99,8 @@ internal sealed class SecretSnapshotGeneration
     internal long Generation { get; }
     internal DateTimeOffset StartedAt { get; }
     internal DateTimeOffset CompletedAt { get; }
-    internal int Count => _entries.Count;
+    internal int Count => _entries.Values.Count(read => read is not null);
+    internal int SelectionCount => _entries.Count;
 
     // Only the loader's current-pointer lock can acquire a new reference.
     internal SecretSnapshotHandle Acquire()
@@ -91,13 +112,20 @@ internal sealed class SecretSnapshotGeneration
         }
     }
 
-    internal SecretRead Read(string key)
+    internal void ValidateKey(string key)
+    {
+        if (!_entries.ContainsKey(key))
+            throw new ArgumentException("Consumer key is not in this generation.");
+    }
+
+    internal SecretOutcome<SecretRead> ReadOutcome(string key)
     {
         lock (_gate)
         {
-            if (!_entries.TryGetValue(key, out SecretRead? read))
-                throw new ArgumentException("Consumer key is not in this generation.");
-            return new SecretRead(read.Material.Copy(), read.Observation);
+            ValidateKey(key);
+            SecretRead? read = _entries[key];
+            return read is null ? SecretOutcome<SecretRead>.Failure(SecretStatus.Absent) :
+                SecretOutcome<SecretRead>.Success(new SecretRead(read.Material.Copy(), read.Observation));
         }
     }
 
@@ -106,7 +134,7 @@ internal sealed class SecretSnapshotGeneration
         lock (_gate)
         {
             if (--_references != 0) return;
-            foreach (SecretRead read in _entries.Values) read.Dispose();
+            foreach (SecretRead? read in _entries.Values) read?.Dispose();
             _entries.Clear();
         }
     }

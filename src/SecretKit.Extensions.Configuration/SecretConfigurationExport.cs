@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Configuration;
+using SecretKit.Core;
 
 namespace SecretKit.Extensions.Configuration;
 
@@ -110,10 +111,17 @@ public sealed class SecretConfigurationExport : IConfigurationSource, IDisposabl
 
     private Dictionary<string, string?> Prepare(SecretSnapshotHandle generation)
     {
+        generation.ValidateKeys(_mapping.Select(entry => entry.ConsumerKey));
         var strings = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
         foreach (SecretConfigurationMapping entry in _mapping)
         {
-            using var read = generation.Read(entry.ConsumerKey);
+            SecretOutcome<SecretRead> outcome = generation.ReadOutcome(entry.ConsumerKey);
+            if (!outcome.IsSuccess)
+            {
+                strings[entry.ConfigurationKey] = null;
+                continue;
+            }
+            using SecretRead read = outcome.Value;
             strings[entry.ConfigurationKey] = read.Material.Reveal();
         }
         return strings;
