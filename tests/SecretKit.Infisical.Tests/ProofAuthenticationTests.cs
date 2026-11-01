@@ -105,8 +105,8 @@ public sealed class ProofAuthenticationTests
         var extraReceipt = extraClient.CreateReceipt();
         var extra = await extraClient.LoginAsync(proof, extraReceipt);
         if (extra.IsSuccess) extra.Value.Dispose();
-        await Assert.That(extra.Status).IsEqualTo(SecretStatus.Unknown);
-        await Assert.That(extraReceipt.Evidence).IsEqualTo(DispatchEvidence.PossiblyDispatched);
+        await Assert.That(extra.Status).IsEqualTo(SecretStatus.Success);
+        await Assert.That(extraReceipt.Evidence).IsEqualTo(DispatchEvidence.Applied);
         await Assert.That((await extraClient.LoginAsync(proof, extraReceipt)).Status).IsEqualTo(SecretStatus.Invalid);
     }
 

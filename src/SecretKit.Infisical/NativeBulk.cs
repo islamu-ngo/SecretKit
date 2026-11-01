@@ -307,151 +307,161 @@ public sealed partial class InfisicalClient
         IReadOnlyList<InfisicalBulkSecret> inputs, InfisicalNativeAuthority authority, InfisicalBulkReceipt receipt,
         HttpMethod method, InfisicalBulkUpdateMode mode, CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(inputs);
-        cancellationToken.ThrowIfCancellationRequested();
-        if (!Enum.IsDefined(mode) || inputs.Count is < 1 or > 128 || inputs.Any(input => input is null) ||
-            receipt is null || target.Address is not InfisicalBulkAddress address ||
-            !NativeTargetValid(target, authority, receipt.Envelope))
+        return await InfisicalOperationBudget.RunAsync(_operationTimeout, _time, cancellationToken,
+            InfisicalOperation.Native, ExecuteAsync, () => receipt?.Envelope.Evidence ?? DispatchEvidence.NotDispatched, shutdown: _shutdown.Token).ConfigureAwait(false);
+
+        async ValueTask<SecretOutcome<InfisicalBulkObservation>> ExecuteAsync(CancellationToken operationToken)
         {
-            return SecretOutcome<InfisicalBulkObservation>.Failure(SecretStatus.Invalid);
-        }
-        InfisicalBulkSecret[] owned = inputs.ToArray();
-        if (owned.Select(input => (input.NewName ?? input.Key, input.Type)).Distinct().Count() != owned.Length)
-        {
-            return SecretOutcome<InfisicalBulkObservation>.Failure(SecretStatus.Invalid);
-        }
-        var bodies = new List<Dictionary<string, object?>>();
-        long inputCharacters = 0;
-        foreach (InfisicalBulkSecret input in owned)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            inputCharacters += input.Key.Length + (input.NewName?.Length ?? 0) + (input.Comment?.Length ?? 0) +
-                (input.SecretPath?.Length ?? 0) + (input.ReminderNote?.Length ?? 0) +
-                (input.Metadata?.Sum(item => (long)item.Key.Length + (item.Value?.Length ?? 0)) ?? 0) +
-                (input.TagIds?.Sum(id => (long)id.Length) ?? 0) +
-                (input.CreationMetadata?.Sum(pair => (long)pair.Key.Length + pair.Value.Length) ?? 0);
-            if (inputCharacters > _responseLimit)
+            ArgumentNullException.ThrowIfNull(inputs);
+            operationToken.ThrowIfCancellationRequested();
+            if (!Enum.IsDefined(mode) || inputs.Count is < 1 or > 128 || inputs.Any(input => input is null) ||
+                receipt is null || target.Address is not InfisicalBulkAddress address ||
+                !NativeTargetValid(target, authority, receipt.Envelope))
             {
                 return SecretOutcome<InfisicalBulkObservation>.Failure(SecretStatus.Invalid);
             }
-            // The bulk result does not identify row paths. Do not manufacture per-path correlation.
-            if (input.SecretPath is not null && input.SecretPath != address.Folder)
-            {
-                return SecretOutcome<InfisicalBulkObservation>.Failure(SecretStatus.Unsupported);
-            }
-            if (method == HttpMethod.Post && (input.Material is null || input.NewName is not null ||
-                    input.SecretPath is not null || input.ReminderNote is not null || input.ReminderRepeatDays is not null ||
-                    input.ClearReminderNote || input.ClearReminderRepeatDays || input.Type != InfisicalSecretType.Shared) ||
-                method == HttpMethod.Patch && (input.CreationMetadata is not null || input.Type != InfisicalSecretType.Shared) ||
-                method == HttpMethod.Delete && (input.Material is not null || input.NewName is not null ||
-                    input.Comment is not null || input.Metadata is not null || input.TagIds is not null ||
-                    input.SecretPath is not null || input.SkipMultilineEncoding is not null ||
-                    input.ReminderNote is not null || input.ReminderRepeatDays is not null ||
-                    input.ClearReminderNote || input.ClearReminderRepeatDays || input.CreationMetadata is not null))
+            InfisicalBulkSecret[] owned = inputs.ToArray();
+            if (owned.Select(input => (input.NewName ?? input.Key, input.Type)).Distinct().Count() != owned.Length)
             {
                 return SecretOutcome<InfisicalBulkObservation>.Failure(SecretStatus.Invalid);
             }
-            var body = new Dictionary<string, object?> { ["secretKey"] = input.Key };
-            if (input.Material is not null)
+            var bodies = new List<Dictionary<string, object?>>();
+            long inputCharacters = 0;
+            foreach (InfisicalBulkSecret input in owned)
             {
-                using SecretMaterial material = input.Material.Copy();
-                string text = material.Reveal();
-                inputCharacters += text.Length;
-                if (inputCharacters > _responseLimit)
+                operationToken.ThrowIfCancellationRequested();
+                inputCharacters += input.Key.Length + (input.NewName?.Length ?? 0) + (input.Comment?.Length ?? 0) +
+                    (input.SecretPath?.Length ?? 0) + (input.ReminderNote?.Length ?? 0) +
+                    (input.Metadata?.Sum(item => (long)item.Key.Length + (item.Value?.Length ?? 0)) ?? 0) +
+                    (input.TagIds?.Sum(id => (long)id.Length) ?? 0) +
+                    (input.CreationMetadata?.Sum(pair => (long)pair.Key.Length + pair.Value.Length) ?? 0);
+                if (inputCharacters > _requestLimit)
+                {
+                    return SecretOutcome<InfisicalBulkObservation>.Failure(SecretStatus.Invalid, reason: SecretFailureReason.RequestTooLarge);
+                }
+                // The bulk result does not identify row paths. Do not manufacture per-path correlation.
+                if (input.SecretPath is not null && input.SecretPath != address.Folder)
+                {
+                    return SecretOutcome<InfisicalBulkObservation>.Failure(SecretStatus.Unsupported, reason: SecretFailureReason.UnsupportedContract);
+                }
+                if (method == HttpMethod.Post && (input.Material is null || input.NewName is not null ||
+                        input.SecretPath is not null || input.ReminderNote is not null || input.ReminderRepeatDays is not null ||
+                        input.ClearReminderNote || input.ClearReminderRepeatDays || input.Type != InfisicalSecretType.Shared) ||
+                    method == HttpMethod.Patch && (input.CreationMetadata is not null || input.Type != InfisicalSecretType.Shared) ||
+                    method == HttpMethod.Delete && (input.Material is not null || input.NewName is not null ||
+                        input.Comment is not null || input.Metadata is not null || input.TagIds is not null ||
+                        input.SecretPath is not null || input.SkipMultilineEncoding is not null ||
+                        input.ReminderNote is not null || input.ReminderRepeatDays is not null ||
+                        input.ClearReminderNote || input.ClearReminderRepeatDays || input.CreationMetadata is not null))
                 {
                     return SecretOutcome<InfisicalBulkObservation>.Failure(SecretStatus.Invalid);
                 }
-                body["secretValue"] = text;
-            }
-            if (method == HttpMethod.Delete) { body["type"] = input.Type == InfisicalSecretType.Shared ? "shared" : "personal"; }
-            if (input.NewName is not null) { body["newSecretName"] = input.NewName; }
-            if (input.Comment is not null) { body["secretComment"] = input.Comment; }
-            if (input.Metadata is not null)
-            {
-                body["secretMetadata"] = input.Metadata.Select(item => new
+                var body = new Dictionary<string, object?> { ["secretKey"] = input.Key };
+                if (input.Material is not null)
                 {
-                    key = item.Key,
-                    value = item.Value,
-                    isEncrypted = item.IsEncrypted
-                }).Select(item => JsonSerializer.SerializeToElement(item, NativePayloadOptions)).ToArray();
+                    int materialBytes = input.Material.GetUtf8ByteCount();
+                    if (materialBytes > _requestLimit - inputCharacters)
+                    {
+                        return SecretOutcome<InfisicalBulkObservation>.Failure(SecretStatus.Invalid, reason: SecretFailureReason.RequestTooLarge);
+                    }
+                    inputCharacters += materialBytes;
+                    using SecretMaterial material = input.Material.Copy();
+                    body["secretValue"] = material.Reveal();
+                }
+                if (method == HttpMethod.Delete) { body["type"] = input.Type == InfisicalSecretType.Shared ? "shared" : "personal"; }
+                if (input.NewName is not null) { body["newSecretName"] = input.NewName; }
+                if (input.Comment is not null) { body["secretComment"] = input.Comment; }
+                if (input.Metadata is not null)
+                {
+                    body["secretMetadata"] = input.Metadata.Select(item =>
+                    {
+                        var metadata = new Dictionary<string, object?>
+                        {
+                            ["key"] = item.Key,
+                            ["isEncrypted"] = item.IsEncrypted
+                        };
+                        if (item.Value is not null) metadata["value"] = item.Value;
+                        return metadata;
+                    }).ToArray();
+                }
+                if (input.TagIds is not null) { body["tagIds"] = input.TagIds; }
+                if (input.SecretPath is not null) { body["secretPath"] = input.SecretPath; }
+                if (input.SkipMultilineEncoding is not null) { body["skipMultilineEncoding"] = input.SkipMultilineEncoding; }
+                if (input.ReminderNote is not null || input.ClearReminderNote) { body["secretReminderNote"] = input.ReminderNote; }
+                if (input.ReminderRepeatDays is not null || input.ClearReminderRepeatDays) { body["secretReminderRepeatDays"] = input.ReminderRepeatDays; }
+                if (input.CreationMetadata is not null) { body["metadata"] = input.CreationMetadata; }
+                bodies.Add(body);
             }
-            if (input.TagIds is not null) { body["tagIds"] = input.TagIds; }
-            if (input.SecretPath is not null) { body["secretPath"] = input.SecretPath; }
-            if (input.SkipMultilineEncoding is not null) { body["skipMultilineEncoding"] = input.SkipMultilineEncoding; }
-            if (input.ReminderNote is not null || input.ClearReminderNote) { body["secretReminderNote"] = input.ReminderNote; }
-            if (input.ReminderRepeatDays is not null || input.ClearReminderRepeatDays) { body["secretReminderRepeatDays"] = input.ReminderRepeatDays; }
-            if (input.CreationMetadata is not null) { body["metadata"] = input.CreationMetadata; }
-            bodies.Add(body);
-        }
-        var requestBody = new Dictionary<string, object?>
-        {
-            ["projectId"] = address.ProjectId,
-            ["environment"] = address.Environment,
-            ["secretPath"] = address.Folder,
-            ["secrets"] = bodies
-        };
-        if (method == HttpMethod.Patch)
-        {
-            requestBody["mode"] = mode switch
+            var requestBody = new Dictionary<string, object?>
             {
-                InfisicalBulkUpdateMode.Ignore => "ignore",
-                InfisicalBulkUpdateMode.Upsert => "upsert",
-                _ => "failOnNotFound"
+                ["projectId"] = address.ProjectId,
+                ["environment"] = address.Environment,
+                ["secretPath"] = address.Folder,
+                ["secrets"] = bodies
             };
-        }
-        InfisicalBulkOperation operation = method == HttpMethod.Post ? InfisicalBulkOperation.Create :
-            method == HttpMethod.Patch ? InfisicalBulkOperation.Update : InfisicalBulkOperation.Delete;
-        if (!receipt.Claim(this, target, owned, operation, mode))
-            return SecretOutcome<InfisicalBulkObservation>.Failure(SecretStatus.Invalid);
-        SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target, "api/v4/secrets/batch",
-            method, JsonSerializer.SerializeToUtf8Bytes(requestBody), authority, receipt.Envelope, cancellationToken, receipt);
-        if (!outcome.IsSuccess) { return SecretOutcome<InfisicalBulkObservation>.Failure(outcome.Status, outcome.RetryAfter); }
-        using JsonDocument document = outcome.Value;
-        JsonElement root = document.RootElement;
-        if (root.ValueKind != JsonValueKind.Object ||
-            root.EnumerateObject().Select(property => property.Name).Distinct(StringComparer.Ordinal).Count() !=
-                root.EnumerateObject().Count() ||
-            root.EnumerateObject().Any(property => property.Name != "secrets" && !UniqueBulkProperties(property.Value)))
-            return SecretOutcome<InfisicalBulkObservation>.Failure(SecretStatus.Invalid);
-        if (root.ValueKind == JsonValueKind.Object && root.TryGetProperty("approval", out JsonElement approval))
-        {
-            if (approval.ValueKind != JsonValueKind.Object || root.TryGetProperty("secrets", out _) ||
-                !NativeGuid(approval, "id", out string id) || address.FolderId is null ||
-                NativeString(approval, "folderId") != address.FolderId || !NativeGuid(approval, "policyId", out _) ||
-                (approval.TryGetProperty("hasMerged", out JsonElement merged) && merged.ValueKind != JsonValueKind.False))
+            if (method == HttpMethod.Patch)
             {
-                return SecretOutcome<InfisicalBulkObservation>.Failure(SecretStatus.Unknown);
+                requestBody["mode"] = mode switch
+                {
+                    InfisicalBulkUpdateMode.Ignore => "ignore",
+                    InfisicalBulkUpdateMode.Upsert => "upsert",
+                    _ => "failOnNotFound"
+                };
             }
-            receipt.Envelope.Record(DispatchEvidence.Pending);
-            for (int index = 0; index < owned.Length; index++)
-                receipt.RecordItem(index, DispatchEvidence.Pending, null);
-            return SecretOutcome<InfisicalBulkObservation>.Success(new(receipt.Items, id));
-        }
-        if (!NativeArray(root, "secrets", out JsonElement items))
-        {
-            return SecretOutcome<InfisicalBulkObservation>.Failure(SecretStatus.Unknown);
-        }
-        var seen = new HashSet<int>();
-        foreach (JsonElement item in items.EnumerateArray())
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            string? key = NativeString(item, "secretKey");
-            string? type = NativeString(item, "type");
-            int index = Array.FindIndex(owned, input => (input.NewName ?? input.Key) == key &&
-                (input.Type == InfisicalSecretType.Shared ? "shared" : "personal") == type);
-            if (!UniqueBulkProperties(item) || index < 0 || !seen.Add(index) ||
-                NativeString(item, "workspace") != address.ProjectId || NativeString(item, "environment") != address.Environment ||
-                item.TryGetProperty("secretPath", out JsonElement path) &&
-                    (path.ValueKind != JsonValueKind.String || path.GetString() != address.Folder) ||
-                Version(item) is not { } version)
-            {
+            InfisicalBulkOperation operation = method == HttpMethod.Post ? InfisicalBulkOperation.Create :
+                method == HttpMethod.Patch ? InfisicalBulkOperation.Update : InfisicalBulkOperation.Delete;
+            if (!receipt.Claim(this, target, owned, operation, mode))
                 return SecretOutcome<InfisicalBulkObservation>.Failure(SecretStatus.Invalid);
+            SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target, "api/v4/secrets/batch",
+                method, InfisicalOperationBudget.Payload(requestBody), authority, receipt.Envelope, operationToken, receipt);
+            if (!outcome.IsSuccess) { return SecretOutcome<InfisicalBulkObservation>.Failure(outcome.Status, outcome.RetryAfter, outcome.Reason); }
+            using JsonDocument document = outcome.Value;
+            JsonElement root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object ||
+                root.EnumerateObject().Select(property => property.Name).Distinct(StringComparer.Ordinal).Count() !=
+                    root.EnumerateObject().Count() ||
+                root.EnumerateObject().Any(property => property.Name != "secrets" && !UniqueBulkProperties(property.Value)))
+                return SecretOutcome<InfisicalBulkObservation>.Failure(SecretStatus.Invalid);
+            if (root.ValueKind == JsonValueKind.Object && root.TryGetProperty("approval", out JsonElement approval))
+            {
+                if (approval.ValueKind != JsonValueKind.Object || root.TryGetProperty("secrets", out _) ||
+                    !NativeGuid(approval, "id", out string id) || address.FolderId is null ||
+                    NativeString(approval, "folderId") != address.FolderId || !NativeGuid(approval, "policyId", out _) ||
+                    (approval.TryGetProperty("hasMerged", out JsonElement merged) && merged.ValueKind != JsonValueKind.False))
+                {
+                    return SecretOutcome<InfisicalBulkObservation>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.InvalidResponse);
+                }
+                receipt.Envelope.Record(DispatchEvidence.Pending);
+                for (int index = 0; index < owned.Length; index++)
+                    receipt.RecordItem(index, DispatchEvidence.Pending, null);
+                return SecretOutcome<InfisicalBulkObservation>.Success(new(receipt.Items, id));
             }
-            receipt.RecordItem(index, DispatchEvidence.Applied, version);
+            if (!NativeArray(root, "secrets", out JsonElement items))
+            {
+                return SecretOutcome<InfisicalBulkObservation>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.InvalidResponse);
+            }
+            var seen = new HashSet<int>();
+            foreach (JsonElement item in items.EnumerateArray())
+            {
+                operationToken.ThrowIfCancellationRequested();
+                string? key = NativeString(item, "secretKey");
+                string? type = NativeString(item, "type");
+                int index = Array.FindIndex(owned, input => (input.NewName ?? input.Key) == key &&
+                    (input.Type == InfisicalSecretType.Shared ? "shared" : "personal") == type);
+                if (!UniqueBulkProperties(item) || index < 0 || !seen.Add(index) ||
+                    NativeString(item, "workspace") != address.ProjectId || NativeString(item, "environment") != address.Environment ||
+                    item.TryGetProperty("secretPath", out JsonElement path) &&
+                        (path.ValueKind != JsonValueKind.String || path.GetString() != address.Folder) ||
+                    Version(item) is not { } version)
+                {
+                    return SecretOutcome<InfisicalBulkObservation>.Failure(SecretStatus.Invalid);
+                }
+                receipt.RecordItem(index, DispatchEvidence.Applied, version);
+            }
+            var result = new InfisicalBulkObservation(receipt.Items, null);
+            if (result.AllApplied) { receipt.Envelope.Record(DispatchEvidence.Applied); }
+            return SecretOutcome<InfisicalBulkObservation>.Success(result);
         }
-        var result = new InfisicalBulkObservation(receipt.Items, null);
-        if (result.AllApplied) { receipt.Envelope.Record(DispatchEvidence.Applied); }
-        return SecretOutcome<InfisicalBulkObservation>.Success(result);
     }
 
     private static bool UniqueBulkProperties(JsonElement value)

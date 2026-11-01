@@ -186,6 +186,8 @@ public sealed partial class InfisicalProofAuthentication : IDisposable
     private readonly Uri _origin;
     private readonly TimeProvider _time;
     private readonly int _responseLimit;
+    private readonly int _requestLimit;
+    private readonly TimeSpan _operationTimeout;
     private bool _disposed;
 
     /// <summary>Creates a fixed-origin proof client without acquiring credentials; borrowed transport stays host-owned.</summary>
@@ -206,6 +208,8 @@ public sealed partial class InfisicalProofAuthentication : IDisposable
         _origin = origin;
         _time = timeProvider ?? TimeProvider.System;
         _responseLimit = network.MaximumResponseBytes;
+        _requestLimit = network.MaximumRequestBytes;
+        _operationTimeout = network.OperationTimeout;
         _binding = new(origin, network, handler, ownsHandler);
         _transport = _binding.Client;
         _wire = RestService.For<IInfisicalProofAuthenticationWire>(_binding.Requests, new RefitSettings
@@ -229,87 +233,94 @@ public sealed partial class InfisicalProofAuthentication : IDisposable
     public async ValueTask<SecretOutcome<InfisicalProofLogin>> LoginAsync(InfisicalLoginProof proof,
         InfisicalProofLoginReceipt receipt, CancellationToken cancellationToken = default)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        ArgumentNullException.ThrowIfNull(proof);
-        ArgumentNullException.ThrowIfNull(receipt);
-        cancellationToken.ThrowIfCancellationRequested();
-        if (!ReferenceEquals(receipt.Owner, this) || receipt.Evidence != DispatchEvidence.NotDispatched)
-            return SecretOutcome<InfisicalProofLogin>.Failure(SecretStatus.Invalid);
-        byte[] payload = proof.CopyPayload();
-        byte[] bytes = new byte[_responseLimit + 1];
-        try
+        return await InfisicalOperationBudget.RunAsync(_operationTimeout, _time, cancellationToken,
+            InfisicalOperation.ProofLogin, ExecuteAsync, () => receipt?.Evidence ?? DispatchEvidence.NotDispatched).ConfigureAwait(false);
+
+        async ValueTask<SecretOutcome<InfisicalProofLogin>> ExecuteAsync(CancellationToken operationToken)
         {
-            using var content = new ByteArrayContent(payload);
-            content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
-            using HttpRequestMessage request = await BuildRequestAsync(proof.Strategy, content, cancellationToken).ConfigureAwait(false);
-            Uri destination = new(_origin, $"/api/v1/auth/{proof.Strategy}-auth/login");
-            if (request.RequestUri is { IsAbsoluteUri: false } relative) request.RequestUri = new(_origin, relative);
-            if (request.Method != HttpMethod.Post || request.RequestUri != destination)
-                return SecretOutcome<InfisicalProofLogin>.Failure(SecretStatus.Invalid);
-            cancellationToken.ThrowIfCancellationRequested();
-            DateTimeOffset sentAt = _time.GetUtcNow();
-            if (!receipt.TryBeginDispatch()) return SecretOutcome<InfisicalProofLogin>.Failure(SecretStatus.Invalid);
-            using HttpResponseMessage response = await _transport.SendAsync(request,
-                HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
-            if (response.StatusCode != HttpStatusCode.OK)
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            ArgumentNullException.ThrowIfNull(proof);
+            ArgumentNullException.ThrowIfNull(receipt);
+            operationToken.ThrowIfCancellationRequested();
+            if (!ReferenceEquals(receipt.Owner, this) || receipt.Evidence != DispatchEvidence.NotDispatched)
+                return SecretOutcome<InfisicalProofLogin>.Failure(SecretStatus.Invalid, reason: SecretFailureReason.AuthorityMismatch);
+            byte[] payload = proof.CopyPayload();
+            byte[] bytes = new byte[_responseLimit + 1];
+            try
             {
-                SecretStatus status = response.StatusCode switch
+                if (payload.Length > _requestLimit)
+                    return SecretOutcome<InfisicalProofLogin>.Failure(SecretStatus.Invalid, reason: SecretFailureReason.RequestTooLarge);
+                using var content = new ByteArrayContent(payload);
+                content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+                using HttpRequestMessage request = await BuildRequestAsync(proof.Strategy, content, operationToken).ConfigureAwait(false);
+                Uri destination = new(_origin, $"/api/v1/auth/{proof.Strategy}-auth/login");
+                if (request.RequestUri is { IsAbsoluteUri: false } relative) request.RequestUri = new(_origin, relative);
+                if (request.Method != HttpMethod.Post || request.RequestUri != destination)
+                    return SecretOutcome<InfisicalProofLogin>.Failure(SecretStatus.Invalid);
+                operationToken.ThrowIfCancellationRequested();
+                DateTimeOffset sentAt = _time.GetUtcNow();
+                if (!receipt.TryBeginDispatch()) return SecretOutcome<InfisicalProofLogin>.Failure(SecretStatus.Invalid);
+                using HttpResponseMessage response = await _transport.SendAsync(request,
+                    HttpCompletionOption.ResponseHeadersRead, operationToken).ConfigureAwait(false);
+                if (response.StatusCode != HttpStatusCode.OK)
                 {
-                    HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => SecretStatus.Denied,
-                    HttpStatusCode.BadRequest or HttpStatusCode.UnprocessableEntity => SecretStatus.Invalid,
-                    HttpStatusCode.TooManyRequests => SecretStatus.Throttled,
-                    _ => SecretStatus.Unknown
-                };
-                if (status != SecretStatus.Unknown) receipt.Record(DispatchEvidence.Rejected);
-                return SecretOutcome<InfisicalProofLogin>.Failure(status);
+                    SecretStatus status = response.StatusCode switch
+                    {
+                        HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => SecretStatus.Denied,
+                        HttpStatusCode.BadRequest or HttpStatusCode.UnprocessableEntity => SecretStatus.Invalid,
+                        HttpStatusCode.TooManyRequests => SecretStatus.Throttled,
+                        _ => SecretStatus.Unknown
+                    };
+                    if (status != SecretStatus.Unknown) receipt.Record(DispatchEvidence.Rejected);
+                    return SecretOutcome<InfisicalProofLogin>.Failure(status);
+                }
+                if (response.Content.Headers.ContentLength > _responseLimit)
+                    return SecretOutcome<InfisicalProofLogin>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.ResponseTooLarge);
+                using Stream body = await response.Content.ReadAsStreamAsync(operationToken).ConfigureAwait(false);
+                int length = 0;
+                while (length < bytes.Length)
+                {
+                    int count = await body.ReadAsync(bytes.AsMemory(length), operationToken).ConfigureAwait(false);
+                    if (count == 0) break;
+                    length += count;
+                }
+                if (length > _responseLimit) return SecretOutcome<InfisicalProofLogin>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.ResponseTooLarge);
+                using var document = JsonDocument.Parse(bytes.AsMemory(0, length), new JsonDocumentOptions { MaxDepth = 8 });
+                JsonElement root = document.RootElement;
+                if (root.ValueKind != JsonValueKind.Object ||
+                    root.EnumerateObject().Select(p => p.Name).Distinct(StringComparer.Ordinal).Count() != root.EnumerateObject().Count() ||
+                    !root.TryGetProperty("accessToken", out var token) || token.ValueKind != JsonValueKind.String ||
+                    !root.TryGetProperty("tokenType", out var type) || type.ValueKind != JsonValueKind.String || type.GetString() != "Bearer" ||
+                    !root.TryGetProperty("expiresIn", out var expires) || expires.ValueKind != JsonValueKind.Number ||
+                    !expires.TryGetDouble(out double seconds) || !double.IsFinite(seconds) || seconds <= 0 || seconds > 3153600000 ||
+                    !root.TryGetProperty("accessTokenMaxTTL", out var maximum) || maximum.ValueKind != JsonValueKind.Number ||
+                    !maximum.TryGetDouble(out double max) || !double.IsFinite(max) || max < 0)
+                    return SecretOutcome<InfisicalProofLogin>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.InvalidResponse);
+                string text = token.GetString()!;
+                if (text.Length is < 1 or > 16384 || text.Any(c => c <= ' ' || c >= 127))
+                    return SecretOutcome<InfisicalProofLogin>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.InvalidResponse);
+                DateTimeOffset expiresAt = sentAt.AddSeconds(seconds);
+                var result = new InfisicalProofLogin(new(SecretMaterial.FromText(text), expiresAt), seconds, max);
+                receipt.Record(DispatchEvidence.Applied);
+                if (operationToken.IsCancellationRequested)
+                {
+                    result.Dispose();
+                    operationToken.ThrowIfCancellationRequested();
+                }
+                return SecretOutcome<InfisicalProofLogin>.Success(result);
             }
-            if (response.Content.Headers.ContentLength > _responseLimit)
-                return SecretOutcome<InfisicalProofLogin>.Failure(SecretStatus.Unknown);
-            using Stream body = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-            int length = 0;
-            while (length < bytes.Length)
+            catch (OperationCanceledException) { throw new OperationCanceledException("Proof login canceled.", operationToken); }
+            catch (Exception error) when (error is HttpRequestException or IOException or JsonException or
+                InvalidOperationException or ArgumentOutOfRangeException)
             {
-                int count = await body.ReadAsync(bytes.AsMemory(length), cancellationToken).ConfigureAwait(false);
-                if (count == 0) break;
-                length += count;
+                return SecretOutcome<InfisicalProofLogin>.Failure(SecretStatus.Unknown, reason: error is HttpRequestException or IOException
+                    ? SecretFailureReason.TransportFailure : SecretFailureReason.InvalidResponse);
             }
-            if (length > _responseLimit) return SecretOutcome<InfisicalProofLogin>.Failure(SecretStatus.Unknown);
-            using var document = JsonDocument.Parse(bytes.AsMemory(0, length), new JsonDocumentOptions { MaxDepth = 8 });
-            JsonElement root = document.RootElement;
-            if (root.ValueKind != JsonValueKind.Object ||
-                root.EnumerateObject().Any(property => property.Name is not
-                    ("accessToken" or "accessTokenMaxTTL" or "expiresIn" or "tokenType")) ||
-                root.EnumerateObject().Select(p => p.Name).Distinct(StringComparer.Ordinal).Count() != root.EnumerateObject().Count() ||
-                !root.TryGetProperty("accessToken", out var token) || token.ValueKind != JsonValueKind.String ||
-                !root.TryGetProperty("tokenType", out var type) || type.ValueKind != JsonValueKind.String || type.GetString() != "Bearer" ||
-                !root.TryGetProperty("expiresIn", out var expires) || expires.ValueKind != JsonValueKind.Number ||
-                !expires.TryGetDouble(out double seconds) || !double.IsFinite(seconds) || seconds <= 0 || seconds > 3153600000 ||
-                !root.TryGetProperty("accessTokenMaxTTL", out var maximum) || maximum.ValueKind != JsonValueKind.Number ||
-                !maximum.TryGetDouble(out double max) || !double.IsFinite(max) || max < 0)
-                return SecretOutcome<InfisicalProofLogin>.Failure(SecretStatus.Unknown);
-            string text = token.GetString()!;
-            if (text.Length is < 1 or > 16384 || text.Any(c => c <= ' ' || c >= 127))
-                return SecretOutcome<InfisicalProofLogin>.Failure(SecretStatus.Unknown);
-            DateTimeOffset expiresAt = sentAt.AddSeconds(seconds);
-            var result = new InfisicalProofLogin(new(SecretMaterial.FromText(text), expiresAt), seconds, max);
-            receipt.Record(DispatchEvidence.Applied);
-            if (cancellationToken.IsCancellationRequested)
+            finally
             {
-                result.Dispose();
-                cancellationToken.ThrowIfCancellationRequested();
+                Array.Clear(payload);
+                Array.Clear(bytes);
             }
-            return SecretOutcome<InfisicalProofLogin>.Success(result);
-        }
-        catch (OperationCanceledException) { throw new OperationCanceledException("Proof login canceled.", cancellationToken); }
-        catch (Exception error) when (error is HttpRequestException or IOException or JsonException or
-            InvalidOperationException or ArgumentOutOfRangeException)
-        {
-            return SecretOutcome<InfisicalProofLogin>.Failure(SecretStatus.Unknown);
-        }
-        finally
-        {
-            Array.Clear(payload);
-            Array.Clear(bytes);
         }
     }
 

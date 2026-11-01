@@ -9,6 +9,107 @@ namespace SecretKit.Infisical.Tests;
 public sealed class LeaseLifecycleTests
 {
     [Test]
+    [Arguments(InfisicalDynamicOperation.Acquire)]
+    [Arguments(InfisicalDynamicOperation.Renew)]
+    [Arguments(InfisicalDynamicOperation.Revoke)]
+    [Arguments(InfisicalDynamicOperation.UpdateDefinition)]
+    public async Task ValidatedAcknowledgmentSurvivesCanceledPublication(InfisicalDynamicOperation operation)
+    {
+        using var wire = new DynamicWireFixture();
+        using var delayed = new CancelAtEofWire(wire);
+        await using var client = new InfisicalDynamicClient(new("https://dynamic.test"),
+            new FailureEvidenceTests.Tokens(), new(wire.Project, wire.Environment, wire.FolderPath, wire.FolderId),
+            new InfisicalNetworkOptions { Transport = InfisicalTransportOptions.HostControlled(delayed) }, wire.Time);
+        InfisicalDynamicDefinition definition = await wire.CreateDatabaseAsync(client);
+        using InfisicalDatabaseLease? lease = operation is InfisicalDynamicOperation.Renew or InfisicalDynamicOperation.Revoke
+            ? (await client.AcquireDatabaseAsync(definition,
+                new InfisicalDynamicMutationReceipt(definition.Target, InfisicalDynamicOperation.Acquire))).Value : null;
+        using var cancellation = new CancellationTokenSource();
+        delayed.CancelNextResponse = cancellation.Cancel;
+        InfisicalDynamicMutationReceipt receipt;
+        Func<Task> mutate;
+        switch (operation)
+        {
+            case InfisicalDynamicOperation.Acquire:
+                receipt = new(definition.Target, operation);
+                mutate = async () =>
+                {
+                    using var acquired = (await client.AcquireDatabaseAsync(definition, receipt,
+                        cancellationToken: cancellation.Token)).Value;
+                };
+                break;
+            case InfisicalDynamicOperation.Renew:
+                {
+                    InfisicalDatabaseLease selected = lease ?? throw new InvalidOperationException("Missing test lease.");
+                    receipt = new(selected.Reference, operation);
+                    mutate = async () => { _ = await client.RenewAsync(selected, receipt, cancellationToken: cancellation.Token); };
+                    break;
+                }
+            case InfisicalDynamicOperation.Revoke:
+                {
+                    InfisicalDatabaseLease selected = lease ?? throw new InvalidOperationException("Missing test lease.");
+                    receipt = new(selected.Reference, operation);
+                    mutate = async () => { _ = await client.RevokeAsync(selected, receipt, cancellationToken: cancellation.Token); };
+                    break;
+                }
+            case InfisicalDynamicOperation.UpdateDefinition:
+                receipt = new(definition.Target, operation);
+                mutate = async () =>
+                {
+                    _ = await client.UpdateDefinitionAsync(definition,
+                    new NativeDynamicDefinitionPatch(newName: "renamed"), receipt, cancellation.Token);
+                };
+                break;
+            default:
+                throw new InvalidOperationException("Unexpected test operation.");
+        }
+        await Assert.That(mutate).Throws<OperationCanceledException>();
+        await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.Applied);
+        if (operation == InfisicalDynamicOperation.Renew)
+        {
+            InfisicalDatabaseLease selected = lease ?? throw new InvalidOperationException("Missing test lease.");
+            await Assert.That(selected.State).IsEqualTo(InfisicalLeaseLocalState.Active);
+            await Assert.That(selected.Observation.Version).IsEqualTo(2m);
+        }
+        if (operation == InfisicalDynamicOperation.Revoke)
+            await Assert.That((lease ?? throw new InvalidOperationException("Missing test lease.")).State)
+                .IsEqualTo(InfisicalLeaseLocalState.Revoked);
+    }
+
+    private sealed class CancelAtEofWire(HttpMessageHandler inner) : DelegatingHandler(inner)
+    {
+        internal Action? CancelNextResponse { get; set; }
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            HttpResponseMessage response = await base.SendAsync(request, cancellationToken);
+            if (CancelNextResponse is { } cancel)
+            {
+                CancelNextResponse = null;
+                byte[] body = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+                response.Content.Dispose();
+                response.Content = new StreamContent(new CancelAtEofStream(body, cancel));
+            }
+            return response;
+        }
+    }
+
+    private sealed class CancelAtEofStream(byte[] body, Action cancel) : MemoryStream(body, writable: false)
+    {
+        private bool _canceled;
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            int count = await base.ReadAsync(buffer, CancellationToken.None);
+            if (count == 0 && !_canceled)
+            {
+                _canceled = true;
+                cancel();
+            }
+            return count;
+        }
+    }
+
+    [Test]
     public async Task InspectionNeverIssuesMaterialAndIndependentCopiesOutliveLocalDisposal()
     {
         using var wire = new DynamicWireFixture();
@@ -286,11 +387,13 @@ internal sealed class DynamicWireFixture : HttpMessageHandler
     internal int DefinitionCount { get { lock (_gate) { return _definitions.Count; } } }
     internal int LeaseVersion(Guid id) { lock (_gate) { return _leases[id].Version; } }
     internal JsonElement Inputs(string name) { lock (_gate) { return _definitions[name].Inputs; } }
-    internal InfisicalDynamicClient Client(int maximumItems = 128, int maximumBytes = 1024 * 1024) =>
+    internal InfisicalDynamicClient Client(int maximumItems = 128, int maximumBytes = 1024 * 1024,
+        int maximumRequestBytes = 1024 * 1024) =>
         new(new Uri("https://dynamic.test"), new Tokens(), new(Project, Environment, FolderPath, FolderId),
             new InfisicalNetworkOptions
             {
                 MaximumResponseBytes = maximumBytes,
+                MaximumRequestBytes = maximumRequestBytes,
                 Transport = InfisicalTransportOptions.HostControlled(this)
             }, Time, maximumItems);
     internal TaskCompletionSource ArmCommitBarrier()

@@ -219,7 +219,8 @@ public sealed class ImportEffectTests
     public async Task BulkBoundsAndAmbiguousApprovalResponseFailClosed()
     {
         var state = new ImportState { AmbiguousApproval = true };
-        await using InfisicalClient client = Phase5TestSupport.Client(new ImportBackend(state), responseLimit: 1024);
+        await using InfisicalClient client = Phase5TestSupport.Client(new ImportBackend(state),
+            responseLimit: 1024, requestLimit: 1024);
         var target = BulkTarget(client);
         var forbidden = new InfisicalNativeAuthority(client.Authority, new Phase5TestSupport.Tokens("admin", true), "project");
         using SecretMaterial large = SecretMaterial.FromText(new string('v', 2048));

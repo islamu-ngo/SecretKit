@@ -155,8 +155,11 @@ public sealed class UniversalAuthenticationTests
         using var secret = SecretMaterial.FromText("bootstrap-canary");
         var receipt = client.CreateReceipt();
         var result = await client.LoginAsync("client-canary", secret, receipt);
-        await Assert.That(result.Status).IsEqualTo(mode == "denied" ? SecretStatus.Denied : SecretStatus.Unknown);
-        await Assert.That(receipt.Evidence).IsEqualTo(mode == "denied" ? DispatchEvidence.Rejected : DispatchEvidence.PossiblyDispatched);
+        if (result.IsSuccess) result.Value.Dispose();
+        await Assert.That(result.Status).IsEqualTo(mode == "extra" ? SecretStatus.Success :
+            mode == "denied" ? SecretStatus.Denied : SecretStatus.Unknown);
+        await Assert.That(receipt.Evidence).IsEqualTo(mode == "extra" ? DispatchEvidence.Applied :
+            mode == "denied" ? DispatchEvidence.Rejected : DispatchEvidence.PossiblyDispatched);
         await Assert.That(handler.Requests).IsEqualTo(1);
     }
 

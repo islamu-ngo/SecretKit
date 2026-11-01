@@ -212,7 +212,7 @@ public sealed partial class InfisicalClient
         {
             return ValueTask.FromResult(SecretOutcome<InfisicalImport>.Failure(SecretStatus.Invalid));
         }
-        byte[] payload = JsonSerializer.SerializeToUtf8Bytes(new
+        Func<int, byte[]> payload = InfisicalOperationBudget.Payload(new
         {
             projectId = address.ProjectId,
             environment = address.Environment,
@@ -237,7 +237,7 @@ public sealed partial class InfisicalClient
         {
             return ValueTask.FromResult(SecretOutcome<InfisicalImport>.Failure(SecretStatus.Invalid));
         }
-        byte[] payload = JsonSerializer.SerializeToUtf8Bytes(new
+        Func<int, byte[]> payload = InfisicalOperationBudget.Payload(new
         {
             projectId = address.ProjectId,
             environment = address.Environment,
@@ -256,7 +256,7 @@ public sealed partial class InfisicalClient
         {
             return ValueTask.FromResult(SecretOutcome<InfisicalImport>.Failure(SecretStatus.Invalid));
         }
-        return ImportOperationAsync(target, HttpMethod.Delete, JsonSerializer.SerializeToUtf8Bytes(new
+        return ImportOperationAsync(target, HttpMethod.Delete, InfisicalOperationBudget.Payload(new
         {
             projectId = address.ProjectId,
             environment = address.Environment,
@@ -265,65 +265,76 @@ public sealed partial class InfisicalClient
     }
 
     private async ValueTask<SecretOutcome<InfisicalImport>> ImportOperationAsync(SecretReference target,
-        HttpMethod method, byte[]? payload, InfisicalNativeAuthority? authority, MutationReceipt? receipt,
+        HttpMethod method, Func<int, byte[]>? payload, InfisicalNativeAuthority? authority, MutationReceipt? receipt,
         string? sourceEnvironment, string? sourcePath, bool? replication, CancellationToken cancellationToken)
     {
-        if (target.Address is not InfisicalImportAddress address ||
-            (method != HttpMethod.Post && address.ImportId is null))
+        return await InfisicalOperationBudget.RunAsync(_operationTimeout, _time, cancellationToken,
+            InfisicalOperation.Native, ExecuteAsync, () => receipt?.Evidence ?? DispatchEvidence.NotDispatched, shutdown: _shutdown.Token).ConfigureAwait(false);
+
+        async ValueTask<SecretOutcome<InfisicalImport>> ExecuteAsync(CancellationToken operationToken)
         {
-            if (payload is not null) { Array.Clear(payload); }
-            return SecretOutcome<InfisicalImport>.Failure(SecretStatus.Invalid);
+            if (target.Address is not InfisicalImportAddress address ||
+                (method != HttpMethod.Post && address.ImportId is null))
+            {
+                return SecretOutcome<InfisicalImport>.Failure(SecretStatus.Invalid);
+            }
+            string path = "api/v2/secret-imports" + (method == HttpMethod.Post ? "" : "/" + Uri.EscapeDataString(address.ImportId!));
+            SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target, path, method, payload, authority, receipt, operationToken);
+            if (!outcome.IsSuccess) { return SecretOutcome<InfisicalImport>.Failure(outcome.Status, outcome.RetryAfter, outcome.Reason); }
+            using JsonDocument document = outcome.Value;
+            if (!NativeObject(document.RootElement, "secretImport", out JsonElement item) ||
+                ParseImport(item, address.FolderId) is not { } import ||
+                (address.ImportId is not null && import.Id != address.ImportId) ||
+                (sourceEnvironment is not null && import.SourceEnvironment != sourceEnvironment) ||
+                (sourcePath is not null && import.SourcePath != sourcePath) ||
+                (replication is not null && import.IsReplication != replication) ||
+                (method == HttpMethod.Get && (NativeString(item, "projectId") != address.ProjectId ||
+                    NativeString(item, "secretPath") != address.Folder ||
+                    !NativeObject(item, "environment", out JsonElement environment) ||
+                    NativeString(environment, "slug") != address.Environment)))
+            {
+                return SecretOutcome<InfisicalImport>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.InvalidResponse);
+            }
+            // This receipt proves the configuration mutation only, never destination application.
+            receipt?.Record(DispatchEvidence.Applied);
+            return SecretOutcome<InfisicalImport>.Success(import);
         }
-        string path = "api/v2/secret-imports" + (method == HttpMethod.Post ? "" : "/" + Uri.EscapeDataString(address.ImportId!));
-        SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target, path, method, payload, authority, receipt, cancellationToken);
-        if (!outcome.IsSuccess) { return SecretOutcome<InfisicalImport>.Failure(outcome.Status, outcome.RetryAfter); }
-        using JsonDocument document = outcome.Value;
-        if (!NativeObject(document.RootElement, "secretImport", out JsonElement item) ||
-            ParseImport(item, address.FolderId) is not { } import ||
-            (address.ImportId is not null && import.Id != address.ImportId) ||
-            (sourceEnvironment is not null && import.SourceEnvironment != sourceEnvironment) ||
-            (sourcePath is not null && import.SourcePath != sourcePath) ||
-            (replication is not null && import.IsReplication != replication) ||
-            (method == HttpMethod.Get && (NativeString(item, "projectId") != address.ProjectId ||
-                NativeString(item, "secretPath") != address.Folder ||
-                !NativeObject(item, "environment", out JsonElement environment) ||
-                NativeString(environment, "slug") != address.Environment)))
-        {
-            return SecretOutcome<InfisicalImport>.Failure(SecretStatus.Unknown);
-        }
-        // This receipt proves the configuration mutation only, never destination application.
-        receipt?.Record(DispatchEvidence.Applied);
-        return SecretOutcome<InfisicalImport>.Success(import);
     }
 
     /// <summary>Lists bounded import configuration for a destination without inferring replication or delivery.</summary>
     public async ValueTask<SecretOutcome<InfisicalNativeList<InfisicalImport>>> ListImportsAsync(SecretReference target,
         int maximumItems = 1000, CancellationToken cancellationToken = default)
     {
-        NativeCount(maximumItems);
-        if (target.Address is not InfisicalImportAddress { ImportId: null } address)
+        return await InfisicalOperationBudget.RunAsync(_operationTimeout, _time, cancellationToken,
+            InfisicalOperation.Native, ExecuteAsync, shutdown: _shutdown.Token).ConfigureAwait(false);
+
+        async ValueTask<SecretOutcome<InfisicalNativeList<InfisicalImport>>> ExecuteAsync(CancellationToken operationToken)
         {
-            return SecretOutcome<InfisicalNativeList<InfisicalImport>>.Failure(SecretStatus.Invalid);
-        }
-        SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target,
-            "api/v2/secret-imports" + OrganizationQuery(address), HttpMethod.Get, null, null, null, cancellationToken);
-        if (!outcome.IsSuccess) { return SecretOutcome<InfisicalNativeList<InfisicalImport>>.Failure(outcome.Status, outcome.RetryAfter); }
-        using JsonDocument document = outcome.Value;
-        if (!NativeArray(document.RootElement, "secretImports", out JsonElement items))
-        {
-            return SecretOutcome<InfisicalNativeList<InfisicalImport>>.Failure(SecretStatus.Unknown);
-        }
-        var imports = new List<InfisicalImport>();
-        foreach (JsonElement item in items.EnumerateArray().Take(maximumItems))
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (ParseImport(item, address.FolderId) is not { } import)
+            NativeCount(maximumItems);
+            if (target.Address is not InfisicalImportAddress { ImportId: null } address)
             {
-                return SecretOutcome<InfisicalNativeList<InfisicalImport>>.Failure(SecretStatus.Unknown);
+                return SecretOutcome<InfisicalNativeList<InfisicalImport>>.Failure(SecretStatus.Invalid);
             }
-            imports.Add(import);
+            SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target,
+                "api/v2/secret-imports" + OrganizationQuery(address), HttpMethod.Get, null, null, null, operationToken);
+            if (!outcome.IsSuccess) { return SecretOutcome<InfisicalNativeList<InfisicalImport>>.Failure(outcome.Status, outcome.RetryAfter, outcome.Reason); }
+            using JsonDocument document = outcome.Value;
+            if (!NativeArray(document.RootElement, "secretImports", out JsonElement items))
+            {
+                return SecretOutcome<InfisicalNativeList<InfisicalImport>>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.InvalidResponse);
+            }
+            var imports = new List<InfisicalImport>();
+            foreach (JsonElement item in items.EnumerateArray().Take(maximumItems))
+            {
+                operationToken.ThrowIfCancellationRequested();
+                if (ParseImport(item, address.FolderId) is not { } import)
+                {
+                    return SecretOutcome<InfisicalNativeList<InfisicalImport>>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.InvalidResponse);
+                }
+                imports.Add(import);
+            }
+            return SecretOutcome<InfisicalNativeList<InfisicalImport>>.Success(new(imports, items.GetArrayLength() <= maximumItems));
         }
-        return SecretOutcome<InfisicalNativeList<InfisicalImport>>.Success(new(imports, items.GetArrayLength() <= maximumItems));
     }
 
     /// <summary>Returns caller-owned imported material in provider groups/order, without recursive acquisition or precedence resolution.</summary>
@@ -332,57 +343,63 @@ public sealed partial class InfisicalClient
     public async ValueTask<SecretOutcome<InfisicalImportedSecrets>> ReadImportedSecretsAsync(SecretReference target,
         int maximumItems = 1000, CancellationToken cancellationToken = default)
     {
-        NativeCount(maximumItems);
-        if (target.Address is not InfisicalImportAddress { ImportId: null } address)
+        return await InfisicalOperationBudget.RunAsync(_operationTimeout, _time, cancellationToken,
+            InfisicalOperation.Native, ExecuteAsync, shutdown: _shutdown.Token).ConfigureAwait(false);
+
+        async ValueTask<SecretOutcome<InfisicalImportedSecrets>> ExecuteAsync(CancellationToken operationToken)
         {
-            return SecretOutcome<InfisicalImportedSecrets>.Failure(SecretStatus.Invalid);
-        }
-        SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target,
-            "api/v2/secret-imports/secrets" + OrganizationQuery(address), HttpMethod.Get, null, null, null, cancellationToken);
-        if (!outcome.IsSuccess) { return SecretOutcome<InfisicalImportedSecrets>.Failure(outcome.Status, outcome.RetryAfter); }
-        using JsonDocument document = outcome.Value;
-        if (!NativeArray(document.RootElement, "secrets", out JsonElement groups) || groups.GetArrayLength() > 1000)
-        {
-            return SecretOutcome<InfisicalImportedSecrets>.Failure(SecretStatus.Unknown);
-        }
-        var secrets = new List<InfisicalImportedSecret>();
-        var importedGroups = new List<InfisicalImportedSecretGroup>();
-        bool transferred = false;
-        bool complete = true;
-        try
-        {
-            foreach (JsonElement group in groups.EnumerateArray())
+            NativeCount(maximumItems);
+            if (target.Address is not InfisicalImportAddress { ImportId: null } address)
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                if (NativeString(group, "environment") is not { } environment ||
-                    NativeString(group, "secretPath") is not { } path ||
-                    !NativeGuid(group, "folderId", out string folderId) || !NativeArray(group, "secrets", out JsonElement items))
-                {
-                    return SecretOutcome<InfisicalImportedSecrets>.Failure(SecretStatus.Unknown);
-                }
-                int start = secrets.Count;
-                foreach (JsonElement item in items.EnumerateArray())
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    if (secrets.Count == maximumItems) { complete = false; break; }
-                    if (NativeString(item, "secretKey") is not { } key || NativeString(item, "secretValue") is not { } value ||
-                        NativeString(item, "workspace") is not { } project || NativeString(item, "environment") != environment ||
-                        NativeString(item, "type") != "shared" || Version(item) is not { } version)
-                    {
-                        return SecretOutcome<InfisicalImportedSecrets>.Failure(SecretStatus.Unknown);
-                    }
-                    secrets.Add(new(key, project, environment, path, version, SecretMaterial.FromText(value)));
-                }
-                importedGroups.Add(new(environment, path, folderId, secrets.Skip(start)));
+                return SecretOutcome<InfisicalImportedSecrets>.Failure(SecretStatus.Invalid);
             }
-            cancellationToken.ThrowIfCancellationRequested();
-            var result = new InfisicalImportedSecrets(secrets, importedGroups, complete);
-            transferred = true;
-            return SecretOutcome<InfisicalImportedSecrets>.Success(result);
-        }
-        finally
-        {
-            if (!transferred) { foreach (InfisicalImportedSecret secret in secrets) { secret.Dispose(); } }
+            SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target,
+                "api/v2/secret-imports/secrets" + OrganizationQuery(address), HttpMethod.Get, null, null, null, operationToken);
+            if (!outcome.IsSuccess) { return SecretOutcome<InfisicalImportedSecrets>.Failure(outcome.Status, outcome.RetryAfter, outcome.Reason); }
+            using JsonDocument document = outcome.Value;
+            if (!NativeArray(document.RootElement, "secrets", out JsonElement groups) || groups.GetArrayLength() > 1000)
+            {
+                return SecretOutcome<InfisicalImportedSecrets>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.InvalidResponse);
+            }
+            var secrets = new List<InfisicalImportedSecret>();
+            var importedGroups = new List<InfisicalImportedSecretGroup>();
+            bool transferred = false;
+            bool complete = true;
+            try
+            {
+                foreach (JsonElement group in groups.EnumerateArray())
+                {
+                    operationToken.ThrowIfCancellationRequested();
+                    if (NativeString(group, "environment") is not { } environment ||
+                        NativeString(group, "secretPath") is not { } path ||
+                        !NativeGuid(group, "folderId", out string folderId) || !NativeArray(group, "secrets", out JsonElement items))
+                    {
+                        return SecretOutcome<InfisicalImportedSecrets>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.InvalidResponse);
+                    }
+                    int start = secrets.Count;
+                    foreach (JsonElement item in items.EnumerateArray())
+                    {
+                        operationToken.ThrowIfCancellationRequested();
+                        if (secrets.Count == maximumItems) { complete = false; break; }
+                        if (NativeString(item, "secretKey") is not { } key || NativeString(item, "secretValue") is not { } value ||
+                            NativeString(item, "workspace") is not { } project || NativeString(item, "environment") != environment ||
+                            NativeString(item, "type") != "shared" || Version(item) is not { } version)
+                        {
+                            return SecretOutcome<InfisicalImportedSecrets>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.InvalidResponse);
+                        }
+                        secrets.Add(new(key, project, environment, path, version, SecretMaterial.FromText(value)));
+                    }
+                    importedGroups.Add(new(environment, path, folderId, secrets.Skip(start)));
+                }
+                operationToken.ThrowIfCancellationRequested();
+                var result = new InfisicalImportedSecrets(secrets, importedGroups, complete);
+                transferred = true;
+                return SecretOutcome<InfisicalImportedSecrets>.Success(result);
+            }
+            finally
+            {
+                if (!transferred) { foreach (InfisicalImportedSecret secret in secrets) { secret.Dispose(); } }
+            }
         }
     }
 

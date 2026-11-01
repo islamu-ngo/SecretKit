@@ -102,6 +102,8 @@ public sealed class InfisicalPeriodicTokenSession : IInfisicalTokenSource, IAsyn
     private readonly TimeSpan _requestTimeout;
     private readonly TimeSpan _shutdownTimeout;
     private readonly int _responseLimit;
+    private readonly int _requestLimit;
+    private readonly TimeSpan _operationTimeout;
     private readonly CancellationTokenSource _shutdown = new();
     private SecretMaterial? _token;
     private DateTimeOffset _expiresAt;
@@ -166,6 +168,8 @@ public sealed class InfisicalPeriodicTokenSession : IInfisicalTokenSource, IAsyn
         _requestTimeout = requestTimeout;
         _shutdownTimeout = network.ShutdownTimeout;
         _responseLimit = network.MaximumResponseBytes;
+        _requestLimit = network.MaximumRequestBytes;
+        _operationTimeout = network.OperationTimeout;
         _expiresAt = verifiedEvidence.ExpiresAt;
         _state = existingToken is not null && EstablishLifetime()
             ? InfisicalTokenSessionState.Ready : InfisicalTokenSessionState.RecoveryRequired;
@@ -320,19 +324,30 @@ public sealed class InfisicalPeriodicTokenSession : IInfisicalTokenSource, IAsyn
     private async Task CompleteRenewalAsync(TaskCompletionSource<SecretStatus> completion,
         InfisicalTokenRenewal receipt, SecretMaterial ownedToken, DateTimeOffset expiresAt)
     {
+        long started = System.Diagnostics.Stopwatch.GetTimestamp();
+        SecretStatus result = SecretStatus.RecoveryRequired;
+        CancellationToken canceled = default;
+        bool wasCanceled = false;
+        bool faulted = false;
         using (ownedToken)
         {
-            try
-            {
-                completion.TrySetResult(await RenewCoreAsync(receipt, ownedToken, expiresAt).ConfigureAwait(false));
-            }
-            catch (OperationCanceledException exception) { completion.TrySetCanceled(exception.CancellationToken); }
-            catch (Exception)
-            {
-                FailRecovery();
-                completion.TrySetException(new InvalidOperationException("Token renewal failed."));
-            }
+            try { result = await RenewCoreAsync(receipt, ownedToken, expiresAt).ConfigureAwait(false); }
+            catch (OperationCanceledException exception) { canceled = exception.CancellationToken; wasCanceled = true; }
+            catch (Exception) { FailRecovery(); faulted = true; }
         }
+        // Settle owned material before releasing waiters. Signal before invoking
+        // listeners so a reentrant caller cannot wait on this same completion.
+        if (wasCanceled) completion.TrySetCanceled(canceled);
+        else if (faulted) completion.TrySetException(new InvalidOperationException("Token renewal failed."));
+        else completion.TrySetResult(result);
+        InfisicalDiagnostics.Emit(InfisicalOperation.Renewal, result, SecretFailureReason.None,
+            receipt.Evidence switch
+            {
+                InfisicalRenewalEvidence.Applied => DispatchEvidence.Applied,
+                InfisicalRenewalEvidence.Rejected => DispatchEvidence.Rejected,
+                InfisicalRenewalEvidence.PossiblyDispatched => DispatchEvidence.PossiblyDispatched,
+                _ => DispatchEvidence.NotDispatched
+            }, started);
     }
 
     private async Task<SecretStatus> RenewCoreAsync(InfisicalTokenRenewal receipt,
@@ -341,13 +356,14 @@ public sealed class InfisicalPeriodicTokenSession : IInfisicalTokenSource, IAsyn
         DateTimeOffset sentAt = _time.GetUtcNow();
         TimeSpan remaining = expiresAt - sentAt;
         if (remaining <= TimeSpan.Zero) return FailRecovery();
-        using var deadline = new CancellationTokenSource(
-            remaining < _requestTimeout ? remaining : _requestTimeout, _time);
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(deadline.Token, _shutdown.Token);
+        TimeSpan timeout = remaining < _requestTimeout ? remaining : _requestTimeout;
+        if (_operationTimeout < timeout) timeout = _operationTimeout;
+        using var linked = new InfisicalOperationBudget(timeout, _time, _shutdown.Token);
         SecretMaterial? candidate = null;
         try
         {
-            using var payload = new MemoryStream();
+            byte[] payloadBytes = new byte[Math.Min(_requestLimit, 128 * 1024)];
+            using var payload = new MemoryStream(payloadBytes, writable: true);
             char[] characters = ownedToken.ExportCharacters();
             try
             {
@@ -359,12 +375,12 @@ public sealed class InfisicalPeriodicTokenSession : IInfisicalTokenSource, IAsyn
                     writer.WriteString("accessToken", characters.AsSpan());
                     writer.WriteEndObject();
                 }
-                using var content = new ByteArrayContent(payload.GetBuffer(), 0, checked((int)payload.Length));
+                using var content = new ByteArrayContent(payloadBytes, 0, checked((int)payload.Position));
                 content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
                 using HttpRequestMessage request = await _wire.BuildRenewalAsync(content, linked.Token)
                     .ConfigureAwait(false);
                 _binding.BindRequest(request);
-                linked.Token.ThrowIfCancellationRequested();
+                linked.Check();
                 receipt.Record(InfisicalRenewalEvidence.PossiblyDispatched);
                 using HttpResponseMessage response = await _transport
                     .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, linked.Token).ConfigureAwait(false);
@@ -394,22 +410,20 @@ public sealed class InfisicalPeriodicTokenSession : IInfisicalTokenSource, IAsyn
                         new JsonDocumentOptions { MaxDepth = 8 });
                     JsonElement json = document.RootElement;
                     if (json.ValueKind != JsonValueKind.Object ||
-                        json.EnumerateObject().Any(property => property.Name is not
-                            ("accessToken" or "accessTokenMaxTTL" or "expiresIn" or "tokenType")) ||
                         json.EnumerateObject().Select(property => property.Name).Distinct(StringComparer.Ordinal).Count() !=
                         json.EnumerateObject().Count() ||
                         !json.TryGetProperty("accessToken", out var token) || token.ValueKind != JsonValueKind.String ||
                         !json.TryGetProperty("tokenType", out var type) || type.ValueKind != JsonValueKind.String ||
                         type.GetString() != "Bearer" ||
-                        !json.TryGetProperty("expiresIn", out var expiry) || !expiry.TryGetDouble(out double seconds) ||
+                        !json.TryGetProperty("expiresIn", out var expiry) || expiry.ValueKind != JsonValueKind.Number || !expiry.TryGetDouble(out double seconds) ||
                         !double.IsFinite(seconds) || seconds <= _renewBefore.TotalSeconds || seconds > 3153600000 ||
-                        !json.TryGetProperty("accessTokenMaxTTL", out var maximum) ||
+                        !json.TryGetProperty("accessTokenMaxTTL", out var maximum) || maximum.ValueKind != JsonValueKind.Number ||
                         !maximum.TryGetDouble(out double maximumSeconds) ||
                         maximumSeconds != _lifetime.ReportedMaximumTtl.TotalSeconds ||
                         (_lifetime.Lifetime == InfisicalTokenLifetime.Periodic && seconds > _lifetime.Period!.Value.TotalSeconds))
                         return FailRecovery();
                     string text = token.GetString()!;
-                    if (text.Length is < 1 or > 16384 || text.Any(char.IsControl))
+                    if (text.Length is < 1 or > 16384 || text.Any(c => c <= ' ' || c >= 127))
                         return FailRecovery();
                     DateTimeOffset expires = sentAt.AddSeconds(seconds);
                     if (LifetimeLimit is { } limit && expires > limit)
@@ -418,6 +432,7 @@ public sealed class InfisicalPeriodicTokenSession : IInfisicalTokenSource, IAsyn
                         return FailRecovery();
                     candidate = SecretMaterial.FromText(text);
                     DateTimeOffset observedAt = _time.GetUtcNow();
+                    linked.Check();
                     lock (_gate)
                     {
                         linked.Token.ThrowIfCancellationRequested();
@@ -439,7 +454,7 @@ public sealed class InfisicalPeriodicTokenSession : IInfisicalTokenSource, IAsyn
             finally
             {
                 Array.Clear(characters);
-                Array.Clear(payload.GetBuffer());
+                Array.Clear(payloadBytes);
             }
         }
         catch (OperationCanceledException)
@@ -449,7 +464,7 @@ public sealed class InfisicalPeriodicTokenSession : IInfisicalTokenSource, IAsyn
             return SecretStatus.RecoveryRequired;
         }
         catch (Exception exception) when (exception is HttpRequestException or IOException or JsonException or
-            ArgumentOutOfRangeException or InvalidOperationException)
+            ArgumentOutOfRangeException or InvalidOperationException or NotSupportedException)
         {
             return FailRecovery();
         }

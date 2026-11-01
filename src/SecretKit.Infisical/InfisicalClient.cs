@@ -21,6 +21,8 @@ public sealed partial class InfisicalClient : ISecretReader, ISecretInventory, I
     private readonly IInfisicalStaticWire _staticWire;
     private readonly TimeProvider _time;
     private readonly int _responseLimit;
+    private readonly int _requestLimit;
+    private readonly TimeSpan _operationTimeout;
     private readonly TimeSpan _shutdownTimeout;
     private readonly CancellationTokenSource _shutdown = new();
     private readonly object _gate = new();
@@ -60,6 +62,8 @@ public sealed partial class InfisicalClient : ISecretReader, ISecretInventory, I
         _origin = origin;
         _tokens = tokens;
         _responseLimit = network.MaximumResponseBytes;
+        _requestLimit = network.MaximumRequestBytes;
+        _operationTimeout = network.OperationTimeout;
         _shutdownTimeout = network.ShutdownTimeout;
         _time = timeProvider ?? TimeProvider.System;
         _binding = new(origin, network, testHandler, ownsHandler);
@@ -76,11 +80,18 @@ public sealed partial class InfisicalClient : ISecretReader, ISecretInventory, I
     public async ValueTask<SecretOutcome<SecretRead>> ReadAsync(
         SecretReference reference, CancellationToken cancellationToken = default)
     {
-        SecretOutcome<AcquiredRead> outcome = await AcquireReadAsync(reference, false, cancellationToken)
-            .ConfigureAwait(false);
-        return outcome.IsSuccess
-            ? SecretOutcome<SecretRead>.Success(new SecretRead(outcome.Value.Material, outcome.Value.Observation))
-            : SecretOutcome<SecretRead>.Failure(outcome.Status, outcome.RetryAfter);
+        lock (_gate) ObjectDisposedException.ThrowIf(_disposed, this);
+        return await InfisicalOperationBudget.RunAsync(_operationTimeout, _time, cancellationToken,
+            InfisicalOperation.Read, ExecuteAsync, shutdown: _shutdown.Token).ConfigureAwait(false);
+
+        async ValueTask<SecretOutcome<SecretRead>> ExecuteAsync(CancellationToken operationToken)
+        {
+            SecretOutcome<AcquiredRead> outcome = await AcquireReadAsync(reference, false, operationToken)
+                .ConfigureAwait(false);
+            return outcome.IsSuccess
+                ? SecretOutcome<SecretRead>.Success(new SecretRead(outcome.Value.Material, outcome.Value.Observation))
+                : SecretOutcome<SecretRead>.Failure(outcome.Status, outcome.RetryAfter, outcome.Reason);
+        }
     }
 
     /// <summary>Qualifies only raw, non-imported reads; resolved material has no resource-only revision.</summary>
@@ -89,12 +100,19 @@ public sealed partial class InfisicalClient : ISecretReader, ISecretInventory, I
     public async ValueTask<SecretOutcome<InfisicalSecretRead>> ReadNativeAsync(
         SecretReference reference, CancellationToken cancellationToken = default)
     {
-        SecretOutcome<AcquiredRead> outcome = await AcquireReadAsync(reference, true, cancellationToken)
-            .ConfigureAwait(false);
-        return outcome.IsSuccess
-            ? SecretOutcome<InfisicalSecretRead>.Success(new InfisicalSecretRead(
-                outcome.Value.Material, outcome.Value.Observation, outcome.Value.Revision!))
-            : SecretOutcome<InfisicalSecretRead>.Failure(outcome.Status, outcome.RetryAfter);
+        lock (_gate) ObjectDisposedException.ThrowIf(_disposed, this);
+        return await InfisicalOperationBudget.RunAsync(_operationTimeout, _time, cancellationToken,
+            InfisicalOperation.Read, ExecuteAsync, shutdown: _shutdown.Token).ConfigureAwait(false);
+
+        async ValueTask<SecretOutcome<InfisicalSecretRead>> ExecuteAsync(CancellationToken operationToken)
+        {
+            SecretOutcome<AcquiredRead> outcome = await AcquireReadAsync(reference, true, operationToken)
+                .ConfigureAwait(false);
+            return outcome.IsSuccess
+                ? SecretOutcome<InfisicalSecretRead>.Success(new InfisicalSecretRead(
+                    outcome.Value.Material, outcome.Value.Observation, outcome.Value.Revision!))
+                : SecretOutcome<InfisicalSecretRead>.Failure(outcome.Status, outcome.RetryAfter, outcome.Reason);
+        }
     }
 
     private sealed record AcquiredRead(SecretMaterial Material, SecretObservation Observation,
@@ -108,21 +126,21 @@ public sealed partial class InfisicalClient : ISecretReader, ISecretInventory, I
         if (!reference.BelongsTo(Authority) || reference.Address is not InfisicalSecretAddress address ||
             qualifyRevision && (address.Resolution != InfisicalResolution.Raw || address.IncludeImports))
         {
-            return SecretOutcome<AcquiredRead>.Failure(SecretStatus.Invalid);
+            return SecretOutcome<AcquiredRead>.Failure(SecretStatus.Invalid, reason: SecretFailureReason.AuthorityMismatch);
         }
 
+        using var linked = new InfisicalOperationBudget(_operationTimeout, _time, cancellationToken, _shutdown.Token);
         BeginOperation();
         try
         {
-            using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _shutdown.Token);
             using HttpRequestMessage request = await _staticWire.ReadAsync(address.Key, address.ProjectId,
                 address.Environment, address.Folder, "true", "shared",
                 Boolean(address.Resolution == InfisicalResolution.ExpandedReferences),
                 Boolean(address.IncludeImports), address.Version, linked.Token).ConfigureAwait(false);
-            SecretOutcome<JsonDocument> outcome = await ReadDocumentAsync(request, linked.Token).ConfigureAwait(false);
+            SecretOutcome<JsonDocument> outcome = await ReadDocumentAsync(request, linked).ConfigureAwait(false);
             if (!outcome.IsSuccess)
             {
-                return SecretOutcome<AcquiredRead>.Failure(outcome.Status, outcome.RetryAfter);
+                return SecretOutcome<AcquiredRead>.Failure(outcome.Status, outcome.RetryAfter, outcome.Reason);
             }
 
             using JsonDocument document = outcome.Value;
@@ -132,13 +150,13 @@ public sealed partial class InfisicalClient : ISecretReader, ISecretInventory, I
                 !secret.TryGetProperty("secretValue", out JsonElement value) ||
                 value.ValueKind != JsonValueKind.String)
             {
-                return SecretOutcome<AcquiredRead>.Failure(SecretStatus.Unknown);
+                return SecretOutcome<AcquiredRead>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.InvalidResponse);
             }
 
             if (!secret.TryGetProperty("secretKey", out JsonElement returnedKey) ||
                 returnedKey.ValueKind != JsonValueKind.String)
             {
-                return SecretOutcome<AcquiredRead>.Failure(SecretStatus.Unknown);
+                return SecretOutcome<AcquiredRead>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.InvalidResponse);
             }
 
             if (!string.Equals(returnedKey.GetString(), address.Key, StringComparison.Ordinal))
@@ -149,7 +167,7 @@ public sealed partial class InfisicalClient : ISecretReader, ISecretInventory, I
             if (!secret.TryGetProperty("secretValueHidden", out JsonElement hidden) ||
                 hidden.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
             {
-                return SecretOutcome<AcquiredRead>.Failure(SecretStatus.Unknown);
+                return SecretOutcome<AcquiredRead>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.InvalidResponse);
             }
 
             if (hidden.GetBoolean())
@@ -162,7 +180,7 @@ public sealed partial class InfisicalClient : ISecretReader, ISecretInventory, I
             if (provenance != SecretStatus.Success)
                 return SecretOutcome<AcquiredRead>.Failure(provenance);
 
-            linked.Token.ThrowIfCancellationRequested();
+            linked.Check();
             string? observedVersion = Version(secret);
             if (address.Version is { } requestedVersion &&
                 observedVersion != requestedVersion.ToString(CultureInfo.InvariantCulture))
@@ -179,13 +197,18 @@ public sealed partial class InfisicalClient : ISecretReader, ISecretInventory, I
                     resource.Any(char.IsControl) || !secret.TryGetProperty("version", out JsonElement nativeVersion) ||
                     nativeVersion.ValueKind != JsonValueKind.Number ||
                     !nativeVersion.TryGetInt32(out int version) || version <= 0)
-                    return SecretOutcome<AcquiredRead>.Failure(SecretStatus.Unknown);
+                    return SecretOutcome<AcquiredRead>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.InvalidResponse);
                 revision = new(_origin, address.ProjectId, address.Environment, address.Folder, resource, version);
             }
 
             var observation = new SecretObservation(reference, observedVersion, _time.GetUtcNow(), SecretValidity.Valid);
+            linked.Check();
             return SecretOutcome<AcquiredRead>.Success(new(
                 SecretMaterial.FromText(value.GetString()!), observation, revision));
+        }
+        catch (OperationCanceledException)
+        {
+            return SecretOutcome<AcquiredRead>.Failure(SecretStatus.Unavailable, reason: linked.CancellationReason());
         }
         finally
         {
@@ -198,162 +221,131 @@ public sealed partial class InfisicalClient : ISecretReader, ISecretInventory, I
     public async ValueTask<SecretOutcome<SecretInventory>> InspectAsync(
         SecretInventoryScope scope, CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(scope);
-        cancellationToken.ThrowIfCancellationRequested();
-        if (!scope.BelongsTo(Authority) || scope is not InfisicalInventoryScope folder)
-        {
-            return SecretOutcome<SecretInventory>.Failure(SecretStatus.Invalid);
-        }
+        return await InfisicalOperationBudget.RunAsync(_operationTimeout, _time, cancellationToken,
+            InfisicalOperation.Inventory, ExecuteAsync, shutdown: _shutdown.Token).ConfigureAwait(false);
 
-        BeginOperation();
-        try
+        async ValueTask<SecretOutcome<SecretInventory>> ExecuteAsync(CancellationToken operationToken)
         {
-            using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _shutdown.Token);
-            DateTimeOffset startedAt = _time.GetUtcNow();
-            using HttpRequestMessage request = await _staticWire.InspectAsync(folder.ProjectId,
-                folder.Environment, folder.Folder, "false", "false", "false", "false", "false",
-                linked.Token).ConfigureAwait(false);
-            SecretOutcome<JsonDocument> outcome = await ReadDocumentAsync(request, linked.Token).ConfigureAwait(false);
-            if (!outcome.IsSuccess)
+            ArgumentNullException.ThrowIfNull(scope);
+            operationToken.ThrowIfCancellationRequested();
+            if (!scope.BelongsTo(Authority) || scope is not InfisicalInventoryScope folder)
             {
-                return SecretOutcome<SecretInventory>.Failure(outcome.Status, outcome.RetryAfter);
+                return SecretOutcome<SecretInventory>.Failure(SecretStatus.Invalid, reason: SecretFailureReason.AuthorityMismatch);
             }
 
-            using JsonDocument document = outcome.Value;
-            if (document.RootElement.ValueKind != JsonValueKind.Object ||
-                !document.RootElement.TryGetProperty("secrets", out JsonElement secrets) ||
-                secrets.ValueKind != JsonValueKind.Array)
+            using var linked = new InfisicalOperationBudget(_operationTimeout, _time, operationToken, _shutdown.Token);
+            BeginOperation();
+            try
             {
-                return SecretOutcome<SecretInventory>.Failure(SecretStatus.Unknown);
-            }
+                DateTimeOffset startedAt = _time.GetUtcNow();
+                using HttpRequestMessage request = await _staticWire.InspectAsync(folder.ProjectId,
+                    folder.Environment, folder.Folder, "false", "false", "false", "false", "false",
+                    linked.Token).ConfigureAwait(false);
+                SecretOutcome<JsonDocument> outcome = await ReadDocumentAsync(request, linked).ConfigureAwait(false);
+                if (!outcome.IsSuccess)
+                {
+                    return SecretOutcome<SecretInventory>.Failure(outcome.Status, outcome.RetryAfter, outcome.Reason);
+                }
 
-            var observations = new List<SecretObservation>();
-            var names = new HashSet<string>(StringComparer.Ordinal);
-            foreach (JsonElement secret in secrets.EnumerateArray())
+                using JsonDocument document = outcome.Value;
+                if (document.RootElement.ValueKind != JsonValueKind.Object ||
+                    !document.RootElement.TryGetProperty("secrets", out JsonElement secrets) ||
+                    secrets.ValueKind != JsonValueKind.Array)
+                {
+                    return SecretOutcome<SecretInventory>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.InvalidResponse);
+                }
+
+                var observations = new List<SecretObservation>();
+                var names = new HashSet<string>(StringComparer.Ordinal);
+                foreach (JsonElement secret in secrets.EnumerateArray())
+                {
+                    linked.Check();
+                    if (observations.Count == folder.MaximumItems)
+                    {
+                        break;
+                    }
+
+                    if (secret.ValueKind != JsonValueKind.Object ||
+                        !secret.TryGetProperty("secretKey", out JsonElement key) || key.ValueKind != JsonValueKind.String)
+                    {
+                        return SecretOutcome<SecretInventory>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.InvalidResponse);
+                    }
+
+                    string? name = key.GetString();
+                    if (string.IsNullOrWhiteSpace(name) || name is "." or "..")
+                    {
+                        return SecretOutcome<SecretInventory>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.InvalidResponse);
+                    }
+
+                    SecretStatus provenance = ReadScope(secret, folder.ProjectId, folder.Environment, folder.Folder, false);
+                    if (provenance != SecretStatus.Success || !names.Add(name))
+                        return SecretOutcome<SecretInventory>.Failure(
+                            provenance == SecretStatus.Success ? SecretStatus.Invalid : provenance);
+
+                    var address = new InfisicalSecretAddress(folder.ProjectId, folder.Environment, folder.Folder, name);
+                    observations.Add(new SecretObservation(new SecretReference(Authority, address), Version(secret),
+                        _time.GetUtcNow(), SecretValidity.Unknown));
+                }
+
+                linked.Check();
+                return SecretOutcome<SecretInventory>.Success(new SecretInventory(observations, startedAt,
+                    _time.GetUtcNow(), secrets.GetArrayLength() <= folder.MaximumItems));
+            }
+            catch (OperationCanceledException)
             {
-                linked.Token.ThrowIfCancellationRequested();
-                if (observations.Count == folder.MaximumItems)
-                {
-                    break;
-                }
-
-                if (secret.ValueKind != JsonValueKind.Object ||
-                    !secret.TryGetProperty("secretKey", out JsonElement key) || key.ValueKind != JsonValueKind.String)
-                {
-                    return SecretOutcome<SecretInventory>.Failure(SecretStatus.Unknown);
-                }
-
-                string? name = key.GetString();
-                if (string.IsNullOrWhiteSpace(name) || name is "." or "..")
-                {
-                    return SecretOutcome<SecretInventory>.Failure(SecretStatus.Unknown);
-                }
-
-                SecretStatus provenance = ReadScope(secret, folder.ProjectId, folder.Environment, folder.Folder, false);
-                if (provenance != SecretStatus.Success || !names.Add(name))
-                    return SecretOutcome<SecretInventory>.Failure(
-                        provenance == SecretStatus.Success ? SecretStatus.Invalid : provenance);
-
-                var address = new InfisicalSecretAddress(folder.ProjectId, folder.Environment, folder.Folder, name);
-                observations.Add(new SecretObservation(new SecretReference(Authority, address), Version(secret),
-                    _time.GetUtcNow(), SecretValidity.Unknown));
+                return SecretOutcome<SecretInventory>.Failure(SecretStatus.Unavailable, reason: linked.CancellationReason());
             }
-
-            return SecretOutcome<SecretInventory>.Success(new SecretInventory(observations, startedAt,
-                _time.GetUtcNow(), secrets.GetArrayLength() <= folder.MaximumItems));
-        }
-        finally
-        {
-            EndOperation();
+            finally
+            {
+                EndOperation();
+            }
         }
     }
 
     private async ValueTask<SecretOutcome<JsonDocument>> ReadDocumentAsync(HttpRequestMessage request,
-        CancellationToken cancellationToken, MutationReceipt? receipt = null, SecretReference? target = null,
+        InfisicalOperationBudget budget, MutationReceipt? receipt = null, SecretReference? target = null,
         IInfisicalTokenSource? nativeTokens = null, InfisicalBulkReceipt? bulkReceipt = null)
     {
-        _binding.BindRequest(request);
-        SecretOutcome<InfisicalAccessToken> token;
+        CancellationToken cancellationToken = budget.Token;
         try
         {
-            token = await (nativeTokens ?? _tokens).GetTokenAsync(cancellationToken).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-            throw new OperationCanceledException(cancellationToken);
-        }
-        catch (HttpRequestException)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            return SecretOutcome<JsonDocument>.Failure(SecretStatus.Unavailable);
-        }
-        catch (IOException)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            return SecretOutcome<JsonDocument>.Failure(SecretStatus.Unavailable);
-        }
-        if (!token.IsSuccess)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            return SecretOutcome<JsonDocument>.Failure(token.Status, token.RetryAfter);
-        }
-
-        using InfisicalAccessToken access = token.Value;
-        cancellationToken.ThrowIfCancellationRequested();
-        if (access.ExpiresAt <= _time.GetUtcNow())
-        {
-            return SecretOutcome<JsonDocument>.Failure(SecretStatus.Expired);
-        }
-
-        string bearer = access.Material.Reveal();
-        if (bearer.Length == 0 || !bearer.All(character => char.IsAsciiLetterOrDigit(character) ||
-            character is '-' or '_' or '.' or '~' or '+' or '/' or '='))
-        {
-            return SecretOutcome<JsonDocument>.Failure(SecretStatus.Invalid);
-        }
-
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
-        try
-        {
-            cancellationToken.ThrowIfCancellationRequested();
+            _binding.BindRequest(request);
+            budget.Check();
+            SecretOutcome<InfisicalAccessToken> token = await (nativeTokens ?? _tokens)
+                .GetTokenAsync(cancellationToken).ConfigureAwait(false);
+            using InfisicalAccessToken? access = token.IsSuccess ? token.Value : null;
+            budget.Check();
+            if (!token.IsSuccess)
+                return SecretOutcome<JsonDocument>.Failure(token.Status, token.RetryAfter,
+                    token.Reason == SecretFailureReason.None ? SecretFailureReason.CredentialUnavailable : token.Reason);
+            if (access!.ExpiresAt <= _time.GetUtcNow())
+                return SecretOutcome<JsonDocument>.Failure(SecretStatus.Expired, reason: SecretFailureReason.CredentialUnavailable);
+            string bearer = access.Material.Reveal();
+            if (bearer.Length is < 1 or > 16384 || !bearer.All(character => char.IsAsciiLetterOrDigit(character) ||
+                character is '-' or '_' or '.' or '~' or '+' or '/' or '='))
+                return SecretOutcome<JsonDocument>.Failure(SecretStatus.Invalid, reason: SecretFailureReason.CredentialUnavailable);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
+            budget.Check();
             if (bulkReceipt is not null) bulkReceipt.BeginDispatch();
             else receipt?.BeginDispatch(target!);
             using HttpResponseMessage response = await _http.SendAsync(request,
                 HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
-                TimeSpan? retryAfter = null;
-                if (response.StatusCode == HttpStatusCode.TooManyRequests)
-                {
-                    retryAfter = response.Headers.RetryAfter?.Delta;
-                    if (retryAfter is null && response.Headers.RetryAfter?.Date is { } date)
-                    {
-                        DateTimeOffset now = _time.GetUtcNow();
-                        retryAfter = date > now ? date - now : TimeSpan.Zero;
-                    }
-                }
-
                 SecretStatus status = Status(response.StatusCode);
                 if (receipt is not null)
                 {
                     if ((int)response.StatusCode is >= 400 and < 500)
-                    {
                         receipt.Record(status == SecretStatus.Conflict ? DispatchEvidence.Conflict : DispatchEvidence.Rejected);
-                    }
-                    else
-                    {
-                        status = SecretStatus.Unknown;
-                    }
+                    else status = SecretStatus.Unknown;
                 }
-
-                return SecretOutcome<JsonDocument>.Failure(status, retryAfter);
+                budget.Check();
+                return SecretOutcome<JsonDocument>.Failure(status,
+                    status is SecretStatus.Throttled or SecretStatus.Unavailable
+                        ? InfisicalOperationBudget.RetryAfter(response, _time) : null);
             }
-
             if (response.Content.Headers.ContentLength > _responseLimit)
-            {
-                return SecretOutcome<JsonDocument>.Failure(SecretStatus.Invalid);
-            }
-
+                return DocumentFailure(SecretStatus.Invalid, SecretFailureReason.ResponseTooLarge, receipt);
             await using Stream body = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
             using var collected = new MemoryStream();
             byte[] buffer = ArrayPool<byte>.Shared.Rent(8192);
@@ -363,50 +355,40 @@ public sealed partial class InfisicalClient : ISecretReader, ISecretInventory, I
                 while ((count = await body.ReadAsync(buffer.AsMemory(0, 8192), cancellationToken).ConfigureAwait(false)) > 0)
                 {
                     if (collected.Length + count > _responseLimit)
-                    {
-                        return SecretOutcome<JsonDocument>.Failure(SecretStatus.Invalid);
-                    }
-
+                        return DocumentFailure(SecretStatus.Invalid, SecretFailureReason.ResponseTooLarge, receipt);
                     collected.Write(buffer, 0, count);
                 }
-
-                cancellationToken.ThrowIfCancellationRequested();
+                // Parse a late acknowledgement to retain any actual effect. The
+                // operation owner checks the budget again before publication.
                 collected.Position = 0;
-                return SecretOutcome<JsonDocument>.Success(await JsonDocument.ParseAsync(collected,
-                    new JsonDocumentOptions { MaxDepth = 32, AllowDuplicateProperties = bulkReceipt is not null },
-                    cancellationToken).ConfigureAwait(false));
+                return SecretOutcome<JsonDocument>.Success(JsonDocument.Parse(collected,
+                    new JsonDocumentOptions { MaxDepth = 32, AllowDuplicateProperties = bulkReceipt is not null }));
             }
             finally
             {
                 ArrayPool<byte>.Shared.Return(buffer, clearArray: true);
-                if (collected.TryGetBuffer(out ArraySegment<byte> bytes))
-                {
-                    bytes.AsSpan().Clear();
-                }
+                if (collected.TryGetBuffer(out ArraySegment<byte> bytes)) bytes.AsSpan().Clear();
             }
         }
         catch (OperationCanceledException)
         {
-            throw new OperationCanceledException(cancellationToken);
+            return DocumentFailure(SecretStatus.Unavailable, budget.CancellationReason(), receipt);
         }
-        catch (HttpRequestException)
+        catch (Exception error) when (error is HttpRequestException or IOException)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            return SecretOutcome<JsonDocument>.Failure(receipt?.Evidence == DispatchEvidence.PossiblyDispatched
-                ? SecretStatus.Unknown : SecretStatus.Unavailable);
-        }
-        catch (IOException)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            return SecretOutcome<JsonDocument>.Failure(receipt?.Evidence == DispatchEvidence.PossiblyDispatched
-                ? SecretStatus.Unknown : SecretStatus.Unavailable);
+            budget.Check();
+            return DocumentFailure(SecretStatus.Unavailable, SecretFailureReason.TransportFailure, receipt);
         }
         catch (JsonException)
         {
-            return SecretOutcome<JsonDocument>.Failure(receipt?.Evidence == DispatchEvidence.PossiblyDispatched
-                ? SecretStatus.Unknown : SecretStatus.Invalid);
+            budget.Check();
+            return DocumentFailure(SecretStatus.Invalid, SecretFailureReason.InvalidResponse, receipt);
         }
     }
+
+    private static SecretOutcome<JsonDocument> DocumentFailure(SecretStatus status, SecretFailureReason reason,
+        MutationReceipt? receipt) => SecretOutcome<JsonDocument>.Failure(
+            receipt?.Evidence == DispatchEvidence.PossiblyDispatched ? SecretStatus.Unknown : status, reason: reason);
 
     private static SecretStatus Status(HttpStatusCode status) => (int)status switch
     {
@@ -454,45 +436,37 @@ public sealed partial class InfisicalClient : ISecretReader, ISecretInventory, I
             receipt.Evidence == DispatchEvidence.NotDispatched));
 
     private async ValueTask<SecretOutcome<JsonDocument>> NativeDocumentAsync(SecretReference target,
-        string path, HttpMethod method, byte[]? payload, InfisicalNativeAuthority? authority,
+        string path, HttpMethod method, Func<int, byte[]>? serialize, InfisicalNativeAuthority? authority,
         MutationReceipt? receipt, CancellationToken cancellationToken, InfisicalBulkReceipt? bulkReceipt = null)
     {
         ArgumentNullException.ThrowIfNull(target);
+        using var budget = new InfisicalOperationBudget(_operationTimeout, _time, cancellationToken, _shutdown.Token);
+        byte[]? payload = null;
         try
         {
-            cancellationToken.ThrowIfCancellationRequested();
+            budget.Check();
             if (!NativeTargetValid(target, authority, receipt) ||
-                (method != HttpMethod.Get && (authority is null || receipt is null)) ||
-                payload?.Length > _responseLimit)
-            {
-                return SecretOutcome<JsonDocument>.Failure(SecretStatus.Invalid);
-            }
+                (method != HttpMethod.Get && (authority is null || receipt is null)))
+                return SecretOutcome<JsonDocument>.Failure(SecretStatus.Invalid, reason: SecretFailureReason.AuthorityMismatch);
+            payload = serialize?.Invoke(_requestLimit);
+            budget.Check();
+            if (payload is { Length: 0 })
+                return SecretOutcome<JsonDocument>.Failure(SecretStatus.Invalid, reason: SecretFailureReason.RequestTooLarge);
             BeginOperation();
             try
             {
-                using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _shutdown.Token);
                 using HttpRequestMessage request = await BuildNativeRequestAsync((InfisicalNativeAddress)target.Address,
-                    path, method, payload, linked.Token).ConfigureAwait(false);
-                SecretOutcome<JsonDocument> outcome = await ReadDocumentAsync(request, linked.Token,
-                    receipt, target, authority?.Tokens, bulkReceipt).ConfigureAwait(false);
-                if (!outcome.IsSuccess && receipt?.Evidence == DispatchEvidence.PossiblyDispatched)
-                {
-                    return SecretOutcome<JsonDocument>.Failure(SecretStatus.Unknown);
-                }
-                return outcome;
+                    path, method, payload, budget.Token).ConfigureAwait(false);
+                return await ReadDocumentAsync(request, budget, receipt, target, authority?.Tokens, bulkReceipt)
+                    .ConfigureAwait(false);
             }
-            finally
-            {
-                EndOperation();
-            }
+            finally { EndOperation(); }
         }
-        finally
+        catch (OperationCanceledException)
         {
-            if (payload is not null)
-            {
-                Array.Clear(payload);
-            }
+            return DocumentFailure(SecretStatus.Unavailable, budget.CancellationReason(), receipt);
         }
+        finally { if (payload is not null) Array.Clear(payload); }
     }
 
     private static string? NativeString(JsonElement element, string property) =>

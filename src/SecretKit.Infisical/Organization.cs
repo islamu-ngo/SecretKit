@@ -293,7 +293,7 @@ public sealed partial class InfisicalClient
             return ValueTask.FromResult(SecretOutcome<InfisicalEnvironment>.Failure(SecretStatus.Invalid));
         }
         return EnvironmentOperationAsync(target, HttpMethod.Post,
-            JsonSerializer.SerializeToUtf8Bytes(new { name, slug = address.Selector, position }, NativePayloadOptions),
+            InfisicalOperationBudget.Payload(new { name, slug = address.Selector, position }, NativePayloadOptions),
             authority, receipt, false, false, cancellationToken);
     }
 
@@ -309,7 +309,7 @@ public sealed partial class InfisicalClient
             throw new ArgumentException("Invalid environment position.");
         }
         return EnvironmentOperationAsync(target, HttpMethod.Patch,
-            JsonSerializer.SerializeToUtf8Bytes(new { name, slug, position }, NativePayloadOptions),
+            InfisicalOperationBudget.Payload(new { name, slug, position }, NativePayloadOptions),
             authority, receipt, false, false, cancellationToken);
     }
 
@@ -325,40 +325,45 @@ public sealed partial class InfisicalClient
         EnvironmentOperationAsync(target, HttpMethod.Post, null, authority, receipt, true, false, cancellationToken);
 
     private async ValueTask<SecretOutcome<InfisicalEnvironment>> EnvironmentOperationAsync(SecretReference target,
-        HttpMethod method, byte[]? payload, InfisicalNativeAuthority? authority, MutationReceipt? receipt,
+        HttpMethod method, Func<int, byte[]>? payload, InfisicalNativeAuthority? authority, MutationReceipt? receipt,
         bool restore, bool hardDelete, CancellationToken cancellationToken)
     {
-        if (target.Address is not InfisicalEnvironmentAddress address ||
-            (method != HttpMethod.Get && (authority is null || receipt is null)) ||
-            ((restore || method == HttpMethod.Patch || method == HttpMethod.Delete) &&
-                address.Selection != InfisicalOrganizationSelector.Id))
+        return await InfisicalOperationBudget.RunAsync(_operationTimeout, _time, cancellationToken,
+            InfisicalOperation.Native, ExecuteAsync, () => receipt?.Evidence ?? DispatchEvidence.NotDispatched, shutdown: _shutdown.Token).ConfigureAwait(false);
+
+        async ValueTask<SecretOutcome<InfisicalEnvironment>> ExecuteAsync(CancellationToken operationToken)
         {
-            if (payload is not null) { Array.Clear(payload); }
-            return SecretOutcome<InfisicalEnvironment>.Failure(SecretStatus.Invalid);
+            if (target.Address is not InfisicalEnvironmentAddress address ||
+                (method != HttpMethod.Get && (authority is null || receipt is null)) ||
+                ((restore || method == HttpMethod.Patch || method == HttpMethod.Delete) &&
+                    address.Selection != InfisicalOrganizationSelector.Id))
+            {
+                return SecretOutcome<InfisicalEnvironment>.Failure(SecretStatus.Invalid);
+            }
+            string path = $"api/v1/projects/{Uri.EscapeDataString(address.ProjectId)}/environments";
+            if (method != HttpMethod.Post || restore)
+            {
+                path += (method == HttpMethod.Get && address.Selection == InfisicalOrganizationSelector.Slug ? "/slug/" : "/") +
+                    Uri.EscapeDataString(address.Selector);
+            }
+            if (restore) { path += "/restore"; }
+            if (method == HttpMethod.Delete) { path += "?hardDelete=" + Boolean(hardDelete); }
+            SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target, path, method, payload, authority, receipt, operationToken);
+            if (!outcome.IsSuccess) { return SecretOutcome<InfisicalEnvironment>.Failure(outcome.Status, outcome.RetryAfter, outcome.Reason); }
+            using JsonDocument document = outcome.Value;
+            if (!NativeObject(document.RootElement, "environment", out JsonElement item) ||
+                NativeString(item, "projectId") != address.ProjectId ||
+                !NativeGuid(item, "id", out string id) || NativeString(item, "name") is not { } name ||
+                NativeString(item, "slug") is not { } slug || !NativeNumber(item, "position", out double position) ||
+                !NativeDates(item) ||
+                (address.Selection == InfisicalOrganizationSelector.Id ? id != address.Selector : slug != address.Selector))
+            {
+                return SecretOutcome<InfisicalEnvironment>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.InvalidResponse);
+            }
+            receipt?.Record(DispatchEvidence.Applied);
+            return SecretOutcome<InfisicalEnvironment>.Success(new(id, address.ProjectId, name, slug, position,
+                NativeDate(item, "softDeletedAt"), NativeDate(item, "deleteAfter")));
         }
-        string path = $"api/v1/projects/{Uri.EscapeDataString(address.ProjectId)}/environments";
-        if (method != HttpMethod.Post || restore)
-        {
-            path += (method == HttpMethod.Get && address.Selection == InfisicalOrganizationSelector.Slug ? "/slug/" : "/") +
-                Uri.EscapeDataString(address.Selector);
-        }
-        if (restore) { path += "/restore"; }
-        if (method == HttpMethod.Delete) { path += "?hardDelete=" + Boolean(hardDelete); }
-        SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target, path, method, payload, authority, receipt, cancellationToken);
-        if (!outcome.IsSuccess) { return SecretOutcome<InfisicalEnvironment>.Failure(outcome.Status, outcome.RetryAfter); }
-        using JsonDocument document = outcome.Value;
-        if (!NativeObject(document.RootElement, "environment", out JsonElement item) ||
-            NativeString(item, "projectId") != address.ProjectId ||
-            !NativeGuid(item, "id", out string id) || NativeString(item, "name") is not { } name ||
-            NativeString(item, "slug") is not { } slug || !NativeNumber(item, "position", out double position) ||
-            !NativeDates(item) ||
-            (address.Selection == InfisicalOrganizationSelector.Id ? id != address.Selector : slug != address.Selector))
-        {
-            return SecretOutcome<InfisicalEnvironment>.Failure(SecretStatus.Unknown);
-        }
-        receipt?.Record(DispatchEvidence.Applied);
-        return SecretOutcome<InfisicalEnvironment>.Success(new(id, address.ProjectId, name, slug, position,
-            NativeDate(item, "softDeletedAt"), NativeDate(item, "deleteAfter")));
     }
 
     /// <summary>Inspects the selected native tag without acquiring secret material.</summary>
@@ -375,7 +380,7 @@ public sealed partial class InfisicalClient
         {
             return ValueTask.FromResult(SecretOutcome<InfisicalTag>.Failure(SecretStatus.Invalid));
         }
-        return TagOperationAsync(target, HttpMethod.Post, JsonSerializer.SerializeToUtf8Bytes(new { slug = address.Selector, color }),
+        return TagOperationAsync(target, HttpMethod.Post, InfisicalOperationBudget.Payload(new { slug = address.Selector, color }),
             authority, receipt, cancellationToken);
     }
 
@@ -385,7 +390,7 @@ public sealed partial class InfisicalClient
     {
         InfisicalNativeAddress.NativeText(slug, 64);
         InfisicalNativeAddress.NativeText(color);
-        return TagOperationAsync(target, HttpMethod.Patch, JsonSerializer.SerializeToUtf8Bytes(new { slug, color }),
+        return TagOperationAsync(target, HttpMethod.Patch, InfisicalOperationBudget.Payload(new { slug, color }),
             authority, receipt, cancellationToken);
     }
 
@@ -395,61 +400,72 @@ public sealed partial class InfisicalClient
         TagOperationAsync(target, HttpMethod.Delete, null, authority, receipt, cancellationToken);
 
     private async ValueTask<SecretOutcome<InfisicalTag>> TagOperationAsync(SecretReference target, HttpMethod method,
-        byte[]? payload, InfisicalNativeAuthority? authority, MutationReceipt? receipt, CancellationToken cancellationToken)
+        Func<int, byte[]>? payload, InfisicalNativeAuthority? authority, MutationReceipt? receipt, CancellationToken cancellationToken)
     {
-        if (target.Address is not InfisicalTagAddress { Selector: not null } address ||
-            ((method == HttpMethod.Patch || method == HttpMethod.Delete) && address.Selection != InfisicalOrganizationSelector.Id))
+        return await InfisicalOperationBudget.RunAsync(_operationTimeout, _time, cancellationToken,
+            InfisicalOperation.Native, ExecuteAsync, () => receipt?.Evidence ?? DispatchEvidence.NotDispatched, shutdown: _shutdown.Token).ConfigureAwait(false);
+
+        async ValueTask<SecretOutcome<InfisicalTag>> ExecuteAsync(CancellationToken operationToken)
         {
-            if (payload is not null) { Array.Clear(payload); }
-            return SecretOutcome<InfisicalTag>.Failure(SecretStatus.Invalid);
+            if (target.Address is not InfisicalTagAddress { Selector: not null } address ||
+                ((method == HttpMethod.Patch || method == HttpMethod.Delete) && address.Selection != InfisicalOrganizationSelector.Id))
+            {
+                return SecretOutcome<InfisicalTag>.Failure(SecretStatus.Invalid);
+            }
+            string path = $"api/v1/projects/{Uri.EscapeDataString(address.ProjectId)}/tags";
+            if (method != HttpMethod.Post)
+            {
+                path += (method == HttpMethod.Get && address.Selection == InfisicalOrganizationSelector.Slug ? "/slug/" : "/") +
+                    Uri.EscapeDataString(address.Selector);
+            }
+            SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target, path, method, payload, authority, receipt, operationToken);
+            if (!outcome.IsSuccess) { return SecretOutcome<InfisicalTag>.Failure(outcome.Status, outcome.RetryAfter, outcome.Reason); }
+            using JsonDocument document = outcome.Value;
+            if (!NativeObject(document.RootElement, "tag", out JsonElement item) ||
+                ParseTag(item, address.ProjectId) is not { } tag ||
+                (address.Selection == InfisicalOrganizationSelector.Id ? tag.Id != address.Selector : tag.Slug != address.Selector))
+            {
+                return SecretOutcome<InfisicalTag>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.InvalidResponse);
+            }
+            receipt?.Record(DispatchEvidence.Applied);
+            return SecretOutcome<InfisicalTag>.Success(tag);
         }
-        string path = $"api/v1/projects/{Uri.EscapeDataString(address.ProjectId)}/tags";
-        if (method != HttpMethod.Post)
-        {
-            path += (method == HttpMethod.Get && address.Selection == InfisicalOrganizationSelector.Slug ? "/slug/" : "/") +
-                Uri.EscapeDataString(address.Selector);
-        }
-        SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target, path, method, payload, authority, receipt, cancellationToken);
-        if (!outcome.IsSuccess) { return SecretOutcome<InfisicalTag>.Failure(outcome.Status, outcome.RetryAfter); }
-        using JsonDocument document = outcome.Value;
-        if (!NativeObject(document.RootElement, "tag", out JsonElement item) ||
-            ParseTag(item, address.ProjectId) is not { } tag ||
-            (address.Selection == InfisicalOrganizationSelector.Id ? tag.Id != address.Selector : tag.Slug != address.Selector))
-        {
-            return SecretOutcome<InfisicalTag>.Failure(SecretStatus.Unknown);
-        }
-        receipt?.Record(DispatchEvidence.Applied);
-        return SecretOutcome<InfisicalTag>.Success(tag);
     }
 
     /// <summary>Lists bounded project tag metadata using an address without an individual selector.</summary>
     public async ValueTask<SecretOutcome<InfisicalNativeList<InfisicalTag>>> ListTagsAsync(SecretReference target,
         int maximumItems = 1000, CancellationToken cancellationToken = default)
     {
-        NativeCount(maximumItems);
-        if (target.Address is not InfisicalTagAddress { Selector: null } address)
+        return await InfisicalOperationBudget.RunAsync(_operationTimeout, _time, cancellationToken,
+            InfisicalOperation.Native, ExecuteAsync, shutdown: _shutdown.Token).ConfigureAwait(false);
+
+        async ValueTask<SecretOutcome<InfisicalNativeList<InfisicalTag>>> ExecuteAsync(CancellationToken operationToken)
         {
-            return SecretOutcome<InfisicalNativeList<InfisicalTag>>.Failure(SecretStatus.Invalid);
-        }
-        SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target,
-            $"api/v1/projects/{Uri.EscapeDataString(address.ProjectId)}/tags", HttpMethod.Get, null, null, null, cancellationToken);
-        if (!outcome.IsSuccess) { return SecretOutcome<InfisicalNativeList<InfisicalTag>>.Failure(outcome.Status, outcome.RetryAfter); }
-        using JsonDocument document = outcome.Value;
-        if (!NativeArray(document.RootElement, "tags", out JsonElement items))
-        {
-            return SecretOutcome<InfisicalNativeList<InfisicalTag>>.Failure(SecretStatus.Unknown);
-        }
-        var tags = new List<InfisicalTag>();
-        foreach (JsonElement item in items.EnumerateArray().Take(maximumItems))
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (ParseTag(item, address.ProjectId) is not { } tag)
+            NativeCount(maximumItems);
+            if (target.Address is not InfisicalTagAddress { Selector: null } address)
             {
-                return SecretOutcome<InfisicalNativeList<InfisicalTag>>.Failure(SecretStatus.Unknown);
+                return SecretOutcome<InfisicalNativeList<InfisicalTag>>.Failure(SecretStatus.Invalid);
             }
-            tags.Add(tag);
+            SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target,
+                $"api/v1/projects/{Uri.EscapeDataString(address.ProjectId)}/tags", HttpMethod.Get, null, null, null, operationToken);
+            if (!outcome.IsSuccess) { return SecretOutcome<InfisicalNativeList<InfisicalTag>>.Failure(outcome.Status, outcome.RetryAfter, outcome.Reason); }
+            using JsonDocument document = outcome.Value;
+            if (!NativeArray(document.RootElement, "tags", out JsonElement items))
+            {
+                return SecretOutcome<InfisicalNativeList<InfisicalTag>>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.InvalidResponse);
+            }
+            var tags = new List<InfisicalTag>();
+            foreach (JsonElement item in items.EnumerateArray().Take(maximumItems))
+            {
+                operationToken.ThrowIfCancellationRequested();
+                if (ParseTag(item, address.ProjectId) is not { } tag)
+                {
+                    return SecretOutcome<InfisicalNativeList<InfisicalTag>>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.InvalidResponse);
+                }
+                tags.Add(tag);
+            }
+            return SecretOutcome<InfisicalNativeList<InfisicalTag>>.Success(new(tags, items.GetArrayLength() <= maximumItems));
         }
-        return SecretOutcome<InfisicalNativeList<InfisicalTag>>.Success(new(tags, items.GetArrayLength() <= maximumItems));
     }
 
     /// <summary>Lists bounded folders with explicitly selected recursion and modification filtering.</summary>
@@ -458,31 +474,37 @@ public sealed partial class InfisicalClient
         int maximumItems = 1000, bool recursive = false, DateTimeOffset? lastSecretModified = null,
         CancellationToken cancellationToken = default)
     {
-        NativeCount(maximumItems);
-        if (target.Address is not InfisicalFolderAddress address)
+        return await InfisicalOperationBudget.RunAsync(_operationTimeout, _time, cancellationToken,
+            InfisicalOperation.Native, ExecuteAsync, shutdown: _shutdown.Token).ConfigureAwait(false);
+
+        async ValueTask<SecretOutcome<InfisicalNativeList<InfisicalFolder>>> ExecuteAsync(CancellationToken operationToken)
         {
-            return SecretOutcome<InfisicalNativeList<InfisicalFolder>>.Failure(SecretStatus.Invalid);
-        }
-        string path = "api/v2/folders" + OrganizationQuery(address) + "&recursive=" + Boolean(recursive) +
-            (lastSecretModified is { } date ? "&lastSecretModified=" + Uri.EscapeDataString(date.ToString("O", CultureInfo.InvariantCulture)) : "");
-        SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target, path, HttpMethod.Get, null, null, null, cancellationToken);
-        if (!outcome.IsSuccess) { return SecretOutcome<InfisicalNativeList<InfisicalFolder>>.Failure(outcome.Status, outcome.RetryAfter); }
-        using JsonDocument document = outcome.Value;
-        if (!NativeArray(document.RootElement, "folders", out JsonElement items))
-        {
-            return SecretOutcome<InfisicalNativeList<InfisicalFolder>>.Failure(SecretStatus.Unknown);
-        }
-        var folders = new List<InfisicalFolder>();
-        foreach (JsonElement item in items.EnumerateArray().Take(maximumItems))
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (ParseFolder(item, address.EnvironmentId) is not { } folder)
+            NativeCount(maximumItems);
+            if (target.Address is not InfisicalFolderAddress address)
             {
-                return SecretOutcome<InfisicalNativeList<InfisicalFolder>>.Failure(SecretStatus.Unknown);
+                return SecretOutcome<InfisicalNativeList<InfisicalFolder>>.Failure(SecretStatus.Invalid);
             }
-            folders.Add(folder);
+            string path = "api/v2/folders" + OrganizationQuery(address) + "&recursive=" + Boolean(recursive) +
+                (lastSecretModified is { } date ? "&lastSecretModified=" + Uri.EscapeDataString(date.ToString("O", CultureInfo.InvariantCulture)) : "");
+            SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target, path, HttpMethod.Get, null, null, null, operationToken);
+            if (!outcome.IsSuccess) { return SecretOutcome<InfisicalNativeList<InfisicalFolder>>.Failure(outcome.Status, outcome.RetryAfter, outcome.Reason); }
+            using JsonDocument document = outcome.Value;
+            if (!NativeArray(document.RootElement, "folders", out JsonElement items))
+            {
+                return SecretOutcome<InfisicalNativeList<InfisicalFolder>>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.InvalidResponse);
+            }
+            var folders = new List<InfisicalFolder>();
+            foreach (JsonElement item in items.EnumerateArray().Take(maximumItems))
+            {
+                operationToken.ThrowIfCancellationRequested();
+                if (ParseFolder(item, address.EnvironmentId) is not { } folder)
+                {
+                    return SecretOutcome<InfisicalNativeList<InfisicalFolder>>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.InvalidResponse);
+                }
+                folders.Add(folder);
+            }
+            return SecretOutcome<InfisicalNativeList<InfisicalFolder>>.Success(new(folders, items.GetArrayLength() <= maximumItems));
         }
-        return SecretOutcome<InfisicalNativeList<InfisicalFolder>>.Success(new(folders, items.GetArrayLength() <= maximumItems));
     }
 
     /// <summary>Inspects an ID-selected folder and validates its native environment correspondence.</summary>
@@ -522,7 +544,7 @@ public sealed partial class InfisicalClient
             ["name"] = address.Name
         };
         if (description is not null || clearDescription) { body["description"] = description; }
-        return FolderOperationAsync(target, method, JsonSerializer.SerializeToUtf8Bytes(body),
+        return FolderOperationAsync(target, method, InfisicalOperationBudget.Payload(body),
             authority, receipt, cancellationToken);
     }
 
@@ -535,7 +557,7 @@ public sealed partial class InfisicalClient
         {
             return ValueTask.FromResult(SecretOutcome<InfisicalFolder>.Failure(SecretStatus.Invalid));
         }
-        return FolderOperationAsync(target, HttpMethod.Delete, JsonSerializer.SerializeToUtf8Bytes(new
+        return FolderOperationAsync(target, HttpMethod.Delete, InfisicalOperationBudget.Payload(new
         {
             projectId = address.ProjectId,
             environment = address.Environment,
@@ -545,32 +567,37 @@ public sealed partial class InfisicalClient
     }
 
     private async ValueTask<SecretOutcome<InfisicalFolder>> FolderOperationAsync(SecretReference target, HttpMethod method,
-        byte[]? payload, InfisicalNativeAuthority? authority, MutationReceipt? receipt, CancellationToken cancellationToken)
+        Func<int, byte[]>? payload, InfisicalNativeAuthority? authority, MutationReceipt? receipt, CancellationToken cancellationToken)
     {
-        if (target.Address is not InfisicalFolderAddress address ||
-            ((method == HttpMethod.Get || method == HttpMethod.Patch) && address.Id is null) ||
-            (method == HttpMethod.Delete && address.Id is null && address.Name is null))
+        return await InfisicalOperationBudget.RunAsync(_operationTimeout, _time, cancellationToken,
+            InfisicalOperation.Native, ExecuteAsync, () => receipt?.Evidence ?? DispatchEvidence.NotDispatched, shutdown: _shutdown.Token).ConfigureAwait(false);
+
+        async ValueTask<SecretOutcome<InfisicalFolder>> ExecuteAsync(CancellationToken operationToken)
         {
-            if (payload is not null) { Array.Clear(payload); }
-            return SecretOutcome<InfisicalFolder>.Failure(SecretStatus.Invalid);
+            if (target.Address is not InfisicalFolderAddress address ||
+                ((method == HttpMethod.Get || method == HttpMethod.Patch) && address.Id is null) ||
+                (method == HttpMethod.Delete && address.Id is null && address.Name is null))
+            {
+                return SecretOutcome<InfisicalFolder>.Failure(SecretStatus.Invalid);
+            }
+            string path = "api/v2/folders";
+            if (method != HttpMethod.Post) { path += "/" + Uri.EscapeDataString(address.Id ?? address.Name!); }
+            SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target, path, method, payload, authority, receipt, operationToken);
+            if (!outcome.IsSuccess) { return SecretOutcome<InfisicalFolder>.Failure(outcome.Status, outcome.RetryAfter, outcome.Reason); }
+            using JsonDocument document = outcome.Value;
+            if (!NativeObject(document.RootElement, "folder", out JsonElement item) ||
+                ParseFolder(item, address.EnvironmentId) is not { } folder ||
+                (address.Id is not null && folder.Id != address.Id) ||
+                (address.Name is not null && folder.Name != address.Name) ||
+                (method == HttpMethod.Get && (NativeString(item, "projectId") != address.ProjectId ||
+                    !NativeObject(item, "environment", out JsonElement environment) ||
+                    NativeString(environment, "envSlug") != address.Environment)))
+            {
+                return SecretOutcome<InfisicalFolder>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.InvalidResponse);
+            }
+            receipt?.Record(DispatchEvidence.Applied);
+            return SecretOutcome<InfisicalFolder>.Success(folder);
         }
-        string path = "api/v2/folders";
-        if (method != HttpMethod.Post) { path += "/" + Uri.EscapeDataString(address.Id ?? address.Name!); }
-        SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target, path, method, payload, authority, receipt, cancellationToken);
-        if (!outcome.IsSuccess) { return SecretOutcome<InfisicalFolder>.Failure(outcome.Status, outcome.RetryAfter); }
-        using JsonDocument document = outcome.Value;
-        if (!NativeObject(document.RootElement, "folder", out JsonElement item) ||
-            ParseFolder(item, address.EnvironmentId) is not { } folder ||
-            (address.Id is not null && folder.Id != address.Id) ||
-            (address.Name is not null && folder.Name != address.Name) ||
-            (method == HttpMethod.Get && (NativeString(item, "projectId") != address.ProjectId ||
-                !NativeObject(item, "environment", out JsonElement environment) ||
-                NativeString(environment, "envSlug") != address.Environment)))
-        {
-            return SecretOutcome<InfisicalFolder>.Failure(SecretStatus.Unknown);
-        }
-        receipt?.Record(DispatchEvidence.Applied);
-        return SecretOutcome<InfisicalFolder>.Success(folder);
     }
 
     /// <summary>Updates bounded distinct folder IDs while retaining partial response coverage.</summary>
@@ -580,49 +607,55 @@ public sealed partial class InfisicalClient
         IReadOnlyList<InfisicalFolderUpdate> updates, InfisicalNativeAuthority authority, MutationReceipt receipt,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(updates);
-        if (updates.Count is < 1 or > 128 || updates.Any(item => item is null) ||
-            updates.Select(item => item.Id).Distinct(StringComparer.Ordinal).Count() != updates.Count ||
-            target.Address is not InfisicalFolderAddress address)
+        return await InfisicalOperationBudget.RunAsync(_operationTimeout, _time, cancellationToken,
+            InfisicalOperation.Native, ExecuteAsync, () => receipt?.Evidence ?? DispatchEvidence.NotDispatched, shutdown: _shutdown.Token).ConfigureAwait(false);
+
+        async ValueTask<SecretOutcome<InfisicalNativeList<InfisicalFolder>>> ExecuteAsync(CancellationToken operationToken)
         {
-            return SecretOutcome<InfisicalNativeList<InfisicalFolder>>.Failure(SecretStatus.Invalid);
-        }
-        InfisicalFolderUpdate[] owned = updates.ToArray();
-        var bodies = owned.Select(update =>
-        {
-            var body = new Dictionary<string, object?>
+            ArgumentNullException.ThrowIfNull(updates);
+            if (updates.Count is < 1 or > 128 || updates.Any(item => item is null) ||
+                updates.Select(item => item.Id).Distinct(StringComparer.Ordinal).Count() != updates.Count ||
+                target.Address is not InfisicalFolderAddress address)
             {
-                ["id"] = update.Id,
-                ["name"] = update.Name,
-                ["environment"] = address.Environment,
-                ["path"] = address.Folder
-            };
-            if (update.Description is not null || update.ClearDescription) { body["description"] = update.Description; }
-            return body;
-        }).ToArray();
-        SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target, "api/v2/folders/batch",
-            HttpMethod.Patch, JsonSerializer.SerializeToUtf8Bytes(new { projectId = address.ProjectId, folders = bodies }),
-            authority, receipt, cancellationToken);
-        if (!outcome.IsSuccess) { return SecretOutcome<InfisicalNativeList<InfisicalFolder>>.Failure(outcome.Status, outcome.RetryAfter); }
-        using JsonDocument document = outcome.Value;
-        if (!NativeArray(document.RootElement, "folders", out JsonElement items) || items.GetArrayLength() > owned.Length)
-        {
-            return SecretOutcome<InfisicalNativeList<InfisicalFolder>>.Failure(SecretStatus.Unknown);
-        }
-        var folders = new List<InfisicalFolder>();
-        foreach (JsonElement item in items.EnumerateArray())
-        {
-            if (ParseFolder(item, address.EnvironmentId) is not { } folder ||
-                !owned.Any(update => update.Id == folder.Id && update.Name == folder.Name) ||
-                folders.Any(previous => previous.Id == folder.Id))
-            {
-                return SecretOutcome<InfisicalNativeList<InfisicalFolder>>.Failure(SecretStatus.Unknown);
+                return SecretOutcome<InfisicalNativeList<InfisicalFolder>>.Failure(SecretStatus.Invalid);
             }
-            folders.Add(folder);
+            InfisicalFolderUpdate[] owned = updates.ToArray();
+            var bodies = owned.Select(update =>
+            {
+                var body = new Dictionary<string, object?>
+                {
+                    ["id"] = update.Id,
+                    ["name"] = update.Name,
+                    ["environment"] = address.Environment,
+                    ["path"] = address.Folder
+                };
+                if (update.Description is not null || update.ClearDescription) { body["description"] = update.Description; }
+                return body;
+            }).ToArray();
+            SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target, "api/v2/folders/batch",
+                HttpMethod.Patch, InfisicalOperationBudget.Payload(new { projectId = address.ProjectId, folders = bodies }),
+                authority, receipt, operationToken);
+            if (!outcome.IsSuccess) { return SecretOutcome<InfisicalNativeList<InfisicalFolder>>.Failure(outcome.Status, outcome.RetryAfter, outcome.Reason); }
+            using JsonDocument document = outcome.Value;
+            if (!NativeArray(document.RootElement, "folders", out JsonElement items) || items.GetArrayLength() > owned.Length)
+            {
+                return SecretOutcome<InfisicalNativeList<InfisicalFolder>>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.InvalidResponse);
+            }
+            var folders = new List<InfisicalFolder>();
+            foreach (JsonElement item in items.EnumerateArray())
+            {
+                if (ParseFolder(item, address.EnvironmentId) is not { } folder ||
+                    !owned.Any(update => update.Id == folder.Id && update.Name == folder.Name) ||
+                    folders.Any(previous => previous.Id == folder.Id))
+                {
+                    return SecretOutcome<InfisicalNativeList<InfisicalFolder>>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.InvalidResponse);
+                }
+                folders.Add(folder);
+            }
+            bool complete = folders.Count == owned.Length;
+            if (complete) { receipt.Record(DispatchEvidence.Applied); }
+            return SecretOutcome<InfisicalNativeList<InfisicalFolder>>.Success(new(folders, complete));
         }
-        bool complete = folders.Count == owned.Length;
-        if (complete) { receipt.Record(DispatchEvidence.Applied); }
-        return SecretOutcome<InfisicalNativeList<InfisicalFolder>>.Success(new(folders, complete));
     }
 
     /// <summary>Moves a selected folder only within the explicit authority's source and destination scope.</summary>
@@ -631,34 +664,40 @@ public sealed partial class InfisicalClient
         InfisicalFolderAddress destination, InfisicalNativeAuthority authority, MutationReceipt receipt,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(destination);
-        if (target.Address is not InfisicalFolderAddress { Id: not null } address ||
-            address.ProjectId != destination.ProjectId || !authority.Matches(Authority, destination))
+        return await InfisicalOperationBudget.RunAsync(_operationTimeout, _time, cancellationToken,
+            InfisicalOperation.Native, ExecuteAsync, () => receipt?.Evidence ?? DispatchEvidence.NotDispatched, shutdown: _shutdown.Token).ConfigureAwait(false);
+
+        async ValueTask<SecretOutcome<InfisicalFolderMove>> ExecuteAsync(CancellationToken operationToken)
         {
-            return SecretOutcome<InfisicalFolderMove>.Failure(SecretStatus.Invalid);
-        }
-        SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target, "api/v2/folders/move",
-            HttpMethod.Post, JsonSerializer.SerializeToUtf8Bytes(new
+            ArgumentNullException.ThrowIfNull(destination);
+            if (target.Address is not InfisicalFolderAddress { Id: not null } address ||
+                address.ProjectId != destination.ProjectId || !authority.Matches(Authority, destination))
             {
-                projectId = address.ProjectId,
-                folderId = address.Id,
-                destinationEnvironment = destination.Environment,
-                destinationPath = destination.Folder
-            }), authority, receipt, cancellationToken);
-        if (!outcome.IsSuccess) { return SecretOutcome<InfisicalFolderMove>.Failure(outcome.Status, outcome.RetryAfter); }
-        using JsonDocument document = outcome.Value;
-        JsonElement item = document.RootElement;
-        if (NativeString(item, "folderId") != address.Id ||
-            NativeString(item, "sourceEnvironment") != address.Environment ||
-            NativeString(item, "sourcePath") is not { } sourcePath ||
-            NativeString(item, "destinationEnvironment") != destination.Environment ||
-            NativeString(item, "destinationPath") != destination.Folder)
-        {
-            return SecretOutcome<InfisicalFolderMove>.Failure(SecretStatus.Unknown);
+                return SecretOutcome<InfisicalFolderMove>.Failure(SecretStatus.Invalid);
+            }
+            SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target, "api/v2/folders/move",
+                HttpMethod.Post, InfisicalOperationBudget.Payload(new
+                {
+                    projectId = address.ProjectId,
+                    folderId = address.Id,
+                    destinationEnvironment = destination.Environment,
+                    destinationPath = destination.Folder
+                }), authority, receipt, operationToken);
+            if (!outcome.IsSuccess) { return SecretOutcome<InfisicalFolderMove>.Failure(outcome.Status, outcome.RetryAfter, outcome.Reason); }
+            using JsonDocument document = outcome.Value;
+            JsonElement item = document.RootElement;
+            if (NativeString(item, "folderId") != address.Id ||
+                NativeString(item, "sourceEnvironment") != address.Environment ||
+                NativeString(item, "sourcePath") is not { } sourcePath ||
+                NativeString(item, "destinationEnvironment") != destination.Environment ||
+                NativeString(item, "destinationPath") != destination.Folder)
+            {
+                return SecretOutcome<InfisicalFolderMove>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.InvalidResponse);
+            }
+            receipt.Record(DispatchEvidence.Applied);
+            return SecretOutcome<InfisicalFolderMove>.Success(new(address.Id, address.Environment!, sourcePath,
+                destination.Environment!, destination.Folder!));
         }
-        receipt.Record(DispatchEvidence.Applied);
-        return SecretOutcome<InfisicalFolderMove>.Success(new(address.Id, address.Environment!, sourcePath,
-            destination.Environment!, destination.Folder!));
     }
 
     private static InfisicalTag? ParseTag(JsonElement item, string project) =>

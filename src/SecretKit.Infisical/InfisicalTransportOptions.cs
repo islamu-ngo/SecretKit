@@ -73,6 +73,9 @@ internal sealed class InfisicalTransportBinding : IDisposable
         ArgumentNullException.ThrowIfNull(origin);
         ArgumentNullException.ThrowIfNull(network);
         ArgumentNullException.ThrowIfNull(network.Transport);
+        if (network.MaximumRequestBytes is < 1024 or > 16 * 1024 * 1024 ||
+            network.OperationTimeout <= TimeSpan.Zero || network.OperationTimeout > TimeSpan.FromMinutes(1))
+            throw new ArgumentException("Invalid request or operation budget.", nameof(network));
         bool http = origin.IsAbsoluteUri && origin.Scheme == Uri.UriSchemeHttp &&
             (network.Transport.IsHostControlled || origin.IsLoopback && network.AllowLoopbackDevelopmentHttp);
         if (!origin.IsAbsoluteUri || origin.Scheme != Uri.UriSchemeHttps && !http ||

@@ -303,16 +303,19 @@ public sealed partial class InfisicalClient
         if (input.ValueConstraints is not null || input.ClearValueConstraints) { body["valueConstraints"] = input.ValueConstraints?.Wire(); }
         if (input.PasswordConstraints is not null) { body["passwordConstraints"] = input.PasswordConstraints.Wire(); }
         if (input.Providers is not null) { body["providers"] = input.Providers.Select(ValidationProviderWire).ToArray(); }
-        // Serialize nested absent constraint fields without converting explicit top-level clears into omission.
-        foreach (string key in new[] { "keyConstraints", "valueConstraints", "passwordConstraints" })
-        {
-            if (body.TryGetValue(key, out object? value) && value is not null)
-            {
-                body[key] = JsonSerializer.SerializeToElement(value, NativePayloadOptions);
-            }
-        }
         return ValidationOperationAsync(target, update ? HttpMethod.Patch : HttpMethod.Post,
-            JsonSerializer.SerializeToUtf8Bytes(body), authority, receipt, cancellationToken);
+            maximum => InfisicalOperationBudget.Serialize(writer =>
+            {
+                writer.WriteStartObject();
+                foreach ((string key, object? value) in body)
+                {
+                    writer.WritePropertyName(key);
+                    // Explicit root clears remain null; nested absent fields are omitted.
+                    JsonSerializer.Serialize(writer, value, key is "keyConstraints" or "valueConstraints" or
+                        "passwordConstraints" ? NativePayloadOptions : null);
+                }
+                writer.WriteEndObject();
+            }, maximum), authority, receipt, cancellationToken);
     }
 
     private static bool ValidationInputValid(InfisicalValidationInput input, InfisicalValidationKind kind, bool update)
@@ -331,36 +334,41 @@ public sealed partial class InfisicalClient
     }
 
     private async ValueTask<SecretOutcome<InfisicalValidationRule>> ValidationOperationAsync(SecretReference target,
-        HttpMethod method, byte[]? payload, InfisicalNativeAuthority? authority, MutationReceipt? receipt,
+        HttpMethod method, Func<int, byte[]>? payload, InfisicalNativeAuthority? authority, MutationReceipt? receipt,
         CancellationToken cancellationToken)
     {
-        if (target.Address is not InfisicalValidationAddress address ||
-            (method != HttpMethod.Post && address.RuleId is null))
+        return await InfisicalOperationBudget.RunAsync(_operationTimeout, _time, cancellationToken,
+            InfisicalOperation.Native, ExecuteAsync, () => receipt?.Evidence ?? DispatchEvidence.NotDispatched, shutdown: _shutdown.Token).ConfigureAwait(false);
+
+        async ValueTask<SecretOutcome<InfisicalValidationRule>> ExecuteAsync(CancellationToken operationToken)
         {
-            if (payload is not null) { Array.Clear(payload); }
-            return SecretOutcome<InfisicalValidationRule>.Failure(SecretStatus.Invalid);
+            if (target.Address is not InfisicalValidationAddress address ||
+                (method != HttpMethod.Post && address.RuleId is null))
+            {
+                return SecretOutcome<InfisicalValidationRule>.Failure(SecretStatus.Invalid);
+            }
+            string path = "api/v1/secret-validation-rules/" + ValidationKindWire(address.Kind) +
+                (method == HttpMethod.Post ? "" : "/" + Uri.EscapeDataString(address.RuleId!));
+            SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target, path, method, payload, authority, receipt, operationToken);
+            if (!outcome.IsSuccess) { return SecretOutcome<InfisicalValidationRule>.Failure(outcome.Status, outcome.RetryAfter, outcome.Reason); }
+            using JsonDocument document = outcome.Value;
+            if (!NativeObject(document.RootElement, "secretValidationRule", out JsonElement item) ||
+                ParseValidationRule(item, address.ProjectId, address.Kind) is not { } rule ||
+                (address.RuleId is not null && rule.Id != address.RuleId) ||
+                (method != HttpMethod.Patch && ((address.Environment is not null && rule.Environment != address.Environment) ||
+                    (address.Folder is not null && rule.SecretPath != address.Folder))))
+            {
+                return SecretOutcome<InfisicalValidationRule>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.InvalidResponse);
+            }
+            // Updated scope is checked against the explicit authority as well as the original target.
+            if (authority is not null && !authority.Matches(Authority, new InfisicalValidationAddress(
+                rule.ProjectId, rule.Kind, rule.Id, rule.Environment, rule.SecretPath)))
+            {
+                return SecretOutcome<InfisicalValidationRule>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.InvalidResponse);
+            }
+            receipt?.Record(DispatchEvidence.Applied);
+            return SecretOutcome<InfisicalValidationRule>.Success(rule);
         }
-        string path = "api/v1/secret-validation-rules/" + ValidationKindWire(address.Kind) +
-            (method == HttpMethod.Post ? "" : "/" + Uri.EscapeDataString(address.RuleId!));
-        SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target, path, method, payload, authority, receipt, cancellationToken);
-        if (!outcome.IsSuccess) { return SecretOutcome<InfisicalValidationRule>.Failure(outcome.Status, outcome.RetryAfter); }
-        using JsonDocument document = outcome.Value;
-        if (!NativeObject(document.RootElement, "secretValidationRule", out JsonElement item) ||
-            ParseValidationRule(item, address.ProjectId, address.Kind) is not { } rule ||
-            (address.RuleId is not null && rule.Id != address.RuleId) ||
-            (method != HttpMethod.Patch && ((address.Environment is not null && rule.Environment != address.Environment) ||
-                (address.Folder is not null && rule.SecretPath != address.Folder))))
-        {
-            return SecretOutcome<InfisicalValidationRule>.Failure(SecretStatus.Unknown);
-        }
-        // Updated scope is checked against the explicit authority as well as the original target.
-        if (authority is not null && !authority.Matches(Authority, new InfisicalValidationAddress(
-            rule.ProjectId, rule.Kind, rule.Id, rule.Environment, rule.SecretPath)))
-        {
-            return SecretOutcome<InfisicalValidationRule>.Failure(SecretStatus.Unknown);
-        }
-        receipt?.Record(DispatchEvidence.Applied);
-        return SecretOutcome<InfisicalValidationRule>.Success(rule);
     }
 
     /// <summary>Lists bounded project rules for the selected family, or all admitted families when explicitly requested.</summary>
@@ -368,31 +376,37 @@ public sealed partial class InfisicalClient
     public async ValueTask<SecretOutcome<InfisicalNativeList<InfisicalValidationRule>>> ListValidationRulesAsync(
         SecretReference target, int maximumItems = 1000, bool allKinds = false, CancellationToken cancellationToken = default)
     {
-        NativeCount(maximumItems);
-        if (target.Address is not InfisicalValidationAddress { RuleId: null, Environment: null, Folder: null } address)
+        return await InfisicalOperationBudget.RunAsync(_operationTimeout, _time, cancellationToken,
+            InfisicalOperation.Native, ExecuteAsync, shutdown: _shutdown.Token).ConfigureAwait(false);
+
+        async ValueTask<SecretOutcome<InfisicalNativeList<InfisicalValidationRule>>> ExecuteAsync(CancellationToken operationToken)
         {
-            return SecretOutcome<InfisicalNativeList<InfisicalValidationRule>>.Failure(SecretStatus.Invalid);
-        }
-        string path = "api/v1/secret-validation-rules" + (allKinds ? "" : "/" + ValidationKindWire(address.Kind)) +
-            "?projectId=" + Uri.EscapeDataString(address.ProjectId);
-        SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target, path, HttpMethod.Get, null, null, null, cancellationToken);
-        if (!outcome.IsSuccess) { return SecretOutcome<InfisicalNativeList<InfisicalValidationRule>>.Failure(outcome.Status, outcome.RetryAfter); }
-        using JsonDocument document = outcome.Value;
-        if (!NativeArray(document.RootElement, "secretValidationRules", out JsonElement items))
-        {
-            return SecretOutcome<InfisicalNativeList<InfisicalValidationRule>>.Failure(SecretStatus.Unknown);
-        }
-        var rules = new List<InfisicalValidationRule>();
-        foreach (JsonElement item in items.EnumerateArray().Take(maximumItems))
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (ParseValidationRule(item, address.ProjectId, allKinds ? null : address.Kind) is not { } rule)
+            NativeCount(maximumItems);
+            if (target.Address is not InfisicalValidationAddress { RuleId: null, Environment: null, Folder: null } address)
             {
-                return SecretOutcome<InfisicalNativeList<InfisicalValidationRule>>.Failure(SecretStatus.Unknown);
+                return SecretOutcome<InfisicalNativeList<InfisicalValidationRule>>.Failure(SecretStatus.Invalid);
             }
-            rules.Add(rule);
+            string path = "api/v1/secret-validation-rules" + (allKinds ? "" : "/" + ValidationKindWire(address.Kind)) +
+                "?projectId=" + Uri.EscapeDataString(address.ProjectId);
+            SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target, path, HttpMethod.Get, null, null, null, operationToken);
+            if (!outcome.IsSuccess) { return SecretOutcome<InfisicalNativeList<InfisicalValidationRule>>.Failure(outcome.Status, outcome.RetryAfter, outcome.Reason); }
+            using JsonDocument document = outcome.Value;
+            if (!NativeArray(document.RootElement, "secretValidationRules", out JsonElement items))
+            {
+                return SecretOutcome<InfisicalNativeList<InfisicalValidationRule>>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.InvalidResponse);
+            }
+            var rules = new List<InfisicalValidationRule>();
+            foreach (JsonElement item in items.EnumerateArray().Take(maximumItems))
+            {
+                operationToken.ThrowIfCancellationRequested();
+                if (ParseValidationRule(item, address.ProjectId, allKinds ? null : address.Kind) is not { } rule)
+                {
+                    return SecretOutcome<InfisicalNativeList<InfisicalValidationRule>>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.InvalidResponse);
+                }
+                rules.Add(rule);
+            }
+            return SecretOutcome<InfisicalNativeList<InfisicalValidationRule>>.Success(new(rules, items.GetArrayLength() <= maximumItems));
         }
-        return SecretOutcome<InfisicalNativeList<InfisicalValidationRule>>.Success(new(rules, items.GetArrayLength() <= maximumItems));
     }
 
     private static InfisicalValidationRule? ParseValidationRule(JsonElement item, string project, InfisicalValidationKind? expected)

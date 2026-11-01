@@ -359,13 +359,15 @@ public sealed class DynamicDefinitionTests
     public async Task InputResponseBytesDepthCountsAndDuplicateKeysFailClosedWithoutLeaking()
     {
         using var wire = new DynamicWireFixture();
-        await using InfisicalDynamicClient client = wire.Client(maximumBytes: 1024);
+        await using InfisicalDynamicClient client = wire.Client(maximumBytes: 1024, maximumRequestBytes: 1024);
         InfisicalDynamicTarget target = client.Definition("bounded");
         using var profile = new NativeSqlDefinitionProfile(NativeSqlEngine.Postgres, "db.test", 5432,
             DynamicWireFixture.Material(), DynamicWireFixture.Material(), "db", new string('x', 2048), "revoke");
         var receipt = new InfisicalDynamicMutationReceipt(target, InfisicalDynamicOperation.CreateDefinition);
-        await Assert.That(async () => await client.CreateDefinitionAsync(target, profile,
-            new(TimeSpan.FromSeconds(60)), null, receipt)).Throws<ArgumentException>();
+        var oversized = await client.CreateDefinitionAsync(target, profile,
+            new(TimeSpan.FromSeconds(60)), null, receipt);
+        await Assert.That(oversized.Status).IsEqualTo(SecretStatus.Invalid);
+        await Assert.That(oversized.Reason).IsEqualTo(SecretFailureReason.RequestTooLarge);
         await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.NotDispatched);
         await Assert.That(wire.DefinitionCount).IsEqualTo(0);
         foreach (string raw in new[]

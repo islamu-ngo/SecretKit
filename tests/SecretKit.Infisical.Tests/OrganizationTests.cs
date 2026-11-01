@@ -106,7 +106,8 @@ public sealed class OrganizationTests
     [Test]
     public async Task InputBudgetIsCheckedBeforeCredentialsAndResponseBudgetLeavesUnknownReceipt()
     {
-        await using InfisicalClient client = Phase5TestSupport.Client(new OrganizationBackend(), responseLimit: 1024);
+        await using InfisicalClient client = Phase5TestSupport.Client(new OrganizationBackend(),
+            responseLimit: 1024, requestLimit: 1024);
         var target = new SecretReference(client.Authority, new InfisicalTagAddress("project", "tag", InfisicalOrganizationSelector.Slug));
         var admin = new InfisicalNativeAuthority(client.Authority, new Phase5TestSupport.Tokens("admin", true), "project");
         var receipt = new MutationReceipt(target);
@@ -302,9 +303,14 @@ internal static class Phase5TestSupport
     internal const string EnvironmentId = "00000000-0000-4000-8000-000000000003";
     internal const string OtherEnvironmentId = "00000000-0000-4000-8000-000000000004";
     internal const string Date = "2026-10-09T10:00:00Z";
-    internal static InfisicalClient Client(HttpMessageHandler handler, string token = "runtime", int responseLimit = 1024 * 1024) =>
+    internal static InfisicalClient Client(HttpMessageHandler handler, string token = "runtime",
+        int responseLimit = 1024 * 1024, int requestLimit = 1024 * 1024) =>
         new(new Uri("https://infisical.test"), new Tokens(token),
-            new InfisicalNetworkOptions { MaximumResponseBytes = responseLimit }, null, handler);
+            new InfisicalNetworkOptions
+            {
+                MaximumResponseBytes = responseLimit,
+                MaximumRequestBytes = requestLimit
+            }, null, handler);
     internal static InfisicalNativeAuthority Admin(InfisicalClient client, string? environment = null, string? folder = null) =>
         new(client.Authority, new Tokens("admin"), "project", environment, folder);
     internal static HttpResponseMessage Json(int status, object body) =>

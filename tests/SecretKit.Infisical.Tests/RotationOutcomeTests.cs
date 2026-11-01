@@ -232,8 +232,8 @@ public sealed class RotationOutcomeTests
     [Arguments(404, SecretStatus.Absent, InfisicalRotationDispatch.Rejected)]
     [Arguments(409, SecretStatus.Conflict, InfisicalRotationDispatch.Rejected)]
     [Arguments(422, SecretStatus.Invalid, InfisicalRotationDispatch.Rejected)]
-    [Arguments(429, SecretStatus.Throttled, InfisicalRotationDispatch.ResponseUnknown)]
-    [Arguments(500, SecretStatus.Unavailable, InfisicalRotationDispatch.ResponseUnknown)]
+    [Arguments(429, SecretStatus.Unknown, InfisicalRotationDispatch.ResponseUnknown)]
+    [Arguments(500, SecretStatus.Unknown, InfisicalRotationDispatch.ResponseUnknown)]
     [Arguments(202, SecretStatus.Unknown, InfisicalRotationDispatch.ResponseUnknown)]
     [Arguments(302, SecretStatus.Unknown, InfisicalRotationDispatch.ResponseUnknown)]
     public async Task HttpFailureCannotBecomeProviderApplied(int code, SecretStatus expected,

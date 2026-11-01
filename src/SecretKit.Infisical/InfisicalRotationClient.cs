@@ -18,11 +18,13 @@ public sealed class InfisicalRotationClient : IDisposable
     private readonly InfisicalTransportBinding _binding;
     private readonly InfisicalNativeAuthority _administration;
     private readonly int _maximumResponseBytes;
+    private readonly TimeSpan _operationTimeout;
+    private readonly TimeProvider _time;
 
     /// <summary>Creates a fixed-origin rotation client bound to explicit local and administrative authority, without I/O.</summary>
     public InfisicalRotationClient(Uri trustedOrigin,
         SecretAuthority authority, InfisicalNativeAuthority administration,
-        InfisicalNetworkOptions? network = null)
+        InfisicalNetworkOptions? network = null, TimeProvider? timeProvider = null)
     {
         ArgumentNullException.ThrowIfNull(trustedOrigin);
         ArgumentNullException.ThrowIfNull(authority);
@@ -39,6 +41,8 @@ public sealed class InfisicalRotationClient : IDisposable
         Authority = authority;
         _administration = administration;
         _maximumResponseBytes = network.MaximumResponseBytes;
+        _operationTimeout = network.OperationTimeout;
+        _time = timeProvider ?? TimeProvider.System;
     }
 
     /// <summary>The exact local authority required by rotation references; not a server permission grant.</summary>
@@ -52,43 +56,49 @@ public sealed class InfisicalRotationClient : IDisposable
     public async ValueTask<SecretOutcome<InfisicalNativeList<InfisicalRotationProgress>>> ListAsync(
         SecretReference scope, int maximumItems = 128, CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(scope);
-        cancellationToken.ThrowIfCancellationRequested();
-        if (maximumItems is < 1 or > 4096 || scope.Address is not InfisicalRotationScope address ||
-            !scope.BelongsTo(Authority) || !_administration.Matches(Authority, address))
+        return await InfisicalOperationBudget.RunAsync(_operationTimeout, _time, cancellationToken,
+            InfisicalOperation.Rotation, ExecuteAsync).ConfigureAwait(false);
+
+        async ValueTask<SecretOutcome<InfisicalNativeList<InfisicalRotationProgress>>> ExecuteAsync(CancellationToken operationToken)
         {
-            return SecretOutcome<InfisicalNativeList<InfisicalRotationProgress>>.Failure(SecretStatus.Invalid);
-        }
-        var response = await SendAsync(address, null, scope, null, null,
-            cancellationToken).ConfigureAwait(false);
-        if (!response.IsSuccess)
-        {
-            return SecretOutcome<InfisicalNativeList<InfisicalRotationProgress>>.Failure(response.Status);
-        }
-        using JsonDocument document = response.Value;
-        if (!ObjectProperty(document.RootElement, "secretRotations", JsonValueKind.Array, out var items))
-        {
-            return SecretOutcome<InfisicalNativeList<InfisicalRotationProgress>>.Failure(SecretStatus.Unknown);
-        }
-        var result = new List<InfisicalRotationProgress>();
-        var ids = new HashSet<string>(StringComparer.Ordinal);
-        // This endpoint has no published paging inputs or continuation. Do not invent pagination.
-        foreach (JsonElement item in items.EnumerateArray())
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (result.Count == maximumItems)
+            ArgumentNullException.ThrowIfNull(scope);
+            operationToken.ThrowIfCancellationRequested();
+            if (maximumItems is < 1 or > 4096 || scope.Address is not InfisicalRotationScope address ||
+                !scope.BelongsTo(Authority) || !_administration.Matches(Authority, address))
             {
-                break;
+                return SecretOutcome<InfisicalNativeList<InfisicalRotationProgress>>.Failure(SecretStatus.Invalid);
             }
-            if (!TryProgress(item, address.ProjectId, null, out var progress) ||
-                !ids.Add(progress!.Address.RotationId))
+            var response = await SendAsync(address, null, scope, null, null,
+                operationToken).ConfigureAwait(false);
+            if (!response.IsSuccess)
             {
-                return SecretOutcome<InfisicalNativeList<InfisicalRotationProgress>>.Failure(SecretStatus.Unknown);
+                return SecretOutcome<InfisicalNativeList<InfisicalRotationProgress>>.Failure(response.Status, response.RetryAfter, response.Reason);
             }
-            result.Add(progress);
+            using JsonDocument document = response.Value;
+            if (!ObjectProperty(document.RootElement, "secretRotations", JsonValueKind.Array, out var items))
+            {
+                return SecretOutcome<InfisicalNativeList<InfisicalRotationProgress>>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.InvalidResponse);
+            }
+            var result = new List<InfisicalRotationProgress>();
+            var ids = new HashSet<string>(StringComparer.Ordinal);
+            // This endpoint has no published paging inputs or continuation. Do not invent pagination.
+            foreach (JsonElement item in items.EnumerateArray())
+            {
+                operationToken.ThrowIfCancellationRequested();
+                if (result.Count == maximumItems)
+                {
+                    break;
+                }
+                if (!TryProgress(item, address.ProjectId, null, out var progress) ||
+                    !ids.Add(progress!.Address.RotationId))
+                {
+                    return SecretOutcome<InfisicalNativeList<InfisicalRotationProgress>>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.InvalidResponse);
+                }
+                result.Add(progress);
+            }
+            return SecretOutcome<InfisicalNativeList<InfisicalRotationProgress>>.Success(
+                new(result, items.GetArrayLength() <= maximumItems));
         }
-        return SecretOutcome<InfisicalNativeList<InfisicalRotationProgress>>.Success(
-            new(result, items.GetArrayLength() <= maximumItems));
     }
 
     /// <summary>Observes the latest native state once, not an attributable operation completion.</summary>
@@ -116,45 +126,50 @@ public sealed class InfisicalRotationClient : IDisposable
         InfisicalRotationAction? action, InfisicalRotationReceipt? receipt,
         InfisicalRotationPrecondition precondition, CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(target);
-        cancellationToken.ThrowIfCancellationRequested();
-        if (target.Address is not InfisicalRotationAddress address || !target.BelongsTo(Authority) ||
-            !_administration.Matches(Authority, address) ||
-            (action is { } selected && (receipt is null || !receipt.Available(target, selected))))
+        return await InfisicalOperationBudget.RunAsync(_operationTimeout, _time, cancellationToken,
+            InfisicalOperation.Rotation, ExecuteAsync, () => receipt?.Dispatch switch { InfisicalRotationDispatch.ResponseUnknown => DispatchEvidence.PossiblyDispatched, InfisicalRotationDispatch.ResponseObserved => DispatchEvidence.Applied, InfisicalRotationDispatch.Rejected => DispatchEvidence.Rejected, _ => DispatchEvidence.NotDispatched }).ConfigureAwait(false);
+
+        async ValueTask<SecretOutcome<InfisicalRotationProgress>> ExecuteAsync(CancellationToken operationToken)
         {
-            return SecretOutcome<InfisicalRotationProgress>.Failure(SecretStatus.Invalid);
+            ArgumentNullException.ThrowIfNull(target);
+            operationToken.ThrowIfCancellationRequested();
+            if (target.Address is not InfisicalRotationAddress address || !target.BelongsTo(Authority) ||
+                !_administration.Matches(Authority, address) ||
+                (action is { } selected && (receipt is null || !receipt.Available(target, selected))))
+            {
+                return SecretOutcome<InfisicalRotationProgress>.Failure(SecretStatus.Invalid, reason: SecretFailureReason.AuthorityMismatch);
+            }
+            if (!Enum.IsDefined(precondition))
+            {
+                return SecretOutcome<InfisicalRotationProgress>.Failure(SecretStatus.Invalid);
+            }
+            if (precondition != InfisicalRotationPrecondition.None)
+            {
+                return SecretOutcome<InfisicalRotationProgress>.Failure(SecretStatus.Unsupported, reason: SecretFailureReason.UnsupportedContract);
+            }
+            bool? enabled = action switch
+            {
+                InfisicalRotationAction.EnableAutomaticRotation => true,
+                InfisicalRotationAction.DisableAutomaticRotation => false,
+                _ => null
+            };
+            var outcome = await SendAsync(address, enabled, target, action, receipt, operationToken)
+                .ConfigureAwait(false);
+            if (!outcome.IsSuccess)
+            {
+                return SecretOutcome<InfisicalRotationProgress>.Failure(outcome.Status, outcome.RetryAfter, outcome.Reason);
+            }
+            using JsonDocument document = outcome.Value;
+            if (!ObjectProperty(document.RootElement, "secretRotation", JsonValueKind.Object, out var rotation) ||
+                !TryProgress(rotation, address.ProjectId, address, out var progress) ||
+                (enabled is not null && progress!.AutoRotationEnabled != enabled))
+            {
+                return SecretOutcome<InfisicalRotationProgress>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.InvalidResponse);
+            }
+            receipt?.Observe(progress!, enabled is null ? InfisicalRotationEffect.AcceptedPending :
+                InfisicalRotationEffect.AutomaticRotationSettingApplied);
+            return SecretOutcome<InfisicalRotationProgress>.Success(progress!);
         }
-        if (!Enum.IsDefined(precondition))
-        {
-            return SecretOutcome<InfisicalRotationProgress>.Failure(SecretStatus.Invalid);
-        }
-        if (precondition != InfisicalRotationPrecondition.None)
-        {
-            return SecretOutcome<InfisicalRotationProgress>.Failure(SecretStatus.Unsupported);
-        }
-        bool? enabled = action switch
-        {
-            InfisicalRotationAction.EnableAutomaticRotation => true,
-            InfisicalRotationAction.DisableAutomaticRotation => false,
-            _ => null
-        };
-        var outcome = await SendAsync(address, enabled, target, action, receipt, cancellationToken)
-            .ConfigureAwait(false);
-        if (!outcome.IsSuccess)
-        {
-            return SecretOutcome<InfisicalRotationProgress>.Failure(outcome.Status);
-        }
-        using JsonDocument document = outcome.Value;
-        if (!ObjectProperty(document.RootElement, "secretRotation", JsonValueKind.Object, out var rotation) ||
-            !TryProgress(rotation, address.ProjectId, address, out var progress) ||
-            (enabled is not null && progress!.AutoRotationEnabled != enabled))
-        {
-            return SecretOutcome<InfisicalRotationProgress>.Failure(SecretStatus.Unknown);
-        }
-        cancellationToken.ThrowIfCancellationRequested();
-        receipt?.Observe(progress!, enabled is null ? InfisicalRotationEffect.AcceptedPending :
-            InfisicalRotationEffect.AutomaticRotationSettingApplied);
-        return SecretOutcome<InfisicalRotationProgress>.Success(progress!);
     }
 
     private async ValueTask<SecretOutcome<JsonDocument>> SendAsync(InfisicalNativeAddress address,
@@ -167,11 +182,11 @@ public sealed class InfisicalRotationClient : IDisposable
             if (!tokenOutcome.IsSuccess)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                return SecretOutcome<JsonDocument>.Failure(tokenOutcome.Status);
+                return SecretOutcome<JsonDocument>.Failure(tokenOutcome.Status, tokenOutcome.RetryAfter, tokenOutcome.Reason);
             }
             using var token = tokenOutcome.Value;
             cancellationToken.ThrowIfCancellationRequested();
-            if (token.ExpiresAt <= DateTimeOffset.UtcNow)
+            if (token.ExpiresAt <= _time.GetUtcNow())
             {
                 return SecretOutcome<JsonDocument>.Failure(SecretStatus.Expired);
             }
@@ -228,7 +243,7 @@ public sealed class InfisicalRotationClient : IDisposable
                 cancellationToken).ConfigureAwait(false);
             if (response.RequestMessage?.RequestUri is { } final && final != uri)
             {
-                return SecretOutcome<JsonDocument>.Failure(SecretStatus.Unknown);
+                return SecretOutcome<JsonDocument>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.InvalidResponse);
             }
             SecretStatus status = (int)response.StatusCode switch
             {
@@ -248,11 +263,15 @@ public sealed class InfisicalRotationClient : IDisposable
                 {
                     receipt!.Reject();
                 }
-                return SecretOutcome<JsonDocument>.Failure(status);
+                if (receipt?.Dispatch == InfisicalRotationDispatch.ResponseUnknown) status = SecretStatus.Unknown;
+                return SecretOutcome<JsonDocument>.Failure(status,
+                    status is SecretStatus.Throttled or SecretStatus.Unavailable
+                        ? InfisicalOperationBudget.RetryAfter(response, _time) : null);
             }
             if (response.Content.Headers.ContentLength > _maximumResponseBytes)
             {
-                return SecretOutcome<JsonDocument>.Failure(SecretStatus.Unknown);
+                return SecretOutcome<JsonDocument>.Failure(action is null ? SecretStatus.Invalid : SecretStatus.Unknown,
+                    reason: SecretFailureReason.ResponseTooLarge);
             }
             using Stream stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
             byte[] bytes = new byte[_maximumResponseBytes + 1];
@@ -268,10 +287,10 @@ public sealed class InfisicalRotationClient : IDisposable
                     }
                     length += read;
                 }
-                cancellationToken.ThrowIfCancellationRequested();
                 if (length > _maximumResponseBytes)
                 {
-                    return SecretOutcome<JsonDocument>.Failure(SecretStatus.Unknown);
+                    return SecretOutcome<JsonDocument>.Failure(action is null ? SecretStatus.Invalid : SecretStatus.Unknown,
+                        reason: SecretFailureReason.ResponseTooLarge);
                 }
                 // Parse owns its backing bytes; disposing the document releases the unexported payload.
                 using var input = new MemoryStream(bytes, 0, length, writable: false);
@@ -279,7 +298,7 @@ public sealed class InfisicalRotationClient : IDisposable
                 if (!UniqueProperties(document.RootElement))
                 {
                     document.Dispose();
-                    return SecretOutcome<JsonDocument>.Failure(SecretStatus.Unknown);
+                    return SecretOutcome<JsonDocument>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.InvalidResponse);
                 }
                 return SecretOutcome<JsonDocument>.Success(document);
             }
@@ -296,7 +315,8 @@ public sealed class InfisicalRotationClient : IDisposable
             JsonException or FormatException or OperationCanceledException)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            return SecretOutcome<JsonDocument>.Failure(SecretStatus.Unknown);
+            return SecretOutcome<JsonDocument>.Failure(SecretStatus.Unknown, reason: exception is JsonException
+                    ? SecretFailureReason.InvalidResponse : SecretFailureReason.TransportFailure);
         }
     }
 

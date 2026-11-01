@@ -336,7 +336,7 @@ public sealed class TokenMaintenanceTests
     [Arguments("{\"accessToken\":\"secret\",\"tokenType\":\"Bearer\",\"expiresIn\":0,\"accessTokenMaxTTL\":120}")]
     [Arguments("{\"accessToken\":\"first\",\"accessToken\":\"second\",\"tokenType\":\"Bearer\",\"expiresIn\":60,\"accessTokenMaxTTL\":120}")]
     [Arguments("[]")]
-    [Arguments("{\"accessToken\":\"secret\",\"tokenType\":\"Bearer\",\"expiresIn\":60,\"accessTokenMaxTTL\":120,\"notDeclared\":\"private-extra\"}")]
+    [Arguments("{\"accessToken\":\"secret\",\"tokenType\":\"Bearer\",\"expiresIn\":60,\"accessTokenMaxTTL\":120,\"notDeclared\":1,\"notDeclared\":2}")]
     public async Task UnestablishedResponseCannotPublishMaterial(string json)
     {
         var time = new ManualTime(Epoch);
@@ -350,6 +350,25 @@ public sealed class TokenMaintenanceTests
         await Assert.That((await session.GetTokenAsync(CancellationToken.None)).Status)
             .IsEqualTo(SecretStatus.RecoveryRequired);
         await Assert.That(session.LastRenewal!.Evidence).IsEqualTo(InfisicalRenewalEvidence.PossiblyDispatched);
+    }
+
+    [Test]
+    public async Task BoundedAdditiveMetadataDoesNotPreventValidatedRenewal()
+    {
+        var time = new ManualTime(Epoch);
+        await using var session = Session(time, new Wire((_, _) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    "{\"accessToken\":\"replacement\",\"tokenType\":\"Bearer\",\"expiresIn\":60,\"accessTokenMaxTTL\":120,\"notDeclared\":\"private-extra\"}",
+                    Encoding.UTF8, "application/json")
+            })));
+
+        await Assert.That(await session.RenewAsync()).IsEqualTo(SecretStatus.Success);
+        using InfisicalAccessToken token = (await session.GetTokenAsync(CancellationToken.None)).Value;
+        await Assert.That(token.Material.Reveal()).IsEqualTo("replacement");
+        await Assert.That(session.LastRenewal!.Evidence).IsEqualTo(InfisicalRenewalEvidence.Applied);
+        await Assert.That(session.ToString().Contains("private-extra", StringComparison.Ordinal)).IsFalse();
     }
 
     [Test]
