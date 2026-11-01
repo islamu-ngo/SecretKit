@@ -26,11 +26,19 @@ delivers material and rejects duplicate names or contradictory returned scope.
 
 Application cache policy, tenant bindings, required/optional grouping, client
 activation, Data Protection admission and replica convergence remain outside
-the SDK. The current all-required generation loader is not a general optional
-settings engine or a remote snapshot. The current token-renewal session has no
+the SDK. A selection's explicit optional policy admits proven absence only; it
+is not an application optional-feature policy engine or a remote snapshot.
+The current token-renewal session has no
 implicit bootstrap callback or re-login policy.
 
 ## Material Ownership And Disposal
+
+Core UTF-8 construction strictly decodes into independent owned character storage.
+UTF-8 count/export validates all owned text before writing caller storage, so
+invalid UTF-16 or insufficient capacity cannot publish a partial secret. Encoding
+failures are fixed argument errors without fallback properties or inner exceptions.
+Input, copied material and exported buffers retain independent lifetimes; empty
+text is representable. All exports synchronize with this owner's disposal.
 
 The next [runtime adoption increment](RUNTIME_ADOPTION_SECURITY.md) requires
 observable asynchronous app-client retirement outside locks and tests before
@@ -48,6 +56,32 @@ Snapshot disposal would retire its current generation and reject future acquisit
 Clearing SDK-owned buffers would be best effort within those buffers, not secure erasure of the process. Provider SDKs, parsers, HTTP handling and caller exports could create managed strings or other copies. GC, crash dumps and OS memory could retain them. There would be no promise that the wrapper's protection survives explicit export.
 
 ## Snapshots, Freshness And Coherence
+
+Integration-quality collection distinguishes declared required selections from
+optional selections. Only optional Absent can coexist with successful material
+in a complete generation. An absence-only generation is valid and replaces old
+presence; mapped absence exports as an explicit null mask. Denial, invalidity,
+expiry or unavailability never becomes absence. Presence-aware ReadOutcome
+returns owned copies or declared absence; Read remains success-only.
+
+Collection options default to one concurrent read, 1000 selections, 16 MiB of
+encoded UTF-8 payload and one minute from serialized admission. Supported bounds
+are concurrency 1-32, selections 1-10000, payload 1 KiB-64 MiB and a positive
+duration at most ten minutes. Enumeration and retained candidate material are
+bounded before allocation/copy; these are not total-heap guarantees.
+
+A contiguous ordinal window bounds staged work. Reduction and material accounting
+follow declaration order regardless of completion order. A terminal failure
+stops further admission without canceling earlier ordinals; started work drains
+and rejected material is disposed. Caller cancellation wins over deadline, which
+wins over ordinary failure before publication. Unexpected reader cancellation
+without a canceled operation is a sanitized transport failure. Before publishing
+once, recheck exact references, validity, expiry, cancellation and retirement.
+
+Prepared configuration owns its loader, pinned handle and optional single export/
+root. Preparation performs asynchronous collection; export remains an explicit
+managed-string transition. Validate every mapping before reveal and dispose
+root/export before generation/loader. Readers and transports remain borrowed.
 
 A coherent local multi-key operation would acquire one immutable generation and obtain all required keys through it. Separate calls to the current snapshot could observe different generations. Refresh would collect and validate all required entries, then publish once; failure would leave the previous generation unpublished as new, with truthful failure/freshness status.
 
@@ -68,6 +102,12 @@ Export would deliberately create ordinary strings. `IConfiguration` indexer read
 Debug views, enumeration, options binding, validation exceptions and logs could expose exported values. Old options instances and consumer fields could retain old strings after reload. Clearing internal SDK buffers or disposing the configuration adapter would not erase those strings or restore wrapper protection. The host would own restrictions on debug endpoints, option dumps, serializers, instrumentation, dumps and logs. The adapter would not claim that `IOptions` rebinding equals fleet convergence.
 
 ## Outcomes And Cancellation Receipts
+
+`SecretOutcome<T>.Reason` preserves closed material-free failure detail through
+runtime projections and collection attempts. `RetryAfter` may accompany Throttled
+or Unavailable; provider advice is clamped to 24 hours and never starts a retry.
+Success has no reason or advice. Unknown dispatched effects retain their original
+receipt; advisory timing cannot authorize mutation replay.
 
 Expected provider outcomes would use bounded material-free states rather than arbitrary provider exception text. Success, absence, denied, unavailable, invalid, throttled, conflict, pending and unknown would be distinguishable where supported. Programming misuse would remain an argument/disposal error. Provider payloads, raw responses, credentials, sensitive addresses and vendor inner exceptions would not enter ordinary diagnostics.
 
@@ -106,6 +146,17 @@ Missing approval-administration contracts would be vendor gates, not a reason to
 
 ## Client, Credential And Transport Ownership
 
+The explicitly opened Infisical runtime owns its native client and token session.
+Its caller-held open attempt retains actual native login evidence across failure
+or cancellation. Lifetime policy is bound to the returned login, never inferred
+from a zero maximum TTL. Token handoff requires admitted timing. No bootstrap is
+retained for replay or re-login; late unpublished results are disposed.
+
+DI runtime aliases use implementation-instance descriptors so container disposal
+does not capture borrowed disposable children. Explicit maintenance registration
+creates a container-owned helper only. Its stop deliberately ends the dedicated
+session generation, but does not take aggregate disposal ownership.
+
 Injected provider clients, `TokenCredential`, HTTP clients/handlers and other transports would be caller-owned unless an explicit ownership-transfer contract were selected. Registration or wrapping alone would not transfer ownership. SecretKit would dispose only resources it created or explicitly accepted by transfer, once and after in-flight use had drained according to the declared shutdown policy.
 
 Immutable instance configuration would bind trusted endpoint/cloud, authority, credential generation and namespace. Supported reusable SDK clients would be shared only where their documented thread-safety contract permitted it. Mutable builders/options would not be shared as runtime state. Material ownership and credential ownership would remain separate.
@@ -128,6 +179,13 @@ sending HttpClient calls. Both modes retain typed authority, response budgets
 and material/receipt contracts. Construction acquires no credentials. Receipts
 identify SDK handoff, not a host pipeline's final destination or send count.
 Process-wide diagnostics and already exported plaintext remain host boundaries.
+
+Native request, response and duration budgets are independent. The cooperative
+operation deadline spans credential acquisition, serialization, send and parse;
+renewal also respects its earlier native request/expiry bound. Byte limits count
+encoded body bytes and reject request overflow before handoff. Check cancellation
+and deadline before dispatch/publication, including noncooperative late returns.
+Owned work settles before cleanup, and known effect receipts remain monotonic.
 
 For Azure, the proposed pipelines would disable upstream SDK-owned logging, content logging and distributed tracing through supported diagnostics options. Side-effect retries would have `Retry.MaxRetries = 0`; separately configured read/status operations could use bounded retries after admission. A status query would not resubmit an LRO-start request. Challenge-resource verification would remain enabled; `DisableChallengeResourceVerification` would not be enabled.
 

@@ -49,8 +49,9 @@ sealed class SelectedTokenSource(
 Keep `hostMaterial` alive until the client's accepted work has drained. This
 example adds neither renewal nor persistence. A real source doing asynchronous
 credential acquisition must propagate the supplied cancellation through that
-work. Give client calls a caller-controlled deadline covering token acquisition,
-send and response reads. `InfisicalClient` rejects a supplied expired token;
+work. Client calls additionally use the configured cooperative operation budget
+covering token acquisition, send and response reads. Caller cancellation remains
+independent. `InfisicalClient` rejects a supplied expired token;
 omitting expiry does not establish that a token remains valid at the service.
 
 Use protected host injection, not credentials in arguments, committed settings
@@ -168,11 +169,55 @@ Cancellation propagates; retain the receipt rather than treating cancellation
 as proof of no effect. No exchange performs automatic retries, fallback login
 or principal discovery.
 
-Both login paths accept a strict four-member success object: `accessToken`,
-`accessTokenMaxTTL`, `expiresIn` and `tokenType` (`Bearer`). Duplicate/extra
-members, invalid fields and over-budget responses do not publish token material.
+Both login paths require `accessToken`, `accessTokenMaxTTL`, `expiresIn` and
+`tokenType` (`Bearer`). Bounded unrelated additive fields are ignored, not retained
+or exported. Duplicate root members, including unknown members, invalid known
+fields, conflicting lifetime evidence and over-budget responses do not publish
+token material. Renewal uses the same envelope policy. Local credential and
+qualification-input schemas retain their separate strict validation.
 Provider error prose is not returned. These are the SDK's accepted wire subset,
 not a claim of every server response shape.
+
+### Own an explicitly opened runtime
+
+`InfisicalRuntimeSession.OpenUniversalAsync` composes one explicit bootstrap,
+token session and native client under immutable `InfisicalRuntimeOptions`.
+Create and retain an `InfisicalRuntimeOpenAttempt` before calling it; its actual
+`LoginReceipt` remains available after failure or cancellation. An attempt is
+single-use, not a retry token. The runtime never retains bootstrap material for
+re-login and never starts maintenance during construction or a read.
+
+`CreateFromToken` accepts an already supplied token with independently admitted
+lifetime evidence and performs no exchange. Missing or unusable timing requires
+recovery, not an invented expiry. Token-only consumers without that evidence
+can keep the direct token-source/client path.
+
+Token handoff does not require a Universal Auth `ClientId` or new bootstrap
+input. That identity is required only by `OpenUniversalAsync`; the supplied token's
+independent lifetime evidence governs `CreateFromToken`.
+
+The runtime owns its `Client` and `TokenSession`; those properties are borrowed
+advanced access, not separate disposal ownership. Dispose the runtime after its
+application work and any selected maintenance have stopped. Retirement closes
+child admission together and retains one bounded result with eventual cleanup;
+timeout does not imply forced termination of arbitrary callbacks or completed
+cleanup. Borrowed transports, bootstrap inputs and prior material copies remain
+with their original owners.
+
+### Register without acquisition
+
+In the conventional `Microsoft.Extensions.DependencyInjection` namespace,
+`services.AddInfisicalRuntime(runtime)` registers the already opened owner and
+its narrow reader/inventory/client/token contracts as borrowed instances.
+Resolution starts no login, read or worker and does not transfer disposal.
+
+`services.AddInfisicalAuthenticationMaintenance(runtime, shutdownTimeout)`
+explicitly adds one container-owned helper as `IHostedService` and `IHealthCheck`.
+Only actual host start starts scheduling. Identical owner/budget registration is
+idempotent; conflicting owners or budgets reject. Host stop ends the selected
+session generation; the application still disposes its aggregate after shutdown.
+Use asynchronous disposal for a standalone provider that resolved the helper.
+The package remains Infisical-specific and does not install application readiness.
 
 Authentication/session constructors accept network options, optional
 `TimeProvider`, and the shared `network.Transport` selection. SafeDefault uses

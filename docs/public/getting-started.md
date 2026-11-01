@@ -124,10 +124,20 @@ cannot erase that string. See [Core contracts](core-api.md) before choosing that
 boundary.
 
 For a long-lived application, reuse the selected client for its lifecycle rather
-than constructing one per request. Supply a deadline for every operation and
+than constructing one per request. Configure operation budgets and caller cancellation, and
 stop accepting work before disposing it. See
 [authentication and hosting](authentication-and-hosting.md) for token sources,
 explicit login, renewal and recovery.
+
+When your host has bootstrap authority and independently admitted lifetime
+policy, use the explicit runtime owner described in that guide rather than
+assembling repeated login/session cleanup. A token-only client does not need
+invented expiry or bootstrap authority merely to use a convenience API.
+
+For application startup, the [configuration guide](configuration-and-runtime.md)
+shows asynchronous prepared ownership, optional absence and bounded collection.
+Keep downstream validation and activation application-owned. Registration and
+synchronous configuration loading never acquire credentials or start a worker.
 
 ## Next steps
 

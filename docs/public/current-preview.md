@@ -3,7 +3,7 @@
 > **Audience:** Application developers and support evaluators
 > **Status:** Implemented development subsets; unpublished, not ready for production
 > **Owner:** SecretKit maintainers
-> **Last verified:** 2026-10-25 (local source/documentation review, not a test run)
+> **Last verified:** 2026-10-31 (credential-free source/test validation, not native qualification)
 > **Source anchors:** [Package inputs](../../Directory.Build.props),
 > [local profile](../internal/local/infisical-runtime.json),
 > [project map](../../PROJECTS.md), [support reference](provider-support.md)
@@ -18,6 +18,26 @@ SecretKit implements .NET 10 secret reads, metadata inventory, selected native
 operations and optional runtime composition for Infisical and Azure Key Vault.
 **In development. Not ready for production. APIs may change without backward
 compatibility.** Package presence does not mean complete provider support.
+
+## Recent source verification
+
+The November 1 integration-quality increment adds strict UTF-8 ownership, closed
+failure reasons, native operation budgets, explicit runtime/DI ownership, optional
+absence, bounded collection and prepared configuration. Focused offline suites
+passed 20 Core, 69 Configuration, 505 Infisical and 42 Hosting cases. These source
+results do not qualify archives: each exact local cohort still requires the
+canonical repository/installed checks and its matching content record. Native
+provider and remote source-debugging claims require their separate evidence.
+
+Management results now preserve protected authentication JSON and permission
+conditions without inferring effective policy; see [management](providers/management.md).
+The nonpackable [Azure conformance host](../../tests/SecretKit.AzureKeyVault.Conformance.Tests/README.md)
+also includes explicit sender validation and an owned HTTPS receiver.
+
+The October 31 source build, pack and full solution run passed all 4,642 tests.
+Separate signed-token and real TLS/lifetime checks passed. These results do not
+establish native provider, hosted-platform, enrollment or retention evidence,
+and do not change any qualification denominator.
 
 ## Start with your task
 
@@ -35,7 +55,7 @@ compatibility.** Package presence does not mean complete provider support.
 ## Candidate and version authority
 
 The tracked [local profile](../internal/local/infisical-runtime.json) selects
-`0.1.0-local.20261024.1`, four packages (Core, Infisical, Configuration and Hosting),
+`0.2.0-integration.3`, four packages (Core, Infisical, Configuration and Hosting),
 eight native members and the S01-S16 scenario denominator. Configuration and
 Hosting are independently optional for applications. This profile is distinct
 from the seven-package family and the default `0.1.0-preview.1` version in
@@ -59,8 +79,9 @@ management remain supported only to their documented implemented/evidence scope.
 - Azure adds selected/versioned reads, SetSecret, metadata, deleted-secret,
   backup/restore and explicit lifecycle checks. Native validity inspection and
   ordinary consumption have different contracts.
-- Optional Configuration prepares complete required local generations and
-  deliberate managed-string export. Optional Hosting starts token maintenance
+- Optional Configuration prepares required/explicitly optional local generations,
+  retains proven absence and exports null masks. Bounded collection and a prepared
+  owner retain explicit managed-string export. Optional Hosting starts token maintenance
   only through host startup and retains explicit recovery after uncertainty.
 - Separate management packages expose typed administration under selected
   administrative credentials; visibility and configuration do not prove runtime

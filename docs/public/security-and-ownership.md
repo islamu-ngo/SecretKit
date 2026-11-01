@@ -88,6 +88,11 @@ For explicit `IConfiguration` export:
 Do not return raw provider bodies, token material or secret values from health
 checks, error pages or issue reports.
 
+`FromUtf8` copies strictly decoded text without an intermediate string;
+`GetUtf8ByteCount` and `TryCopyUtf8To` permit caller-owned encoded buffers.
+The caller still owns clearing exports. Encoding failures are sanitized fixed
+argument errors without rejected byte/character properties or inner exceptions.
+
 ## Transport and cancellation
 
 All Infisical entrypoints select networking through
@@ -115,9 +120,23 @@ SDK-owned connections are reused with a two-minute pooled connection lifetime;
 host-controlled pipelines retain their own pooling and DNS policy. SDK controls
 do not suppress runtime EventSource, profilers, dumps or host instrumentation.
 
-The read client has no automatic operation deadline: supply a cancellation token
-with your request/shutdown deadline. Construction and DI registration do not
-perform credential acquisition or validate live access. See
+Native operations have independent encoded body budgets: `MaximumRequestBytes`
+defaults to 1 MiB (1 KiB-16 MiB), separate from `MaximumResponseBytes`.
+`OperationTimeout` defaults to 30 seconds and must be positive and at most one
+minute. The cooperative operation budget covers credential acquisition through
+response consumption. Smaller semantic token/proof limits still apply.
+Supply caller cancellation for request/shutdown authority; when observable
+together, caller cancellation takes precedence over a configured deadline.
+
+A budget cannot forcibly terminate a borrowed token source or host pipeline.
+Late results are rejected, and owned work must settle before safe cleanup.
+Payload budgets count encoded body bytes, not HTTP headers or total heap use.
+An unresolved dispatched mutation remains unknown with its original receipt;
+timeouts are not proof that no effect occurred. Borrowed `HttpClient.Timeout`
+remains host policy rather than SDK-proven deadline evidence.
+
+Construction and DI registration do not perform credential acquisition or
+validate live access. See
 [operational limits](operations-and-compatibility.md) for exact budgets and
 provider-specific controls.
 

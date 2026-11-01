@@ -46,9 +46,9 @@ the compatibility ledger and exact local reports, not inferred from this list.
 | Inventory | Direct-folder metadata with item/response limits | Keep metadata distinct from material acquisition; reject ambiguous or substituted provenance |
 | Revision | Optional numeric observation version; provider secret ID is not projected by the common read | Stable value-free native resource identity plus positive version, without material hashes or fabricated observation-time revisions |
 | Authentication | Explicit login, supplied token source, renewal session and opt-in hosted maintenance | Usable documented composition for startup, finite lifetime, single-flight work, explicit recovery and shutdown |
-| Configuration | All-required collection, retained local generations and deliberate string export | Reusable required/optional composition examples, mapping/precedence checks and bounded caller-owned refresh |
+| Configuration | Required/explicitly optional collection, bounded ordinal work, retained generations, prepared ownership and deliberate string export | Mapping/precedence checks, complete absence observations and caller-owned activation remain distinct |
 | Mutations | Caller-held receipts; applied, pending and unknown are distinct | Installed-consumer proof that those distinctions survive host translation and cancellation |
-| Transport | Trusted origin, bounded responses, no redirect/replay; reads rely on caller deadlines | Measured deadline/cancellation, private-CA/proxy and self-hosted network acceptance without TLS bypass or mandatory IPv4 |
+| Transport | Trusted origin, independent request/response/cooperative duration budgets, no SDK redirect/replay | Measured cancellation, private-CA/proxy and self-hosted acceptance without TLS bypass or mandatory IPv4; borrowed pipelines retain host policy |
 | Packaging | Seven-pack family and package-only smoke witnesses exist | Independent four-package local profile, fresh-cache selection, exact source/archive records and useful consumer scenarios |
 | Native evidence | Historical scoped Infisical sandbox narratives | Focused owned qualification of the exact local profile; missing authority remains an open qualification gate |
 | Public release | Seven-package/two-provider `complete-live` verifier | Preserve unchanged authority; local evidence cannot create an approved public release |
@@ -63,7 +63,7 @@ recommendations alone.
 | --- | --- |
 | Core | BCL-only portable reads/inventory, opaque disposable material, references, bounded outcomes and dispatch receipts |
 | Infisical | Handwritten typed Refit/HttpClient contracts, native coordinates, resource identity/revision, authentication and native mutation semantics |
-| Configuration | Caller-driven required selections, immutable local generations, explicit mappings and managed-string export |
+| Configuration | Caller-driven required/optional selections, bounded collection, immutable local generations, prepared ownership, explicit mappings and managed-string export |
 | Hosting | Explicitly started token maintenance, material-free state and bounded shutdown |
 | Nonpackable consumers/tests | Generic bootstrap, optional-capability, mutation-translation, separate-authority and activation examples |
 | Application | Tenant hierarchy, bindings, domain validation, configuration meaning, Data Protection admission, live clients, readiness, persistence and convergence |

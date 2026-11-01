@@ -32,6 +32,13 @@ See [Core reference](core-api.md#outcomes-and-exceptions) for the complete enum
 contract. Provider methods use different subsets; this table does not invent a
 cross-provider HTTP status mapping.
 
+Inspect `Reason` for closed detail without provider prose: `DeadlineExceeded`,
+`TransportFailure`, `ResponseTooLarge`, `InvalidResponse`, `AuthorityMismatch`,
+`CredentialUnavailable`, `UnsupportedContract`, `RequestTooLarge` or
+`CollectionLimitExceeded`. `None` means no finer evidence. Retry advice on
+Throttled or Unavailable is timing only; it neither starts work nor authorizes
+replay. Provider retry timing is nonnegative and capped at 24 hours.
+
 ## Cancellation or a lost write response
 
 Cancellation propagates. The caller must retain its `MutationReceipt` even if
@@ -54,8 +61,10 @@ For console/worker/web exit categories and drain failures, use
 ## Required configuration does not publish
 
 `SecretSnapshotLoader.RefreshAsync` publishes only a complete valid candidate.
-Every selection in a loader is required. A failed/cancelled collection retains
-the previous generation; it does not partially update it.
+Selections default to required; explicit optional selections admit only Absent,
+not denied, unavailable or invalid reads. A failed/cancelled collection retains
+the previous generation; it does not partially update it. A complete absence-only
+generation replaces previous presence, and mapped absence exports a null mask.
 
 1. Inspect the returned status and the loader's material-free `LastAttempt`.
 2. Check the intended identity for each required selection.
