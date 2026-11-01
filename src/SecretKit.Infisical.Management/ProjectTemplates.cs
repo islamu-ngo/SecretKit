@@ -77,8 +77,8 @@ public sealed class ProjectTemplateSummary
     [JsonIgnore] public IReadOnlyList<ProjectTemplateManagedIdentity>? ProjectManagedIdentities { get; }
     /// <summary>Always true: this summary includes typed native configuration.</summary>
     public bool IncludesConfiguration => true;
-    /// <summary>Always false: unconstrained permission-condition values are not exported.</summary>
-    public bool IncludesPermissionConditionValues => false;
+    /// <summary>Gets whether any returned role includes protected condition values, not whether those permissions are effective.</summary>
+    public bool IncludesPermissionConditionValues => Roles.Any(role => role.Permissions.Any(permission => permission.IncludesConditionValues));
     /// <summary>Returns a marker without template settings or assignments.</summary>
     public override string ToString() => "[ProjectTemplateSummary]";
 }

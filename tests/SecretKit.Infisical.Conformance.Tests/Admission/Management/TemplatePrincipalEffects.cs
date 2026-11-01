@@ -153,7 +153,7 @@ internal static class TemplatePrincipalEffects
             TemplatePrincipalContract.Require(loss is null || loss.Reached, "effect-mismatch");
             if (result is { IsSuccess: true })
                 TemplatePrincipalContract.Require(result.Value.Name == issued.TemplateName &&
-                    result.Value.Id == issued.TemplateId && !result.Value.IncludesPermissionConditionValues,
+                    result.Value.Id == issued.TemplateId,
                     "effect-mismatch");
             return new(receipt.Evidence, result?.Status, cancelled, request.Target.SecondaryId!);
         }

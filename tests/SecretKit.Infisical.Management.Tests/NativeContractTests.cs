@@ -313,7 +313,7 @@ public sealed class NativeContractTests
         var bad = await Execute(request, $$$$"""{"role":{"id":"{{{{RoleId}}}}","name":"Role","slug":"role-slug","projectId":"other"}}""");
         await Assert.That(good.Status).IsEqualTo(SecretStatus.Success);
         await Assert.That(good.Value.IncludesPermissions).IsTrue();
-        await Assert.That(good.Value.Permissions![0].IncludesConditionValues).IsFalse();
+        await Assert.That(good.Value.Permissions![0].IncludesConditionValues).IsTrue();
         await Assert.That(malformed.Status).IsEqualTo(SecretStatus.Unknown);
         await Assert.That(bad.Status).IsEqualTo(SecretStatus.Invalid);
         await Assert.That(JsonSerializer.Serialize(good.Value)).IsEqualTo("""{"IncludesPermissions":true}""");

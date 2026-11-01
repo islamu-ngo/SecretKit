@@ -136,7 +136,7 @@ public sealed class PermissionContractVariantTests
         await Assert.That(summary.Action.Values.Count).IsEqualTo(scalar ? 1 : subjectScalar ? 2 : 0);
         if (summary.Subject is not null) await Assert.That(summary.Subject.IsScalar).IsEqualTo(subjectScalar);
         else await Assert.That(summary.Inverted).IsNull();
-        await Assert.That(summary.IncludesConditionValues).IsFalse();
+        await Assert.That(summary.IncludesConditionValues).IsEqualTo(json.Contains("conditions", StringComparison.Ordinal));
         await Assert.That(summary.HasConditions).IsEqualTo(json.Contains("conditions", StringComparison.Ordinal));
         foreach (object value in new object[] { summary, summary.Action, summary.Subject ?? summary.Action })
         {

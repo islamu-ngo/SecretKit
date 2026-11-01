@@ -457,7 +457,7 @@ public sealed class ProjectTemplatePermissionSummary
         Action = new(action);
         if (value.TryGetProperty("subject", out var subject)) Subject = new(subject);
         if (value.TryGetProperty("inverted", out _)) Inverted = ManagementJson.Boolean(value, "inverted");
-        HasConditions = value.TryGetProperty("conditions", out _);
+        Conditions = ProjectWire.Field(value, "conditions", child => new PermissionConditionSnapshot(child), nullable: true);
     }
     /// <summary>Gets the returned scalar or array action selection.</summary>
     [JsonIgnore] public ProjectTemplatePermissionSelection Action { get; }
@@ -465,10 +465,12 @@ public sealed class ProjectTemplatePermissionSummary
     [JsonIgnore] public ProjectTemplatePermissionSelection? Subject { get; }
     /// <summary>Gets returned inversion, or null when omitted rather than defaulting to false.</summary>
     [JsonIgnore] public bool? Inverted { get; }
+    /// <summary>Gets protected returned conditions, preserving omission, explicit null and every JSON value kind.</summary>
+    [JsonIgnore] public ProjectField<PermissionConditionSnapshot> Conditions { get; }
     /// <summary>Gets whether a conditions node exists without interpreting its unconstrained shape.</summary>
-    public bool HasConditions { get; }
-    /// <summary>Always false: condition-node values are deliberately not projected.</summary>
-    public bool IncludesConditionValues => false;
+    public bool HasConditions => Conditions.IsPresent;
+    /// <summary>Gets whether a non-null condition snapshot is available, not whether permissions are effective.</summary>
+    public bool IncludesConditionValues => Conditions.IsPresent && !Conditions.IsNull;
     /// <summary>Returns a marker without permission metadata.</summary>
     public override string ToString() => "[ProjectTemplatePermissionSummary]";
 }
@@ -487,7 +489,7 @@ public sealed class ProjectTemplateRoleSummary
     [JsonIgnore] public string Name { get; }
     /// <summary>Gets the returned native role slug.</summary>
     [JsonIgnore] public string Slug { get; }
-    /// <summary>Gets bounded returned permission summaries without condition values.</summary>
+    /// <summary>Gets bounded returned permission metadata with protected, unevaluated conditions.</summary>
     [JsonIgnore] public IReadOnlyList<ProjectTemplatePermissionSummary> Permissions { get; }
     /// <summary>Returns a marker without role configuration.</summary>
     public override string ToString() => "[ProjectTemplateRoleSummary]";

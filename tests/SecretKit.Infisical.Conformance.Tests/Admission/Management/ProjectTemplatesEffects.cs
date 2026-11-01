@@ -152,7 +152,6 @@ internal static class ProjectTemplatesEffects
             (create || summary.Id == id) &&
             summary.Name == (create ? name : applied && update ? nextName ?? before!.Name : before!.Name) &&
             (!applied || description is null || summary.Description == description) &&
-            !summary.IncludesPermissionConditionValues &&
             (configurationUpdate && !applied ?
                 summary.Roles.Any(r => r.Slug == role && r.Permissions.Any(p => p.Action.Values.Contains("read"))) &&
                     summary.Environments is { Count: 2 } &&
@@ -165,7 +164,7 @@ internal static class ProjectTemplatesEffects
             (v != "identities.null" || (applied ? summary.Identities is null : summary.Identities is { Count: 0 })) &&
             (v != "projectManagedIdentities.null" || (applied ? summary.ProjectManagedIdentities is null : summary.ProjectManagedIdentities is { Count: 0 })) &&
             (omittedRoles || summary.Roles.Any(r => r.Slug == role &&
-                r.Permissions.Any(p => !p.IncludesConditionValues && p.Action.IsScalar == (v != "permissions.action.array") &&
+                r.Permissions.Any(p => p.Action.IsScalar == (v != "permissions.action.array") &&
                     p.HasConditions && p.Action.Values.Contains(action switch
                     {
                         ProjectRoleAction.DescribeSecret => "describeSecret",

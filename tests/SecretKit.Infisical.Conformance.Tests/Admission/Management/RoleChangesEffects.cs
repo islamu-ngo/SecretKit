@@ -114,7 +114,7 @@ internal sealed class PermissionRoleScenario
 
     private static bool OrganizationMetadata(IReadOnlyList<RolePermissionSummary>? permissions, string variant) =>
         variant == "permissions.empty" ? permissions is { Count: 0 } :
-        permissions is { Count: 1 } && !permissions[0].IncludesConditionValues &&
+        permissions is { Count: 1 } &&
         permissions[0].Subject is { IsScalar: true } subject && subject.Values.SequenceEqual(["groups"]) &&
         permissions[0].Action.Values.SequenceEqual(["read"]) &&
         permissions[0].Action.IsScalar == (variant != "permissions.action.array");

@@ -48,6 +48,7 @@ public sealed class ProjectTemplateVariantTests
         var after = await client.ExecuteAsync(get, authority, authority.IssueGrant(get.OperationId, new(Org, resourceId: Id)));
         await Assert.That(after.Status).IsEqualTo(SecretStatus.Success);
         await Assert.That(after.Value.Roles.Count).IsEqualTo(0);
+        await Assert.That(after.Value.IncludesPermissionConditionValues).IsFalse();
         await Assert.That(after.Value.Environments is null).IsTrue();
         await Assert.That(after.Value.Users!.Count).IsEqualTo(0);
         await Assert.That(after.Value.Groups is null).IsTrue();
@@ -67,7 +68,8 @@ public sealed class ProjectTemplateVariantTests
         await Assert.That(permission.Subject.Values[0]).IsEqualTo("secrets");
         await Assert.That(permission.Inverted).IsFalse();
         await Assert.That(permission.HasConditions).IsTrue();
-        await Assert.That(permission.IncludesConditionValues).IsFalse();
+        await Assert.That(permission.IncludesConditionValues).IsTrue();
+        await Assert.That(value.IncludesPermissionConditionValues).IsTrue();
         await Assert.That(value.Environments![0].Position).IsEqualTo(1.5);
         await Assert.That(value.Users![0].Username).IsEqualTo("private-user");
         await Assert.That(value.Groups![0].GroupSlug).IsEqualTo("private-group");
@@ -386,7 +388,7 @@ public sealed class ProjectTemplateVariantTests
         {
             await Assert.That(permission.Subject!.IsScalar).IsFalse();
             await Assert.That(permission.Subject.Values.Count).IsEqualTo(shape == "empty" ? 0 : 2);
-            await Assert.That(permission.IncludesConditionValues).IsFalse();
+            await Assert.That(permission.IncludesConditionValues).IsEqualTo(shape != "empty");
             await Assert.That(permission.HasConditions).IsTrue();
         }
     }

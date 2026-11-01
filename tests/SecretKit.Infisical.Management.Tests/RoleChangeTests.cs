@@ -38,7 +38,7 @@ public sealed class RoleChangeTests
             .IsEqualTo(route < 2 ? "app-connections" : "secrets");
         await Assert.That(result.Value.Permissions[0].Inverted).IsTrue();
         await Assert.That(result.Value.Permissions[0].HasConditions).IsTrue();
-        await Assert.That(result.Value.Permissions[0].IncludesConditionValues).IsFalse();
+        await Assert.That(result.Value.Permissions[0].IncludesConditionValues).IsTrue();
         await Assert.That(wire.State["name"]!.GetValue<string>()).IsEqualTo("Reviewed role");
         await Assert.That(wire.State["slug"]!.GetValue<string>()).IsEqualTo(Slug);
         await Assert.That(wire.State["description"]!.GetValue<string>()).IsEqualTo("Reviewed description");

@@ -47,7 +47,7 @@ public sealed class LegacyPrivilegeSelection
     public override string ToString() => "[LegacyPrivilegeSelection]";
 }
 
-/// <summary>Native v1 metadata and deletion; permission conditions remain unprojected.</summary>
+/// <summary>Native v1 metadata and deletion; returned permission conditions are protected metadata, not access decisions.</summary>
 public static class LegacyIdentityPrivilegeOperations
 {
     /// <summary>Builds a disposable v1 inventory request with membership correspondence and duplicate rejection.</summary>
@@ -101,7 +101,7 @@ public static class LegacyIdentityPrivilegeOperations
         ManagementJson.Required(value, "createdAt");
         ManagementJson.Required(value, "updatedAt");
         ManagementJson.Array(value, "permissions");
-        // Permission payloads can contain unestablished condition nodes. Do not export or interpret them.
+        // Preserve unconstrained conditions as protected snapshots, not effective-permission decisions.
         return new(value);
     }
 

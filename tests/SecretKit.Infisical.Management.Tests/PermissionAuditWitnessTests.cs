@@ -779,7 +779,7 @@ public sealed class PermissionAuditWitnessTests
                 await Assert.That(summary.Inverted).IsEqualTo(shape == "inverted-false" ? false :
                     shape == "inverted-true" ? true : (bool?)null);
                 await Assert.That(summary.HasConditions).IsEqualTo(shape == "opaque-conditions");
-                await Assert.That(summary.IncludesConditionValues).IsFalse();
+                await Assert.That(summary.IncludesConditionValues).IsEqualTo(shape == "opaque-conditions");
                 await Assert.That(() => ((IList<string>)summary.Action.Values).Clear()).Throws<NotSupportedException>();
                 await Private(summary, summary.Action);
             });

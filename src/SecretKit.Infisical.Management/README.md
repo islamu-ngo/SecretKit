@@ -80,6 +80,26 @@ Copied sensitive inputs/results are disposable and excluded from ordinary
 formatting/serialization. Explicit strings and host instrumentation remain
 separate plaintext boundaries.
 
+## Protected returned fields
+
+Authentication results preserve unconstrained returned trusted-IP, bound-claim,
+OIDC claim-mapping and LDAP allowed-field JSON through `ProjectField<JsonElement>`.
+Check `IsPresent` and `IsNull` before explicitly accessing `Value`. These detached
+snapshots survive response disposal; they do not infer an input schema,
+effective IP policy or issuer acceptance.
+
+Role, privilege and template permission summaries preserve returned conditions
+through `ProjectField<PermissionConditionSnapshot>`. `Export()` deliberately
+returns ordinary, unredacted JSON. Neither snapshot access nor
+`IncludesConditionValues` evaluates a permission or establishes enforcement.
+Snapshots and exports use managed storage without secure-erasure guarantees.
+
+TLS-certificate results own returned encrypted-CA JSON as
+`ProjectField<SecretMaterial>`. Dispose the result after use. Revealing this
+field exports JSON ciphertext, not a decoded CA or certificate fingerprint;
+explicit exports outlive SDK disposal. Default result serialization and
+formatting omit protected values.
+
 ## Evidence and open gates
 
 Historical pre-removal verification recorded 15,182 passing cases in the whole

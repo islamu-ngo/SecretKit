@@ -51,6 +51,25 @@ Sources: [authorization](../../../src/SecretKit.Infisical.Management/ManagementA
 [request ownership](../../../src/SecretKit.Infisical.Management/ManagementContracts.cs),
 [executor](../../../src/SecretKit.Infisical.Management/ManagementClient.cs).
 
+### Inspecting protected returned fields
+
+Authentication results preserve the actual returned trusted-IP, bound-claim,
+OIDC claim-mapping and LDAP allowed-field JSON, including omitted versus
+explicitly null fields. Check the `ProjectField<T>` presence/null flags before
+accessing its value. Returned fields do not establish effective network policy,
+issuer acceptance or permission.
+
+Permission summaries expose protected condition snapshots. Explicit
+`Conditions.Value.Export()` returns ordinary JSON; default serialization and
+formatting do not disclose its contents. These snapshots preserve provider data
+without interpreting unconstrained predicates or evaluating access.
+Managed snapshots and explicit exports cannot be securely erased.
+
+Dispose TLS-certificate results to clear their owned encrypted-CA JSON and any
+returned plaintext CA material. `EncryptedCaCertificate` retains ciphertext JSON,
+not a native fingerprint or trust decision. Live authentication and permission
+qualification remain separate from these parser and ownership contracts.
+
 ### Example: an explicitly authorized group creation
 
 This integration function accepts already approved organization/name/slug and

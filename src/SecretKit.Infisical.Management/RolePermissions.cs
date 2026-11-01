@@ -545,7 +545,31 @@ public sealed class RolePermissionSelection
     public override string ToString() => "[RolePermissionSelection]";
 }
 
-/// <summary>Known permission metadata only. Returned condition values remain unestablished and unexported.</summary>
+/// <summary>
+/// Protected, lossless snapshot of a non-null returned conditions value. Its schema and
+/// authorization meaning remain provider-defined; this type never evaluates permissions.
+/// </summary>
+public sealed class PermissionConditionSnapshot
+{
+    private readonly JsonElement _value;
+
+    internal PermissionConditionSnapshot(JsonElement value) => _value = value.Clone();
+
+    /// <summary>Gets the returned JSON kind without disclosing condition contents.</summary>
+    public JsonValueKind Kind => _value.ValueKind;
+
+    /// <summary>
+    /// Explicitly exports the returned JSON without schema conversion. The read-only value
+    /// survives response-document disposal, but its serialization and formatting are not redacted.
+    /// </summary>
+    /// <remarks>The snapshot and exports use managed storage; they do not provide secure erasure.</remarks>
+    public JsonElement Export() => _value.Clone();
+
+    /// <summary>Returns a marker without condition contents.</summary>
+    public override string ToString() => "[PermissionConditionSnapshot]";
+}
+
+/// <summary>Returned permission metadata and protected conditions, never an effective authorization decision.</summary>
 public sealed class RolePermissionSummary
 {
     internal RolePermissionSummary(JsonElement value)
@@ -555,7 +579,7 @@ public sealed class RolePermissionSummary
         Action = new(action);
         if (value.TryGetProperty("subject", out var subject)) Subject = new(subject);
         if (value.TryGetProperty("inverted", out _)) Inverted = ManagementJson.Boolean(value, "inverted");
-        HasConditions = value.TryGetProperty("conditions", out _);
+        Conditions = ProjectWire.Field(value, "conditions", child => new PermissionConditionSnapshot(child), nullable: true);
     }
 
     internal static IReadOnlyList<RolePermissionSummary>? Read(JsonElement value)
@@ -573,10 +597,12 @@ public sealed class RolePermissionSummary
     [JsonIgnore] public RolePermissionSelection? Subject { get; }
     /// <summary>Gets returned inversion, or null when absent rather than inferring false.</summary>
     [JsonIgnore] public bool? Inverted { get; }
+    /// <summary>Gets protected returned conditions, preserving omission, explicit null and every JSON value kind.</summary>
+    [JsonIgnore] public ProjectField<PermissionConditionSnapshot> Conditions { get; }
     /// <summary>Gets whether a conditions node was returned; no condition values are interpreted.</summary>
-    public bool HasConditions { get; }
-    /// <summary>Always false: unconstrained returned condition values are deliberately not exported.</summary>
-    public bool IncludesConditionValues => false;
+    public bool HasConditions => Conditions.IsPresent;
+    /// <summary>Gets whether a non-null condition snapshot is available, not whether permissions are effective.</summary>
+    public bool IncludesConditionValues => Conditions.IsPresent && !Conditions.IsNull;
     /// <summary>Returns a marker without permission metadata.</summary>
     public override string ToString() => "[RolePermissionSummary]";
 }

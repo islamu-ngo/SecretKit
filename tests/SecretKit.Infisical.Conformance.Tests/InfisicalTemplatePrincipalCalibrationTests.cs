@@ -117,7 +117,8 @@ public sealed class InfisicalTemplatePrincipalCalibrationTests
             {
                 await Assert.That(success.Value.Name).IsEqualTo(i.TemplateName);
                 await Assert.That(success.Value.Id).IsEqualTo(i.TemplateId);
-                await Assert.That(success.Value.IncludesPermissionConditionValues).IsFalse();
+                await Assert.That(success.Value.IncludesPermissionConditionValues)
+                    .IsEqualTo(success.Value.Roles.Any(role => role.Permissions.Any(permission => permission.IncludesConditionValues)));
             }
             await trial.SettleAsync(new(receipt.Evidence, outcome?.Status, cancelled, request.Target.SecondaryId!), timeout.Token);
             if (trial.Outcome != TemplatePrincipalOutcome.Partial) { await Copy(true); await Witness(true); }

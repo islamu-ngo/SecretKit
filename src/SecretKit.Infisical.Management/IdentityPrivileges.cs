@@ -36,7 +36,7 @@ public sealed class IdentityPrivilegeSummary
     [JsonIgnore] public string? Mode { get; }
     /// <summary>Gets the native duration expression, or null when unreturned.</summary>
     [JsonIgnore] public string? Range { get; }
-    /// <summary>Gets projected permission metadata, or null when this operation does not include it.</summary>
+    /// <summary>Gets permission metadata with protected, unevaluated conditions, or null when this operation omits permissions.</summary>
     [JsonIgnore] public IReadOnlyList<RolePermissionSummary>? Permissions { get; }
     /// <summary>Gets the returned temporary-access flag, or null when not supplied.</summary>
     [JsonIgnore] public bool? IsTemporary { get; }

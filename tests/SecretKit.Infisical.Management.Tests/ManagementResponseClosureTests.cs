@@ -39,7 +39,7 @@ public sealed class ManagementResponseClosureTests
         var good = await Execute(request, target, root, "/api/v1/organization/roles/" + Id);
         await Assert.That(good.Status).IsEqualTo(SecretStatus.Success);
         await Assert.That(good.Value.Permissions![0].HasConditions).IsTrue();
-        await Assert.That(good.Value.Permissions[0].IncludesConditionValues).IsFalse();
+        await Assert.That(good.Value.Permissions[0].IncludesConditionValues).IsTrue();
         (node == "root" ? root : node == "role" ? role : permission)["undeclared-private"] = true;
         await Assert.That((await Execute(request, target, root, "/api/v1/organization/roles/" + Id)).Status)
             .IsEqualTo(SecretStatus.Unknown);

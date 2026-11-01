@@ -112,7 +112,7 @@ internal sealed class PermissionPrivilegeScenario
             _ => "read"
         };
         int expected = variant == "inverted.true" ? 2 : 1;
-        return permissions.Count == expected && permissions.All(p => !p.IncludesConditionValues &&
+        return permissions.Count == expected && permissions.All(p =>
             p.Subject is { IsScalar: true } && p.Subject.Values.SequenceEqual(["secrets"]) &&
             p.Action.Values.SequenceEqual([action])) &&
             (expected != 1 || permissions[0].Action.IsScalar ==

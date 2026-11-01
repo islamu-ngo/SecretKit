@@ -270,7 +270,7 @@ internal static class ProjectsEffects
             await outside.ReadAsync(NativeIdentityRole.Runtime, false, token), NativeFailure.MissingPrerequisite);
         bool Match(RoleSummary r) => r.Id == seeded.Id && r.Name == slug && r.Slug == slug &&
             (c.Operation == "ListProjectRoles" || r.Permissions is { Count: > 0 } &&
-                r.Permissions.Any(p => p.HasConditions && !p.IncludesConditionValues));
+                r.Permissions.Any(p => p.HasConditions));
         async ValueTask<bool> Observe(bool applied, CancellationToken ct)
         {
             SecretOutcome<RoleSummary> observed = await c.ExecuteAsync(
