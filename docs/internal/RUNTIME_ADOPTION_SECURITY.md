@@ -76,6 +76,18 @@ retry and diagnostic policy. SDK-side typed authority/parsing/material/receipt
 boundaries remain active, but no network guarantee is made inside that pipeline.
 Borrowed resources are never disposed or reconfigured by the SDK.
 
+Integration-quality operations independently bound encoded request bodies,
+response bodies and cooperative duration from credential acquisition through
+publication. Caller cancellation takes precedence when both sources are observed.
+These controls cannot forcibly terminate arbitrary host code or prove that a
+dispatched mutation had no effect. Preserve actual receipts and reject late
+unpublished material while retaining safe cleanup.
+
+Closed Activity/Meter fields carry operation/status/reason/dispatch categories
+and numeric measurements only. No payloads, coordinates or material are emitted.
+Listeners remain arbitrary host code; a throwing observer must not change effect
+evidence, and a nonreturning observer is outside a hard return-time guarantee.
+
 Protected input must be bounded, reject duplicate/unknown fields and unsafe
 file links, and never put credentials in command-line arguments or reports.
 Native Windows credential-file claims additionally require observed ACL

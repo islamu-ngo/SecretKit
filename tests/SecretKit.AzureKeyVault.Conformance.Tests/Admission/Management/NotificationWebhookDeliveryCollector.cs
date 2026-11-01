@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Net;
+using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -12,7 +13,8 @@ using N = SecretKit.AzureKeyVault.Conformance.Tests.Admission.Management.Notific
 
 namespace SecretKit.AzureKeyVault.Conformance.Tests.Admission.Management;
 
-// Positive, authenticated HTTP observations linked to an original native write.
+// Capability-bound candidate observations linked to an original native write.
+// Optional bearer authentication does not establish native provider identity.
 // Closing this receiver does NOT close the provider's delivery pipeline or prove
 // exclusion. The host must keep the native capture alive through projection.
 internal sealed class NotificationWebhookDeliveryCollector : IAsyncDisposable
@@ -124,13 +126,14 @@ internal sealed class NotificationWebhookDeliveryCollector : IAsyncDisposable
     private readonly byte[] path;
     private readonly Limits limits;
     private readonly TimeProvider time;
+    private readonly NotificationDeliveryAuthentication? authentication;
     private readonly Dictionary<Window, Entry> windows = new(ReferenceEqualityComparer.Instance);
     private readonly HashSet<Guid> nonces = [];
     private TaskCompletionSource? disposal;
     private bool disposed;
 
     internal NotificationWebhookDeliveryCollector(RoleFixtureJournal journal, string owner,
-        Uri endpoint, Limits limits, TimeProvider? time = null)
+        Uri endpoint, Limits limits, TimeProvider? time = null, NotificationDeliveryAuthentication? authentication = null)
     {
         Require(journal is not null && Text(owner, 128) && endpoint is
         { IsAbsoluteUri: true, Scheme: "https", UserInfo.Length: 0, Query.Length: 0, Fragment.Length: 0 } &&
@@ -146,6 +149,7 @@ internal sealed class NotificationWebhookDeliveryCollector : IAsyncDisposable
         path = Encoding.UTF8.GetBytes(endpoint.AbsolutePath);
         this.limits = limits;
         this.time = time ?? TimeProvider.System;
+        this.authentication = authentication;
     }
 
     internal Window Arm(Binding binding, string[] headerNames)
@@ -230,9 +234,12 @@ internal sealed class NotificationWebhookDeliveryCollector : IAsyncDisposable
         byte[]? bytes = null;
         try
         {
-            bytes = new byte[limits.MaximumBodyBytes + 1];
             using var deadline = new CancellationTokenSource(limits.Timeout, time);
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token, entry.Stop.Token);
+            if (authentication is not null &&
+                (!BoundedHeaders(request) || !await authentication.AuthenticateAsync(request, linked.Token).ConfigureAwait(false)))
+                return Error(HttpStatusCode.Unauthorized);
+            bytes = new byte[limits.MaximumBodyBytes + 1];
             var content = request.Content;
             Require(request.Method == HttpMethod.Post && content is not null);
             var headers = Headers(request, entry);
@@ -320,7 +327,10 @@ internal sealed class NotificationWebhookDeliveryCollector : IAsyncDisposable
                 }
                 if (entry.Candidates.Any(c => Linked(entry, c))) entry.Linked.TrySetResult();
             }
-            return validation is null ? new(HttpStatusCode.OK) : Json(new { validationResponse = validation });
+            // Shared admission options omit read-only anonymous properties.
+            // Preserve the required wire field without relaxing that policy.
+            return validation is null ? new(HttpStatusCode.OK) :
+                Json(new Dictionary<string, string> { ["validationResponse"] = validation });
         }
         catch (Exception)
         {
@@ -401,17 +411,24 @@ internal sealed class NotificationWebhookDeliveryCollector : IAsyncDisposable
     }
     private N.Header[] Headers(HttpRequestMessage request, Entry entry)
     {
-        Require(request.Content is not null);
-        int count = 0, bytes = 0;
-        foreach (var header in request.Headers.Concat(request.Content.Headers))
-            foreach (string value in header.Value)
-            {
-                Require(++count <= limits.MaximumHeaders && Text(header.Key, 128) && Text(value, limits.MaximumHeaderBytes));
-                bytes += Encoding.UTF8.GetByteCount(header.Key) + Encoding.UTF8.GetByteCount(value);
-                Require(bytes <= limits.MaximumHeaderBytes);
-            }
+        Require(request.Content is not null && BoundedHeaders(request));
         return entry.HeaderNames.Where(n => request.Headers.Contains(n))
             .Select(n => new N.Header(n, Single(request, n))).ToArray();
+    }
+    private bool BoundedHeaders(HttpRequestMessage request)
+    {
+        int count = 0, bytes = 0;
+        IEnumerable<KeyValuePair<string, HeaderStringValues>> headers = request.Headers.NonValidated;
+        if (request.Content is { } content) headers = headers.Concat(content.Headers.NonValidated);
+        foreach (var header in headers)
+            foreach (string value in header.Value)
+            {
+                if (++count > limits.MaximumHeaders || !Text(header.Key, 128) || !Text(value, limits.MaximumHeaderBytes))
+                    return false;
+                bytes += Encoding.UTF8.GetByteCount(header.Key) + Encoding.UTF8.GetByteCount(value);
+                if (bytes > limits.MaximumHeaderBytes) return false;
+            }
+        return true;
     }
     private static string Single(HttpRequestMessage request, string name)
     {

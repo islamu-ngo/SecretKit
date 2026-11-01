@@ -44,6 +44,32 @@ f1ce8e8a389e35c76d1c108ec29b06e58ad7960c and
 management-only dependencies; selection does not establish callable family
 coverage, permission or live conformance.
 
+## Nonpackable notification authentication verification
+
+Reviewed on 2026-10-31: Microsoft.IdentityModel.JsonWebTokens **8.23.0** is
+selected only by the Azure conformance host and its source-linked, nonpackable
+installed consumer. No shipped SecretKit package, Core contract or four-package
+runtime profile gains this dependency. The consumer still selects exactly seven
+original SecretKit packages; the validation library is a separate fixture
+dependency, not an eighth SecretKit package.
+
+The restored `net10.0` validation closure adds JsonWebTokens, Tokens, Logging and
+Abstractions at **8.23.0**, plus Microsoft.Bcl.Cryptography **10.0.2**.
+Abstractions replaces the conformance host's previously resolved 8.14.0.
+Existing Microsoft.Extensions.Logging.Abstractions satisfies the Tokens
+dependency; no separate logging provider is enabled by this selection.
+
+All five restored nuspecs declare **MIT** and Microsoft Corporation copyright.
+The four IdentityModel nuspecs identify `AzureAD/azure-activedirectory-identitymodel-extensions-for-dotnet`
+revision `8b16f418b3d587416d293e9ba34c5d310781cdb3`; Cryptography identifies
+`dotnet/dotnet` revision `44525024595742ebe09023abe709df51de65009b`.
+Their installed `.nupkg.metadata` records nuget.org; exact versions and content
+hashes are recorded in the restore-generated conformance `packages.lock.json`.
+Retain the Microsoft attribution and MIT permission/warranty text below when
+redistributing these components. This admits the test/fixture dependency under
+its own terms, not vendor implementation source, native sender enrollment,
+signature verification of the package archive, or publication authority.
+
 ## Four-package local runtime closure
 
 ### Explicit dependency injection registration
@@ -170,6 +196,9 @@ below when distributing the corresponding components or substantial portions:
 - ReactiveUI.Primitives, ReactiveUI.Primitives.Core and ReactiveUI.Disposables
   8.2.0: Copyright (c) 2019-2026 ReactiveUI Association Incorporated.
 - Microsoft.Extensions packages 10.0.12 listed above:
+  Copyright (c) Microsoft Corporation. All rights reserved.
+- Microsoft.IdentityModel.JsonWebTokens, Tokens, Logging and Abstractions
+  8.23.0, and Microsoft.Bcl.Cryptography 10.0.2:
   Copyright (c) Microsoft Corporation. All rights reserved.
 
 The following MIT text applies to each of those attributions:
