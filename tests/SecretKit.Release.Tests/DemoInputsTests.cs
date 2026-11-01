@@ -7,6 +7,23 @@ namespace SecretKit.Release.Tests;
 public sealed class DemoInputsTests
 {
     [Test]
+    public async Task TimestampOnlyRepackStillInvalidatesSelectedOriginalAndDemoLocks()
+    {
+        using var fixture = new DemoFixture();
+        await Assert.That(await fixture.CheckAsync()).IsEqualTo(0);
+        string path = Path.Combine(fixture.Bundle, $"originals/SecretKit.Core.{TestBundle.Version}.nupkg");
+        ArchiveContent original = PackageArchive.Read(File.ReadAllBytes(path));
+        byte[] repacked = ArchiveTests.ZipAt(new DateTimeOffset(2025, 1, 1, 0, 0, 0, TimeSpan.Zero),
+            original.Files.Select(f => (f.Key, System.Text.Encoding.UTF8.GetString(f.Value))).ToArray());
+        await Assert.That(PackageArchive.Read(repacked).Files.All(f =>
+            original.Files[f.Key].SequenceEqual(f.Value))).IsTrue();
+        await Assert.That(Manifest.Hash(repacked) == Manifest.Hash(File.ReadAllBytes(path))).IsFalse();
+        File.WriteAllBytes(path, repacked);
+        await Assert.That(await fixture.CheckAsync()).IsEqualTo(1);
+        await Assert.That(fixture.SourceLocksUnchanged()).IsTrue();
+    }
+
+    [Test]
     public async Task ExactTemporaryBundleChecksWithoutPublicationAuthority()
     {
         using var fixture = new DemoFixture();

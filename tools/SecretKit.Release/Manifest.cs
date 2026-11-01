@@ -207,17 +207,22 @@ public static partial class Manifest
     public static byte[] ReadFile(string directory, string name, int maximum)
     {
         Guard.Require(FilePattern().IsMatch(name) && name is not "." and not "..", "file-path");
-        var root = new DirectoryInfo(Path.GetFullPath(directory));
-        for (DirectoryInfo? part = root; part is not null; part = part.Parent)
+        return ReadLocalFile(Path.Combine(Path.GetFullPath(directory), name), maximum);
+    }
+
+    // SourceLink has already confined document paths. SDK-generated filenames
+    // are not distribution artifact names, but retain identical link/size guards.
+    internal static byte[] ReadLocalFile(string path, int maximum)
+    {
+        var info = new FileInfo(Path.GetFullPath(path));
+        for (DirectoryInfo? part = info.Directory; part is not null; part = part.Parent)
         {
             Guard.Require((part.Attributes & FileAttributes.ReparsePoint) == 0, "directory-link");
         }
 
-        string path = Path.Combine(root.FullName, name);
-        var info = new FileInfo(path);
         Guard.Require(info.Exists && (info.Attributes & FileAttributes.ReparsePoint) == 0 &&
             info.Length is > 0 && info.Length <= maximum, "file-missing-or-size");
-        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        using var stream = new FileStream(info.FullName, FileMode.Open, FileAccess.Read, FileShare.Read);
         Guard.Require(stream.Length == info.Length, "file-changed");
         byte[] bytes = new byte[stream.Length];
         stream.ReadExactly(bytes);

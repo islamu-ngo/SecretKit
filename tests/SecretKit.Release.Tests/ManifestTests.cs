@@ -5,6 +5,21 @@ namespace SecretKit.Release.Tests;
 public sealed class ManifestTests
 {
     [Test]
+    public async Task SupplementalDebuggingCannotExtendHistoricalQualificationSchema()
+    {
+        using var fixture = new LocalQualificationTests.LocalFixture();
+        LocalQualification.Prepare(fixture.Source, fixture.Packages, fixture.Output);
+        fixture.ChangeRecord(record => record["integrationQuality"] = new System.Text.Json.Nodes.JsonArray("IQ-S19", "IQ-S20"));
+        await Assert.That(() => LocalQualification.Check(fixture.Source, fixture.Packages, fixture.Output))
+            .Throws<ReleaseException>();
+        LocalProfile profile = LocalQualification.ReadProfile(fixture.Source);
+        await Assert.That(profile.Operations.Select(o => o.Id).ToArray()).IsEquivalentTo(
+            ["read", "inspect", "create", "update-value", "universal-login", "get-token", "renew-token", "read-native"]);
+        await Assert.That(profile.Scenarios).IsEquivalentTo(Enumerable.Range(1, 16)
+            .Select(i => $"S{i:D2}").ToArray());
+    }
+
+    [Test]
     public async Task LocalQualificationCannotBecomePublicCandidateOrVerifiedRelease()
     {
         using var local = new LocalQualificationTests.LocalFixture();
