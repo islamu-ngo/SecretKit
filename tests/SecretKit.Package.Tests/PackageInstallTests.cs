@@ -143,7 +143,7 @@ public sealed class PackageInstallTests
         library.StartsWith("MariaDB", StringComparison.OrdinalIgnoreCase) ||
         library.StartsWith("Microsoft.AspNetCore", StringComparison.OrdinalIgnoreCase);
 
-    private static async Task<string> Run(string root, string[] arguments)
+    internal static async Task<string> Run(string root, string[] arguments)
     {
         using var process = new Process
         {

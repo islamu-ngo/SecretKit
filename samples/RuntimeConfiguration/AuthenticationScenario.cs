@@ -22,13 +22,14 @@ public static class AuthenticationScenario
         try
         {
             var network = new InfisicalNetworkOptions { AllowLoopbackDevelopmentHttp = true };
-            using var authentication = new InfisicalUniversalAuthentication(origin, network);
             // The host selects one principal and supplies each independently authorized
             // bootstrap credential. No recovery callback can select another identity.
             const string selectedClientId = "offline-selected-principal";
             using var initialBootstrap = SecretMaterial.FromText("offline-initial-bootstrap");
-            await using var session = await StartAsync(authentication, selectedClientId,
-                initialBootstrap, network, deadline.Token);
+            var initialAttempt = new InfisicalRuntimeOpenAttempt();
+            await using var runtime = await StartAsync(origin, selectedClientId,
+                initialBootstrap, initialAttempt, network, deadline.Token);
+            InfisicalPeriodicTokenSession session = runtime.TokenSession;
             initialBootstrap.Dispose();
             using var initial = (await session.GetTokenAsync(deadline.Token)).Value;
             if (initial.Material.Reveal() != "offline-issued")
@@ -45,19 +46,21 @@ public static class AuthenticationScenario
             if (await session.RenewAsync(deadline.Token) != SecretStatus.RecoveryRequired ||
                 session.LastRenewal?.Evidence != InfisicalRenewalEvidence.PossiblyDispatched)
                 throw new InvalidOperationException("Uncertain renewal did not require recovery.");
-            await session.StopAsync().WaitAsync(deadline.Token);
+            await runtime.StopAsync().WaitAsync(deadline.Token);
 
             // This separate host decision supplies fresh authorized material for the SAME
             // selected principal, retires the old generation and rebuilds its consumers.
             using var replacementBootstrap = SecretMaterial.FromText("offline-authorized-replacement");
-            await using var replacement = await StartAsync(authentication, selectedClientId,
-                replacementBootstrap, network, deadline.Token);
+            var replacementAttempt = new InfisicalRuntimeOpenAttempt();
+            await using var replacementRuntime = await StartAsync(origin, selectedClientId,
+                replacementBootstrap, replacementAttempt, network, deadline.Token);
+            InfisicalPeriodicTokenSession replacement = replacementRuntime.TokenSession;
             replacementBootstrap.Dispose();
             using var replacementToken = (await replacement.GetTokenAsync(deadline.Token)).Value;
             if (replacementToken.Material.Reveal() != "offline-replacement" ||
                 session.State != InfisicalTokenSessionState.Stopped)
                 throw new InvalidOperationException("Explicit replacement did not retire the old session.");
-            await replacement.StopAsync().WaitAsync(deadline.Token);
+            await replacementRuntime.StopAsync().WaitAsync(deadline.Token);
             await exchanges;
             Console.WriteLine("AUTHENTICATION_EXPLICIT_RENEWAL_RECOVERY_REPLACEMENT");
         }
@@ -70,29 +73,26 @@ public static class AuthenticationScenario
         }
     }
 
-    private static async Task<InfisicalPeriodicTokenSession> StartAsync(
-        InfisicalUniversalAuthentication authentication, string selectedClientId,
-        SecretMaterial authorizedBootstrap, InfisicalNetworkOptions network,
+    private static async Task<InfisicalRuntimeSession> StartAsync(
+        Uri origin, string selectedClientId,
+        SecretMaterial authorizedBootstrap, InfisicalRuntimeOpenAttempt attempt, InfisicalNetworkOptions network,
         CancellationToken cancellationToken)
     {
-        var receipt = authentication.CreateReceipt();
-        var outcome = await authentication.LoginAsync(selectedClientId, authorizedBootstrap,
-            receipt, cancellationToken: cancellationToken);
-        if (!outcome.IsSuccess)
-            throw new InvalidOperationException($"Explicit startup requires a host decision: {outcome.Status}/{receipt.Evidence}.");
-        using var login = outcome.Value;
-        // This offline deployment's finite policy is independently selected by the host.
-        // RequestStartedAt is only a conservative lower bound for a fresh login, not
-        // server-issued-at proof. Neither expiry nor the ceiling resets at handoff.
-        var evidence = login.BindLifetimeEvidence(new InfisicalTokenLifetimeEvidence
+        var outcome = await InfisicalRuntimeSession.OpenUniversalAsync(new()
         {
-            OriginalIssuedAt = login.RequestStartedAt,
-            ExpiresAt = login.Token.ExpiresAt!.Value,
+            Origin = origin,
+            ClientId = selectedClientId,
+            ProjectId = "offline-selected-project",
+            // Independent deployment policy; opening binds timing to the actual login.
             Lifetime = InfisicalTokenLifetime.Finite,
-            ReportedMaximumTtl = TimeSpan.FromSeconds(login.AccessTokenMaxTTL)
-        });
-        return new InfisicalPeriodicTokenSession(login, evidence, TimeSpan.FromSeconds(10),
-            TimeSpan.FromSeconds(5), network);
+            OriginalIssuedAt = DateTimeOffset.UtcNow,
+            RenewBefore = TimeSpan.FromSeconds(10),
+            RequestTimeout = TimeSpan.FromSeconds(5),
+            Network = network
+        }, authorizedBootstrap, attempt, cancellationToken);
+        if (!outcome.IsSuccess)
+            throw new InvalidOperationException($"Explicit startup requires a host decision: {outcome.Status}/{attempt.LoginReceipt?.Evidence}.");
+        return outcome.Value;
     }
 
     private static async Task ServeAsync(TcpListener listener, CancellationToken cancellationToken)

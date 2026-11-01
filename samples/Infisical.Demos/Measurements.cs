@@ -24,10 +24,10 @@ internal static class Measurements
         await MeasureAsync("preparation", async () =>
         {
             var reader = new Reader();
-            using var loader = Loader(reader);
-            Require((await loader.RefreshAsync()).IsSuccess);
-            using var handle = loader.Acquire();
-            Require(handle.Count == Keys);
+            using var prepared = (await PreparedSecretConfiguration.PrepareAsync(
+                Selections(reader), options: CollectionOptions())).Value;
+            using SecretRead read = prepared.Read("key0");
+            Require(read.Material.Reveal().Length == 256);
         });
         var refreshReader = new Reader();
         using (var loader = Loader(refreshReader))
@@ -75,6 +75,7 @@ internal static class Measurements
             Require(owned.Live == 0 && owned.Created == owned.Disposed);
         });
         object invariants = await InvariantsAsync();
+        object preparation = await PreparationAsync();
         return JsonSerializer.Serialize(new
         {
             kind = "controlled-local-overhead",
@@ -91,13 +92,15 @@ internal static class Measurements
             warmup = Warmup,
             repetitions = Repetitions,
             leasesPerBatch = LeasesPerBatch,
+            collection = CollectionOptions(),
             packages = new[]
             {
                 typeof(SecretMaterial).Assembly.FullName,
                 typeof(SecretSnapshotLoader).Assembly.FullName
             },
             rows,
-            invariants
+            invariants,
+            preparation
         });
 
         async Task MeasureAsync(string name, Func<Task> action)
@@ -115,6 +118,48 @@ internal static class Measurements
             }
             rows.Add(new { name, ticks, processAllocatedBytes = allocated });
         }
+    }
+
+    private static async Task<object> PreparationAsync()
+    {
+        var reader = new Reader();
+        SecretSelection[] selections =
+        [
+            .. Selections(reader),
+            new("optional", reader, new(reader.Authority, new Address(absent: true)),
+                SecretPresencePolicy.Optional)
+        ];
+        using var prepared = (await PreparedSecretConfiguration.PrepareAsync(
+            selections, options: CollectionOptions())).Value;
+        using SecretRead copy = prepared.Read("key0");
+        bool optionalAbsent = prepared.ReadOutcome("optional").Status == SecretStatus.Absent;
+        IConfigurationRoot configuration = prepared.ExportAcknowledgingManagedStrings(
+            [.. Mapping(), new("optional", "Work:Optional")]);
+        bool preparedNullPresent = configuration.Providers.Single().TryGet("Work:Optional", out string? optional) &&
+            optional is null;
+        // IConfiguration chaining loses null presence. Compose the explicit export
+        // source directly when proving precedence over a lower provider.
+        using var maskLoader = new SecretSnapshotLoader(selections, options: CollectionOptions());
+        Require((await maskLoader.RefreshAsync()).IsSuccess);
+        using var maskHandle = maskLoader.Acquire();
+        using var maskSource = SecretConfigurationExport.CreateAcknowledgingManagedStrings(
+            maskHandle, [.. Mapping(), new("optional", "Work:Optional")]);
+        IConfigurationRoot fallback = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["Work:Optional"] = "fallback" })
+            .Add(maskSource).Build();
+        using var fallbackOwner = (IDisposable)fallback;
+        bool absenceMasksFallback = preparedNullPresent && fallback["Work:Optional"] is null;
+        prepared.Dispose();
+        bool ownedCopySurvivesDisposal = copy.Material.Reveal().Length == 256;
+        using SecretRead borrowed = (await reader.ReadAsync(
+            new(reader.Authority, new Address()))).Value;
+        return new
+        {
+            optionalAbsent,
+            absenceMasksFallback,
+            ownedCopySurvivesDisposal,
+            borrowedReaderStillUsable = borrowed.Material.Reveal().Length == 256
+        };
     }
 
     private static async Task<object> InvariantsAsync()
@@ -176,9 +221,16 @@ internal static class Measurements
         return cancelled && current.Generation == old.Generation && loader.LastAttempt!.WasCanceled;
     }
 
+    private static SecretCollectionOptions CollectionOptions() => new(
+        maximumConcurrency: 4, maximumSelections: 16, maximumMaterialBytes: 4096,
+        collectionTimeout: Bound);
+
     private static SecretSnapshotLoader Loader(Reader reader) => new(
+        Selections(reader), options: CollectionOptions());
+
+    private static IEnumerable<SecretSelection> Selections(Reader reader) =>
         Enumerable.Range(0, Keys).Select(i => new SecretSelection("key" + i, reader,
-            new SecretReference(reader.Authority, new Address()))));
+            new SecretReference(reader.Authority, new Address())));
 
     private static IEnumerable<SecretConfigurationMapping> Mapping() =>
         Enumerable.Range(0, Keys).Select(i => new SecretConfigurationMapping("key" + i, "Work:" + i));
@@ -200,7 +252,10 @@ internal static class Measurements
         if (!condition) throw new InvalidOperationException("Controlled workload invariant failed.");
     }
 
-    private sealed class Address : SecretAddress;
+    private sealed class Address(bool absent = false) : SecretAddress
+    {
+        internal bool Absent { get; } = absent;
+    }
 
     private sealed class Reader : ISecretReader
     {
@@ -214,6 +269,8 @@ internal static class Measurements
             CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (((Address)reference.Address).Absent)
+                return SecretOutcome<SecretRead>.Failure(SecretStatus.Absent);
             if (Block)
             {
                 Entered.TrySetResult();

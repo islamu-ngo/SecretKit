@@ -105,6 +105,9 @@
           "Microsoft.Testing.Platform.MSBuild": "2.5.1",
           "TUnit.Core": "1.73.19"
         }
+      },
+      "secretkit.release": {
+        "type": "Project"
       }
     }
   }

@@ -13,8 +13,385 @@ using Microsoft.Extensions.Configuration;
 using SecretKit.Extensions.Configuration;
 #endif
 #if HOSTING
+using Microsoft.Extensions.DependencyInjection;
 using SecretKit.Extensions.Hosting;
 #endif
+
+// Supplemental installed API witnesses; historical local/native records stay separate.
+internal static class IntegrationQualityWorkflow
+{
+    internal static async Task<int> RunAsync()
+    {
+        try
+        {
+            using var bound = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            var scenarios = new List<object>();
+            byte[] input = Encoding.UTF8.GetBytes("encoded-owned-canary");
+            using (var owned = SecretMaterial.FromUtf8(input))
+            {
+                input[0] = (byte)'X';
+                Require(owned.Reveal() == "encoded-owned-canary");
+                owned.Dispose();
+                Require(input[0] == (byte)'X');
+            }
+            Array.Clear(input);
+            Observe(1, "utf8-input-copy-and-caller-storage-ownership");
+            using (var owned = SecretMaterial.FromText("encoded-owned-canary"))
+            {
+                byte[] shortBuffer = [17, 17];
+                Require(!owned.TryCopyUtf8To(shortBuffer, out int written) && written == 0 &&
+                    shortBuffer.All(value => value == 17));
+            }
+            bool malformed = false;
+            try { using var invalid = SecretMaterial.FromUtf8([0xff]); }
+            catch (ArgumentException exception)
+            {
+                malformed = exception.InnerException is null && exception is not DecoderFallbackException;
+            }
+            Require(malformed);
+            Observe(2, "short-buffer-no-partial-write-and-sanitized-malformed-input");
+
+            var clock = new Clock();
+            using var pipeline = new Pipeline();
+            var network = Network(pipeline);
+            await using InfisicalRuntimeSession runtime = CreateRuntime(network, clock);
+            InfisicalClient client = runtime.Client;
+            SecretReference reference = Reference(client);
+            foreach (int status in new[] { 429, 503 })
+            {
+                pipeline.Reply = (_, _) =>
+                {
+                    var response = Response(status, "hostile-error-canary");
+                    response.Headers.RetryAfter = new RetryConditionHeaderValue(TimeSpan.FromSeconds(3));
+                    return Task.FromResult(response);
+                };
+                int before = pipeline.Requests;
+                var failed = await client.ReadAsync(reference, bound.Token);
+                Require(failed.Status == (status == 429 ? SecretStatus.Throttled : SecretStatus.Unavailable) &&
+                    failed.RetryAfter == TimeSpan.FromSeconds(3) && pipeline.Requests == before + 1);
+            }
+            Observe(3, "429-and-503-delta-advice-with-one-dispatch");
+            pipeline.Reply = (_, _) => throw new HttpRequestException("hostile-error-canary");
+            using var mutation = SecretMaterial.FromText("mutation-canary");
+            var uncertain = new MutationReceipt(reference);
+            var changed = await client.UpdateValueAsync(reference, mutation, uncertain, bound.Token);
+            Require(!changed.IsSuccess && uncertain.Evidence == DispatchEvidence.PossiblyDispatched &&
+                !JsonSerializer.Serialize(changed).Contains("hostile-error-canary", StringComparison.Ordinal));
+            Observe(4, "uncertain-mutation-retains-receipt-without-error-payload");
+
+            using var oversized = SecretMaterial.FromText(new string('x', 2048));
+            var oversizedReceipt = new MutationReceipt(reference);
+            int sends = pipeline.Requests;
+            Require(!(await client.UpdateValueAsync(reference, oversized, oversizedReceipt, bound.Token)).IsSuccess &&
+                oversizedReceipt.Evidence == DispatchEvidence.NotDispatched && pipeline.Requests == sends);
+            pipeline.Reply = (_, _) => Task.FromResult(Response(200, new string('x', 2048)));
+            Require(!(await client.ReadAsync(reference, bound.Token)).IsSuccess);
+            Observe(5, "independent-request-and-declared-response-byte-rejection");
+            using (var canceled = new CancellationTokenSource())
+            {
+                canceled.Cancel();
+                bool propagated = false;
+                try { using var read = (await client.ReadAsync(reference, canceled.Token)).Value; }
+                catch (OperationCanceledException) { propagated = true; }
+                Require(propagated);
+            }
+            pipeline.Reply = (_, _) =>
+            {
+                clock.Advance(TimeSpan.FromSeconds(31));
+                return Task.FromResult(Response(200, SecretBody()));
+            };
+            var late = await client.ReadAsync(reference, bound.Token);
+            Require(late.Status == SecretStatus.Unavailable && late.Reason == SecretFailureReason.DeadlineExceeded);
+            Observe(6, "pre-canceled-caller-and-late-read-deadline-publication");
+
+            using var bootstrap = SecretMaterial.FromText("bootstrap-canary");
+            pipeline.Reply = (_, _) => Task.FromResult(Response(200,
+                TokenBody(Token)[..^1] + ",\"unrelated\":{\"hostile\":\"unretained-canary\"}}"));
+            var additiveAttempt = new InfisicalRuntimeOpenAttempt();
+            var additive = await InfisicalRuntimeSession.OpenUniversalAsync(
+                Options(network, clock), bootstrap, additiveAttempt, bound.Token);
+            Require(additive.IsSuccess && additiveAttempt.LoginReceipt?.Evidence == DispatchEvidence.Applied &&
+                !JsonSerializer.Serialize(additive).Contains("unretained-canary", StringComparison.Ordinal));
+            await additive.Value.DisposeAsync();
+            Observe(7, "bounded-additive-authentication-field-not-exported");
+            pipeline.Reply = (_, _) => Task.FromResult(Response(200,
+                TokenBody(Token)[..^1] + ",\"accessToken\":\"duplicate-canary\"}"));
+            var duplicateAttempt = new InfisicalRuntimeOpenAttempt();
+            var duplicate = await InfisicalRuntimeSession.OpenUniversalAsync(
+                Options(network, clock), bootstrap, duplicateAttempt, bound.Token);
+            Require(!duplicate.IsSuccess && duplicateAttempt.LoginReceipt is not null);
+            Observe(8, "duplicate-known-authentication-field-rejects-runtime-publication");
+            pipeline.Reply = (_, _) => Task.FromResult(Response(403, "hostile-error-canary"));
+            var refusedAttempt = new InfisicalRuntimeOpenAttempt();
+            var refused = await InfisicalRuntimeSession.OpenUniversalAsync(
+                Options(network, clock), bootstrap, refusedAttempt, bound.Token);
+            Require(!refused.IsSuccess && refusedAttempt.LoginReceipt?.Evidence == DispatchEvidence.Rejected &&
+                bootstrap.Reveal() == "bootstrap-canary" && !pipeline.Disposed);
+            Observe(9, "failed-open-retains-receipt-and-borrows-bootstrap-pipeline");
+
+            var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            pipeline.Reply = async (_, token) =>
+            {
+                entered.TrySetResult();
+                await new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)
+                    .Task.WaitAsync(token);
+                throw new InvalidOperationException("Canceled dispatch resumed.");
+            };
+            Task<SecretOutcome<SecretRead>> active = client.ReadAsync(reference, bound.Token).AsTask();
+            await entered.Task.WaitAsync(bound.Token);
+            Task stop = runtime.StopAsync();
+            Require(ReferenceEquals(stop, runtime.StopAsync()));
+            try
+            {
+                var interrupted = await active.WaitAsync(bound.Token);
+                Require(!interrupted.IsSuccess);
+            }
+            catch (OperationCanceledException) { }
+            await stop.WaitAsync(bound.Token);
+            bool rejected = false;
+            try { rejected = !(await client.ReadAsync(reference, bound.Token)).IsSuccess; }
+            catch (ObjectDisposedException) { rejected = true; }
+            Require(rejected && !pipeline.Disposed);
+            Observe(10, "admitted-read-canceled-and-shared-retirement-rejects-new-work");
+#if CONFIGURATION
+            await ConfigurationAsync(scenarios, bound.Token);
+#endif
+#if HOSTING
+            pipeline.Reply = (_, _) => Task.FromResult(Response(200, SecretBody()));
+            await using InfisicalRuntimeSession hosted = CreateRuntime(network, clock);
+            var services = new ServiceCollection();
+            int registeredAt = pipeline.Requests;
+            services.AddInfisicalRuntime(hosted);
+            services.AddInfisicalAuthenticationMaintenance(hosted, TimeSpan.FromSeconds(2));
+            Require(services.Any(descriptor => ReferenceEquals(descriptor.ImplementationInstance, hosted)) &&
+                services.Any(descriptor => ReferenceEquals(descriptor.ImplementationInstance, hosted.Client)) &&
+                services.Any(descriptor => descriptor.ServiceType == typeof(Microsoft.Extensions.Hosting.IHostedService)) &&
+                pipeline.Requests == registeredAt);
+            await using var maintenance = new InfisicalAuthenticationMaintenance(
+                hosted.TokenSession, TimeSpan.FromSeconds(2));
+            Require(maintenance.State == AuthenticationMaintenanceState.NotStarted);
+            await maintenance.StartAsync(bound.Token);
+            Require(maintenance.State == AuthenticationMaintenanceState.Ready &&
+                pipeline.Requests == registeredAt);
+            Observe(17, "borrowed-instance-registration-no-io-and-explicit-helper-start");
+            await maintenance.StopAsync(bound.Token);
+            await maintenance.StopAsync(bound.Token);
+            Require(maintenance.State == AuthenticationMaintenanceState.Stopped &&
+                hosted.TokenSession.State == InfisicalTokenSessionState.Stopped && !pipeline.Disposed);
+            Observe(18, "repeated-explicit-helper-stop-ends-session-without-disposing-host-pipeline");
+#endif
+            Console.WriteLine(JsonSerializer.Serialize(new
+            {
+                profile = "integration-quality", kind = "controlled-installed-offline",
+                mode = Mode, nativeQualified = false,
+                platform = new
+                {
+                    runtimeIdentifier = System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier,
+                    framework = System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription,
+                    operatingSystem = System.Runtime.InteropServices.RuntimeInformation.OSDescription
+                },
+                scenarios
+            }));
+            return 0;
+
+            void Observe(int id, string subset) => scenarios.Add(new
+            {
+                id = "IQ-S" + id.ToString("D2", CultureInfo.InvariantCulture), status = "passed", subset
+            });
+        }
+        catch
+        {
+            Console.Error.WriteLine("Integration quality workflow failed; protected diagnostics withheld.");
+            return 1;
+        }
+    }
+
+    private static InfisicalNetworkOptions Network(Pipeline pipeline) => new()
+    {
+        Transport = InfisicalTransportOptions.HostControlled(pipeline),
+        MaximumRequestBytes = 1024, MaximumResponseBytes = 1024,
+        OperationTimeout = TimeSpan.FromSeconds(30), ShutdownTimeout = TimeSpan.FromSeconds(2)
+    };
+    private static InfisicalRuntimeOptions Options(InfisicalNetworkOptions network, Clock clock) => new()
+    {
+        Origin = new("https://controlled.invalid"), ClientId = "controlled-client", ProjectId = Project,
+        Lifetime = InfisicalTokenLifetime.Finite, OriginalIssuedAt = clock.GetUtcNow(),
+        RenewBefore = TimeSpan.FromSeconds(10), RequestTimeout = TimeSpan.FromSeconds(1),
+        Network = network, TimeProvider = clock
+    };
+    private static InfisicalRuntimeSession CreateRuntime(InfisicalNetworkOptions network, Clock clock)
+    {
+        using var token = SecretMaterial.FromText(Token);
+        return InfisicalRuntimeSession.CreateFromToken(Options(network, clock), token, new()
+        {
+            Lifetime = InfisicalTokenLifetime.Finite, OriginalIssuedAt = clock.GetUtcNow(),
+            ExpiresAt = clock.GetUtcNow().AddMinutes(1), ReportedMaximumTtl = TimeSpan.FromMinutes(2)
+        }).Value;
+    }
+    private static HttpResponseMessage Response(int status, string body) =>
+        new((HttpStatusCode)status) { Content = new StringContent(body) };
+
+    private sealed class Pipeline : HttpMessageHandler
+    {
+        internal Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> Reply { get; set; } =
+            (_, _) => Task.FromResult(Response(200, SecretBody()));
+        internal int Requests { get; private set; }
+        internal bool Disposed { get; private set; }
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
+        {
+            Requests++;
+            return Reply(request, token);
+        }
+        protected override void Dispose(bool disposing) { Disposed = true; base.Dispose(disposing); }
+    }
+
+#if CONFIGURATION
+    private static async Task ConfigurationAsync(List<object> scenarios, CancellationToken token)
+    {
+        var reader = new CollectionReader();
+        SecretSelection[] mixed =
+        [
+            new("required", reader, reader.Reference(0)),
+            new("optional", reader, reader.Reference(1), SecretPresencePolicy.Optional)
+        ];
+        reader.OptionalStatus = SecretStatus.Absent;
+        using (var loader = new SecretSnapshotLoader(mixed))
+        {
+            Require((await loader.RefreshAsync(token)).IsSuccess);
+            using var generation = loader.Acquire();
+            using var present = generation.Read("required");
+            Require(present.Material.Reveal() == "first" && generation.ReadOutcome("optional").Status == SecretStatus.Absent);
+            reader.OptionalStatus = SecretStatus.Denied;
+            Require((await loader.RefreshAsync(token)).Status == SecretStatus.Denied);
+            using var retained = loader.Acquire();
+            Require(retained.Generation == generation.Generation);
+        }
+        Observe(11, "mixed-presence-accepts-only-optional-absence-and-retains-on-denial");
+        reader.OptionalStatus = SecretStatus.Success;
+        using (var loader = new SecretSnapshotLoader([mixed[1]]))
+        {
+            Require((await loader.RefreshAsync(token)).IsSuccess);
+            using var old = loader.Acquire();
+            reader.OptionalStatus = SecretStatus.Absent;
+            Require((await loader.RefreshAsync(token)).IsSuccess);
+            using var absent = loader.Acquire();
+            Require(absent.Count == 0 && absent.SelectionCount == 1 && absent.Generation > old.Generation);
+            using var export = SecretConfigurationExport.CreateAcknowledgingManagedStrings(absent, [new("optional", "Value")]);
+            IConfigurationRoot root = new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?> { ["Value"] = "fallback" }).Add(export).Build();
+            using var rootOwner = (IDisposable)root;
+            Require(root["Value"] is null);
+        }
+        Observe(12, "absence-only-generation-replaces-presence-and-masks-fallback");
+
+        foreach (bool reverse in new[] { false, true })
+        {
+            int[] arrivals = [0, 0];
+            var earlier = new TaskCompletionSource<SecretOutcome<SecretRead>>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            reader.Read = (reference, cancellation) =>
+            {
+                int ordinal = ((CollectionAddress)reference.Address).Ordinal;
+                arrivals[ordinal]++;
+                // A completed value executes the loader's classification synchronously,
+                // before RefreshAsync returns. No continuation ordering is assumed.
+                return ordinal == 1
+                    ? ValueTask.FromResult(SecretOutcome<SecretRead>.Failure(SecretStatus.Denied))
+                    : reverse ? new ValueTask<SecretOutcome<SecretRead>>(earlier.Task.WaitAsync(cancellation))
+                    : ValueTask.FromResult(SecretOutcome<SecretRead>.Failure(SecretStatus.Unavailable));
+            };
+            using var loader = new SecretSnapshotLoader(mixed, options: new(maximumConcurrency: 2));
+            Task<SecretOutcome<long>> pending = loader.RefreshAsync(token).AsTask();
+            if (reverse)
+            {
+                bool completedBeforeEarlier = pending.IsCompleted;
+                earlier.SetResult(SecretOutcome<SecretRead>.Failure(SecretStatus.Unavailable));
+                Require(!completedBeforeEarlier && arrivals[0] == 1 && arrivals[1] == 1);
+            }
+            else Require(arrivals[0] == 1 && arrivals[1] == 0);
+            Require((await pending.WaitAsync(token)).Status == SecretStatus.Unavailable);
+        }
+        reader.Read = null;
+        Observe(13, "synchronous-terminal-admission-and-later-failure-with-earlier-pending-preserve-input-order");
+
+        reader.Value = "first";
+        using (var loader = new SecretSnapshotLoader([mixed[0]], options: new(maximumMaterialBytes: 1024)))
+        {
+            Require((await loader.RefreshAsync(token)).IsSuccess);
+            using var old = loader.Acquire();
+            using var copy = old.Read("required");
+            reader.Value = new string('x', 2048);
+            Require(!(await loader.RefreshAsync(token)).IsSuccess);
+            using var retained = loader.Acquire();
+            Require(retained.Generation == old.Generation && copy.Material.Reveal() == "first");
+        }
+        Observe(14, "material-budget-failure-preserves-generation-and-independent-copy");
+        reader.Value = "first";
+        using (var prepared = (await PreparedSecretConfiguration.PrepareAsync([mixed[0]], cancellationToken: token)).Value)
+        {
+            bool invalidMapping = false;
+            try { prepared.ExportAcknowledgingManagedStrings([new("unknown", "Value")]); }
+            catch (ArgumentException) { invalidMapping = true; }
+            Require(invalidMapping);
+            using var copy = prepared.Read("required");
+            IConfigurationRoot root = prepared.ExportAcknowledgingManagedStrings([new("required", "Value")]);
+            Require(root["Value"] == "first");
+            prepared.Dispose();
+            Require(copy.Material.Reveal() == "first");
+            using var borrowed = (await reader.ReadAsync(reader.Reference(0), token)).Value;
+            Require(borrowed.Material.Reveal() == "first");
+        }
+        Observe(15, "invalid-prepared-mapping-no-partial-export-and-independent-copy-lifetime");
+        using (var loader = new SecretSnapshotLoader([mixed[0]]))
+        {
+            Require((await loader.RefreshAsync(token)).IsSuccess);
+            using var first = loader.Acquire();
+            using var export = SecretConfigurationExport.CreateAcknowledgingManagedStrings(first, [new("required", "Value")]);
+            IConfigurationProvider provider = export.Build(new ConfigurationBuilder());
+            using var notification = provider.GetReloadToken().RegisterChangeCallback(
+                _ => throw new InvalidOperationException("notification-canary"), null);
+            reader.Value = "replacement";
+            Require((await loader.RefreshAsync(token)).IsSuccess);
+            using var next = loader.Acquire();
+            bool notifiedFailure = false;
+            try { export.ReplaceAcknowledgingManagedStrings(next); }
+            catch (InvalidOperationException exception)
+            {
+                notifiedFailure = exception.InnerException is null &&
+                    !exception.Message.Contains("notification-canary", StringComparison.Ordinal);
+            }
+            Require(notifiedFailure && provider.TryGet("Value", out string? current) && current == "replacement");
+        }
+        Observe(16, "notification-failure-does-not-roll-back-committed-export");
+        void Observe(int id, string subset) => scenarios.Add(new
+        {
+            id = "IQ-S" + id.ToString("D2", CultureInfo.InvariantCulture), status = "passed", subset
+        });
+    }
+
+    private sealed class CollectionAddress(int ordinal) : SecretAddress
+    {
+        internal int Ordinal { get; } = ordinal;
+    }
+    private sealed class CollectionReader : ISecretReader
+    {
+        public SecretAuthority Authority { get; } = new();
+        internal string Value { get; set; } = "first";
+        internal SecretStatus OptionalStatus { get; set; }
+        internal Func<SecretReference, CancellationToken, ValueTask<SecretOutcome<SecretRead>>>? Read { get; set; }
+        internal SecretReference Reference(int ordinal) => new(Authority, new CollectionAddress(ordinal));
+        public ValueTask<SecretOutcome<SecretRead>> ReadAsync(SecretReference reference, CancellationToken token = default)
+        {
+            token.ThrowIfCancellationRequested();
+            if (Read is { } read) return read(reference, token);
+            if (((CollectionAddress)reference.Address).Ordinal == 1 && OptionalStatus != SecretStatus.Success)
+                return ValueTask.FromResult(SecretOutcome<SecretRead>.Failure(OptionalStatus));
+            return ValueTask.FromResult(SecretOutcome<SecretRead>.Success(new(SecretMaterial.FromText(Value),
+                new(reference, null, DateTimeOffset.UtcNow, SecretValidity.Valid))));
+        }
+    }
+#endif
+}
 
 // Package-only evidence. Native execution is a separate explicit entry point.
 internal static class RuntimeHardeningWorkflow
@@ -66,11 +443,10 @@ internal static class RuntimeHardeningWorkflow
                 InfisicalTransportOptions.HostControlled(handler)
         };
         var clock = new Clock();
-        using var authentication = new InfisicalUniversalAuthentication(wire.Origin, network, clock);
         using var credential = SecretMaterial.FromText("runtime-hardening-bootstrap-canary");
-        using InfisicalUniversalLogin login = await Login(Token);
-        await using var session = Session(login);
-        await using var client = new InfisicalClient(wire.Origin, session, network, clock);
+        await using InfisicalRuntimeSession runtime = await Open(Token);
+        InfisicalPeriodicTokenSession session = runtime.TokenSession;
+        InfisicalClient client = runtime.Client;
         SecretReference reference = Reference(client);
         using InfisicalSecretRead initial = (await Read(200, SecretBody())).Value;
         Require(initial.Material.Reveal() == Value);
@@ -118,9 +494,9 @@ internal static class RuntimeHardeningWorkflow
         Require(session.LastRenewal?.Evidence == InfisicalRenewalEvidence.PossiblyDispatched &&
             (await session.GetTokenAsync(deadline.Token)).Status == SecretStatus.RecoveryRequired);
         // Recovery is a new explicit login, never replay of the uncertain renewal.
-        using InfisicalUniversalLogin recoveredLogin = await Login("recovered-canary");
-        await using var recovered = Session(recoveredLogin);
-        await using var recoveredClient = new InfisicalClient(wire.Origin, recovered, network, clock);
+        await using InfisicalRuntimeSession recoveredRuntime = await Open("recovered-canary");
+        InfisicalPeriodicTokenSession recovered = recoveredRuntime.TokenSession;
+        InfisicalClient recoveredClient = recoveredRuntime.Client;
         using InfisicalSecretRead recoveredRead = (await wire.Exchange(
             () => recoveredClient.ReadNativeAsync(Reference(recoveredClient), deadline.Token).AsTask(),
             "GET", "/api/v4/secrets/" + Key, 200, SecretBody(), "recovered-canary")).Value;
@@ -135,10 +511,8 @@ internal static class RuntimeHardeningWorkflow
         Require(maintenance.State == AuthenticationMaintenanceState.Stopped);
         Observe("RH09");
 #endif
-        await recoveredClient.DisposeAsync().AsTask().WaitAsync(deadline.Token);
-        await client.DisposeAsync().AsTask().WaitAsync(deadline.Token);
-        await session.StopAsync().WaitAsync(deadline.Token);
-        await recovered.StopAsync().WaitAsync(deadline.Token);
+        await recoveredRuntime.StopAsync().WaitAsync(deadline.Token);
+        await runtime.StopAsync().WaitAsync(deadline.Token);
         Require(session.State == InfisicalTokenSessionState.Stopped &&
             recovered.State == InfisicalTokenSessionState.Stopped);
         await VerifyBoundedShutdown(wire.Origin, network, deadline.Token);
@@ -160,22 +534,21 @@ internal static class RuntimeHardeningWorkflow
         Task<SecretOutcome<InfisicalSecretRead>> Read(int status, string body) =>
             wire.Exchange(() => client.ReadNativeAsync(reference, deadline.Token).AsTask(),
                 "GET", "/api/v4/secrets/" + Key, status, body, Token);
-        async Task<InfisicalUniversalLogin> Login(string issued)
+        async Task<InfisicalRuntimeSession> Open(string issued)
         {
-            InfisicalUniversalLoginReceipt receipt = authentication.CreateReceipt();
-            var outcome = await wire.Exchange(() => authentication.LoginAsync("controlled-client", credential,
-                receipt, cancellationToken: deadline.Token).AsTask(),
+            var attempt = new InfisicalRuntimeOpenAttempt();
+            var outcome = await wire.Exchange(() => InfisicalRuntimeSession.OpenUniversalAsync(new()
+            {
+                Origin = wire.Origin, ClientId = "controlled-client", ProjectId = Project,
+                Lifetime = InfisicalTokenLifetime.Finite, OriginalIssuedAt = clock.GetUtcNow(),
+                RenewBefore = TimeSpan.FromSeconds(10), RequestTimeout = TimeSpan.FromSeconds(5),
+                Network = network, TimeProvider = clock
+            }, credential, attempt, deadline.Token).AsTask(),
                 "POST", "/api/v1/auth/universal-auth/login", 200, TokenBody(issued), null,
                 body => body.GetProperty("clientSecret").GetString() == "runtime-hardening-bootstrap-canary");
-            Require(outcome.IsSuccess && receipt.Evidence == DispatchEvidence.Applied);
+            Require(outcome.IsSuccess && attempt.LoginReceipt?.Evidence == DispatchEvidence.Applied);
             return outcome.Value;
         }
-        InfisicalPeriodicTokenSession Session(InfisicalUniversalLogin issued) =>
-            new(issued, issued.BindLifetimeEvidence(new()
-            {
-                OriginalIssuedAt = clock.GetUtcNow(), ExpiresAt = issued.Token.ExpiresAt!.Value,
-                Lifetime = InfisicalTokenLifetime.Finite, ReportedMaximumTtl = TimeSpan.FromSeconds(120)
-            }), TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(5), network, clock);
     }
 
     internal static async Task VerifyBoundedShutdown(Uri origin, InfisicalNetworkOptions network, CancellationToken token)
@@ -318,10 +691,13 @@ internal sealed class NativeRuntimeHardening
             _report = _report with { ObservedPolicy = observed, PolicyObservationSha256 = NativeRuntimeInput.PolicyHash(observed) };
             await Persist();
             Require(_report.PolicyObservationSha256 == _input.Policy.GetProperty("evidenceSha256").GetString());
-            await using var session = Session(login, selected);
+            // Native qualification inspects the login metadata and same-identity policy
+            // before admission; hand off only that explicitly validated token evidence.
+            await using InfisicalRuntimeSession runtime = FromLogin(login, selected);
+            InfisicalPeriodicTokenSession session = runtime.TokenSession;
             using (InfisicalAccessToken handed = (await session.GetTokenAsync(token)).Value)
                 Require(Equal(handed.Material, login.Token.Material));
-            await using var client = new InfisicalClient(_input.Origin, session, selected);
+            InfisicalClient client = runtime.Client;
             var references = _input.Reads.Select(r => Select(client, r)).ToArray();
             using InfisicalSecretRead initial = await Read(client, references[0], token);
             _report = _report with { CausalTokenHandoffRun = _input.RunId };
@@ -395,9 +771,11 @@ internal sealed class NativeRuntimeHardening
                 Transport = InfisicalTransportOptions.HostControlled(lossPipeline),
                 MaximumResponseBytes = 131072, ShutdownTimeout = TimeSpan.FromSeconds(2)
             };
-            await using var lossSession = new InfisicalPeriodicTokenSession(_input.Origin, renewed.Material,
-                Evidence(login, renewed.ExpiresAt!.Value), _input.RenewBefore, _input.RequestTimeout, lossNetwork);
-            await session.StopAsync().WaitAsync(token);
+            await using InfisicalRuntimeSession lossRuntime = InfisicalRuntimeSession.CreateFromToken(
+                Options(lossNetwork, login.RequestStartedAt), renewed.Material,
+                Evidence(login, renewed.ExpiresAt!.Value)).Value;
+            InfisicalPeriodicTokenSession lossSession = lossRuntime.TokenSession;
+            await runtime.StopAsync().WaitAsync(token);
             await RenewalWindow(lossSession, token);
             lossPipeline.ArmLoss();
             SecretStatus lossStatus;
@@ -419,10 +797,11 @@ internal sealed class NativeRuntimeHardening
             using InfisicalUniversalLogin recovery = await Login(auth, _input.Recovery, token, recovery: true);
             var recoveryPolicy = await ObservePolicy(policyClient, recovery, _input.Recovery, token);
             Require(recoveryPolicy == observed);
-            await using var recovered = Session(recovery, selected);
+            await using InfisicalRuntimeSession recoveredRuntime = FromLogin(recovery, selected);
+            InfisicalPeriodicTokenSession recovered = recoveredRuntime.TokenSession;
             using (var handoff = (await recovered.GetTokenAsync(token)).Value)
                 Require(Equal(handoff.Material, recovery.Token.Material));
-            await using var recoveredClient = new InfisicalClient(_input.Origin, recovered, selected);
+            InfisicalClient recoveredClient = recoveredRuntime.Client;
             using (var usable = await Read(recoveredClient, Select(recoveredClient, _input.Reads[0]), token)) { }
             _report = _report with { RecoveryReadObserved = true };
             await Passed("RH06");
@@ -439,9 +818,9 @@ internal sealed class NativeRuntimeHardening
             await Passed("RH09");
 
             _current = "RH07";
-            await client.DisposeAsync().AsTask().WaitAsync(token);
-            await recoveredClient.DisposeAsync().AsTask().WaitAsync(token);
-            await lossSession.StopAsync().WaitAsync(token);
+            await runtime.StopAsync().WaitAsync(token);
+            await recoveredRuntime.StopAsync().WaitAsync(token);
+            await lossRuntime.StopAsync().WaitAsync(token);
             Require(session.State == InfisicalTokenSessionState.Stopped &&
                 lossSession.State == InfisicalTokenSessionState.Stopped);
             await RuntimeHardeningWorkflow.VerifyBoundedShutdown(_input.Origin, selected, token);
@@ -532,9 +911,19 @@ internal sealed class NativeRuntimeHardening
         Period = _input.Period == 0 ? null : TimeSpan.FromSeconds(_input.Period),
         ReportedMaximumTtl = TimeSpan.FromSeconds(_input.MaximumTtl)
     };
-    private InfisicalPeriodicTokenSession Session(InfisicalUniversalLogin login, InfisicalNetworkOptions network) =>
-        new(login, login.BindLifetimeEvidence(Evidence(login, login.Token.ExpiresAt!.Value)),
-            _input.RenewBefore, _input.RequestTimeout, network);
+    private InfisicalRuntimeOptions Options(InfisicalNetworkOptions network, DateTimeOffset issued) => new()
+    {
+        Origin = _input.Origin,
+        ClientId = _input.Bootstrap.GetProperty("clientId").GetString()!,
+        ProjectId = _input.Reads[0].GetProperty("projectId").GetString()!,
+        Lifetime = _input.Period == 0 ? InfisicalTokenLifetime.Finite : InfisicalTokenLifetime.Periodic,
+        OriginalIssuedAt = issued,
+        Period = _input.Period == 0 ? null : TimeSpan.FromSeconds(_input.Period),
+        RenewBefore = _input.RenewBefore, RequestTimeout = _input.RequestTimeout, Network = network
+    };
+    private InfisicalRuntimeSession FromLogin(InfisicalUniversalLogin login, InfisicalNetworkOptions network) =>
+        InfisicalRuntimeSession.CreateFromToken(Options(network, login.RequestStartedAt), login.Token.Material,
+            login.BindLifetimeEvidence(Evidence(login, login.Token.ExpiresAt!.Value))).Value;
     private static async Task RenewalWindow(InfisicalPeriodicTokenSession session, CancellationToken token)
     {
         TimeSpan remaining = session.RenewalDueAt - DateTimeOffset.UtcNow;

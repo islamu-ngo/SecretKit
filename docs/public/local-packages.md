@@ -69,8 +69,8 @@ precedes packing. Do not reuse an existing output for different bytes.
 
 ```bash
 set -eu
-version=0.1.0-local.20261024.1
-candidate="$PWD/artifacts/local-infisical-adoption/candidate-1"
+version=0.2.0-integration.3
+candidate="$PWD/artifacts/infisical-integration-quality/candidate-3"
 test ! -e "$candidate"
 dotnet restore SecretKit.slnx --locked-mode
 dotnet restore tests/SecretKit.Infisical.Conformance.Tests/SecretKit.Infisical.Conformance.Tests.csproj --locked-mode
@@ -81,11 +81,33 @@ dotnet tests/SecretKit.Infisical.Conformance.Tests/bin/Release/net10.0/SecretKit
 dotnet build SecretKit.slnx --configuration Release --no-restore -p:Version="$version"
 dotnet format SecretKit.slnx --verify-no-changes --no-restore --verbosity quiet
 dotnet pack SecretKit.slnx --configuration Release --no-build --no-restore -p:Version="$version" --output "$candidate/packages"
+dotnet build SecretKit.slnx --configuration Release --no-restore --no-incremental -p:Version="$version"
+dotnet pack SecretKit.slnx --configuration Release --no-build --no-restore -p:Version="$version" --output "$candidate/rebuild-packages"
+mkdir -p "$candidate/rebuild-originals"
+for id in SecretKit.Core SecretKit.Infisical SecretKit.Extensions.Configuration SecretKit.Extensions.Hosting; do
+  cp "$candidate/rebuild-packages/$id.$version.nupkg" "$candidate/rebuild-originals/"
+done
+```
+
+The second build is an independent compile-output comparison, never a replacement
+for the selected staging originals. It does not require ZIP timestamps to match.
+Before proceeding, generate/review the three app locks against the exact selected
+`packages/` archives in isolated copied app trees, as described under
+[frozen app locks](#frozen-app-locks-and-ci-verification-inputs). NuGet's
+`--lock-file-path` may write the reviewed generated locks directly to their
+source-owned paths. No source lock is hand-edited.
+
+Freeze source, docs, profile and those locks before resuming. Do not repack after
+lock generation. A byte-changing repair requires a new unused version/cohort.
+Promote the selected originals unchanged, then prepare the content record:
+
+```bash
 mkdir -p "$candidate/originals" "$candidate/installations"
 for id in SecretKit.Core SecretKit.Infisical SecretKit.Extensions.Configuration SecretKit.Extensions.Hosting; do
   cp "$candidate/packages/$id.$version.nupkg" "$candidate/originals/"
 done
 dotnet run --project tools/SecretKit.Release --configuration Release --no-build -- local-prepare "$PWD" "$candidate/originals" "$candidate/qualification"
+unset SECRETKIT_DEMO_STAGED_LOCK_DIRECTORY
 SECRETKIT_CANDIDATE_DIRECTORY="$candidate/packages" \
 SECRETKIT_CANDIDATE_VERSION="$version" \
 SECRETKIT_LOCAL_CANDIDATE_DIRECTORY="$candidate/originals" \
@@ -93,7 +115,19 @@ SECRETKIT_LOCAL_CANDIDATE_VERSION="$version" \
 SECRETKIT_LOCAL_QUALIFICATION_DIRECTORY="$candidate/qualification" \
 SECRETKIT_LOCAL_INSTALL_REPORTS="$candidate/installations" \
 SECRETKIT_LOCAL_HANDOFF_DIRECTORY="$candidate/handoff" \
-dotnet test --solution SecretKit.slnx --configuration Release --no-build
+SECRETKIT_RUNTIME_HARDENING_ORIGINALS="$candidate/originals" \
+SECRETKIT_RUNTIME_HARDENING_VERSION="$version" \
+SECRETKIT_DEMO_CANDIDATE_DIRECTORY="$candidate/originals" \
+SECRETKIT_DEMO_CANDIDATE_VERSION="$version" \
+SECRETKIT_DEMO_SDK=10.0.302 \
+SECRETKIT_INTEGRATION_QUALITY_ORIGINALS="$candidate/originals" \
+SECRETKIT_INTEGRATION_QUALITY_VERSION="$version" \
+SECRETKIT_INTEGRATION_QUALITY_SYMBOLS="$candidate/packages" \
+SECRETKIT_INTEGRATION_QUALITY_REBUILD_ORIGINALS="$candidate/rebuild-originals" \
+SECRETKIT_INTEGRATION_QUALITY_REBUILD_SYMBOLS="$candidate/rebuild-packages" \
+dotnet test --solution SecretKit.slnx --configuration Release --no-build \
+  --max-parallel-test-modules 1 -- \
+  --minimum-expected-tests 1 --zero-tests-policy strict --maximum-parallel-tests 2
 dotnet run --project samples/RuntimeConfiguration --configuration Release --no-build
 dotnet run --project samples/ProviderAssessment --configuration Release --no-build
 dotnet run --project tools/SecretKit.Release --configuration Release --no-build -- local-check "$PWD" "$candidate/originals" "$candidate/qualification"
@@ -131,12 +165,12 @@ Put only the four original unsigned `.nupkg` files in a dedicated directory.
 Do not include symbol archives, Azure/management packages, nested directories,
 or other files. Existing seven-package tests still use their own complete
 candidate directory. The source-owned profile currently selects
-`0.1.0-local.20261024.1`; this does not change the global/default version or public
+`0.2.0-integration.3`; this does not change the global/default version or public
 candidate. Build that exact version and pack the four originals into a fresh,
 previously absent directory separately from the default seven-pack originals:
 
 ```bash
-local_version=0.1.0-local.20261024.1
+local_version=0.2.0-integration.3
 dotnet build SecretKit.slnx --configuration Release --no-restore -p:Version="$local_version"
 for package in SecretKit.Core SecretKit.Infisical SecretKit.Extensions.Configuration SecretKit.Extensions.Hosting; do
   dotnet pack "src/$package/$package.csproj" --configuration Release --no-build --no-restore \
@@ -205,7 +239,7 @@ originals from the repository root:
 
 ```bash
 SECRETKIT_LOCAL_CANDIDATE_DIRECTORY="$PWD/artifacts/infisical-originals" \
-SECRETKIT_LOCAL_CANDIDATE_VERSION=0.1.0-local.20261024.1 \
+SECRETKIT_LOCAL_CANDIDATE_VERSION=0.2.0-integration.3 \
 SECRETKIT_LOCAL_QUALIFICATION_DIRECTORY="$PWD/artifacts/infisical-record" \
 SECRETKIT_LOCAL_INSTALL_REPORTS="$PWD/artifacts/infisical-installations" \
 dotnet tests/SecretKit.Package.Tests/bin/Release/net10.0/SecretKit.Package.Tests.dll \
@@ -267,7 +301,7 @@ Git settings. Select the bundle explicitly for final installed app tests:
 
 ```bash
 SECRETKIT_DEMO_CANDIDATE_DIRECTORY="$PWD/artifacts/demo-inputs/originals" \
-SECRETKIT_DEMO_CANDIDATE_VERSION=0.1.0-local.20261024.1 \
+SECRETKIT_DEMO_CANDIDATE_VERSION=0.2.0-integration.3 \
 SECRETKIT_DEMO_STAGED_LOCK_DIRECTORY="$PWD/artifacts/demo-inputs" \
 SECRETKIT_DEMO_SDK=10.0.302 \
 dotnet tests/SecretKit.Demo.Tests/bin/Release/net10.0/SecretKit.Demo.Tests.dll \
@@ -302,7 +336,7 @@ an empty isolated cache; do not substitute the maintainer's absolute-path test
 configuration. Select exact bracketed versions, for example:
 
 ```xml
-<PackageReference Include="SecretKit.Infisical" Version="[0.1.0-local.20261024.1]" />
+<PackageReference Include="SecretKit.Infisical" Version="[0.2.0-integration.3]" />
 ```
 
 The independently optional Configuration/Hosting packages use that same exact

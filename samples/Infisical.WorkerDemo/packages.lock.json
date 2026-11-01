@@ -34,30 +34,31 @@
       },
       "SecretKit.Core": {
         "type": "Direct",
-        "requested": "[0.1.0-local.20261024.1, 0.1.0-local.20261024.1]",
-        "resolved": "0.1.0-local.20261024.1",
-        "contentHash": "OmWuzSqaRzIveyzqq0KZyXJhBWGIhfe5gSsatGjTAC0PwyWa2Xnqvjzlz3dzVZ/dNzHw5UkCdZzXhCD2NKnqgw=="
+        "requested": "[0.2.0-integration.3, 0.2.0-integration.3]",
+        "resolved": "0.2.0-integration.3",
+        "contentHash": "Z0fdmOzb3qy3hnOTuupVVNT86eUzjRe0z5oHQPiPYJuMQC6nngzXMlOpgkFkI3Rjwrl9dY3asWEayLeo7VbvsQ=="
       },
       "SecretKit.Extensions.Hosting": {
         "type": "Direct",
-        "requested": "[0.1.0-local.20261024.1, 0.1.0-local.20261024.1]",
-        "resolved": "0.1.0-local.20261024.1",
-        "contentHash": "V6MhXUgOvK/xhvO6C5Z/doLV/kNSTjXsRuSpr/yzp7jpLlm/3Xw8HYKkDrKGLKPW+rfSJYkJJVzeUXzC4LpaBw==",
+        "requested": "[0.2.0-integration.3, 0.2.0-integration.3]",
+        "resolved": "0.2.0-integration.3",
+        "contentHash": "X2UlbJstUO5RU675vJPfwxVAKrHm8iC6PCDiO+27VERiTlV/uLYmdMCeFlWhMfqzCda57E9VB0ThtX+cXGqjKg==",
         "dependencies": {
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.12",
           "Microsoft.Extensions.Diagnostics.HealthChecks.Abstractions": "10.0.12",
           "Microsoft.Extensions.Hosting.Abstractions": "10.0.12",
-          "SecretKit.Core": "0.1.0-local.20261024.1",
-          "SecretKit.Infisical": "0.1.0-local.20261024.1"
+          "SecretKit.Core": "0.2.0-integration.3",
+          "SecretKit.Infisical": "0.2.0-integration.3"
         }
       },
       "SecretKit.Infisical": {
         "type": "Direct",
-        "requested": "[0.1.0-local.20261024.1, 0.1.0-local.20261024.1]",
-        "resolved": "0.1.0-local.20261024.1",
-        "contentHash": "2JKcVrs+yVSsSip2e7Vfln8qHNeoa9H5DG3DFSnwA6Cq9Av4m7XI0mnjKgy6f5qvYcAVLhRwureDywcKsnWkjg==",
+        "requested": "[0.2.0-integration.3, 0.2.0-integration.3]",
+        "resolved": "0.2.0-integration.3",
+        "contentHash": "CSRt34f1LGoxZyE21eVi0fo9BdD6C+WqxdS2Xf8kSDiPpVliuZr5tf1ml6xHdxWgu8M/8klDpODPKKjVBsr90A==",
         "dependencies": {
           "Refit": "16.3.0",
-          "SecretKit.Core": "0.1.0-local.20261024.1"
+          "SecretKit.Core": "0.2.0-integration.3"
         }
       },
       "Microsoft.Extensions.Configuration": {

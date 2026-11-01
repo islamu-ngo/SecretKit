@@ -4,27 +4,27 @@
     "net10.0": {
       "SecretKit.Core": {
         "type": "Direct",
-        "requested": "[0.1.0-local.20261024.1, 0.1.0-local.20261024.1]",
-        "resolved": "0.1.0-local.20261024.1",
-        "contentHash": "OmWuzSqaRzIveyzqq0KZyXJhBWGIhfe5gSsatGjTAC0PwyWa2Xnqvjzlz3dzVZ/dNzHw5UkCdZzXhCD2NKnqgw=="
+        "requested": "[0.2.0-integration.3, 0.2.0-integration.3]",
+        "resolved": "0.2.0-integration.3",
+        "contentHash": "Z0fdmOzb3qy3hnOTuupVVNT86eUzjRe0z5oHQPiPYJuMQC6nngzXMlOpgkFkI3Rjwrl9dY3asWEayLeo7VbvsQ=="
       },
       "SecretKit.Extensions.Configuration": {
         "type": "Direct",
-        "requested": "[0.1.0-local.20261024.1, 0.1.0-local.20261024.1]",
-        "resolved": "0.1.0-local.20261024.1",
-        "contentHash": "nrZrduL2eCDTrlWfBeN502VK2gwMb5tuUveU2urqOPLgim69W0EjLabQQF1Cl1dve5D1CJt5uNajdVFvNRZwsQ==",
+        "requested": "[0.2.0-integration.3, 0.2.0-integration.3]",
+        "resolved": "0.2.0-integration.3",
+        "contentHash": "Mm27wZGUyE38CZMC4ntIptasjZFvCVejHgt9ai7xL6JzCZh5BTPBkQ+15ZwoELHDAgQAqMHlM9DDcy6XslabVg==",
         "dependencies": {
-          "SecretKit.Core": "0.1.0-local.20261024.1"
+          "SecretKit.Core": "0.2.0-integration.3"
         }
       },
       "SecretKit.Infisical": {
         "type": "Direct",
-        "requested": "[0.1.0-local.20261024.1, 0.1.0-local.20261024.1]",
-        "resolved": "0.1.0-local.20261024.1",
-        "contentHash": "2JKcVrs+yVSsSip2e7Vfln8qHNeoa9H5DG3DFSnwA6Cq9Av4m7XI0mnjKgy6f5qvYcAVLhRwureDywcKsnWkjg==",
+        "requested": "[0.2.0-integration.3, 0.2.0-integration.3]",
+        "resolved": "0.2.0-integration.3",
+        "contentHash": "CSRt34f1LGoxZyE21eVi0fo9BdD6C+WqxdS2Xf8kSDiPpVliuZr5tf1ml6xHdxWgu8M/8klDpODPKKjVBsr90A==",
         "dependencies": {
           "Refit": "16.3.0",
-          "SecretKit.Core": "0.1.0-local.20261024.1"
+          "SecretKit.Core": "0.2.0-integration.3"
         }
       },
       "ReactiveUI.Disposables": {

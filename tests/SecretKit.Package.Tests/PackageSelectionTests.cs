@@ -130,9 +130,10 @@ public sealed class PackageSelectionTests
     }
 
     [Test]
-    [Arguments(false)]
-    [Arguments(true)]
-    public async Task OriginalRestoredArchiveBytesMustMatchSelectedFamily(bool substituted)
+    [Arguments("unchanged")]
+    [Arguments("substituted")]
+    [Arguments("timestamp-only")]
+    public async Task OriginalRestoredArchiveBytesMustMatchSelectedFamily(string change)
     {
         using var fixture = new CandidateFixture();
         fixture.Family(fixture.SelectedDirectory, "0.1.0-preview.2");
@@ -154,11 +155,20 @@ public sealed class PackageSelectionTests
             libraries,
             packageFolders = new Dictionary<string, object> { [cache] = new { } }
         }));
-        if (substituted)
+        if (change != "unchanged")
         {
-            fixture.Archive(fixture.Root, "SecretKit.Core", "0.1.0-preview.2", marker: "stale-different-bytes");
-            File.Copy(Path.Combine(fixture.Root, "SecretKit.Core.0.1.0-preview.2.nupkg"),
-                Path.Combine(cache, "secretkit.core", "0.1.0-preview.2", "secretkit.core.0.1.0-preview.2.nupkg"), true);
+            string restored = Path.Combine(cache, "secretkit.core", "0.1.0-preview.2", "secretkit.core.0.1.0-preview.2.nupkg");
+            if (change == "timestamp-only")
+            {
+                using ZipArchive archive = ZipFile.Open(restored, ZipArchiveMode.Update);
+                foreach (ZipArchiveEntry entry in archive.Entries)
+                    entry.LastWriteTime = new DateTimeOffset(2020, 1, 1, 0, 0, 0, TimeSpan.Zero);
+            }
+            else
+            {
+                fixture.Archive(fixture.Root, "SecretKit.Core", "0.1.0-preview.2", marker: "stale-different-bytes");
+                File.Copy(Path.Combine(fixture.Root, "SecretKit.Core.0.1.0-preview.2.nupkg"), restored, true);
+            }
             await Assert.That(() => candidate.VerifyRestored(assets, cache)).Throws<InvalidOperationException>();
         }
         else candidate.VerifyRestored(assets, cache);

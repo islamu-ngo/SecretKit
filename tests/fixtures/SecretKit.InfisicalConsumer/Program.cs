@@ -25,6 +25,12 @@ if (args is ["runtime-hardening", "offline"])
     return;
 }
 
+if (args is ["integration-quality", "offline"])
+{
+    Environment.ExitCode = await IntegrationQualityWorkflow.RunAsync();
+    return;
+}
+
 if (args is ["runtime-hardening", "native", var report])
 {
     Environment.ExitCode = await RuntimeHardeningWorkflow.RunNativeAsync(report);
@@ -71,28 +77,25 @@ internal static class InstalledWorkflow
         };
         var clock = new Clock();
         var scenarios = new List<object>();
-        using var authentication = new InfisicalUniversalAuthentication(wire.Origin, network, clock);
         using var credential = SecretMaterial.FromText("installed-bootstrap-canary");
-        InfisicalUniversalLoginReceipt loginReceipt = authentication.CreateReceipt();
-        using InfisicalUniversalLogin login = (await wire.Exchange(
-            () => authentication.LoginAsync("installed-client-canary", credential, loginReceipt,
-                cancellationToken: deadline.Token).AsTask(),
+        var openAttempt = new InfisicalRuntimeOpenAttempt();
+        await using InfisicalRuntimeSession runtime = (await wire.Exchange(
+            () => InfisicalRuntimeSession.OpenUniversalAsync(new()
+            {
+                Origin = wire.Origin, ClientId = "installed-client-canary", ProjectId = Project,
+                Lifetime = InfisicalTokenLifetime.Finite, OriginalIssuedAt = clock.GetUtcNow(),
+                RenewBefore = TimeSpan.FromSeconds(10), RequestTimeout = TimeSpan.FromSeconds(5),
+                Network = network, TimeProvider = clock
+            }, credential, openAttempt, deadline.Token).AsTask(),
             "POST", "/api/v1/auth/universal-auth/login", 200,
             TokenBody(Token), null, body =>
                 body.GetProperty("clientSecret").GetString() == "installed-bootstrap-canary")).Value;
-        Require(loginReceipt.Evidence == DispatchEvidence.Applied);
-        InfisicalTokenLifetimeEvidence evidence = login.BindLifetimeEvidence(new()
-        {
-            OriginalIssuedAt = clock.GetUtcNow(), ExpiresAt = login.Token.ExpiresAt!.Value,
-            Lifetime = InfisicalTokenLifetime.Finite, ReportedMaximumTtl = TimeSpan.FromSeconds(120)
-        });
-        await using var session = new InfisicalPeriodicTokenSession(login, evidence,
-            TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(5), network, clock);
-        login.Dispose();
+        Require(openAttempt.LoginReceipt?.Evidence == DispatchEvidence.Applied);
+        InfisicalPeriodicTokenSession session = runtime.TokenSession;
         using (InfisicalAccessToken selected = (await session.GetTokenAsync(deadline.Token)).Value)
             Require(selected.Material.Reveal() == Token);
         Require(session.LastRenewal is null && session.State == InfisicalTokenSessionState.Ready);
-        await using var client = new InfisicalClient(wire.Origin, session, network, clock);
+        InfisicalClient client = runtime.Client;
         SecretReference reference = Reference(client);
         long started = Stopwatch.GetTimestamp();
 
@@ -178,7 +181,6 @@ internal static class InstalledWorkflow
 
 #if CONFIGURATION
         using var requiredLoader = new SecretSnapshotLoader([new SecretSelection("required", client, reference)], clock);
-        using var optionalLoader = new SecretSnapshotLoader([new SecretSelection("optional", client, reference)], clock);
         Require((await wire.Exchange(() => requiredLoader.RefreshAsync(deadline.Token).AsTask(),
             "GET", "/api/v4/secrets/" + Key, 200, SecretBody(), Token)).IsSuccess);
         using SecretSnapshotHandle old = requiredLoader.Acquire();
@@ -188,8 +190,16 @@ internal static class InstalledWorkflow
         IConfigurationRoot configuration = new ConfigurationBuilder().Add(export).Build();
         using var configurationOwner = (IDisposable)configuration;
         Require(configuration["Application:Value"] == Value && !old.RemoteSnapshotGuaranteed);
-        Require((await wire.Exchange(() => optionalLoader.RefreshAsync(deadline.Token).AsTask(),
-            "GET", "/api/v4/secrets/" + Key, 404, "{}", Token)).Status == SecretStatus.Absent);
+        using PreparedSecretConfiguration optionalPrepared = (await wire.Exchange(
+            () => PreparedSecretConfiguration.PrepareAsync(
+                [new("optional", client, reference, SecretPresencePolicy.Optional)], clock,
+                new SecretCollectionOptions(maximumSelections: 1, maximumMaterialBytes: 1024),
+                deadline.Token).AsTask(),
+            "GET", "/api/v4/secrets/" + Key, 404, "{}", Token)).Value;
+        Require(optionalPrepared.ReadOutcome("optional").Status == SecretStatus.Absent);
+        IConfigurationRoot optionalConfiguration = optionalPrepared.ExportAcknowledgingManagedStrings(
+            [new("optional", "Application:Optional")]);
+        Require(optionalConfiguration["Application:Optional"] is null);
         Require((await wire.Exchange(() => requiredLoader.RefreshAsync(deadline.Token).AsTask(),
             "GET", "/api/v4/secrets/" + Key, 200, SecretBody(version: 2, value: "next-generation-canary"),
             Token)).Value == 2);
@@ -232,7 +242,7 @@ internal static class InstalledWorkflow
             session.State == InfisicalTokenSessionState.Stopped);
 #endif
         await replacement.DisposeAsync();
-        await client.DisposeAsync();
+        await runtime.StopAsync();
         // A host transport still works after both SDK clients have shut down.
         using var host = new HttpClient(handler, disposeHandler: false);
         using HttpResponseMessage response = await wire.Exchange(() => host.GetAsync(wire.Origin, deadline.Token),

@@ -209,6 +209,11 @@ public sealed class DemoQualityTests
         await Assert.That(state.GetProperty("coherent").GetBoolean()).IsTrue();
         await Assert.That(state.GetProperty("shutdownHeld").GetBoolean()).IsTrue();
         await Assert.That(state.GetProperty("cancellationPreservedGeneration").GetBoolean()).IsTrue();
+        JsonElement preparation = result.GetProperty("preparation");
+        await Assert.That(preparation.GetProperty("optionalAbsent").GetBoolean()).IsTrue();
+        await Assert.That(preparation.GetProperty("absenceMasksFallback").GetBoolean()).IsTrue();
+        await Assert.That(preparation.GetProperty("ownedCopySurvivesDisposal").GetBoolean()).IsTrue();
+        await Assert.That(preparation.GetProperty("borrowedReaderStillUsable").GetBoolean()).IsTrue();
         // No assertion constrains elapsed time, allocations or GC scheduling.
         var record = new
         {

@@ -3,7 +3,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using SecretKit.Core;
-using SecretKit.Extensions.Hosting;
 using SecretKit.Infisical;
 
 namespace SecretKit.Samples.Infisical.WorkerDemo;
@@ -65,9 +64,21 @@ internal static class WorkerDemoApplication
             AllowLoopbackDevelopmentHttp = connection.DevelopmentHttp,
             ShutdownTimeout = ShutdownTimeout
         };
-        await using var session = new InfisicalPeriodicTokenSession(connection.Origin,
-            connection.ExistingToken, input.LifetimeEvidence, OperationTimeout, ShutdownTimeout, network);
-        await using var client = new InfisicalClient(connection.Origin, session, network);
+        if (connection.ExistingToken is not { } token)
+            return DemoOutput.Write("recovery-required", 4);
+        SecretOutcome<InfisicalRuntimeSession> opened = InfisicalRuntimeSession.CreateFromToken(new()
+        {
+            Origin = connection.Origin,
+            ProjectId = connection.Project,
+            RenewBefore = OperationTimeout,
+            RequestTimeout = ShutdownTimeout,
+            Network = network
+        }, token, input.LifetimeEvidence);
+        if (!opened.IsSuccess)
+            return DemoOutput.Write(Category(opened.Status), 4);
+        await using InfisicalRuntimeSession runtime = opened.Value;
+        InfisicalPeriodicTokenSession session = runtime.TokenSession;
+        InfisicalClient client = runtime.Client;
         var reference = new SecretReference(client.Authority,
             new InfisicalSecretAddress(connection.Project, connection.Environment, connection.Folder, connection.Key));
 
@@ -77,10 +88,9 @@ internal static class WorkerDemoApplication
             return DemoOutput.Write(Category(admission), 4);
         DemoOutput.Write("prepared", 0);
 
-        // Supplied instances remain application-owned, outside the DI container.
-        await using var maintenance = new InfisicalAuthenticationMaintenance(session, ShutdownTimeout);
+        // The application owns the aggregate; the host owns only opt-in maintenance.
         using var worker = new SecretWorker(client, reference, session, controls, maintain, cancellationToken);
-        using IHost host = BuildHost(worker, maintenance, maintain);
+        using IHost host = BuildHost(worker, runtime, maintain);
         int result = await RunHostAsync(host, worker, cancellationToken);
         return result == 0 ? DemoOutput.Write("stopped", 0) : result;
     }
@@ -95,15 +105,16 @@ internal static class WorkerDemoApplication
     }
 
     private static IHost BuildHost(SecretWorker worker,
-        InfisicalAuthenticationMaintenance maintenance, bool maintain)
+        InfisicalRuntimeSession runtime, bool maintain)
     {
         return new HostBuilder()
             .ConfigureLogging(logging => logging.ClearProviders())
             .ConfigureServices(services =>
             {
                 services.Configure<HostOptions>(options => options.ShutdownTimeout = ShutdownTimeout);
+                services.AddInfisicalRuntime(runtime);
                 if (maintain)
-                    services.AddSingleton<IHostedService>(maintenance);
+                    services.AddInfisicalAuthenticationMaintenance(runtime, ShutdownTimeout);
                 services.AddSingleton<IHostedService>(worker);
             })
             .Build();

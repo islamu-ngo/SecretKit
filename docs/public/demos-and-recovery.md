@@ -3,7 +3,7 @@
 > **Audience:** Developers evaluating installed console, worker and web consumers
 > **Status:** Implemented examples; measurements and compatibility observations are dated below
 > **Owner:** SecretKit maintainers
-> **Last verified:** 2026-10-25 against sample paths and current task guides; no demo rerun
+> **Last verified:** 2026-11-01 source contracts and installed-fixture modes; historical app measurements retain the dates and boundaries below
 > **Source anchors:** [Project map](../../PROJECTS.md), [demo tests](../../tests/SecretKit.Demo.Tests/), [local packages](local-packages.md)
 
 **In development, not ready for production.** These are .NET 10 applications,
@@ -86,6 +86,13 @@ maintenance. `renewal-awaiting` is a barrier, not a successful renewal;
 `renewed` requires an acknowledgement. Wait for an operation outcome before
 sending the next work item; the queue holds one waiting operation.
 
+The worker uses `CreateFromToken` with its existing token/lifetime input and
+borrows the runtime through `AddInfisicalRuntime`. It does not invent a bootstrap
+`ClientId` or perform another login. Explicit maintenance registration owns only
+the new helper; accepted work and the host stop before the application disposes
+its aggregate. Console/web token-only clients remain direct where no independently
+admitted lifetime is available.
+
 The web awaits required collection and client validation before binding.
 Optional admission is a separately tracked task with its own 30-second budget;
 it cannot hold the required listener startup hostage. Optional work returns
@@ -161,15 +168,17 @@ the Core/Configuration APIs and sample lifecycle, not the native adapter.
 From the checkout, after the Demo.Tests build lease is available:
 
 ```sh
-export SECRETKIT_DEMO_CANDIDATE_DIRECTORY="$PWD/artifacts/runtime-adoption-hardening/console-red-originals"
-export SECRETKIT_DEMO_CANDIDATE_VERSION=0.1.0-preview.1
-dotnet build tests/SecretKit.Demo.Tests/SecretKit.Demo.Tests.csproj -c Release --no-restore
+export SECRETKIT_DEMO_CANDIDATE_DIRECTORY="$PWD/artifacts/infisical-integration-quality/candidate-3/originals"
+export SECRETKIT_DEMO_CANDIDATE_VERSION=0.2.0-integration.3
+dotnet build tests/SecretKit.Demo.Tests/SecretKit.Demo.Tests.csproj -c Release --no-restore \
+  -p:Version="$SECRETKIT_DEMO_CANDIDATE_VERSION"
 dotnet tests/SecretKit.Demo.Tests/bin/Release/net10.0/SecretKit.Demo.Tests.dll \
   --treenode-filter '/*/*/DemoQualityTests/*' \
   --minimum-expected-tests 3 --zero-tests-policy strict
 ```
 
-This explicitly selects the historical measurement originals, not a final candidate.
+This selects exact current originals. Historical measurements below retain their
+original input/version boundaries and are not requalified by selecting new bytes.
 Every invocation generates fresh source-mapped configuration, cache, outputs
 and locks under `artifacts/runtime-adoption-hardening/quality/`. The generated
 consumer lock is restored again with `--locked-mode` and archive/source/cache
@@ -193,6 +202,11 @@ disposed exactly once. Temporary construction can have three live clients.
 Cancellation is triggered only after the reader's entered event and preserves
 the prior snapshot generation. These owned-resource states, not GC timing or
 numerical performance limits, prove plateau/release.
+
+The same fixed workload now uses prepared ownership and bounded collection.
+Deterministic witnesses additionally check optional absence, null masking and
+independent read-copy lifetime. These are contract assertions, not speed claims;
+compare rows only with matching workload, runtime and archive identities.
 
 All measured time is **controlled in-process local overhead**. There is no HTTP
 transport, TLS, DNS, provider latency, downstream business latency or native

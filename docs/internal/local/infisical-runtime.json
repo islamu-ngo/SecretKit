@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "kind": "local-profile",
   "id": "infisical-runtime",
-  "version": "0.1.0-local.20261024.1",
+  "version": "0.2.0-integration.3",
   "nativeReadPolicy": "Raw IncludeImports=false",
   "packageIds": [
     "SecretKit.Core",

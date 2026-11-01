@@ -373,7 +373,9 @@ public sealed class LocalProfileAdmissionTests
             DirectoryInfo? checkout = new(AppContext.BaseDirectory);
             while (checkout is not null && !File.Exists(Path.Combine(checkout.FullName, "SecretKit.slnx")))
                 checkout = checkout.Parent;
-            File.Copy(Path.Combine(checkout!.FullName, "docs/internal/local/infisical-runtime.json"), profile);
+            LocalProfile template = LocalQualification.ReadProfile(checkout!.FullName);
+            File.WriteAllText(profile, JsonSerializer.Serialize(template with { Version = Binding.Version },
+                Manifest.JsonOptions));
             File.WriteAllText(Path.Combine(Source, "input.cs"), "controlled source");
             File.WriteAllText(Path.Combine(Source, "THIRD-PARTY-NOTICES.md"), "controlled notices");
             foreach (string id in LocalQualification.PackageIds)
@@ -384,6 +386,7 @@ public sealed class LocalProfileAdmissionTests
                     "SecretKit.Infisical" => ["SecretKit.Core", "Refit"],
                     "SecretKit.Extensions.Configuration" => ["SecretKit.Core", "Microsoft.Extensions.Configuration"],
                     _ => ["SecretKit.Core", "SecretKit.Infisical", "Microsoft.Extensions.Hosting.Abstractions",
+                        "Microsoft.Extensions.DependencyInjection.Abstractions",
                         "Microsoft.Extensions.Diagnostics.HealthChecks.Abstractions"]
                 };
                 string entries = string.Concat(dependencies.Select(d =>

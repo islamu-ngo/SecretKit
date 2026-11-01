@@ -21,16 +21,15 @@ public static class BootstrapScenario
             ["password"] = new(reader.Authority, new CompositionAddress(false))
         };
         var watch = Stopwatch.StartNew();
-        using var loader = new SecretSnapshotLoader(required.Select(pair =>
-            new SecretSelection(pair.Key, reader, pair.Value)));
-        if (!(await loader.RefreshAsync()).IsSuccess)
-            throw new InvalidOperationException("Required bootstrap was not prepared.");
-        using SecretSnapshotHandle operation = loader.Acquire();
-        using var export = SecretConfigurationExport.CreateAcknowledgingManagedStrings(operation,
-            [new("username", "Service:Username"), new("password", "Service:Password")]);
+        SecretSelection[] selections = required.Select(pair =>
+            new SecretSelection(pair.Key, reader, pair.Value)).ToArray();
+        var collectionOptions = new SecretCollectionOptions(maximumConcurrency: 2,
+            maximumSelections: 2, maximumMaterialBytes: 1024);
+        using PreparedSecretConfiguration operation =
+            (await PreparedSecretConfiguration.PrepareAsync(selections, options: collectionOptions)).Value;
         // This dedicated configuration root has no local/environment fallback sources.
-        IConfigurationRoot authorityOnly = new ConfigurationBuilder().Add(export).Build();
-        using var configurationLifetime = (IDisposable)authorityOnly;
+        IConfigurationRoot authorityOnly = operation.ExportAcknowledgingManagedStrings(
+            [new("username", "Service:Username"), new("password", "Service:Password")]);
         string username = authorityOnly["Service:Username"]!;
         string password = authorityOnly["Service:Password"]!;
         Func<bool> applicationOwnedConsumer = () => username.Length > 0 && password.Length > 0;
@@ -58,15 +57,14 @@ public static class BootstrapScenario
         await active.ExecuteAsync();
 
         reader.RequiredValue = "offline-next";
-        await loader.RefreshAsync();
-        using SecretSnapshotHandle next = loader.Acquire();
+        using PreparedSecretConfiguration next =
+            (await PreparedSecretConfiguration.PrepareAsync(selections, options: collectionOptions)).Value;
         using SecretRead pinned = operation.Read("password");
         using SecretRead replacement = next.Read("password");
-        if (pinned.Material.Reveal() != password || replacement.Material.Reveal() == password ||
-            next.Generation <= operation.Generation)
+        if (pinned.Material.Reveal() != password || replacement.Material.Reveal() == password)
             throw new InvalidOperationException("Logical operation lost its pinned generation.");
         watch.Stop();
-        Console.WriteLine($"COMPOSITION_SERIAL_REQUIRED_KEYS_2_PASSES_2_OPTIONAL_KEYS_1_CHECKS_2_ENABLES_1_READS_{reader.Reads}_ELAPSED_MS_{watch.Elapsed.TotalMilliseconds:F3}");
+        Console.WriteLine($"COMPOSITION_BOUNDED_REQUIRED_KEYS_2_PASSES_2_OPTIONAL_KEYS_1_CHECKS_2_ENABLES_1_READS_{reader.Reads}_ELAPSED_MS_{watch.Elapsed.TotalMilliseconds:F3}");
         return new(reader.Reads, watch.Elapsed);
     }
 
@@ -91,13 +89,14 @@ public static class BootstrapScenario
             return SecretOutcome<BootstrapCandidate>.Failure(SecretStatus.Invalid);
         }
 
-        using var loader = new SecretSnapshotLoader(bindings.Select(binding =>
-            new SecretSelection(binding.Key, selected, binding.Value)));
-        SecretOutcome<long> collection = await loader.RefreshAsync(cancellationToken);
+        SecretOutcome<PreparedSecretConfiguration> collection =
+            await PreparedSecretConfiguration.PrepareAsync(bindings.Select(binding =>
+                new SecretSelection(binding.Key, selected, binding.Value)),
+                cancellationToken: cancellationToken);
         return collection.IsSuccess
             ? SecretOutcome<BootstrapCandidate>.Success(
-                new BootstrapCandidate(loader.Acquire(), bindings.Select(binding => binding.Key).ToArray()))
-            : SecretOutcome<BootstrapCandidate>.Failure(collection.Status, collection.RetryAfter);
+                new BootstrapCandidate(collection.Value, bindings.Select(binding => binding.Key).ToArray()))
+            : SecretOutcome<BootstrapCandidate>.Failure(collection.Status, collection.RetryAfter, collection.Reason);
     }
 
     private sealed class CompositionAddress(bool optional) : SecretAddress
@@ -146,11 +145,11 @@ public static class BootstrapScenario
 /// <summary>One consumer-owned candidate; local coherence does not promise a remote transaction.</summary>
 public sealed class BootstrapCandidate : IDisposable
 {
-    private readonly SecretSnapshotHandle _generation;
+    private readonly PreparedSecretConfiguration _generation;
     private readonly string[] _keys;
     private bool _disposed;
 
-    internal BootstrapCandidate(SecretSnapshotHandle generation, string[] keys)
+    internal BootstrapCandidate(PreparedSecretConfiguration generation, string[] keys)
     {
         _generation = generation;
         _keys = keys;
