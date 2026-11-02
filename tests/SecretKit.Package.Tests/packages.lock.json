@@ -108,6 +108,12 @@
       },
       "secretkit.release": {
         "type": "Project"
+      },
+      "secretkit.testharness": {
+        "type": "Project",
+        "dependencies": {
+          "SecretKit.Release": "[0.1.0-preview.1, )"
+        }
       }
     }
   }

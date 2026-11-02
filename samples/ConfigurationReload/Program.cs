@@ -2,7 +2,7 @@ using Microsoft.Extensions.Configuration;
 using SecretKit.Core;
 using SecretKit.Extensions.Configuration;
 using SecretKit.Infisical;
-using SecretKit.Testing;
+using SecretKit.Testing.Infisical;
 
 using var reader = new InMemoryInfisicalSecretReader();
 var address = new InfisicalSecretAddress("demo-project", "development", "/", "DemoKey");

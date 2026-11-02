@@ -1,6 +1,6 @@
 using SecretKit.Core;
 using SecretKit.Infisical;
-using SecretKit.Testing;
+using SecretKit.Testing.Infisical;
 
 // Offline fixture: replace this reader with an explicitly authenticated runtime client.
 using var reader = new InMemoryInfisicalSecretReader();

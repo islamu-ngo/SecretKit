@@ -7,9 +7,9 @@ using System.Xml.Linq;
 
 namespace SecretKit.TestFixtures;
 
-internal sealed class LocalPackageCandidate
+public sealed class LocalPackageCandidate
 {
-    internal static readonly string[] PackageIds =
+    public static readonly string[] PackageIds =
     [
         "SecretKit.Core", "SecretKit.Infisical",
         "SecretKit.Extensions.Configuration", "SecretKit.Extensions.Hosting"
@@ -26,13 +26,13 @@ internal sealed class LocalPackageCandidate
         _dependencies = dependencies;
     }
 
-    internal string Directory { get; }
-    internal string Version { get; }
-    internal string ArchivePath(string id) => Path.Combine(Directory, $"{id}.{Version}.nupkg");
+    public string Directory { get; }
+    public string Version { get; }
+    public string ArchivePath(string id) => Path.Combine(Directory, $"{id}.{Version}.nupkg");
 
     // Select four bytes-identical originals from the separately validated seven-pack family.
     // Never install directly from the seven-pack feed or modify its witnesses.
-    internal static LocalPackageCandidate CopyFromFamily(string root, string version, string family, string output)
+    public static LocalPackageCandidate CopyFromFamily(string root, string version, string family, string output)
     {
         PackageCandidate seven = PackageCandidate.Select(root, version, family);
         Require(!System.IO.Directory.Exists(output) && !File.Exists(output));
@@ -48,7 +48,7 @@ internal sealed class LocalPackageCandidate
         return Select(output, version);
     }
 
-    internal static LocalPackageCandidate Select(string directory, string version)
+    public static LocalPackageCandidate Select(string directory, string version)
     {
         Require(version.Length <= 100 && Regex.IsMatch(version,
             @"\A(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?\z",
@@ -105,7 +105,7 @@ internal sealed class LocalPackageCandidate
         return new(full, version, hashes, dependencies);
     }
 
-    internal void CreateBundle(string output)
+    public void CreateBundle(string output)
     {
         SafePath(output);
         Require(Path.IsPathFullyQualified(output) && !System.IO.Directory.Exists(output) && !File.Exists(output));
@@ -143,7 +143,7 @@ internal sealed class LocalPackageCandidate
             """ + "\n");
     }
 
-    internal static LocalPackageCandidate SelectBundle(string bundle, string version)
+    public static LocalPackageCandidate SelectBundle(string bundle, string version)
     {
         SafePath(bundle);
         Require(System.IO.Directory.Exists(bundle) && System.IO.Directory.Exists(Path.Combine(bundle, "feed")));
@@ -162,14 +162,14 @@ internal sealed class LocalPackageCandidate
     private string HashRecord() => string.Concat(PackageIds.Select(id =>
         $"{Convert.ToHexStringLower(_hashes[id])}  feed/{Path.GetFileName(ArchivePath(id))}\n"));
 
-    internal ConsumerInstallation PrepareBundledConsumer(string output, string mode)
+    public ConsumerInstallation PrepareBundledConsumer(string output, string mode)
     {
         string bundle = Path.GetDirectoryName(Directory)!;
         _ = SelectBundle(bundle, Version);
         return PrepareConsumer(output, mode, Path.Combine(bundle, "NuGet.Config"));
     }
 
-    internal ConsumerInstallation PrepareConsumer(string output, string mode) => PrepareConsumer(output, mode, null);
+    public ConsumerInstallation PrepareConsumer(string output, string mode) => PrepareConsumer(output, mode, null);
 
     private ConsumerInstallation PrepareConsumer(string output, string mode, string? bundledConfiguration)
     {
@@ -205,7 +205,7 @@ internal sealed class LocalPackageCandidate
                 new XElement("packageSource", new XAttribute("key", "nuget.org"),
                     new XElement("package", new XAttribute("pattern", "*"))))));
 
-    internal void VerifyRestored(string assetsPath, string cache, string mode)
+    public void VerifyRestored(string assetsPath, string cache, string mode)
     {
         using JsonDocument assets = JsonDocument.Parse(File.ReadAllText(assetsPath));
         JsonElement document = assets.RootElement;
@@ -242,7 +242,7 @@ internal sealed class LocalPackageCandidate
                 Require(reference.Name == "Microsoft.NETCore.App");
     }
 
-    internal static string[] Expected(string mode) => mode switch
+    public static string[] Expected(string mode) => mode switch
     {
         "minimal" => ["SecretKit.Core", "SecretKit.Infisical"],
         "configuration" => ["SecretKit.Core", "SecretKit.Infisical", "SecretKit.Extensions.Configuration"],
@@ -251,7 +251,7 @@ internal sealed class LocalPackageCandidate
         _ => throw Failure()
     };
 
-    internal static bool Excluded(string name) =>
+    public static bool Excluded(string name) =>
         name.StartsWith("Azure.", StringComparison.OrdinalIgnoreCase) ||
         name.StartsWith("Microsoft.Azure", StringComparison.OrdinalIgnoreCase) ||
         name.Contains(".Management", StringComparison.OrdinalIgnoreCase) ||

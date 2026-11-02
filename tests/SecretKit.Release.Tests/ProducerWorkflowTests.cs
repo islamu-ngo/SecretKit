@@ -18,6 +18,21 @@ public sealed class ProducerWorkflowTests
         WorkflowPolicy.ValidateProducer(File.ReadAllBytes(Workflow()));
 
     [Test]
+    public async Task NativeHarnessFileGuardsResolveInTheCheckout()
+    {
+        string workflow = Workflow();
+        JsonNode root = JsonNode.Parse(File.ReadAllText(workflow))!;
+        string script = Step(root["jobs"]!["native"]!, "harness")["run"]!.GetValue<string>();
+        string[] files = script.Split('\n')
+            .Where(line => line.StartsWith("test -f tests/", StringComparison.Ordinal))
+            .Select(line => line.Split(' ')[2]).ToArray();
+        await Assert.That(files.Length).IsGreaterThan(0);
+        string checkout = Path.GetFullPath("../..", Path.GetDirectoryName(workflow)!);
+        foreach (string file in files)
+            await Assert.That(File.Exists(Path.Combine(checkout, file))).IsTrue();
+    }
+
+    [Test]
     [Arguments("dispatch")]
     [Arguments("pr")]
     [Arguments("permission")]

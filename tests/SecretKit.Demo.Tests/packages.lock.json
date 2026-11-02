@@ -105,6 +105,15 @@
           "Microsoft.Testing.Platform.MSBuild": "2.5.1",
           "TUnit.Core": "1.73.19"
         }
+      },
+      "secretkit.release": {
+        "type": "Project"
+      },
+      "secretkit.testharness": {
+        "type": "Project",
+        "dependencies": {
+          "SecretKit.Release": "[0.1.0-preview.1, )"
+        }
       }
     }
   }

@@ -138,6 +138,19 @@
           "SecretKit.Core": "[0.1.0-preview.1, )"
         }
       },
+      "secretkit.testing": {
+        "type": "Project",
+        "dependencies": {
+          "SecretKit.Core": "[0.1.0-preview.1, )"
+        }
+      },
+      "secretkit.testing.infisical": {
+        "type": "Project",
+        "dependencies": {
+          "SecretKit.Infisical": "[0.1.0-preview.1, )",
+          "SecretKit.Testing": "[0.1.0-preview.1, )"
+        }
+      },
       "Refit": {
         "type": "CentralTransitive",
         "requested": "[16.3.0, )",

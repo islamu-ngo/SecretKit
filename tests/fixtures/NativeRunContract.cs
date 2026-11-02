@@ -3,16 +3,16 @@ using System.Text.Json.Serialization;
 
 namespace SecretKit.TestFixtures;
 
-internal enum NativeIdentityRole { Setup, Runtime, Denied, Administrative, Observer }
+public enum NativeIdentityRole { Setup, Runtime, Denied, Administrative, Observer }
 
-internal sealed record NativeProviderScope(string Label, string Provider, string Deployment, string ApiVersion,
+public sealed record NativeProviderScope(string Label, string Provider, string Deployment, string ApiVersion,
     string RuntimeIdentity, string ObserverIdentity, string SetupIdentity, string DeniedIdentity,
     string AdministrativeIdentity);
 
-internal sealed record NativePrerequisiteKey(string Provider, string Scope, string Prerequisite);
-internal sealed record NativePrerequisiteResult(string Provider, string Scope, string Prerequisite, bool Confirmed);
+public sealed record NativePrerequisiteKey(string Provider, string Scope, string Prerequisite);
+public sealed record NativePrerequisiteResult(string Provider, string Scope, string Prerequisite, bool Confirmed);
 
-internal sealed record NativeRunRequest(string Purpose, string Provider, string Kind, string Platform,
+public sealed record NativeRunRequest(string Purpose, string Provider, string Kind, string Platform,
     string Version, string SourceCommit, string ScopeSha256, long RunId, int RunAttempt, long JobId,
     NativeProviderScope[] Scopes, NativeCaseDefinition[] Expected, NativePrerequisiteKey[] Prerequisites)
 {
@@ -56,21 +56,21 @@ internal sealed record NativeRunRequest(string Purpose, string Provider, string 
         value.All(c => char.IsAsciiDigit(c) || c is >= 'a' and <= 'f');
 }
 
-internal sealed record NativeInstallationResult(string OperatingSystem, string Architecture, string Framework);
-internal sealed record NativeRunResult(string Provider, string Kind, string Platform, string Version,
+public sealed record NativeInstallationResult(string OperatingSystem, string Architecture, string Framework);
+public sealed record NativeRunResult(string Provider, string Kind, string Platform, string Version,
     string SourceCommit, string ScopeSha256, DateTimeOffset StartedAt, DateTimeOffset CompletedAt,
     NativeCaseResult[] Cases, NativePrerequisiteResult[] Prerequisites, NativeInstallationResult Installation);
 
-internal sealed record NativeRunEnvelope(NativeRunRequest Request, JsonElement FixtureSettings)
+public sealed record NativeRunEnvelope(NativeRunRequest Request, JsonElement FixtureSettings)
 {
     public override string ToString() => "[NativeRunEnvelope]";
 }
 
-internal static class NativeRunProtocol
+public static class NativeRunProtocol
 {
-    internal const int MaximumBytes = 32 * 1024 * 1024;
+    public const int MaximumBytes = 32 * 1024 * 1024;
     internal const int ResultBytes = 16 * 1024 * 1024;
-    internal static JsonSerializerOptions JsonOptions { get; } = new()
+    public static JsonSerializerOptions JsonOptions { get; } = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
@@ -93,7 +93,7 @@ internal static class NativeRunProtocol
         return buffer.ToArray();
     }
 
-    internal static T Parse<T>(byte[] bytes)
+    public static T Parse<T>(byte[] bytes)
     {
         if (bytes.Length is 0 or > MaximumBytes) throw new InvalidOperationException("native-input-size");
         using JsonDocument document = JsonDocument.Parse(bytes, new JsonDocumentOptions { MaxDepth = 32 });
@@ -101,7 +101,7 @@ internal static class NativeRunProtocol
         return JsonSerializer.Deserialize<T>(bytes, JsonOptions) ?? throw new InvalidOperationException("native-input-contract");
     }
 
-    internal static void RejectDuplicates(JsonElement element)
+    public static void RejectDuplicates(JsonElement element)
     {
         if (element.ValueKind == JsonValueKind.Object)
         {
@@ -117,7 +117,7 @@ internal static class NativeRunProtocol
     }
 }
 
-internal sealed class NativePrerequisiteObservations
+public sealed class NativePrerequisiteObservations
 {
     private readonly Dictionary<NativePrerequisiteKey, bool> observed = [];
     public void Confirm(string provider, string scope, string prerequisite, NativeObservation observation)

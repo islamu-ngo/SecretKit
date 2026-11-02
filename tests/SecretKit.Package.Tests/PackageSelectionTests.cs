@@ -8,7 +8,7 @@ namespace SecretKit.Package.Tests;
 public sealed class PackageSelectionTests
 {
     [Test]
-    public async Task SelectedPackagesContainTheirOwnReadme()
+    public async Task SelectedPackagesContainTheirOwnReadmeLicenseNoticesAndDocumentation()
     {
         string root = Path.GetFullPath("../../../../../", AppContext.BaseDirectory);
         var candidate = PackageCandidate.FromEnvironment(root);
@@ -17,8 +17,19 @@ public sealed class PackageSelectionTests
             using ZipArchive archive = ZipFile.OpenRead(candidate.ArchivePath(package));
             ZipArchiveEntry? entry = archive.GetEntry("README.md");
             await Assert.That(entry is not null).IsTrue();
+            await Assert.That(archive.Entries.Count(item => item.FullName == "README.md")).IsEqualTo(1);
             using var reader = new StreamReader(entry!.Open());
             await Assert.That(await reader.ReadLineAsync()).IsEqualTo($"# {package}");
+            await Assert.That(archive.GetEntry("THIRD-PARTY-NOTICES.md") is { Length: > 0 }).IsTrue();
+            using Stream manifest = archive.GetEntry($"{package}.nuspec")!.Open();
+            XDocument metadata = XDocument.Load(manifest);
+            XNamespace ns = metadata.Root!.Name.Namespace;
+            XElement license = metadata.Root.Element(ns + "metadata")!.Element(ns + "license")!;
+            await Assert.That(license.Attribute("type")!.Value).IsEqualTo("expression");
+            await Assert.That(license.Value).IsEqualTo("MIT");
+            await Assert.That(metadata.Descendants(ns + "dependency")
+                .Any(dependency => (string?)dependency.Attribute("id") == "Microsoft.NET.ILLink.Tasks")).IsFalse();
+            await PackageInstallTests.VerifyXmlDocumentationAsync(archive, package);
         }
     }
 

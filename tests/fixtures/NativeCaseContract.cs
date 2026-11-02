@@ -1,16 +1,16 @@
 namespace SecretKit.TestFixtures;
 
-internal readonly record struct NativeCaseKey(string Provider, string Operation, string Variant, string Scope, string Case)
+public readonly record struct NativeCaseKey(string Provider, string Operation, string Variant, string Scope, string Case)
 {
     public string Identity => string.Join("|", new[] { Provider, Operation, Variant, Scope, Case }.Select(Uri.EscapeDataString));
 }
 
-internal sealed record NativeCaseDefinition(NativeCaseKey Key, string Member);
+public sealed record NativeCaseDefinition(NativeCaseKey Key, string Member);
 
-internal sealed record NativeCaseRegistration(NativeCaseDefinition Definition,
+public sealed record NativeCaseRegistration(NativeCaseDefinition Definition,
     Func<NativeCaseProbe, CancellationToken, ValueTask> Execute);
 
-internal sealed class NativeCaseRegistry
+public sealed class NativeCaseRegistry
 {
     private readonly Dictionary<NativeCaseKey, NativeCaseRegistration> registrations = [];
 
@@ -49,12 +49,12 @@ internal sealed class NativeCaseRegistry
         }
     }
 
-    internal NativeCaseRegistration? Find(NativeCaseKey key) => registrations.GetValueOrDefault(key);
+    public NativeCaseRegistration? Find(NativeCaseKey key) => registrations.GetValueOrDefault(key);
 }
 
-internal enum NativeObservation { Matched, Mismatched, Unavailable }
+public enum NativeObservation { Matched, Mismatched, Unavailable }
 
-internal enum NativeFailure
+public enum NativeFailure
 {
     ContractMismatch,
     MissingInput,
@@ -67,7 +67,7 @@ internal enum NativeFailure
     UnexpectedFailure
 }
 
-internal sealed class NativeCaseProbe
+public sealed class NativeCaseProbe
 {
     private readonly object gate = new();
     private bool contract;
@@ -121,7 +121,7 @@ internal sealed class NativeCaseProbe
         throw new NativeCaseFailureException(code);
     }
 
-    internal NativeCaseResult Result(NativeCaseKey key, string? executionFailure = null)
+    public NativeCaseResult Result(NativeCaseKey key, string? executionFailure = null)
     {
         lock (gate)
         {
@@ -131,7 +131,7 @@ internal sealed class NativeCaseProbe
         }
     }
 
-    internal static string Reason(NativeFailure reason) => reason switch
+    public static string Reason(NativeFailure reason) => reason switch
     {
         NativeFailure.ContractMismatch => "contract-mismatch",
         NativeFailure.MissingInput => "missing-input",
@@ -145,12 +145,12 @@ internal sealed class NativeCaseProbe
     };
 }
 
-internal sealed class NativeCaseFailureException(string reasonCode) : Exception(reasonCode);
+public sealed class NativeCaseFailureException(string reasonCode) : Exception(reasonCode);
 
-internal sealed record NativeCaseResult(string Provider, string Operation, string Variant, string Scope,
+public sealed record NativeCaseResult(string Provider, string Operation, string Variant, string Scope,
     string Case, bool Passed, bool EffectObserved, string ReasonCode);
 
-internal static class NativeCaseRunner
+public static class NativeCaseRunner
 {
     public static async Task<IReadOnlyList<NativeCaseResult>> RunAsync(NativeCaseRegistry registry,
         IReadOnlyList<NativeCaseDefinition> expected, CancellationToken token)

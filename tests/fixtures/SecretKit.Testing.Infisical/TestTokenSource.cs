@@ -1,7 +1,7 @@
 using SecretKit.Core;
 using SecretKit.Infisical;
 
-namespace SecretKit.Testing;
+namespace SecretKit.Testing.Infisical;
 
 /// <summary>Test-only token rotation and expiry without a remote identity or clock delays.</summary>
 public sealed class TestTokenSource(TimeProvider? clock = null) : IInfisicalTokenSource, IDisposable

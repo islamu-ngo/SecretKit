@@ -7,9 +7,9 @@ using System.Xml.Linq;
 
 namespace SecretKit.TestFixtures;
 
-internal sealed class PackageCandidate
+public sealed class PackageCandidate
 {
-    internal static readonly string[] PackageIds =
+    public static readonly string[] PackageIds =
     [
         "SecretKit.Core", "SecretKit.Infisical", "SecretKit.AzureKeyVault",
         "SecretKit.Extensions.Configuration", "SecretKit.Extensions.Hosting",
@@ -25,14 +25,14 @@ internal sealed class PackageCandidate
         _hashes = hashes;
     }
 
-    internal string Directory { get; }
-    internal string Version { get; }
+    public string Directory { get; }
+    public string Version { get; }
 
-    internal static PackageCandidate FromEnvironment(string root) => Select(root,
+    public static PackageCandidate FromEnvironment(string root) => Select(root,
         Environment.GetEnvironmentVariable("SECRETKIT_CANDIDATE_VERSION"),
         Environment.GetEnvironmentVariable("SECRETKIT_CANDIDATE_DIRECTORY"));
 
-    internal static PackageCandidate Select(string root, string? version = null, string? directory = null)
+    public static PackageCandidate Select(string root, string? version = null, string? directory = null)
     {
         try
         {
@@ -81,9 +81,9 @@ internal sealed class PackageCandidate
         }
     }
 
-    internal string ArchivePath(string id) => Path.Combine(Directory, $"{id}.{Version}.nupkg");
+    public string ArchivePath(string id) => Path.Combine(Directory, $"{id}.{Version}.nupkg");
 
-    internal ConsumerInstallation PrepareConsumer(string outputs)
+    public ConsumerInstallation PrepareConsumer(string outputs)
     {
         RequirePath(outputs);
         string packages = Path.Combine(outputs, "packages");
@@ -114,7 +114,7 @@ internal sealed class PackageCandidate
         ]);
     }
 
-    internal void VerifyRestored(string assetsPath, string packagesPath)
+    public void VerifyRestored(string assetsPath, string packagesPath)
     {
         try
         {
@@ -168,5 +168,5 @@ internal sealed class PackageCandidate
         new("Candidate package verification failed; protected diagnostics withheld.");
 }
 
-internal sealed record ConsumerInstallation(string Configuration, string Packages, string Intermediate,
+public sealed record ConsumerInstallation(string Configuration, string Packages, string Intermediate,
     string Binary, string[] Properties);

@@ -3,10 +3,10 @@ using SecretKit.Release;
 
 namespace SecretKit.TestFixtures;
 
-internal sealed record NativeReportContext(ReleaseScope Scope, PackageRecord[] Packages,
+public sealed record NativeReportContext(ReleaseScope Scope, PackageRecord[] Packages,
     string[] ContractGaps);
 
-internal static class NativeObservationReport
+public static class NativeObservationReport
 {
     private static readonly HashSet<string> Reasons = new(StringComparer.Ordinal)
     {
@@ -16,7 +16,7 @@ internal static class NativeObservationReport
         "incomplete-execution"
     };
 
-    internal static MachineReport Create(NativeRunRequest request, NativeReportContext context,
+    public static MachineReport Create(NativeRunRequest request, NativeReportContext context,
         NativeRunResult? result, InstallationObservation installation, DateTimeOffset started,
         DateTimeOffset completed, int processExitCode, string? processFailure = null)
     {
@@ -87,7 +87,7 @@ internal static class NativeObservationReport
             checks, rows.ToArray(), prerequisites, installation);
     }
 
-    internal static async Task WriteAsync(string destination, MachineReport report, CancellationToken token)
+    public static async Task WriteAsync(string destination, MachineReport report, CancellationToken token)
     {
         Require(Path.IsPathFullyQualified(destination), "native-report-path");
         byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(report, Manifest.JsonOptions);
@@ -98,7 +98,7 @@ internal static class NativeObservationReport
 
     private static NativeCaseKey Key(NativeCaseResult result) =>
         new(result.Provider, result.Operation, result.Variant, result.Scope, result.Case);
-    internal static void Require(bool condition, string code)
+    public static void Require(bool condition, string code)
     {
         if (!condition) throw new InvalidOperationException(code);
     }

@@ -11,13 +11,13 @@ using SecretKit.Release;
 
 namespace SecretKit.TestFixtures;
 
-internal sealed record NativeHostInputs(string Purpose, string Provider, string Kind, string Platform,
+public sealed record NativeHostInputs(string Purpose, string Provider, string Kind, string Platform,
     string SourceCommit, long RunId, int RunAttempt, long JobId, NativeProviderScope[] Scopes,
     string[] Operations);
 
-internal static class NativeConsumerLauncher
+public static class NativeConsumerLauncher
 {
-    internal static async Task<MachineReport> RunFromEnvironmentAsync(string root, string provider, CancellationToken token)
+    public static async Task<MachineReport> RunFromEnvironmentAsync(string root, string provider, CancellationToken token)
     {
         bool producer = Environment.GetEnvironmentVariable("SECRETKIT_NATIVE_REQUEST") is null;
         string reportPath = RequiredPath("SECRETKIT_NATIVE_REPORT");
@@ -94,7 +94,7 @@ internal static class NativeConsumerLauncher
         return report;
     }
 
-    internal static NativeHostInputs ProducerInputs(CandidateInputs inputs, ReleaseScope scope,
+    public static NativeHostInputs ProducerInputs(CandidateInputs inputs, ReleaseScope scope,
         string provider, string kind, string platform, long jobId)
     {
         NativeObservationReport.Require(inputs.SchemaVersion == 1 &&
@@ -111,7 +111,7 @@ internal static class NativeConsumerLauncher
             inputs.Manifest.SourceRunId, inputs.RunAttempt, jobId, scopes, []);
     }
 
-    internal static (NativeRunRequest Request, NativeReportContext Context) Prepare(string root,
+    public static (NativeRunRequest Request, NativeReportContext Context) Prepare(string root,
         PackageCandidate candidate, NativeHostInputs inputs)
     {
         NativeObservationReport.Require(inputs.Scopes.Length is > 0 and <= 64 &&
@@ -185,7 +185,7 @@ internal static class NativeConsumerLauncher
         }
     }
 
-    internal static async Task<int> ProcessAsync(string root, string[] arguments, byte[]? stdin, CancellationToken token)
+    public static async Task<int> ProcessAsync(string root, string[] arguments, byte[]? stdin, CancellationToken token)
     {
         using var process = new Process
         {

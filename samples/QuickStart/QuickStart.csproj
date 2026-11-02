@@ -4,6 +4,6 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="../../tests/fixtures/SecretKit.Testing/SecretKit.Testing.csproj" />
+    <ProjectReference Include="../../tests/fixtures/SecretKit.Testing.Infisical/SecretKit.Testing.Infisical.csproj" />
   </ItemGroup>
 </Project>
