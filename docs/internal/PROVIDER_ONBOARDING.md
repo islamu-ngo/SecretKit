@@ -84,7 +84,7 @@ and shutdown with verified lifetime evidence.
 5. Build before fresh pack. The installed consumer must have no project reference,
    use an empty private cache, bind the selected version/source and verify each
    original restored archive hash. Both existing installed-consumer callers share
-   [PackageCandidate](../../tests/fixtures/PackageCandidate.cs).
+   [PackageCandidate](../../tests/fixtures/SecretKit.TestHarness/PackageCandidate.cs).
 6. Run relevant native tests and the repository checks in
    [AGENTS.md](../../AGENTS.md); retain positive discovery and failures. Execute
    both offline examples when their guidance changes.

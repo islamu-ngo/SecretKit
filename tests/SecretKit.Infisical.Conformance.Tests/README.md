@@ -6,6 +6,22 @@ missing entitlement or unavailable service; those conditions are not skipped.
 It does not use a personal account or ambient cloud credentials.
 The current sandbox/process tooling is Linux-only.
 
+The [conformance solution](../../SecretKit.Conformance.slnx) builds both provider
+test hosts and their source dependencies. Its build excludes installed-package
+consumers and candidate-dependent demos. Prepare an exact package candidate
+before running installed-consumer scenarios, and select only the documented
+offline filters or separately authorized live parents; do not run the whole
+solution as a test command.
+
+Tests and supporting fixtures are grouped by capability, including
+[authentication](Authentication/), [native secrets](Secrets/),
+[dynamic credentials](Dynamic/), [rotations](Rotations/),
+[administrative access](Access/), and [projects](Projects/).
+[Infrastructure](Infrastructure/) owns process/environment boundaries, while
+[qualification](Qualification/) owns local candidate checks.
+The source-linked [Admission](Admission/) components retain their independent
+installed-consumer role. Namespaces and test filters are unchanged by this layout.
+
 The test-only process runner subscribes to exit before launch, retains the
 process until its actual exit, bounds captured evidence and discards stderr.
 It clears ambient environment variables and injects only caller-selected values

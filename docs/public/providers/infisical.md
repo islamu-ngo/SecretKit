@@ -4,7 +4,7 @@
 > **Status:** Implemented subsets; in development, not ready for production
 > **Owner:** SecretKit maintainers
 > **Last verified:** 2026-10-25, source inspection at `e6fe6b864420d9c8035395fa6c70a9c4ab1e67dd`; not a new live run
-> **Source anchors:** [client](../../../src/SecretKit.Infisical/InfisicalClient.cs), [addresses](../../../src/SecretKit.Infisical/InfisicalSecretAddress.cs), [tests](../../../tests/SecretKit.Infisical.Tests/)
+> **Source anchors:** [client](../../../src/SecretKit.Infisical/Secrets/InfisicalClient.cs), [addresses](../../../src/SecretKit.Infisical/Secrets/InfisicalSecretAddress.cs), [tests](../../../tests/SecretKit.Infisical.Tests/)
 
 Use `InfisicalClient` for common secret reads, direct-folder inventory, selected
 shared-secret writes and the native organization/import operations below. Use
@@ -82,7 +82,7 @@ resource ID and version. It survives client replacement but distinguishes
 deletion/recreation even when both objects have version 1. It does not make
 client-bound references interchangeable, provide CAS, or describe import/reference
 dependency changes. Source:
-[revision](../../../src/SecretKit.Infisical/InfisicalSecretRevision.cs);
+[revision](../../../src/SecretKit.Infisical/Secrets/InfisicalSecretRevision.cs);
 evidence: [InfisicalRevisionTests](../../../tests/SecretKit.Infisical.Tests/InfisicalRevisionTests.cs).
 
 `InspectAsync(new InfisicalInventoryScope(client.Authority, projectId,
@@ -99,14 +99,14 @@ unversioned Raw address with imports disabled. They use the client's selected
 token source; they do not require the separate native administration authority.
 Input material remains caller-owned and is copied before token/network awaits.
 
-Create a `MutationReceipt(target)` **before** calling. Retain it even if the call
+Call `client.CreateReceipt(target)` **before** dispatch. Retain it even if the call
 throws cancellation. A valid applied response returns
 `InfisicalStaticChange.Disposition = Applied`; an approval response returns
 `SubmittedForApproval`, no applied version, and receipt evidence `Pending`.
 The latter is not delivery. A lost response after possible dispatch is `Unknown`
 with `PossiblyDispatched`; never blindly retry it. No compare-and-swap or
 application activation is performed. See
-[implementation](../../../src/SecretKit.Infisical/InfisicalStaticChanges.cs) and
+[implementation](../../../src/SecretKit.Infisical/Secrets/InfisicalStaticChanges.cs) and
 [mutation tests](../../../tests/SecretKit.Infisical.Tests/InfisicalMutationTests.cs).
 
 Applied static responses require returned key, workspace, environment and a
@@ -138,14 +138,14 @@ Folder restriction requires an environment.
 
 | Family / source owner | Actual methods | Address and important constraints |
 | --- | --- | --- |
-| [Environments](../../../src/SecretKit.Infisical/Organization.cs) | `GetEnvironmentAsync`, `CreateEnvironmentAsync`, `UpdateEnvironmentAsync`, `DeleteEnvironmentAsync`, `RestoreEnvironmentAsync` | `InfisicalEnvironmentAddress(projectId, selector, selection)`, ID or slug; creation requires slug selection. Hard delete is explicit. |
-| [Tags and folders](../../../src/SecretKit.Infisical/Organization.cs) | `ListTagsAsync`, `GetTagAsync`, `CreateTagAsync`, `UpdateTagAsync`, `DeleteTagAsync`; `ListFoldersAsync`, `GetFolderAsync`, `CreateFolderAsync`, `UpdateFolderAsync`, `DeleteFolderAsync`, `UpdateFoldersAsync`, `MoveFolderAsync` | `InfisicalTagAddress`; `InfisicalFolderAddress(projectId, environment, environmentId, parentPath, id, name)` requires known environment ID. Get/update require folder ID; create requires name. Moves must be covered at both scopes; batches share one project/environment/parent. |
-| [Imports](../../../src/SecretKit.Infisical/Imports.cs) | `ListImportsAsync`, `GetImportAsync`, `CreateImportAsync`, `UpdateImportAsync`, `DeleteImportAsync`, `ReadImportedSecretsAsync` | `InfisicalImportAddress(projectId, environment, folder, folderId, importId)` requires known destination folder ID. `InfisicalImportSource` selects environment/path and optional source project. Dispose imported material results. |
-| [Bulk secrets](../../../src/SecretKit.Infisical/NativeBulk.cs) | `CreateSecretsAsync`, `UpdateSecretsAsync`, `DeleteSecretsAsync` | `InfisicalBulkAddress` plus `InfisicalBulkSecret` rows. At most 128 inputs, no duplicate correlation. Create/update are shared-secret subsets; delete also supports personal. `Ignore`, `Upsert`, `FailOnNotFound` are update modes, not atomic preconditions. |
-| [Validation](../../../src/SecretKit.Infisical/ValidationPolicies.cs) | `ListValidationRulesAsync`, `GetValidationRuleAsync`, `CreateValidationRuleAsync`, `UpdateValidationRuleAsync`, `DeleteValidationRuleAsync` | `InfisicalValidationAddress` selects static, dynamic or rotation policy. `InfisicalValidationInput` preserves omission versus supported explicit clears; regexes execute at the provider, not locally. |
-| [Dynamic definitions and leases](../../../src/SecretKit.Infisical/InfisicalDynamicClient.cs) | `Definition`, `ListDefinitionsAsync`, `InspectDefinitionAsync`, `CreateDefinitionAsync`, `UpdateDefinitionPolicyAsync`, `UpdateDefinitionAsync`, `DeleteDefinitionAsync`; `ListLeasesAsync`, `InspectLeaseAsync`, `AcquireDatabaseAsync`, `RenewAsync`, `RenewLeaseAsync`, `RevokeAsync`, `RevokeLeaseAsync` | Separate `InfisicalDynamicClient`; typed profile/definition/lease targets and `InfisicalDynamicMutationReceipt`, not Core mutation receipts. |
-| [Rotation execution](../../../src/SecretKit.Infisical/InfisicalRotationClient.cs) | `ListAsync`, `GetAsync`, `RotateSecretsAsync`, `SetAutomaticRotationAsync` | Separate `InfisicalRotationClient`; `InfisicalRotationScope`/`InfisicalRotationAddress` and `InfisicalRotationReceipt`. Configuration CRUD belongs to management. |
-| [Authentication](../../../src/SecretKit.Infisical/InfisicalUniversalAuthentication.cs) and [proof exchanges](../../../src/SecretKit.Infisical/InfisicalProofAuthentication.cs) | `InfisicalUniversalAuthentication.LoginAsync`; `InfisicalProofAuthentication.LoginAsync`, `CreateRevocationReceipt`, `RevokeTokenAsync`; `InfisicalPeriodicTokenSession.GetTokenAsync`, `RenewAsync`, `StopAsync` | Host-supplied credentials/proofs; no issuer discovery or fallback identity. See [authentication guide](../authentication-and-hosting.md) for construction, receipts and lifetime evidence. |
+| [Environments](../../../src/SecretKit.Infisical/Organization/Organization.cs) | `GetEnvironmentAsync`, `CreateEnvironmentAsync`, `UpdateEnvironmentAsync`, `DeleteEnvironmentAsync`, `RestoreEnvironmentAsync` | `InfisicalEnvironmentAddress(projectId, selector, selection)`, ID or slug; creation requires slug selection. Hard delete is explicit. |
+| [Tags and folders](../../../src/SecretKit.Infisical/Organization/Organization.cs) | `ListTagsAsync`, `GetTagAsync`, `CreateTagAsync`, `UpdateTagAsync`, `DeleteTagAsync`; `ListFoldersAsync`, `GetFolderAsync`, `CreateFolderAsync`, `UpdateFolderAsync`, `DeleteFolderAsync`, `UpdateFoldersAsync`, `MoveFolderAsync` | `InfisicalTagAddress`; `InfisicalFolderAddress(projectId, environment, environmentId, parentPath, id, name)` requires known environment ID. Get/update require folder ID; create requires name. Moves must be covered at both scopes; batches share one project/environment/parent. |
+| [Imports](../../../src/SecretKit.Infisical/Imports/Imports.cs) | `ListImportsAsync`, `GetImportAsync`, `CreateImportAsync`, `UpdateImportAsync`, `DeleteImportAsync`, `ReadImportedSecretsAsync` | `InfisicalImportAddress(projectId, environment, folder, folderId, importId)` requires known destination folder ID. `InfisicalImportSource` selects environment/path and optional source project. Dispose imported material results. |
+| [Bulk secrets](../../../src/SecretKit.Infisical/Secrets/NativeBulk.cs) | `CreateSecretsAsync`, `UpdateSecretsAsync`, `DeleteSecretsAsync` | `InfisicalBulkAddress` plus `InfisicalBulkSecret` rows. At most 128 inputs, no duplicate correlation. Create/update are shared-secret subsets; delete also supports personal. `Ignore`, `Upsert`, `FailOnNotFound` are update modes, not atomic preconditions. |
+| [Validation](../../../src/SecretKit.Infisical/Organization/ValidationPolicies.cs) | `ListValidationRulesAsync`, `GetValidationRuleAsync`, `CreateValidationRuleAsync`, `UpdateValidationRuleAsync`, `DeleteValidationRuleAsync` | `InfisicalValidationAddress` selects static, dynamic or rotation policy. `InfisicalValidationInput` preserves omission versus supported explicit clears; regexes execute at the provider, not locally. |
+| [Dynamic definitions and leases](../../../src/SecretKit.Infisical/Dynamic/InfisicalDynamicClient.cs) | `Definition`, `ListDefinitionsAsync`, `InspectDefinitionAsync`, `CreateDefinitionAsync`, `UpdateDefinitionPolicyAsync`, `UpdateDefinitionAsync`, `DeleteDefinitionAsync`; `ListLeasesAsync`, `InspectLeaseAsync`, `AcquireDatabaseAsync`, `RenewAsync`, `RenewLeaseAsync`, `RevokeAsync`, `RevokeLeaseAsync` | Separate `InfisicalDynamicClient`; typed profile/definition/lease targets and `InfisicalDynamicMutationReceipt`, not Core mutation receipts. |
+| [Rotation execution](../../../src/SecretKit.Infisical/Rotation/InfisicalRotationClient.cs) | `ListAsync`, `GetAsync`, `RotateSecretsAsync`, `SetAutomaticRotationAsync` | Separate `InfisicalRotationClient`; `InfisicalRotationScope`/`InfisicalRotationAddress` and `InfisicalRotationReceipt`. Configuration CRUD belongs to management. |
+| [Authentication](../../../src/SecretKit.Infisical/Authentication/InfisicalUniversalAuthentication.cs) and [proof exchanges](../../../src/SecretKit.Infisical/Authentication/InfisicalProofAuthentication.cs) | `InfisicalUniversalAuthentication.LoginAsync`; `InfisicalProofAuthentication.LoginAsync`, `CreateRevocationReceipt`, `RevokeTokenAsync`; `InfisicalPeriodicTokenSession.GetTokenAsync`, `RenewAsync`, `StopAsync` | Host-supplied credentials/proofs; no issuer discovery or fallback identity. See [authentication guide](../authentication-and-hosting.md) for construction, receipts and lifetime evidence. |
 
 Native lists carry `IsComplete`; typical organization/import/validation lists
 accept 1..1,000 retained items. Imported group boundaries and order are preserved;
@@ -164,7 +164,7 @@ and intended delivery retain independent statuses.
 success metadata does not establish a destination approval/merge contract.
 Provider-side expansion, import precedence and grants remain server-owned;
 SecretKit does not recursively resolve references or emulate permissions.
-See [effect implementation](../../../src/SecretKit.Infisical/ImportEffectObservation.cs)
+See [effect implementation](../../../src/SecretKit.Infisical/Imports/ImportEffectObservation.cs)
 and [ImportEffectTests](../../../tests/SecretKit.Infisical.Tests/ImportEffectTests.cs).
 
 ### Dynamic definitions are broader than credential acquisition
@@ -183,8 +183,8 @@ properties per object or elements per nested array, depth 32, property names of
 rejected. `network.MaximumResponseBytes` bounds both response and request bytes.
 Typed create/update profiles retain their own input validation.
 
-Typed [definition profiles](../../../src/SecretKit.Infisical/NativeDynamicProfiles.cs)
-and [profile options](../../../src/SecretKit.Infisical/NativeDynamicProfileOptions.cs)
+Typed [definition profiles](../../../src/SecretKit.Infisical/Dynamic/Profiles/)
+and [profile options](../../../src/SecretKit.Infisical/Dynamic/Profiles/NativeDynamicProfileOptions.cs)
 cover the `InfisicalDynamicProvider` choices, including SQL, cloud, directory,
 messaging and other native profiles. This is input-schema support, not permission
 or downstream qualification for every profile. `AcquireDatabaseAsync` accepts
@@ -235,7 +235,7 @@ cancellation supplies the operation deadline through token acquisition, send and
 body reading. There is no implicit read timeout/retry. Host DNS, proxy and
 instrumentation remain host responsibilities.
 
-[Contract availability](../../../src/SecretKit.Infisical/InfisicalContractAvailability.cs)
+[Contract availability](../../../src/SecretKit.Infisical/Internal/InfisicalContractAvailability.cs)
 explicitly reports approval administration, access requests, point-in-time
 recovery, insights and webhook administration as `ContractNotEstablished`.
 Other gaps include complete non-SQL credential result schemas, import-specific

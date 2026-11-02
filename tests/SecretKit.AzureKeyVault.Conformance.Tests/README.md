@@ -5,6 +5,20 @@ bound native-family execution. Passing controlled tests does not qualify an
 Azure deployment. The source-linked installed consumer reuses the Admission
 components against selected original SecretKit packages.
 
+The [conformance solution](../../SecretKit.Conformance.slnx) builds both provider
+test hosts and their source dependencies. Installed-package consumers and
+candidate-dependent demos remain a separate stage requiring exact prepared
+packages. Build the solution, then run an explicit documented offline filter
+or a separately authorized live parent; do not blanket-run its tests.
+
+Controlled tests are grouped into [vaults](Vaults/), [roles](Roles/),
+[private networking](PrivateNetworking/), [notifications](Notifications/),
+[audit](Audit/), and shared [management behavior](Management/).
+[Infrastructure](Infrastructure/) and [contracts](Contracts/) cover host inputs
+and provider-family boundaries. Existing [Admission](Admission/) source links
+and [Hosting](Hosting/) ownership stay separate. Namespaces and test filters
+remain unchanged.
+
 ## Notification delivery authentication
 
 `Admission/Management/NotificationDeliveryAuthentication.cs` validates an

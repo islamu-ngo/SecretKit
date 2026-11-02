@@ -235,7 +235,7 @@ guarantee for host-controlled networking.
 
 Bind every native address to the client's `SecretAuthority` through a
 `SecretReference`. Native mutations also require an independently supplied
-`InfisicalNativeAuthority` and a new, target-bound `MutationReceipt`. The authority
+`InfisicalNativeAuthority` and a receipt from `client.CreateReceipt(target)`. The authority
 selects host-owned administrative credentials and a project, optionally restricted
 to one environment and folder. It does not grant server permissions. Native writes
 never substitute the client's runtime token source. Reads use that explicitly
@@ -414,10 +414,17 @@ Official factual sources consulted in addition to the independently authored reg
 Refit request construction follows its
 [documented typed request-builder contract](https://reactiveui.github.io/refit/#obtaining-the-built-request-without-sending).
 The parent owns the central version/package reference, lock restore, provenance and
-original common-read/session transport migration. Native transport seams are
-`NativeWire.cs`, `NativeWireBindings.cs` and the optional native-request/private
-parser hooks in `InfisicalClient.cs`; the public modules keep their protected
-inputs and response observations.
+original common-read/session transport migration. Native wire declarations live
+beside authentication, secrets, imports and organization capabilities.
+`Internal/NativeWireBindings.cs` and the private parser hooks in
+`Secrets/InfisicalClient.cs` retain the controlled dispatch boundary; public
+modules keep their protected inputs and response observations. Dynamic profile
+implementations are grouped under `Dynamic/Profiles/` by responsibility.
+
+Request construction uses Refit's generated-only binding. Mutation APIs that
+still serialize reflection-based payloads declare `RequiresUnreferencedCode`;
+their callers need an untrimmed runtime. Analyzer-enabled builds do not establish
+trimming or Native AOT support for this package or its dependencies.
 
 Only public interface facts were used; implementation and tests were independently
 authored. No Infisical vendor source or implementation structure was reused.

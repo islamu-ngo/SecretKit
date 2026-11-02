@@ -4,7 +4,7 @@
 > **Status:** Implemented/offline-tested subset; in development, not ready for production
 > **Owner:** SecretKit maintainers
 > **Last verified:** 2026-10-25, source inspection at `e6fe6b864420d9c8035395fa6c70a9c4ab1e67dd`; Azure live behavior unverified
-> **Source anchors:** [client](../../../src/SecretKit.AzureKeyVault/AzureKeyVaultClient.cs), [native lifecycle](../../../src/SecretKit.AzureKeyVault/AzureNativeLifecycle.cs), [tests](../../../tests/SecretKit.AzureKeyVault.Tests/)
+> **Source anchors:** [client](../../../src/SecretKit.AzureKeyVault/Secrets/AzureKeyVaultClient.cs), [native lifecycle](../../../src/SecretKit.AzureKeyVault/Lifecycle/AzureNativeLifecycle.cs), [tests](../../../tests/SecretKit.AzureKeyVault.Tests/)
 
 `AzureKeyVaultClient` owns secret **data-plane** reads, writes and lifecycle.
 Vault provisioning, policies, role assignments and notification configuration
@@ -71,9 +71,9 @@ Every method below is on `AzureKeyVaultClient`.
 | Purge | `PurgeDeletedSecretAsync(target, receipt, ...)` | Unversioned; native acknowledgement, with Azure retention/purge protection authoritative. |
 | Backup/restore | `BackupSecretAsync(target, ...)`, `RestoreSecretBackupAsync(AzureRestoreSecretRequest, receipt, ...)` | Unversioned all-version opaque artifact; restore requires expected target and receipt. |
 
-Sources: [write request/result](../../../src/SecretKit.AzureKeyVault/AzureSetSecret.cs),
-[address/scope](../../../src/SecretKit.AzureKeyVault/AzureSecretAddress.cs),
-[native inputs/results](../../../src/SecretKit.AzureKeyVault/AzureNativeModels.cs).
+Sources: [write request/result](../../../src/SecretKit.AzureKeyVault/Secrets/AzureSetSecret.cs),
+[address/scope](../../../src/SecretKit.AzureKeyVault/Secrets/AzureSecretAddress.cs),
+[native inputs/results](../../../src/SecretKit.AzureKeyVault/Lifecycle/AzureNativeModels.cs).
 
 ### Make one selected write
 
@@ -93,7 +93,7 @@ static ValueTask<SecretOutcome<AzureSetSecretResult>> SetAsync(
 {
     var target = new SecretReference(client.Authority,
         new AzureSecretAddress(name));
-    receipt = new MutationReceipt(target);
+    receipt = client.CreateReceipt(target);
     var request = new AzureSetSecretRequest(target, material);
     return client.SetSecretAsync(request, receipt, deadline);
 }

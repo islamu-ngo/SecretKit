@@ -37,8 +37,11 @@ string, and downstream copies are outside the SDK buffer lifetime. No managed
 API promises process-wide erasure.
 
 Metadata inventory is not value access or a point-in-time remote snapshot.
-`MutationReceipt` records dispatch evidence; retry timing and transient status
-alone never authorize replay after a possible remote effect.
+`MutationReceipt` is read-only dispatch evidence created by its owning adapter.
+Adapter authors keep a private `MutationReceiptIssuer`; another issuer cannot
+dispatch or settle its receipts. This is local misuse protection, not provider
+authorization or a sandbox against hostile host-process code. Retry timing and
+transient status alone never authorize replay after a possible remote effect.
 
 See the [Core guide](../../docs/public/core-api.md),
 [security and ownership](../../docs/public/security-and-ownership.md), and

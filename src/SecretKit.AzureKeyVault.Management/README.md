@@ -180,5 +180,5 @@ dotnet restore tests/SecretKit.AzureKeyVault.Management.Tests/SecretKit.AzureKey
 dotnet build tests/SecretKit.AzureKeyVault.Management.Tests/SecretKit.AzureKeyVault.Management.Tests.csproj --configuration Release --no-restore
 dotnet run --project tests/SecretKit.AzureKeyVault.Management.Tests/SecretKit.AzureKeyVault.Management.Tests.csproj --configuration Release --no-build -- --minimum-expected-tests 79
 dotnet format tests/SecretKit.AzureKeyVault.Management.Tests/SecretKit.AzureKeyVault.Management.Tests.csproj --verify-no-changes --include src/SecretKit.AzureKeyVault.Management tests/SecretKit.AzureKeyVault.Management.Tests
-dotnet pack src/SecretKit.AzureKeyVault.Management/SecretKit.AzureKeyVault.Management.csproj --configuration Release --no-build --no-restore --output src/SecretKit.AzureKeyVault.Management/artifacts/packages
+dotnet pack src/SecretKit.AzureKeyVault.Management/SecretKit.AzureKeyVault.Management.csproj --configuration Release --no-build --no-restore --output artifacts/packages
 ```

@@ -6,7 +6,9 @@
 > Scope Reviewed: 2026-10-23; current implementation evidence is in current-preview
 > Source Anchors: [internal overview](README.md), [historical research](RESEARCH_EVIDENCE.md), [runtime contracts](RUNTIME_CONTRACTS.md), [ADR-001](adr/ADR-001-capability-aware-secret-sdk.md)
 
-This proposal separates a proven portable read contract from provider-native functionality, configuration export and optional host lifecycle.
+The implemented package boundaries separate portable reads from provider-native
+functionality, configuration export and optional host lifecycle. Design ambitions
+later in this document do not establish live provider qualification.
 
 The [Infisical local readiness contract](INFISICAL_LOCAL_READINESS.md) now owns
 immediate delivery requirements. Seven packages exist, but the planned local
@@ -30,21 +32,28 @@ The [runtime adoption contract](RUNTIME_ADOPTION_SECURITY.md) and
 installed console/worker/web consumers. They do not move application activation
 or ASP.NET dependencies into shipped libraries.
 
-| Proposed package | Responsibility | Proposed dependency boundary |
+| Package | Responsibility | Dependency boundary |
 | --- | --- | --- |
 | `SecretKit.Core` | Common reads and metadata inventory; authority-bound references, material and outcomes | BCL only; no external runtime dependencies |
-| `SecretKit.Infisical` | Secret access, reference semantics and admitted native secret lifecycle/authentication features | Core; approved provider SDK or justified managed transport |
+| `SecretKit.Infisical` | Secret access, reference semantics and admitted native secret lifecycle/authentication features | Core; typed Refit/HttpClient transport |
 | `SecretKit.Infisical.Management` | Selected identity/project/access/governance administration, native SQL rotation configuration and existing gateway/proxy administration; no third-party connection/sync catalog | Core; Infisical adapter where needed; approved dependencies only |
 | `SecretKit.AzureKeyVault` | Key Vault secret data plane and admitted native version/lifecycle features | Core; approved `Azure.Security.KeyVault.Secrets` and Azure.Core dependencies |
-| `SecretKit.AzureKeyVault.Management` | Scoped vault administration, RBAC/access policies, diagnostics and authorized audit access | Core; approved Azure management/monitoring SDKs; data adapter only where needed |
+| `SecretKit.AzureKeyVault.Management` | Scoped vault administration, RBAC/access policies, diagnostics and authorized audit access | Core; approved Azure management/monitoring SDKs |
 | `SecretKit.Extensions.Configuration` | Explicit key mapping and string export through .NET configuration | Core; narrow Microsoft.Extensions.Configuration dependencies |
-| `SecretKit.Extensions.Hosting` | Optional DI, explicitly started maintenance, health and lifecycle composition | Core; narrow Microsoft.Extensions.Hosting/DI/health dependencies |
+| `SecretKit.Extensions.Hosting` | Optional DI, explicitly started maintenance, health and lifecycle composition | Core and Infisical; narrow Microsoft.Extensions.Hosting/DI/health dependencies |
 
-Both extension packages would remain independently installable. Configuration export would not require a host, and host authentication maintenance would not require configuration export. No unconditional dependency between them would fuse these behaviors. Composition could use both in a sample or adopter application without adding an eighth facade package.
+Both extension packages are independently installable. Configuration export does
+not require a host, and hosting does not require Configuration. Applications can
+compose both without an eighth facade package.
 
-Core would not reference a provider SDK, Microsoft.Extensions, ASP.NET shared framework, Event, Configurator, database drivers, persistence layer or UI. All packages would initially target `net10.0`. Native AOT and trimming support would remain unverified, not advertised based on framework choice. Additional targets would require explicit demand and conformance, not speculative compatibility layers.
+Core uses only the BCL. All packages target `net10.0` with the pinned SDK and C# 14.
+Trim diagnostics do not certify trimming or Native AOT compatibility; both remain
+unverified. Additional targets require explicit demand and conformance.
 
-Separating management packages would keep administrative dependencies out of ordinary runtime readers. It would not confer, revoke or prove authorization: credentials and remote provider policy would still govern each operation. A runtime identity could be overprivileged despite its package selection, and a management identity might not be allowed to read material.
+Management packages keep administrative dependencies out of ordinary runtime
+readers. Package selection does not confer or prove authorization: credentials
+and provider policy govern each operation. A runtime identity can be overprivileged,
+and a management identity may lack permission to read material.
 
 ### Database credential boundary
 
@@ -81,6 +90,21 @@ A reference would bind an opaque provider-instance identity to an independently 
 
 ## Typed Native Features Are First-Class
 
+Mutation evidence is read-only to callers. Each adapter owns a private
+`MutationReceiptIssuer`, validates exact reference ownership and issues receipts
+before dispatch. The issuer synchronizes transitions and rejects foreign
+receipts. Management wrappers additionally preserve native request/grant scope.
+Azure's consumed attempt reservation and Infisical's prepared pre-dispatch retry
+policy are distinct from dispatch evidence. Unknown remote effects never permit
+automatic replay; these local capabilities do not attest remote authorization.
+
+Management factories bind typed request construction directly to the existing
+Refit interfaces. Transport-owned generated clients construct one message without
+sending; an independent method/origin/path/query guard checks it before credentials
+are attached. Owned body buffers, response parsing and partial-result cleanup
+remain at their existing boundaries. Unknown SQL password requirements, including
+nested required fields, fail closed for all three SQL providers.
+
 The proposed provider packages would expose narrowly typed, independently designed native modules. An Azure backup artifact could remain an opaque, sensitive provider-bound artifact. Infisical dynamic issuance would retain definition, acquisition, renewal and revocation distinctions. Retained SQL rotation configuration stays typed; removing the third-party connection/sync catalog does not introduce an arbitrary JSON bag or raw-operation escape hatch.
 
 Core would not absorb those models. Nor would public provider contracts simply expose vendor DTOs, exceptions, arbitrary HTTP requests or `ExecuteRaw`. Native operations would remain subject to the same ownership, receipt, cancellation and diagnostic contracts as portable reads.
@@ -101,6 +125,14 @@ Infisical uses independently handwritten typed Refit/HttpClient contracts.
 Azure uses its selected official SDK dependencies. This workstream preserves
 those existing transport choices rather than reopening SDK selection or adding
 a second Infisical stack.
+
+`InfisicalTransportBinding` owns the internal fixed-origin, private-trust,
+request-only builder and borrowed-resource policy shared by runtime and
+management. The single shipped-package friendship from Infisical to
+Infisical.Management intentionally permits that reuse without exposing a public
+raw send surface. Test friendships are separate. CLR friendship exposes all
+internals, so additional member usage requires review; it is not a member-level
+security boundary. Public adapter tests cover TLS policy and host ownership.
 
 Historical Event self-hosted/FFI observations do not establish failure of every
 vendor SDK deployment. Local readiness instead qualifies the existing managed

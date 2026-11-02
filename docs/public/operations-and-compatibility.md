@@ -61,10 +61,10 @@ and pooling policy. Runtime EventSource, profilers and host instrumentation are
 not covered by SDK diagnostic controls.
 
 Source/evidence:
-[Infisical client](../../src/SecretKit.Infisical/InfisicalClient.cs),
+[Infisical client](../../src/SecretKit.Infisical/Secrets/InfisicalClient.cs),
 [transport ownership tests](../../tests/SecretKit.Infisical.Tests/InfisicalTransportOwnershipTests.cs),
-[Azure client](../../src/SecretKit.AzureKeyVault/AzureKeyVaultClient.cs),
-[Azure controlled transport](../../src/SecretKit.AzureKeyVault.Management/ControlledTransport.cs).
+[Azure client](../../src/SecretKit.AzureKeyVault/Secrets/AzureKeyVaultClient.cs),
+[Azure controlled transport](../../src/SecretKit.AzureKeyVault.Management/Internal/ControlledTransport.cs).
 Deployment proxy/private-CA/DNS acceptance is separate from controlled tests.
 
 ## Deadlines, payloads and incomplete collections

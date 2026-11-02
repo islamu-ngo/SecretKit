@@ -4,7 +4,7 @@
 > **Status:** Diagnostic guide for implemented preview contracts
 > **Owner:** SecretKit maintainers
 > **Last verified:** 2026-10-25 against Core, provider and composition source
-> **Source anchors:** [outcomes](../../src/SecretKit.Core/SecretOutcome.cs), [receipts](../../src/SecretKit.Core/MutationReceipt.cs), [demo recovery](demos-and-recovery.md)
+> **Source anchors:** [outcomes](../../src/SecretKit.Core/Outcomes/SecretOutcome.cs), [receipts](../../src/SecretKit.Core/Receipts/MutationReceipt.cs), [demo recovery](demos-and-recovery.md)
 
 Start with the operation's `Status`, whether a mutation may have been dispatched,
 and which identity was selected. Do not log secret values or raw provider bodies

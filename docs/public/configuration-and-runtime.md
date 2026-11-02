@@ -4,7 +4,7 @@
 > **Status:** Implemented composition APIs; in development, not ready for production
 > **Owner:** SecretKit maintainers
 > **Last verified:** 2026-11-01 source review and 69 passing offline Configuration tests; no native qualification
-> **Source anchors:** [Loader](../../src/SecretKit.Extensions.Configuration/SecretSnapshotLoader.cs), [selection](../../src/SecretKit.Extensions.Configuration/SecretSelection.cs), [handle](../../src/SecretKit.Extensions.Configuration/SecretSnapshotHandle.cs), [export](../../src/SecretKit.Extensions.Configuration/SecretConfigurationExport.cs)
+> **Source anchors:** [Loader](../../src/SecretKit.Extensions.Configuration/Snapshots/SecretSnapshotLoader.cs), [selection](../../src/SecretKit.Extensions.Configuration/Snapshots/SecretSelection.cs), [handle](../../src/SecretKit.Extensions.Configuration/Snapshots/SecretSnapshotHandle.cs), [export](../../src/SecretKit.Extensions.Configuration/Export/SecretConfigurationExport.cs)
 
 Use `SecretKit.Extensions.Configuration` to collect required values asynchronously
 and pin one local generation for a multi-key operation. Export to `IConfiguration`
@@ -12,8 +12,8 @@ only when ordinary plaintext strings are acceptable. The package does not choose
 an identity, install refresh policy, start a worker or activate application clients.
 Core/provider reads do not require this optional package.
 
-The [prepared owner](../../src/SecretKit.Extensions.Configuration/PreparedSecretConfiguration.cs)
-and [collection options](../../src/SecretKit.Extensions.Configuration/SecretCollectionOptions.cs)
+The [prepared owner](../../src/SecretKit.Extensions.Configuration/Export/PreparedSecretConfiguration.cs)
+and [collection options](../../src/SecretKit.Extensions.Configuration/Snapshots/SecretCollectionOptions.cs)
 compose the same loader/generation/export boundaries, not a second lifecycle.
 
 ## Select required groups explicitly
@@ -270,8 +270,8 @@ work drains; refresh alone does not replace them.
 The executable [bootstrap scenario](../../samples/RuntimeConfiguration/BootstrapScenario.cs)
 shows separate required and optional groups, an authority-only export and a
 pinned handle across refresh. Its
-[SecretGenerationCoordinator<TClient>](../../src/SecretKit.Extensions.Configuration/SecretGenerationCoordinator.cs)
-and [generation lease](../../src/SecretKit.Extensions.Configuration/SecretGenerationLease.cs)
+[SecretGenerationCoordinator<TClient>](../../src/SecretKit.Extensions.Configuration/Generations/SecretGenerationCoordinator.cs)
+and [generation lease](../../src/SecretKit.Extensions.Configuration/Generations/SecretGenerationLease.cs)
 are shipped by the optional Configuration package. They support fresh
 `CheckAgainAsync` without activation, explicit `EnableAsync`, revision-checked
 handover, fail-closed or bounded-last-known policy and lease-based retirement.

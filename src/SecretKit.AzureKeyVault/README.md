@@ -66,7 +66,7 @@ windows are not snapshots; concurrent writes, recovery and expiry can race.
 
 ## Receipts, cancellation and ownership
 
-Create a fresh `MutationReceipt` for the exact target reference before every
+Call `client.CreateReceipt(target)` for the exact target reference before every
 mutation. A receipt is consumed once, including when local validation or
 cancellation prevents dispatch. It cannot be reused across native or selected
 Set operations. Body-bearing mutations and authenticated bodyless mutations

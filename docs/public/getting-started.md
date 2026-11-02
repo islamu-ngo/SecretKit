@@ -4,7 +4,7 @@
 > **Status:** Tutorial using existing offline samples, followed by an integration fragment
 > **Owner:** SecretKit maintainers
 > **Last verified:** 2026-10-25 against sample and API source; commands not rerun for this documentation change
-> **Source anchors:** [SDK pin](../../global.json), [offline sample](../../samples/RuntimeConfiguration/Program.cs), [Infisical client](../../src/SecretKit.Infisical/InfisicalClient.cs)
+> **Source anchors:** [SDK pin](../../global.json), [offline sample](../../samples/RuntimeConfiguration/Program.cs), [Infisical client](../../src/SecretKit.Infisical/Secrets/InfisicalClient.cs)
 
 Run an offline example to learn the ownership model, then select a provider for
 your application. **In development. Not ready for production.**

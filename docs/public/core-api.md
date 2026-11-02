@@ -14,15 +14,16 @@ specialized lifecycle operations remain provider-native.
 
 | Types | Contract and declaration |
 | --- | --- |
-| `ISecretReader` | Selected-authority asynchronous read; [declaration](../../src/SecretKit.Core/ISecretReader.cs) |
-| `ISecretInventory`, `SecretInventory` | Bounded metadata collection; [declarations](../../src/SecretKit.Core/ISecretInventory.cs) |
-| `SecretAuthority`, `SecretAddress`, `SecretReference`, `SecretInventoryScope` | Instance authority and provider-owned coordinates; [declarations](../../src/SecretKit.Core/SecretReference.cs) |
-| `SecretOutcome<T>`, `SecretStatus` | Success-only value access and failure categories; [declarations](../../src/SecretKit.Core/SecretOutcome.cs) |
-| `SecretFailureReason` | Closed material-free failure detail; [declaration](../../src/SecretKit.Core/SecretFailureReason.cs) |
-| `SecretMaterial` | Clearable owned characters and explicit exports; [declaration](../../src/SecretKit.Core/SecretMaterial.cs) |
-| `SecretRead`, `SecretObservation`, `SecretValidity` | Owned read plus value-free observations; [declarations](../../src/SecretKit.Core/SecretObservation.cs) |
-| `MutationReceipt`, `DispatchEvidence` | Caller-held mutation dispatch evidence; [declarations](../../src/SecretKit.Core/MutationReceipt.cs) |
-| `SecretCapabilityEvidence`, `CapabilityAvailability`, `PermissionEvidence`, `SecretEffect` | Independent implementation, permission, effect and verification claims; [declarations](../../src/SecretKit.Core/SecretCapabilityEvidence.cs) |
+| `ISecretReader` | Selected-authority asynchronous read; [declaration](../../src/SecretKit.Core/Primitives/ISecretReader.cs) |
+| `ISecretInventory`, `SecretInventory` | Bounded metadata collection; [declarations](../../src/SecretKit.Core/Primitives/ISecretInventory.cs) |
+| `SecretAuthority`, `SecretAddress`, `SecretReference`, `SecretInventoryScope` | Instance authority and provider-owned coordinates; [declarations](../../src/SecretKit.Core/Primitives/SecretReference.cs) |
+| `SecretOutcome<T>`, `SecretStatus` | Success-only value access and failure categories; [declarations](../../src/SecretKit.Core/Outcomes/SecretOutcome.cs) |
+| `SecretFailureReason` | Closed material-free failure detail; [declaration](../../src/SecretKit.Core/Outcomes/SecretFailureReason.cs) |
+| `SecretMaterial` | Clearable owned characters and explicit exports; [declaration](../../src/SecretKit.Core/Material/SecretMaterial.cs) |
+| `SecretRead`, `SecretObservation`, `SecretValidity` | Owned read plus value-free observations; [declarations](../../src/SecretKit.Core/Reading/SecretObservation.cs) |
+| `MutationReceipt`, `DispatchEvidence` | Caller-held mutation dispatch evidence; [declarations](../../src/SecretKit.Core/Receipts/MutationReceipt.cs) |
+| `MutationReceiptIssuer` | Adapter-owned instance capability for issuing and advancing local evidence; [declaration](../../src/SecretKit.Core/Receipts/MutationReceiptIssuer.cs) |
+| `SecretCapabilityEvidence`, `CapabilityAvailability`, `PermissionEvidence`, `SecretEffect` | Independent implementation, permission, effect and verification claims; [declarations](../../src/SecretKit.Core/Outcomes/SecretCapabilityEvidence.cs) |
 
 ## Read from one authority
 

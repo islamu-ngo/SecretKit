@@ -52,9 +52,9 @@ Official functional sources:
 
 Files:
 
-- `src/SecretKit.Infisical/InfisicalRotationClient.cs`
-- `src/SecretKit.Infisical/InfisicalRotationModels.cs`
-- `src/SecretKit.Infisical/InfisicalRotationApi.cs`
+- `src/SecretKit.Infisical/Rotation/InfisicalRotationClient.cs`
+- `src/SecretKit.Infisical/Rotation/InfisicalRotationModels.cs`
+- `src/SecretKit.Infisical/Rotation/InfisicalRotationApi.cs`
 - `tests/SecretKit.Infisical.Tests/RotationOutcomeTests.cs`
 
 No Core, existing provider client, management, root project, README, dependency,

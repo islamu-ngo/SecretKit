@@ -4,7 +4,7 @@
 > **Status:** Implemented Infisical authentication and optional hosting; in development, not ready for production
 > **Owner:** SecretKit maintainers
 > **Last verified:** 2026-10-25 against source and tests; no checks rerun
-> **Source anchors:** [Token contract](../../src/SecretKit.Infisical/InfisicalAuthentication.cs), [Universal Auth](../../src/SecretKit.Infisical/InfisicalUniversalAuthentication.cs), [proof exchanges](../../src/SecretKit.Infisical/InfisicalProofAuthentication.cs), [session](../../src/SecretKit.Infisical/InfisicalPeriodicTokenSession.cs), [maintenance](../../src/SecretKit.Extensions.Hosting/InfisicalAuthenticationMaintenance.cs)
+> **Source anchors:** [Token contract](../../src/SecretKit.Infisical/Authentication/InfisicalAuthentication.cs), [Universal Auth](../../src/SecretKit.Infisical/Authentication/InfisicalUniversalAuthentication.cs), [proof exchanges](../../src/SecretKit.Infisical/Authentication/InfisicalProofAuthentication.cs), [session](../../src/SecretKit.Infisical/Authentication/InfisicalPeriodicTokenSession.cs), [maintenance](../../src/SecretKit.Extensions.Hosting/Lifecycle/InfisicalAuthenticationMaintenance.cs)
 
 Choose one host-authorized identity and supply its token source to the Infisical
 client. Login, token handoff, renewal scheduling and recovery are explicit,

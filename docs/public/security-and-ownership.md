@@ -113,6 +113,17 @@ configuration alongside this choice is rejected; configure the host pipeline
 itself. Both modes retain typed authority/reference checks, parsing budgets and
 receipt evidence. A receipt records SDK handoff, not the host's network attempts.
 
+Create runtime mutation receipts through `client.CreateReceipt(target)` and keep
+them before awaiting the operation. Only the owning adapter's private issuer can
+advance the evidence; a caller-created issuer or another client cannot settle
+that receipt. Management wrappers additionally bind their native request and
+authority. These are local misuse protections, not remote authorization,
+cryptographic attestations or isolation from hostile code in the same process.
+Azure consumes its attempt reservation even if pre-dispatch cancellation leaves
+`NotDispatched` evidence. Infisical prepared single mutations permit an explicit
+retry before dispatch; native bulk receipts consume their invocation separately.
+After dispatch uncertainty, none of these contracts authorizes replay.
+
 Supplied clients/handlers remain host-owned. The SDK does not change a borrowed
 client's base address, timeout or default headers. Requests use the selected
 absolute origin independently. Keep host configuration stable while in use.
