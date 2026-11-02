@@ -1,10 +1,9 @@
 using System.Net.Http.Headers;
 using System.Text;
-using SecretKit.Samples.RuntimeConfiguration;
 
 namespace SecretKit.Samples.Infisical.WebDemo;
 
-internal sealed class JobClient : IRuntimeIntegrationClient
+internal sealed class JobClient : IAsyncDisposable
 {
     private readonly HttpClient _http;
 

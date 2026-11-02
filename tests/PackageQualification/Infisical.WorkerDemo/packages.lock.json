@@ -36,13 +36,13 @@
         "type": "Direct",
         "requested": "[0.2.0-integration.3, 0.2.0-integration.3]",
         "resolved": "0.2.0-integration.3",
-        "contentHash": "r/FuXMSRISN6SKLLlkS5d4F4+oowZCmcpb/Bj3MmSs3sWDUJm0dWWJE1c+dNZKkkxaPAV8bya7C/Oqwtt/KxJA=="
+        "contentHash": "CH45KLNa7Llqp239nv0mWbAWq2/9Bu7gm0oADq/zYlTVZZyprvxwofSsh5RpNZPw41fYan4bXRMA/8EEPTD1Kw=="
       },
       "SecretKit.Extensions.Hosting": {
         "type": "Direct",
         "requested": "[0.2.0-integration.3, 0.2.0-integration.3]",
         "resolved": "0.2.0-integration.3",
-        "contentHash": "YPup6XcgliDHBwC7JnR3XfkMgxZg9s2wDL9ntSMbhVLOAjx8s573TiJj1CN3yksk77ygyJbQmg4Ur4+hQjwusg==",
+        "contentHash": "xpFA/Akj8zRYTk3i4cTikvlsuwSJFh2Hbifvoh55bdtaz6szYXHzDbouVVIxRG8z0ysBM/ExoNtdDwrGJir2/w==",
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.12",
           "Microsoft.Extensions.Diagnostics.HealthChecks": "10.0.12",
@@ -55,7 +55,7 @@
         "type": "Direct",
         "requested": "[0.2.0-integration.3, 0.2.0-integration.3]",
         "resolved": "0.2.0-integration.3",
-        "contentHash": "X/swKpVXHHVXFHhNjrgjwOP1iGXA/HLmQ8J0uid4TSt7i7dLOLlzLKstoAuWTwuBFemPri34IHrCNN4Pm0so9w==",
+        "contentHash": "HLnZtb2CziciXCRDUeb0AhWHZsY0iYopfzKDhjqHuCK84W19x+d+P/erAJq48M1FMxTbulszj1RmR3AOQAy54w==",
         "dependencies": {
           "Refit": "16.3.0",
           "SecretKit.Core": "0.2.0-integration.3"

@@ -263,16 +263,12 @@ public static class DemoInputs
                 "tests/PackageQualification/Infisical.WebDemo/WebDemoRuntime.cs", "tests/PackageQualification/Infisical.WebDemo/WebDemoEndpoints.cs",
                 "tests/PackageQualification/Infisical.WebDemo/WebDemoOptions.cs", "tests/PackageQualification/Infisical.WebDemo/JobClient.cs" },
             _ => throw new ReleaseException("demo-app")
-        },
-        .. id == "web" ? new[]
-        {
-            "samples/RuntimeConfiguration/IRuntimeIntegrationClient.cs"
-        } : []
+        }
     ];
     private static string CopyPath(string workspace, string id, string input) =>
         input.StartsWith(AppDirectory(id) + "/", StringComparison.Ordinal)
             ? Path.Combine(workspace, "app", Path.GetFileName(input))
-            : Path.Combine(workspace, input.StartsWith("tests/PackageQualification/", StringComparison.Ordinal) ? input["tests/PackageQualification/".Length..] : input["samples/".Length..]);
+            : Path.Combine(workspace, input["tests/PackageQualification/".Length..]);
 
     private static byte[] Read(string source, string relative) =>
         Manifest.ReadFile(Path.Combine(source, Path.GetDirectoryName(relative)!),

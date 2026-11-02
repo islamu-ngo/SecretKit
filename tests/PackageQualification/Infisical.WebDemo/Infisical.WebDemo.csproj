@@ -16,7 +16,6 @@
     <Compile Include="../Infisical.Demos/DemoInputReader.cs" Link="DemoInputReader.cs" />
     <Compile Include="../Infisical.Demos/DemoTokenSource.cs" Link="DemoTokenSource.cs" />
     <Compile Include="../Infisical.Demos/DemoOutput.cs" Link="DemoOutput.cs" />
-    <Compile Include="../RuntimeConfiguration/IRuntimeIntegrationClient.cs" Link="IRuntimeIntegrationClient.cs" />
     <PackageReference Include="SecretKit.Core" Version="[$(SecretKitCandidateVersion)]" />
     <PackageReference Include="SecretKit.Infisical" Version="[$(SecretKitCandidateVersion)]" />
     <PackageReference Include="SecretKit.Extensions.Configuration" Version="[$(SecretKitCandidateVersion)]" />

@@ -4,7 +4,6 @@ using SecretKit.Core;
 using SecretKit.Extensions.Configuration;
 using SecretKit.Infisical;
 using SecretKit.Samples.Infisical;
-using SecretKit.Samples.RuntimeConfiguration;
 
 namespace SecretKit.Samples.Infisical.WebDemo;
 
@@ -28,10 +27,10 @@ internal sealed class WebDemoRuntime
         Optional = options.OptionalKey is { } key ? CreateCoordinator(provider, input, key) : null;
     }
 
-    internal SecretGenerationCoordinator<IRuntimeIntegrationClient> Required { get; }
-    internal SecretGenerationCoordinator<IRuntimeIntegrationClient>? Optional { get; }
+    internal SecretGenerationCoordinator<JobClient> Required { get; }
+    internal SecretGenerationCoordinator<JobClient>? Optional { get; }
 
-    private SecretGenerationCoordinator<IRuntimeIntegrationClient> CreateCoordinator(InfisicalClient provider, DemoInput input,
+    private SecretGenerationCoordinator<JobClient> CreateCoordinator(InfisicalClient provider, DemoInput input,
         string selectedKey) => new(provider,
         new Dictionary<string, SecretReference>
         {
@@ -39,15 +38,15 @@ internal sealed class WebDemoRuntime
                 new InfisicalSecretAddress(input.Project, input.Environment, input.Folder, selectedKey))
         }, ValidateCandidate, SecretGenerationStalePolicy.BoundedLastKnown, TimeSpan.FromMinutes(5), TimeProvider.System);
 
-    private ValueTask<SecretOutcome<IRuntimeIntegrationClient>> ValidateCandidate(
+    private ValueTask<SecretOutcome<JobClient>> ValidateCandidate(
         SecretSnapshotHandle candidate, CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
         using SecretRead read = candidate.Read("credential");
         string credential = read.Material.Reveal();
         if (credential.Length is 0 or > 16384 || credential.Any(c => c < 33 || c > 126))
-            return ValueTask.FromResult(SecretOutcome<IRuntimeIntegrationClient>.Failure(SecretStatus.Invalid));
-        return ValueTask.FromResult(SecretOutcome<IRuntimeIntegrationClient>.Success(
+            return ValueTask.FromResult(SecretOutcome<JobClient>.Failure(SecretStatus.Invalid));
+        return ValueTask.FromResult(SecretOutcome<JobClient>.Success(
             new JobClient(_downstream, credential)));
     }
 
@@ -126,7 +125,7 @@ internal sealed class WebDemoRuntime
         }
     }
 
-    private async Task PrepareOptionalAsync(SecretGenerationCoordinator<IRuntimeIntegrationClient> optional)
+    private async Task PrepareOptionalAsync(SecretGenerationCoordinator<JobClient> optional)
     {
         // Independent from required startup's budget; retained until shutdown even on cancellation.
         using var budget = CancellationTokenSource.CreateLinkedTokenSource(_lifetime);

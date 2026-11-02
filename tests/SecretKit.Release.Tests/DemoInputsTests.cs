@@ -197,7 +197,7 @@ public sealed class DemoInputsTests
                 "tests/PackageQualification/Infisical.Demos/DemoInput.cs", "tests/PackageQualification/Infisical.Demos/DemoInputReader.cs",
                 "tests/PackageQualification/Infisical.Demos/DemoOutput.cs", "tests/PackageQualification/Infisical.Demos/DemoTokenSource.cs",
                 "tests/PackageQualification/Infisical.Demos/MutationInput.cs", "tests/PackageQualification/Infisical.Demos/WorkerInput.cs",
-                "samples/RuntimeConfiguration/IRuntimeIntegrationClient.cs", "global.json"
+                "global.json"
             })
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(Path.Combine(Local.Source, relative))!);
@@ -246,11 +246,7 @@ public sealed class DemoInputsTests
                             "tests/PackageQualification/Infisical.WebDemo/WebDemoRuntime.cs", "tests/PackageQualification/Infisical.WebDemo/WebDemoEndpoints.cs",
                             "tests/PackageQualification/Infisical.WebDemo/WebDemoOptions.cs", "tests/PackageQualification/Infisical.WebDemo/JobClient.cs" },
                         _ => throw new InvalidOperationException()
-                    },
-                    .. kind == "Web" ? new[]
-                    {
-                        "samples/RuntimeConfiguration/IRuntimeIntegrationClient.cs"
-                    } : []
+                    }
                 ];
                 apps.Add(new
                 {

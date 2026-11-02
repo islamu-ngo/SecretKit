@@ -1,11 +1,10 @@
 using System.Text.Json;
 using SecretKit.Extensions.Configuration;
-using SecretKit.Samples.RuntimeConfiguration;
 
 namespace SecretKit.Samples.Infisical.WebDemo;
 
 internal sealed class WebDemoEndpoints(
-    SecretGenerationCoordinator<IRuntimeIntegrationClient> required, SecretGenerationCoordinator<IRuntimeIntegrationClient>? optional)
+    SecretGenerationCoordinator<JobClient> required, SecretGenerationCoordinator<JobClient>? optional)
 {
     private static readonly TimeSpan WorkTimeout = TimeSpan.FromSeconds(30);
 
@@ -44,8 +43,8 @@ internal sealed class WebDemoEndpoints(
 
     private async Task WorkAsync(HttpContext context)
     {
-        SecretGenerationCoordinator<IRuntimeIntegrationClient>? selected = context.Request.Query["optional"] == "true" ? optional : required;
-        await using SecretGenerationLease<IRuntimeIntegrationClient>? lease = selected?.Acquire();
+        SecretGenerationCoordinator<JobClient>? selected = context.Request.Query["optional"] == "true" ? optional : required;
+        await using SecretGenerationLease<JobClient>? lease = selected?.Acquire();
         if (lease is null)
         {
             await ReplyAsync(context, 503, new { outcome = "unavailable" });

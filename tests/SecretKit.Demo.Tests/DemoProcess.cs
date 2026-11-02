@@ -89,17 +89,6 @@ internal sealed class DemoProcess(string? diagnosticCapture = null,
             File.Copy(file, Path.Combine(shared, name));
             inputs.Add((file, Path.Combine(shared, name), Hash(file)));
         }
-        if (kind == "Web")
-        {
-            string runtime = Path.Combine(run, "RuntimeConfiguration");
-            Directory.CreateDirectory(runtime);
-            foreach (string file in new[] { "IRuntimeIntegrationClient.cs" })
-            {
-                File.Copy(Path.Combine(_root, "samples/RuntimeConfiguration", file), Path.Combine(runtime, file));
-                inputs.Add((Path.Combine(_root, "samples/RuntimeConfiguration", file),
-                    Path.Combine(runtime, file), Hash(Path.Combine(runtime, file))));
-            }
-        }
         string sourceLockHash = Hash(Path.Combine(source, "packages.lock.json"));
         string selectedLock = bundle is null ? Path.Combine(source, "packages.lock.json") :
             Path.Combine(bundle, "locks", kind.ToLowerInvariant(), "packages.lock.json");

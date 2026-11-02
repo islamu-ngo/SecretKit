@@ -3,7 +3,7 @@
 **In development, not ready for production.** A nonpackable .NET 10 / C# 14
 application using installed Core, Infisical and Configuration packages.
 ASP.NET Core belongs to this application, not the SDK. There is no browser UI.
-See [security boundaries and recovery](../../docs/public/demos-and-recovery.md)
+See [security boundaries and recovery](../../../docs/public/demos-and-recovery.md)
 for detailed protected-input, ownership and recovery guidance.
 
 ## Reading order
@@ -17,24 +17,25 @@ for detailed protected-input, ownership and recovery guidance.
    collection tasks, processes stdin controls and drains retired generations.
 5. `WebDemoOptions.cs` parses downstream policy; `JobClient.cs` shows the fixed
    authenticated HTTP call. Linked shared sources handle protected input/token
-   copying and runtime generation/lease mechanics.
+   copying. The application owns `JobClient`; Configuration supplies generation
+   and lease mechanics.
 
 ## Install and run
 
 Install the SDK pinned by `global.json`. Select an exact local candidate bundle
-using the [local package guide](../../docs/public/local-packages.md), its
+using the [local package guide](../../../docs/public/local-packages.md), its
 source-mapped NuGet configuration, matching generated lock and fresh cache.
 From the SecretKit checkout, set `SECRETKIT_FEED_CONFIG` to that configuration:
 
 ```sh
-version=0.1.0-local.20261024.1
+version=0.2.0-integration.3
 export NUGET_PACKAGES="$(mktemp -d)"
-dotnet restore samples/Infisical.WebDemo/Infisical.WebDemo.csproj --locked-mode \
+dotnet restore tests/PackageQualification/Infisical.WebDemo/Infisical.WebDemo.csproj --locked-mode \
   --configfile "$SECRETKIT_FEED_CONFIG" -p:SecretKitCandidateVersion="$version"
-dotnet build samples/Infisical.WebDemo/Infisical.WebDemo.csproj -c Release \
+dotnet build tests/PackageQualification/Infisical.WebDemo/Infisical.WebDemo.csproj -c Release \
   --no-restore -p:SecretKitCandidateVersion="$version"
-dotnet samples/Infisical.WebDemo/bin/Release/net10.0/Infisical.WebDemo.dll --help
-dotnet samples/Infisical.WebDemo/bin/Release/net10.0/Infisical.WebDemo.dll serve
+dotnet tests/PackageQualification/Infisical.WebDemo/bin/Release/net10.0/Infisical.WebDemo.dll --help
+dotnet tests/PackageQualification/Infisical.WebDemo/bin/Release/net10.0/Infisical.WebDemo.dll serve
 ```
 
 Help performs no input, host or provider I/O. For `serve`, use an application-owned
