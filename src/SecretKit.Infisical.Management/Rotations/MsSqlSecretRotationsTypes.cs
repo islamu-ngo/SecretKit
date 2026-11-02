@@ -1,6 +1,5 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.Text.RegularExpressions;
 using SecretKit.Core;
 
 namespace SecretKit.Infisical.Management;
@@ -21,19 +20,14 @@ public sealed class MsSqlRotationNullableText
 }
 
 /// <summary>Published numeric requirements; fractional numbers are not silently rounded.</summary>
+/// <remarks>Unknown response fields in the requirements or required counts fail closed as Unknown.</remarks>
 public sealed class MsSqlRotationPasswordRequirements
 {
     /// <summary>Captures native numeric password requirements without rounding fractional values.</summary>
     public MsSqlRotationPasswordRequirements(double length, double digits, double lowercase,
         double symbols, double uppercase, string? allowedSymbols = null)
     {
-        MsSqlSecretRotationOperations.InputNumber(length, 1, 250);
-        foreach (double count in new[] { digits, lowercase, symbols, uppercase })
-            MsSqlSecretRotationOperations.InputNumber(count, 0);
-        if (allowedSymbols is not null && (allowedSymbols.Length > 16384 ||
-            !Regex.IsMatch(allowedSymbols, """[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>/?~]""",
-                RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1))))
-            throw new ArgumentException("Invalid rotation symbols.");
+        SqlSecretRotationShared.Validate(length, digits, lowercase, symbols, uppercase, allowedSymbols);
         Length = length;
         Digits = digits;
         Lowercase = lowercase;
@@ -43,18 +37,7 @@ public sealed class MsSqlRotationPasswordRequirements
     }
     internal MsSqlRotationPasswordRequirements(JsonElement value)
     {
-        MsSqlSecretRotationOperations.Only(value, "length", "required", "allowedSymbols");
-        Length = MsSqlSecretRotationOperations.Number(value, "length", 1, 250);
-        JsonElement required = ManagementJson.Object(value, "required");
-        MsSqlSecretRotationOperations.Only(required, "digits", "lowercase", "symbols", "uppercase");
-        Digits = MsSqlSecretRotationOperations.Number(required, "digits", 0);
-        Lowercase = MsSqlSecretRotationOperations.Number(required, "lowercase", 0);
-        Symbols = MsSqlSecretRotationOperations.Number(required, "symbols", 0);
-        Uppercase = MsSqlSecretRotationOperations.Number(required, "uppercase", 0);
-        AllowedSymbols = ManagementJson.Optional(value, "allowedSymbols", nullable: false);
-        if (AllowedSymbols is not null && !Regex.IsMatch(AllowedSymbols, """[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>/?~]""",
-            RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1)))
-            throw new ManagementContractException(SecretStatus.Unknown);
+        (Length, Digits, Lowercase, Symbols, Uppercase, AllowedSymbols) = SqlSecretRotationShared.Read(value);
     }
     /// <summary>Gets the native requested password length.</summary>
     [JsonIgnore] public double Length { get; }
@@ -68,19 +51,8 @@ public sealed class MsSqlRotationPasswordRequirements
     [JsonIgnore] public double Uppercase { get; }
     /// <summary>Gets allowed symbol text, or null when omitted.</summary>
     [JsonIgnore] public string? AllowedSymbols { get; }
-    internal void Write(Utf8JsonWriter writer)
-    {
-        writer.WriteStartObject("passwordRequirements");
-        writer.WriteNumber("length", Length);
-        if (AllowedSymbols is not null) writer.WriteString("allowedSymbols", AllowedSymbols);
-        writer.WriteStartObject("required");
-        writer.WriteNumber("digits", Digits);
-        writer.WriteNumber("lowercase", Lowercase);
-        writer.WriteNumber("symbols", Symbols);
-        writer.WriteNumber("uppercase", Uppercase);
-        writer.WriteEndObject();
-        writer.WriteEndObject();
-    }
+    internal void Write(Utf8JsonWriter writer) =>
+        SqlSecretRotationShared.Write(writer, Length, Digits, Lowercase, Symbols, Uppercase, AllowedSymbols);
     /// <summary>Returns a marker without password-generation settings.</summary>
     public override string ToString() => "[MsSqlRotationPasswordRequirements]";
 }
@@ -612,6 +584,8 @@ public sealed class MsSqlSecretRotationOptions : IDisposable
     /// <summary>Gets selected owned catalog options; dispose the collection after inspection.</summary>
     [JsonIgnore] public IReadOnlyList<MsSqlSecretRotationOption> Items { get; }
     /// <summary>Always false: this collection projects only one profile from a mixed catalog.</summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1822:Mark members as static",
+        Justification = "This result is one native profile subset, not a complete mixed provider catalog.")]
     public bool IsComplete => false;
     /// <summary>Disposes all owned option statement templates.</summary>
     public void Dispose() { foreach (var item in Items) item.Dispose(); }
