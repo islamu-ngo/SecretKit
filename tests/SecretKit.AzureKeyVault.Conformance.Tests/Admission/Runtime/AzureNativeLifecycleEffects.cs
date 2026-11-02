@@ -87,7 +87,7 @@ internal static class AzureNativeLifecycleEffects
             AzureKeyVaultClient client = environment.CreateClient(denied ?
                 NativeIdentityRole.Denied : NativeIdentityRole.Runtime, boundary);
             var target = new SecretReference(client.Authority, new AzureSecretAddress(name));
-            var receipt = new MutationReceipt(target);
+            var receipt = client.CreateReceipt(target);
             SecretOutcome<AzureLifecycleResult> started = delete ?
                 await client.StartDeleteSecretAsync(target, receipt, token) :
                 await client.StartRecoverDeletedSecretAsync(target, receipt, token);
@@ -224,7 +224,7 @@ internal static class AzureNativeLifecycleEffects
             AzureKeyVaultClient client = (restore ? destination : environment).CreateClient(denied ?
                 NativeIdentityRole.Denied : NativeIdentityRole.Runtime, boundary);
             var target = new SecretReference(client.Authority, new AzureSecretAddress(name));
-            var receipt = new MutationReceipt(target);
+            var receipt = client.CreateReceipt(target);
             AzureSecretBackup? setupBackup = null;
             if (restore)
             {
@@ -387,7 +387,7 @@ internal static class AzureNativeLifecycleEffects
             AzureKeyVaultClient client = environment.CreateClient(denied ?
                 NativeIdentityRole.Denied : NativeIdentityRole.Runtime, boundary);
             var target = new SecretReference(client.Authority, new AzureSecretAddress(name));
-            var receipt = new MutationReceipt(target);
+            var receipt = client.CreateReceipt(target);
             Task operation = Invoke();
             if (boundary.Hold)
             {
@@ -695,7 +695,7 @@ internal static class AzureNativeLifecycleEffects
             var target = new SecretReference(client.Authority, new AzureSecretAddress(name, first.Version));
             AzureUpdatePropertiesRequest request = Patch(target, definition.Key.Variant, now);
             bool rejected = request.Precondition != AzureSetSecretPrecondition.None;
-            var receipt = new MutationReceipt(target);
+            var receipt = client.CreateReceipt(target);
             Task<SecretOutcome<AzureSecretMetadata>> operation =
                 client.UpdatePropertiesAsync(request, receipt, cancellation.Token).AsTask();
             if (boundary.Hold && !rejected)

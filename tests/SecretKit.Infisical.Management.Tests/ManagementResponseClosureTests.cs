@@ -218,7 +218,8 @@ public sealed class ManagementResponseClosureTests
         CreatedShare? captured = null;
         var target = SharingOperations.CreateShareTarget(Org, "private-share", input, 5, ShareAudience.Organization);
         using var request = new ManagementRequest<CreatedShare>(
-            "infisical.post.v1.shared.secrets", HttpMethod.Post, "/api/v1/shared-secrets", target,
+            "infisical.post.v1.shared.secrets", static (apis, content, token) => apis.Governance.CreateShare(content!, token),
+            HttpMethod.Post, "/api/v1/shared-secrets", target,
             writer => document.RootElement.WriteTo(writer),
             value => captured = new CreatedShare(new SharedSecretMetadata(value, Org),
                 AuthenticationJson.Material(value, "sharedSecretLink")));

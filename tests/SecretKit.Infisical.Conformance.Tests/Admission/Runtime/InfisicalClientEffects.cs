@@ -74,7 +74,7 @@ internal static class InfisicalClientEffects
         if (pinned)
         {
             SecretReference updateTarget = fixture.Secret(fixture.Setup, input.Key, sourceFolder);
-            var receipt = new MutationReceipt(updateTarget);
+            var receipt = fixture.Setup.CreateReceipt(updateTarget);
             using SecretMaterial material = SecretMaterial.FromText(input.LatestValue!);
             SecretOutcome<InfisicalStaticChange> updated = await fixture.Setup.UpdateValueAsync(
                 updateTarget, material, receipt, token);
@@ -87,7 +87,7 @@ internal static class InfisicalClientEffects
         {
             var target = new SecretReference(fixture.Setup.Authority, new InfisicalImportAddress(
                 input.Fixture.ProjectId, input.Fixture.Environment, fixture.Folder, fixture.FolderId));
-            var receipt = new MutationReceipt(target);
+            var receipt = fixture.Setup.CreateReceipt(target);
             SecretOutcome<InfisicalImport> created = await fixture.Setup.CreateImportAsync(target,
                 new(input.Fixture.Environment, sourceFolder), false,
                 fixture.Authority(fixture.Setup, NativeIdentityRole.Setup), receipt, token);

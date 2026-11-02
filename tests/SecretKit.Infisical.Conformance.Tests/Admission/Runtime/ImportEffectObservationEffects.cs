@@ -39,7 +39,7 @@ internal static class ImportEffectObservationEffects
         if (i.RemoveImport)
         {
             var target = f.Target(f.Destination.Setup, f.ImportId);
-            var receipt = new MutationReceipt(target);
+            var receipt = f.Destination.Setup.CreateReceipt(target);
             var removed = await f.Destination.Setup.DeleteImportAsync(target,
                 f.Destination.Authority(f.Destination.Setup, NativeIdentityRole.Setup), receipt, token);
             p.Contract(removed.IsSuccess && receipt.Evidence == DispatchEvidence.Applied, NativeFailure.MissingPrerequisite);

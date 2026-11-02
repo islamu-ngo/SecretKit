@@ -328,7 +328,7 @@ internal sealed class ProjectCanary(ProjectFamilyContext context, string project
         if (tagIds is null)
         {
             var reference = new SecretReference(setup.Authority, new InfisicalSecretAddress(project, environment, "/", key));
-            var receipt = new MutationReceipt(reference);
+            var receipt = setup.CreateReceipt(reference);
             SecretOutcome<InfisicalStaticChange> created = await setup.CreateAsync(reference, material, receipt, token);
             c.Probe.Contract(created.IsSuccess && created.Value.Disposition == InfisicalChangeDisposition.Applied &&
                 receipt.Evidence == DispatchEvidence.Applied, NativeFailure.MissingPrerequisite);
@@ -408,7 +408,7 @@ internal sealed class ProjectCanary(ProjectFamilyContext context, string project
         else
         {
             var reference = new SecretReference(runtime.Authority, new InfisicalSecretAddress(project, environment, "/", selectedKey));
-            var receipt = new MutationReceipt(reference);
+            var receipt = runtime.CreateReceipt(reference);
             SecretOutcome<InfisicalStaticChange> outcome = action == ProjectRoleAction.Create ?
                 await runtime.CreateAsync(reference, changed, receipt, token) :
                 await runtime.UpdateValueAsync(reference, changed, receipt, token);

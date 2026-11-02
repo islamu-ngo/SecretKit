@@ -227,7 +227,7 @@ internal sealed class LocalNativeProof : IAsyncDisposable
             new InfisicalNetworkOptions { AllowLoopbackDevelopmentHttp = true });
         var reference = new SecretReference(client.Authority, new InfisicalSecretAddress(settings.ProjectId,
             settings.Environment, settings.Folder, settings.ReadKey));
-        var receipt = new MutationReceipt(reference);
+        var receipt = client.CreateReceipt(reference);
         int operation = Ledger.Begin("recreate", "fixture:" + settings.ProjectId + ":" + settings.ReadKey);
         Ledger.Effect(operation, DispatchEvidence.PossiblyDispatched);
         try
@@ -419,7 +419,7 @@ internal sealed class LocalNativeProof : IAsyncDisposable
         var absent = await client.ReadNativeAsync(reference, token);
         if (absent.IsSuccess) absent.Value.Dispose();
         NativeWorkflow.Require(absent.Status == SecretStatus.Absent);
-        var receipt = new MutationReceipt(reference);
+        var receipt = client.CreateReceipt(reference);
         int operation = Ledger.Begin("fixture", parent, [selection.OrganizationId, project, environment, folder, key]);
         Ledger.Effect(operation, DispatchEvidence.PossiblyDispatched);
         try

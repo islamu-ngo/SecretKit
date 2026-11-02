@@ -10,26 +10,28 @@ public sealed class MutationReceiptTests
     {
         var target = new SecretReference(new SecretAuthority(), new Address());
         var other = new SecretReference(new SecretAuthority(), new Address());
-        var receipt = new MutationReceipt(target);
+        var issuer = new MutationReceiptIssuer();
+        var receipt = issuer.Create(target);
 
-        await Assert.That(() => receipt.BeginDispatch(other)).Throws<InvalidOperationException>();
+        await Assert.That(() => issuer.BeginDispatch(receipt, other)).Throws<InvalidOperationException>();
         await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.NotDispatched);
-        receipt.BeginDispatch(target);
+        issuer.BeginDispatch(receipt, target);
         await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.PossiblyDispatched);
-        await Assert.That(() => receipt.BeginDispatch(target)).Throws<InvalidOperationException>();
-        receipt.Record(DispatchEvidence.Applied);
+        await Assert.That(() => issuer.BeginDispatch(receipt, target)).Throws<InvalidOperationException>();
+        issuer.Record(receipt, DispatchEvidence.Applied);
         await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.Applied);
-        await Assert.That(() => receipt.Record(DispatchEvidence.Rejected)).Throws<InvalidOperationException>();
+        await Assert.That(() => issuer.Record(receipt, DispatchEvidence.Rejected)).Throws<InvalidOperationException>();
     }
 
     [Test]
     public async Task UnknownEffectCannotBeResetToNoDispatch()
     {
         var target = new SecretReference(new SecretAuthority(), new Address());
-        var receipt = new MutationReceipt(target);
-        receipt.BeginDispatch(target);
+        var issuer = new MutationReceiptIssuer();
+        var receipt = issuer.Create(target);
+        issuer.BeginDispatch(receipt, target);
 
-        await Assert.That(() => receipt.Record(DispatchEvidence.NotDispatched)).Throws<ArgumentOutOfRangeException>();
+        await Assert.That(() => issuer.Record(receipt, DispatchEvidence.NotDispatched)).Throws<ArgumentOutOfRangeException>();
         await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.PossiblyDispatched);
         await Assert.That(JsonSerializer.Serialize(receipt).Contains("coordinate", StringComparison.Ordinal)).IsFalse();
         await Assert.That(JsonSerializer.Serialize(receipt).Contains(receipt.LocalId.ToString(), StringComparison.Ordinal)).IsFalse();

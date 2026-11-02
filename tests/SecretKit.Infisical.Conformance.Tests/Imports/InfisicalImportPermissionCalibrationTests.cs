@@ -152,7 +152,7 @@ public sealed class InfisicalImportPermissionCalibrationTests
                         row.List || row.Action == ImportPermissionAction.Create ? null : row.Id.ToString()));
                     var selected = new ImportPermissionTokens(env.Tokens(role));
                     var authority = new InfisicalNativeAuthority(client.Authority, selected, row.Project, row.Environment, row.Path);
-                    MutationReceipt? receipt = row.Action == ImportPermissionAction.Read ? null : new(target);
+                    MutationReceipt? receipt = row.Action == ImportPermissionAction.Read ? null : client.CreateReceipt(target);
                     SecretStatus status; ImportPermissionValue[] values = []; bool complete = true;
                     // Direct public SDK calls; neither ImportPermissionClient nor effect helpers are used.
                     ImportPermissionValue Copy(InfisicalImport value) => new(Guid.Parse(value.Id), Guid.Parse(value.FolderId),

@@ -55,7 +55,7 @@ internal static class InstalledInfisical
         Require(wrongPath.Status is SecretStatus.Absent or SecretStatus.Denied or SecretStatus.Invalid);
         using var replacement = SecretMaterial.FromText(Convert.ToHexString(RandomNumberGenerator.GetBytes(32)));
         var deniedTarget = Reference(runtime, project, "SDK_DENIED_PACKAGE_WRITE");
-        var deniedReceipt = new MutationReceipt(deniedTarget);
+        var deniedReceipt = runtime.CreateReceipt(deniedTarget);
         Require((await runtime.CreateAsync(deniedTarget, replacement, deniedReceipt, deadline.Token)).Status == SecretStatus.Denied);
         Require(deniedReceipt.Evidence == DispatchEvidence.Rejected);
         var scope = new InfisicalInventoryScope(admin.Authority, project, "dev", "/");
@@ -91,7 +91,7 @@ internal static class InstalledInfisical
         Require(absent.CanProceed && !absent.Features.Single().CanEnable &&
             absent.Features.Single().Keys.Single().State == AssessmentState.Absent);
         var optionalTarget = Reference(admin, project, "SDK_OPTIONAL_PACKAGE_VALUE");
-        var optionalReceipt = new MutationReceipt(optionalTarget);
+        var optionalReceipt = admin.CreateReceipt(optionalTarget);
         Require((await admin.CreateAsync(optionalTarget, replacement, optionalReceipt, deadline.Token)).IsSuccess);
         var present = await assessment.CheckAsync(scope, requirements, deadline.Token);
         Require(present.Features.Single().CanEnable);
@@ -102,7 +102,7 @@ internal static class InstalledInfisical
         Require(deniedReport.Inventory.VisibleItems > 0 && !deniedReport.CanProceed &&
             deniedReport.Features.Single().Keys.Single().State == AssessmentState.Denied);
         var updateTarget = Reference(admin, project);
-        var updateReceipt = new MutationReceipt(updateTarget);
+        var updateReceipt = admin.CreateReceipt(updateTarget);
         Require((await admin.UpdateValueAsync(updateTarget, replacement, updateReceipt, deadline.Token)).IsSuccess);
         Require(updateReceipt.Evidence == DispatchEvidence.Applied);
         Require((await loader.RefreshAsync(deadline.Token)).IsSuccess);

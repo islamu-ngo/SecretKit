@@ -76,6 +76,15 @@ public sealed class ReviewedChange
 
     internal SecretMaterial CopyMaterial() => _material.Copy();
 
+    internal MutationReceipt? TryCreateReceipt()
+    {
+        try
+        {
+            return _infisical is not null ? _infisical.CreateReceipt(Target) : _azure!.CreateReceipt(Target);
+        }
+        catch (ArgumentException) { return null; }
+    }
+
     internal async ValueTask<(SecretStatus Status, InfisicalStaticChange? InfisicalChange)> DispatchAsync(SecretMaterial material,
         MutationReceipt receipt, CancellationToken cancellationToken)
     {
@@ -113,16 +122,17 @@ public sealed class ReviewedChangeResult
     private InfisicalStaticChange? _infisicalChange;
     private ReviewedChangeProgress _progress;
 
-    internal ReviewedChangeResult(int index, SecretReference target)
+    internal ReviewedChangeResult(int index, MutationReceipt? receipt)
     {
         Index = index;
-        Receipt = new MutationReceipt(target);
+        Receipt = receipt;
     }
 
     public int Index { get; }
+    /// <summary>The adapter-issued evidence, absent when the selected target is invalid locally.</summary>
     [JsonIgnore]
-    public MutationReceipt Receipt { get; }
-    public DispatchEvidence Evidence => Receipt.Evidence;
+    public MutationReceipt? Receipt { get; }
+    public DispatchEvidence Evidence => Receipt?.Evidence ?? DispatchEvidence.NotDispatched;
     public SecretStatus? Status { get { lock (_gate) { return _status; } } }
     public InfisicalStaticChange? InfisicalChange { get { lock (_gate) { return _infisicalChange; } } }
     public ReviewedChangeProgress Progress { get { lock (_gate) { return _progress; } } }
@@ -194,7 +204,7 @@ public sealed class ReviewedChangesScenario
         }
 
         _concurrency = concurrency;
-        Results = Array.AsReadOnly(_items.Select((item, index) => new ReviewedChangeResult(index, item.Target)).ToArray());
+        Results = Array.AsReadOnly(_items.Select((item, index) => new ReviewedChangeResult(index, item.TryCreateReceipt())).ToArray());
     }
 
     [JsonIgnore]
@@ -216,6 +226,12 @@ public sealed class ReviewedChangesScenario
                 if (_items[index].Approval != ReviewApproval.Approved)
                 {
                     Results[index].Complete(SecretStatus.Denied);
+                    continue;
+                }
+
+                if (Results[index].Receipt is null)
+                {
+                    Results[index].Complete(SecretStatus.Invalid);
                     continue;
                 }
 
@@ -251,7 +267,7 @@ public sealed class ReviewedChangesScenario
                         return;
                     }
 
-                    if (material[index] is not { } owned)
+                    if (material[index] is not { } owned || Results[index].Receipt is not { } receipt)
                     {
                         continue;
                     }
@@ -260,7 +276,7 @@ public sealed class ReviewedChangesScenario
                     {
                         cancellationToken.ThrowIfCancellationRequested();
                         var outcome = await _items[index].DispatchAsync(
-                            owned, Results[index].Receipt, cancellationToken);
+                            owned, receipt, cancellationToken);
                         Results[index].Complete(outcome.Status, outcome.InfisicalChange);
                     }
                     catch (OperationCanceledException)

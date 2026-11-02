@@ -37,7 +37,8 @@ public sealed class LocalProfileAdmissionTests
         LocalNativeReport report = NativeWorkflow.EmptyReport(LocalProfileConformance.Admit(Bytes(Request()), Binding));
         var reference = new SecretReference(new SecretAuthority(), new InfisicalSecretAddress(
             "project", "environment", "/", "key"));
-        var receipt = new MutationReceipt(reference);
+        var issuer = new MutationReceiptIssuer();
+        var receipt = issuer.Create(reference);
         string? durable = null;
         int removals = 0;
         Task Persist()
@@ -49,8 +50,8 @@ public sealed class LocalProfileAdmissionTests
         {
             await NativeWorkflow.CaptureCreateAsync(report, receipt, () =>
             {
-                receipt.BeginDispatch(reference);
-                receipt.Record(DispatchEvidence.Applied);
+                issuer.BeginDispatch(receipt, reference);
+                issuer.Record(receipt, DispatchEvidence.Applied);
                 return Task.FromResult(true);
             }, Persist);
             // The durable witness precedes any independent observer work.

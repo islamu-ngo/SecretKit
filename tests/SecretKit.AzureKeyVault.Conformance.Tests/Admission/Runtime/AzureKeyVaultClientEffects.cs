@@ -190,7 +190,7 @@ internal static class AzureKeyVaultClientEffects
                                 "precondition.MatchVersion.rejected" => AzureSetSecretPrecondition.MatchVersion,
                                 _ => throw new NativeCaseFailureException("missing-input")
                             };
-                            var receipt = new MutationReceipt(target);
+                            var receipt = client.CreateReceipt(target);
                             try
                             {
                                 SecretOutcome<AzureSetSecretResult> write = await client.SetSecretAsync(new(target, material, condition),

@@ -54,7 +54,7 @@ public sealed class NativeAuthenticationTests
             await Assert.That(denied.Status).IsEqualTo(SecretStatus.Denied);
             var writeTarget = new SecretReference(reader.Authority,
                 new InfisicalSecretAddress(project, "dev", "/", "SDK_NATIVE_TOKEN_DENIED"));
-            var writeReceipt = new MutationReceipt(writeTarget);
+            var writeReceipt = reader.CreateReceipt(writeTarget);
             var write = await reader.CreateAsync(writeTarget, expected, writeReceipt, cancellationToken);
             await Assert.That(write.Status).IsEqualTo(SecretStatus.Denied);
             await Assert.That(writeReceipt.Evidence).IsEqualTo(DispatchEvidence.Rejected);

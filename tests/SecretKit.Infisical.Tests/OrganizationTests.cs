@@ -7,25 +7,43 @@ namespace SecretKit.Infisical.Tests;
 public sealed class OrganizationTests
 {
     [Test]
+    public async Task ForeignNativeReceiptFailsBeforeCredentials()
+    {
+        var backend = new OrganizationBackend();
+        await using InfisicalClient client = Phase5TestSupport.Client(backend);
+        var target = new SecretReference(client.Authority,
+            new InfisicalTagAddress("project", "tag", InfisicalOrganizationSelector.Slug));
+        var authority = new InfisicalNativeAuthority(client.Authority,
+            new Phase5TestSupport.Tokens("admin", forbidden: true), "project");
+        var receipt = new MutationReceiptIssuer().Create(target);
+
+        var result = await client.CreateTagAsync(target, "color", authority, receipt);
+
+        await Assert.That(result.Status).IsEqualTo(SecretStatus.Invalid);
+        await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.NotDispatched);
+        await Assert.That(backend.Tag is null).IsTrue();
+    }
+
+    [Test]
     public async Task EnvironmentLifecycleUsesCurrentRoutesAndSeparateAuthority()
     {
         var backend = new OrganizationBackend();
         await using InfisicalClient client = Phase5TestSupport.Client(backend);
         InfisicalNativeAuthority admin = Phase5TestSupport.Admin(client);
         var create = new SecretReference(client.Authority, new InfisicalEnvironmentAddress("project", "dev", InfisicalOrganizationSelector.Slug));
-        var createdReceipt = new MutationReceipt(create);
+        var createdReceipt = client.CreateReceipt(create);
         InfisicalEnvironment created = (await client.CreateEnvironmentAsync(create, "Development", admin, createdReceipt, 1)).Value;
         await Assert.That(createdReceipt.Evidence).IsEqualTo(DispatchEvidence.Applied);
         await Assert.That(created.ProjectId).IsEqualTo("project");
         var byId = new SecretReference(client.Authority, new InfisicalEnvironmentAddress("project", created.Id));
         await Assert.That((await client.GetEnvironmentAsync(byId)).Value.Slug).IsEqualTo("dev");
         await Assert.That((await client.GetEnvironmentAsync(create)).Value.Id).IsEqualTo(created.Id);
-        var updateReceipt = new MutationReceipt(byId);
+        var updateReceipt = client.CreateReceipt(byId);
         await Assert.That((await client.UpdateEnvironmentAsync(byId, admin, updateReceipt, name: "New name", position: 2)).Value.Name).IsEqualTo("New name");
         await Assert.That((await client.GetEnvironmentAsync(byId)).Value.Position).IsEqualTo(2d);
-        var deleteReceipt = new MutationReceipt(byId);
+        var deleteReceipt = client.CreateReceipt(byId);
         await Assert.That((await client.DeleteEnvironmentAsync(byId, admin, deleteReceipt)).Value.SoftDeletedAt is not null).IsTrue();
-        var restoreReceipt = new MutationReceipt(byId);
+        var restoreReceipt = client.CreateReceipt(byId);
         await Assert.That((await client.RestoreEnvironmentAsync(byId, admin, restoreReceipt)).Value.SoftDeletedAt is null).IsTrue();
         await Assert.That(restoreReceipt.Evidence).IsEqualTo(DispatchEvidence.Applied);
         await Assert.That(JsonSerializer.Serialize(created)).IsEqualTo("{}");
@@ -38,15 +56,15 @@ public sealed class OrganizationTests
         await using InfisicalClient client = Phase5TestSupport.Client(backend);
         InfisicalNativeAuthority admin = Phase5TestSupport.Admin(client);
         var create = new SecretReference(client.Authority, new InfisicalTagAddress("project", "protected-tag", InfisicalOrganizationSelector.Slug));
-        InfisicalTag created = (await client.CreateTagAsync(create, "#123456", admin, new(create))).Value;
+        InfisicalTag created = (await client.CreateTagAsync(create, "#123456", admin, client.CreateReceipt(create))).Value;
         var byId = new SecretReference(client.Authority, new InfisicalTagAddress("project", created.Id));
         await Assert.That((await client.GetTagAsync(byId)).Value.Slug).IsEqualTo("protected-tag");
         await Assert.That((await client.GetTagAsync(create)).Value.Id).IsEqualTo(created.Id);
-        await Assert.That((await client.UpdateTagAsync(byId, "renamed-tag", "#654321", admin, new(byId))).Value.Slug).IsEqualTo("renamed-tag");
+        await Assert.That((await client.UpdateTagAsync(byId, "renamed-tag", "#654321", admin, client.CreateReceipt(byId))).Value.Slug).IsEqualTo("renamed-tag");
         var list = new SecretReference(client.Authority, new InfisicalTagAddress("project"));
         await Assert.That((await client.ListTagsAsync(list)).Value.Items.Single().Slug).IsEqualTo("renamed-tag");
         await Assert.That(JsonSerializer.Serialize((await client.GetTagAsync(byId)).Value)).IsEqualTo("{}");
-        await Assert.That((await client.DeleteTagAsync(byId, admin, new(byId))).Value.Id).IsEqualTo(created.Id);
+        await Assert.That((await client.DeleteTagAsync(byId, admin, client.CreateReceipt(byId))).Value.Id).IsEqualTo(created.Id);
         await Assert.That((await client.ListTagsAsync(list)).Value.Items.Count).IsEqualTo(0);
     }
 
@@ -57,25 +75,25 @@ public sealed class OrganizationTests
         await using InfisicalClient client = Phase5TestSupport.Client(backend);
         InfisicalNativeAuthority admin = Phase5TestSupport.Admin(client);
         var create = new SecretReference(client.Authority, new InfisicalFolderAddress("project", "dev", Phase5TestSupport.EnvironmentId, "/", name: "child"));
-        InfisicalFolder folder = (await client.CreateFolderAsync(create, admin, new(create), "description")).Value;
+        InfisicalFolder folder = (await client.CreateFolderAsync(create, admin, client.CreateReceipt(create), "description")).Value;
         var byId = new SecretReference(client.Authority, new InfisicalFolderAddress("project", "dev", Phase5TestSupport.EnvironmentId, "/", folder.Id));
         await Assert.That((await client.GetFolderAsync(byId)).Value.Name).IsEqualTo("child");
         var list = new SecretReference(client.Authority, new InfisicalFolderAddress("project", "dev", Phase5TestSupport.EnvironmentId, "/"));
         await Assert.That((await client.ListFoldersAsync(list)).Value.Items.Count).IsEqualTo(1);
         var rename = new SecretReference(client.Authority, new InfisicalFolderAddress("project", "dev", Phase5TestSupport.EnvironmentId, "/", folder.Id, "renamed"));
-        await Assert.That((await client.UpdateFolderAsync(rename, admin, new(rename), clearDescription: true)).Value.Description is null).IsTrue();
-        var batchReceipt = new MutationReceipt(list);
+        await Assert.That((await client.UpdateFolderAsync(rename, admin, client.CreateReceipt(rename), clearDescription: true)).Value.Description is null).IsTrue();
+        var batchReceipt = client.CreateReceipt(list);
         InfisicalNativeList<InfisicalFolder> batch = (await client.UpdateFoldersAsync(list, [new(folder.Id, "batched")], admin, batchReceipt)).Value;
         await Assert.That(batch.IsComplete).IsTrue();
         await Assert.That(batchReceipt.Evidence).IsEqualTo(DispatchEvidence.Applied);
         await Assert.That((await client.GetFolderAsync(byId)).Value.Name).IsEqualTo("batched");
-        var moveReceipt = new MutationReceipt(byId);
+        var moveReceipt = client.CreateReceipt(byId);
         InfisicalFolderMove move = (await client.MoveFolderAsync(byId,
             new("project", "prod", Phase5TestSupport.OtherEnvironmentId, "/"), admin, moveReceipt)).Value;
         await Assert.That(move.DestinationEnvironment).IsEqualTo("prod");
         var moved = new SecretReference(client.Authority, new InfisicalFolderAddress("project", "prod", Phase5TestSupport.OtherEnvironmentId, "/", folder.Id));
         await Assert.That((await client.GetFolderAsync(moved)).Value.EnvironmentId).IsEqualTo(Phase5TestSupport.OtherEnvironmentId);
-        await Assert.That((await client.DeleteFolderAsync(moved, admin, new(moved))).Value.Id).IsEqualTo(folder.Id);
+        await Assert.That((await client.DeleteFolderAsync(moved, admin, client.CreateReceipt(moved))).Value.Id).IsEqualTo(folder.Id);
         await Assert.That((await client.GetFolderAsync(moved)).Status).IsEqualTo(SecretStatus.Absent);
         await Assert.That(JsonSerializer.Serialize(folder)).IsEqualTo("{}");
     }
@@ -88,13 +106,13 @@ public sealed class OrganizationTests
         var target = new SecretReference(client.Authority, new InfisicalTagAddress("project", "tag", InfisicalOrganizationSelector.Slug));
         var forbidden = new Phase5TestSupport.Tokens("admin", forbidden: true);
         var wrongProject = new InfisicalNativeAuthority(client.Authority, forbidden, "other-project");
-        var receipt = new MutationReceipt(target);
+        var receipt = client.CreateReceipt(target);
         await Assert.That((await client.CreateTagAsync(target, "color", wrongProject, receipt)).Status).IsEqualTo(SecretStatus.Invalid);
         var wrongClient = new InfisicalNativeAuthority(new SecretAuthority(), forbidden, "project");
         await Assert.That((await client.CreateTagAsync(target, "color", wrongClient, receipt)).Status).IsEqualTo(SecretStatus.Invalid);
         var other = new SecretReference(client.Authority, new InfisicalTagAddress("project", "other", InfisicalOrganizationSelector.Slug));
         var native = new InfisicalNativeAuthority(client.Authority, forbidden, "project");
-        await Assert.That((await client.CreateTagAsync(target, "color", native, new(other))).Status).IsEqualTo(SecretStatus.Invalid);
+        await Assert.That((await client.CreateTagAsync(target, "color", native, client.CreateReceipt(other))).Status).IsEqualTo(SecretStatus.Invalid);
         var scoped = new InfisicalNativeAuthority(client.Authority, forbidden, "project", "dev", "/only");
         await Assert.That((await client.CreateTagAsync(target, "color", scoped, receipt)).Status).IsEqualTo(SecretStatus.Invalid);
         await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.NotDispatched);
@@ -110,13 +128,13 @@ public sealed class OrganizationTests
             responseLimit: 1024, requestLimit: 1024);
         var target = new SecretReference(client.Authority, new InfisicalTagAddress("project", "tag", InfisicalOrganizationSelector.Slug));
         var admin = new InfisicalNativeAuthority(client.Authority, new Phase5TestSupport.Tokens("admin", true), "project");
-        var receipt = new MutationReceipt(target);
+        var receipt = client.CreateReceipt(target);
         await Assert.That((await client.CreateTagAsync(target, new string('x', 1024), admin, receipt)).Status).IsEqualTo(SecretStatus.Invalid);
         await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.NotDispatched);
         var backend = new OrganizationBackend { Oversized = true };
         await using InfisicalClient responseClient = Phase5TestSupport.Client(backend, responseLimit: 1024);
         var responseTarget = new SecretReference(responseClient.Authority, new InfisicalTagAddress("project", "tag", InfisicalOrganizationSelector.Slug));
-        var responseReceipt = new MutationReceipt(responseTarget);
+        var responseReceipt = responseClient.CreateReceipt(responseTarget);
         await Assert.That((await responseClient.CreateTagAsync(responseTarget, "color", Phase5TestSupport.Admin(responseClient), responseReceipt)).Status).IsEqualTo(SecretStatus.Unknown);
         await Assert.That(responseReceipt.Evidence).IsEqualTo(DispatchEvidence.PossiblyDispatched);
         await Assert.That(backend.Tag is not null).IsTrue();
@@ -130,7 +148,7 @@ public sealed class OrganizationTests
         var backend = new OrganizationBackend { Conflict = !wrongCoordinates, WrongProject = wrongCoordinates };
         await using InfisicalClient client = Phase5TestSupport.Client(backend);
         var target = new SecretReference(client.Authority, new InfisicalTagAddress("project", "tag", InfisicalOrganizationSelector.Slug));
-        var receipt = new MutationReceipt(target);
+        var receipt = client.CreateReceipt(target);
         var result = await client.CreateTagAsync(target, "color", Phase5TestSupport.Admin(client), receipt);
         await Assert.That(result.Status).IsEqualTo(wrongCoordinates ? SecretStatus.Unknown : SecretStatus.Conflict);
         await Assert.That(receipt.Evidence).IsEqualTo(wrongCoordinates ? DispatchEvidence.PossiblyDispatched : DispatchEvidence.Conflict);
@@ -143,15 +161,15 @@ public sealed class OrganizationTests
         await using InfisicalClient client = Phase5TestSupport.Client(backend);
         InfisicalNativeAuthority admin = Phase5TestSupport.Admin(client);
         var tag = new SecretReference(client.Authority, new InfisicalTagAddress("project", "tag", InfisicalOrganizationSelector.Slug));
-        _ = (await client.CreateTagAsync(tag, "color", admin, new(tag))).Value;
+        _ = (await client.CreateTagAsync(tag, "color", admin, client.CreateReceipt(tag))).Value;
         var list = new SecretReference(client.Authority, new InfisicalTagAddress("project"));
         InfisicalNativeList<InfisicalTag> tags = (await client.ListTagsAsync(list, 1)).Value;
         await Assert.That(tags.Items.Count).IsEqualTo(1);
         await Assert.That(tags.IsComplete).IsFalse();
         var folder = new SecretReference(client.Authority, new InfisicalFolderAddress("project", "dev", Phase5TestSupport.EnvironmentId, "/", name: "child"));
-        string id = (await client.CreateFolderAsync(folder, admin, new(folder))).Value.Id;
+        string id = (await client.CreateFolderAsync(folder, admin, client.CreateReceipt(folder))).Value.Id;
         var scope = new SecretReference(client.Authority, new InfisicalFolderAddress("project", "dev", Phase5TestSupport.EnvironmentId, "/"));
-        var receipt = new MutationReceipt(scope);
+        var receipt = client.CreateReceipt(scope);
         var batch = (await client.UpdateFoldersAsync(scope, [new(id, "updated"), new(Phase5TestSupport.OtherId, "missing")], admin, receipt)).Value;
         await Assert.That(batch.IsComplete).IsFalse();
         await Assert.That(batch.Items.Single().Name).IsEqualTo("updated");

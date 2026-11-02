@@ -80,7 +80,7 @@ internal static class ImportsEffects
         internal async ValueTask<string> CreateAsync(StaticOwnedFixture source, CancellationToken token)
         {
             var target = Target(Destination.Setup);
-            var receipt = new MutationReceipt(target);
+            var receipt = Destination.Setup.CreateReceipt(target);
             var created = await Destination.Setup.CreateImportAsync(target, SourceAddress(source), Input.Replication,
                 Destination.Authority(Destination.Setup, NativeIdentityRole.Setup), receipt, token);
             probe.Contract(created.IsSuccess && receipt.Evidence == DispatchEvidence.Applied,
@@ -160,7 +160,7 @@ internal static class ImportsEffects
         bool denied = InfisicalImportPolicyFamilies.Denied(d);
         InfisicalClient c = denied ? f.Destination.Denied : f.Destination.Runtime;
         var target = f.Target(c, create || list || read ? null : f.ImportId);
-        var receipt = new MutationReceipt(target);
+        var receipt = c.CreateReceipt(target);
         var authority = f.Destination.Authority(c, denied ? NativeIdentityRole.Denied : NativeIdentityRole.Runtime);
         string path = "/api/v2/secret-imports" + (read ? "/secrets" : create || list ? "" : "/" + f.ImportId);
         string? selectedId = f.ImportId;

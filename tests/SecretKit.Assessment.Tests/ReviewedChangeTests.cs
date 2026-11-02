@@ -39,7 +39,7 @@ public sealed class ReviewedChangeTests
                 fixture.InfisicalTarget("unknown-canary"), material)
         ];
         var scenario = new ReviewedChangesScenario(selected, 3);
-        MutationReceipt[] held = scenario.Results.Select(row => row.Receipt).ToArray();
+        MutationReceipt[] held = scenario.Results.Select(row => row.Receipt ?? throw new InvalidOperationException("Expected an issued receipt.")).ToArray();
         await Assert.That(held.All(receipt => receipt.Evidence == DispatchEvidence.NotDispatched)).IsTrue();
 
         IReadOnlyList<ReviewedChangeResult> results = await scenario.ExecuteAsync().WaitAsync(Deadline);
@@ -163,7 +163,7 @@ public sealed class ReviewedChangeTests
             fixture.Selection(azure, "held", material),
             fixture.Selection(azure, "queued", material)
         ], 1);
-        MutationReceipt[] receipts = scenario.Results.Select(row => row.Receipt).ToArray();
+        MutationReceipt[] receipts = scenario.Results.Select(row => row.Receipt ?? throw new InvalidOperationException("Expected an issued receipt.")).ToArray();
         using var cancellation = new CancellationTokenSource();
 
         Task<IReadOnlyList<ReviewedChangeResult>> execution = scenario.ExecuteAsync(cancellation.Token);
@@ -238,6 +238,7 @@ public sealed class ReviewedChangeTests
 
         await Assert.That(results[0].Status).IsEqualTo(SecretStatus.Denied);
         await Assert.That(results[1].Status).IsEqualTo(SecretStatus.Invalid);
+        await Assert.That(results[1].Receipt is null).IsTrue();
         await Assert.That(results[2].Status).IsEqualTo(SecretStatus.Invalid);
         await Assert.That(results[3].Status).IsEqualTo(SecretStatus.Unsupported);
         await Assert.That(results.Take(4).All(row => row.Evidence == DispatchEvidence.NotDispatched)).IsTrue();

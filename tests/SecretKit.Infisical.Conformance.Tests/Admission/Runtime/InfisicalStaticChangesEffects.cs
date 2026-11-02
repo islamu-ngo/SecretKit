@@ -54,7 +54,7 @@ internal static class InfisicalStaticChangesEffects
         await fixture.InitializeAsync(token);
         InfisicalClient client = denied ? fixture.Denied : fixture.Runtime;
         SecretReference target = fixture.Secret(client, input.Key);
-        var receipt = new MutationReceipt(target);
+        var receipt = client.CreateReceipt(target);
         using SecretMaterial material = SecretMaterial.FromText(input.Value);
         StaticDispatch<InfisicalStaticChange> dispatch = await InfisicalStaticFamilies.DispatchAsync(env,
             definition, probe, ct => update ? client.UpdateValueAsync(target, material, receipt, ct) :

@@ -762,7 +762,7 @@ public sealed partial class AzureVaultFixtureProvisionerTests
             using var material = SecretMaterial.FromText(NotificationCaptureScope.Value);
             var window = f.Source.Arm(f.Binding, material);
             var target = f.Target();
-            await f.Source.RunSetAsync(f.Binding.Selector, f.Client, new(target, material), new(target), default);
+            await f.Source.RunSetAsync(f.Binding.Selector, f.Client, new(target, material), f.Client.CreateReceipt(target), default);
             await Assert.That(f.Source.Read(window, f.Binding).NativeSettled).IsFalse();
             await Assert.That(f.Fixture.Read().Resources.Single(r => r.Id == parent.SecretId).ActiveDispatch)
                 .IsNotEqualTo(Guid.Empty);

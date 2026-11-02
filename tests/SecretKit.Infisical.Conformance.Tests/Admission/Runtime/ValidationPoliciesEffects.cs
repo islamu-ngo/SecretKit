@@ -208,7 +208,7 @@ internal static class ValidationPoliciesEffects
             if (!create)
             {
                 var seed = Target(f.Setup, newRule: true);
-                var r = new MutationReceipt(seed);
+                var r = f.Setup.CreateReceipt(seed);
                 var seeded = await f.Setup.CreateValidationRuleAsync(seed, i.Seed.Build(name, f, true),
                     Authority(f.Setup, NativeIdentityRole.Setup), r, token);
                 p.Contract(seeded.IsSuccess && r.Evidence == DispatchEvidence.Applied, NativeFailure.MissingPrerequisite);
@@ -252,7 +252,7 @@ internal static class ValidationPoliciesEffects
             // Creation scope belongs to the selected input, not the seed branch.
             if (create) target = new(c.Authority, new InfisicalValidationAddress(i.Fixture.ProjectId, i.Kind,
                 environment: i.Change.SupplyEnvironment ? i.Fixture.Environment : null, secretPath: f.Folder));
-            var receipt = new MutationReceipt(target);
+            var receipt = c.CreateReceipt(target);
             var authority = Authority(c, denied ? NativeIdentityRole.Denied : NativeIdentityRole.Runtime);
             string path = "/api/v1/secret-validation-rules" + (list && i.AllKinds ? "" : "/" + kindPath) +
                 (list || create ? "" : "/" + id);
@@ -344,7 +344,7 @@ internal static class ValidationPoliciesEffects
                     var owned = new SecretReference(f.Administrative.Authority, new InfisicalValidationAddress(
                         i.Fixture.ProjectId, i.Kind, rule.Id, rule.Environment, rule.SecretPath));
                     var removed = await f.Administrative.DeleteValidationRuleAsync(owned,
-                        Authority(f.Administrative, NativeIdentityRole.Administrative), new(owned), cleanup.Token);
+                        Authority(f.Administrative, NativeIdentityRole.Administrative), f.Administrative.CreateReceipt(owned), cleanup.Token);
                     var gone = await f.Observer.GetValidationRuleAsync(new(f.Observer.Authority, owned.Address), cleanup.Token);
                     p.Contract((removed.IsSuccess || removed.Status == SecretStatus.Absent) &&
                         gone.Status == SecretStatus.Absent, NativeFailure.CleanupIncomplete);
@@ -376,7 +376,7 @@ internal static class ValidationPoliciesEffects
                 trial.ExpectedStatus is SecretStatus.Success or SecretStatus.Invalid or SecretStatus.Conflict &&
                 !f.Input.Seeds.Any(seed => seed.Key == trial.Key), NativeFailure.MissingInput);
             var target = f.Secret(f.Runtime, trial.Key);
-            var r = new MutationReceipt(target);
+            var r = f.Runtime.CreateReceipt(target);
             using var material = SecretMaterial.FromText(trial.BaselineValue);
             var created = await f.Runtime.CreateAsync(target, material, r, token);
             p.Contract(created.IsSuccess && created.Value.Disposition == InfisicalChangeDisposition.Applied &&
@@ -402,7 +402,7 @@ internal static class ValidationPoliciesEffects
         foreach (Trial trial in trials)
         {
             var target = f.Secret(f.Runtime, trial.Key);
-            var receipt = new MutationReceipt(target);
+            var receipt = f.Runtime.CreateReceipt(target);
             using var material = SecretMaterial.FromText(trial.Value);
             var attempted = trial.Update ? await f.Runtime.UpdateValueAsync(target, material, receipt, token) :
                 await f.Runtime.CreateAsync(target, material, receipt, token);

@@ -15,7 +15,7 @@ public sealed class ImportEffectTests
         await using InfisicalClient observer = Phase5TestSupport.Client(new ImportBackend(state), "observer");
         await using InfisicalClient intended = Phase5TestSupport.Client(new ImportBackend(state), "intended");
         var target = ImportTarget(observer);
-        var receipt = new MutationReceipt(target);
+        var receipt = observer.CreateReceipt(target);
         InfisicalImport import = (await observer.CreateImportAsync(target, new("source", "/shared"), true,
             Phase5TestSupport.Admin(observer), receipt)).Value;
         await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.Applied);
@@ -50,7 +50,7 @@ public sealed class ImportEffectTests
         await using InfisicalClient intended = Phase5TestSupport.Client(new ImportBackend(state), "intended");
         var target = ImportTarget(admin);
         InfisicalImport import = (await admin.CreateImportAsync(target, new("source", "/shared"), true,
-            Phase5TestSupport.Admin(admin), new(target))).Value;
+            Phase5TestSupport.Admin(admin), admin.CreateReceipt(target))).Value;
         using SecretRead adminRead = (await admin.ReadAsync(SecretTarget(admin))).Value;
         await Assert.That(adminRead.Material.Reveal()).IsEqualTo(state.SourceValue);
         var observedTarget = ImportTarget(admin, import.Id);
@@ -69,17 +69,17 @@ public sealed class ImportEffectTests
         await using InfisicalClient client = Phase5TestSupport.Client(new ImportBackend(state));
         InfisicalNativeAuthority admin = Phase5TestSupport.Admin(client);
         var create = ImportTarget(client);
-        InfisicalImport import = (await client.CreateImportAsync(create, new("source", "/shared", "source-project"), false, admin, new(create))).Value;
+        InfisicalImport import = (await client.CreateImportAsync(create, new("source", "/shared", "source-project"), false, admin, client.CreateReceipt(create))).Value;
         await Assert.That((await client.ListImportsAsync(create)).Value.Items.Single().Id).IsEqualTo(import.Id);
         var byId = ImportTarget(client, import.Id);
         await Assert.That((await client.GetImportAsync(byId)).Value.FolderId).IsEqualTo(Phase5TestSupport.Id);
-        await Assert.That((await client.UpdateImportAsync(byId, admin, new(byId), position: 2)).Value.Position).IsEqualTo(2d);
+        await Assert.That((await client.UpdateImportAsync(byId, admin, client.CreateReceipt(byId), position: 2)).Value.Position).IsEqualTo(2d);
         using InfisicalImportedSecrets grouped = (await client.ReadImportedSecretsAsync(create)).Value;
         await Assert.That(grouped.Items.Single().Material.Reveal()).IsEqualTo(state.SourceValue);
         await Assert.That(grouped.Items.Single().Environment).IsEqualTo("source");
         await Assert.That(grouped.IsComplete).IsTrue();
         await Assert.That(JsonSerializer.Serialize(grouped).Contains(state.SourceValue, StringComparison.Ordinal)).IsFalse();
-        await Assert.That((await client.DeleteImportAsync(byId, admin, new(byId))).Value.Id).IsEqualTo(import.Id);
+        await Assert.That((await client.DeleteImportAsync(byId, admin, client.CreateReceipt(byId))).Value.Id).IsEqualTo(import.Id);
         await Assert.That((await client.ListImportsAsync(create)).Value.Items.Count).IsEqualTo(0);
         await Assert.That((await client.GetImportAsync(byId)).Status).IsEqualTo(SecretStatus.Absent);
     }
@@ -92,7 +92,7 @@ public sealed class ImportEffectTests
         var state = new ImportState { DropResponse = !cancel, HoldResponse = cancel };
         await using InfisicalClient client = Phase5TestSupport.Client(new ImportBackend(state));
         var target = ImportTarget(client);
-        var receipt = new MutationReceipt(target);
+        var receipt = client.CreateReceipt(target);
         using var cancellation = new CancellationTokenSource();
         Task<SecretOutcome<InfisicalImport>> pending = client.CreateImportAsync(target, new("source", "/shared"), false,
             Phase5TestSupport.Admin(client), receipt, cancellation.Token).AsTask();
@@ -119,7 +119,7 @@ public sealed class ImportEffectTests
         var state = new ImportState();
         await using InfisicalClient client = Phase5TestSupport.Client(new ImportBackend(state));
         var target = ImportTarget(client);
-        var receipt = new MutationReceipt(target);
+        var receipt = client.CreateReceipt(target);
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
         var admin = new InfisicalNativeAuthority(client.Authority, new Phase5TestSupport.Tokens("admin", true), "project");

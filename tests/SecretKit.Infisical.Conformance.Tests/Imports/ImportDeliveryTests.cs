@@ -32,7 +32,7 @@ public sealed class ImportDeliveryTests
         var importTarget = new SecretReference(admin.Authority,
             new InfisicalImportAddress(project, "prod", "/sdk-destination", destination.Id));
         var destinationAuthority = new InfisicalNativeAuthority(admin.Authority, adminTokens, project, "prod", "/sdk-destination");
-        var firstReceipt = new MutationReceipt(importTarget);
+        var firstReceipt = admin.CreateReceipt(importTarget);
         var firstImport = await admin.CreateImportAsync(importTarget,
             new InfisicalImportSource("dev", "/sdk-source-first"), false, destinationAuthority, firstReceipt, cancellationToken);
         Require(firstImport.Status, "first-import-create");
@@ -41,7 +41,7 @@ public sealed class ImportDeliveryTests
             new InfisicalSecretAddress(project, "prod", "/sdk-destination", key));
         await Assert.That((await runtime.ReadAsync(rawTarget, cancellationToken)).Status).IsEqualTo(SecretStatus.Absent);
         await Delivered(firstValue);
-        var secondReceipt = new MutationReceipt(importTarget);
+        var secondReceipt = admin.CreateReceipt(importTarget);
         var secondImport = await admin.CreateImportAsync(importTarget,
             new InfisicalImportSource("dev", "/sdk-source-second"), false, destinationAuthority, secondReceipt, cancellationToken);
         Require(secondImport.Status, "second-import-create");
@@ -109,7 +109,7 @@ public sealed class ImportDeliveryTests
             var replicatedTarget = new SecretReference(admin.Authority,
                 new InfisicalImportAddress(project, "prod", "/sdk-replicated", replicatedFolder.Id));
             var replicatedAuthority = new InfisicalNativeAuthority(admin.Authority, adminTokens, project, "prod", "/sdk-replicated");
-            var replicationReceipt = new MutationReceipt(replicatedTarget);
+            var replicationReceipt = admin.CreateReceipt(replicatedTarget);
             var replicated = await admin.CreateImportAsync(replicatedTarget,
                 new InfisicalImportSource("dev", "/sdk-source-first"), true, replicatedAuthority,
                 replicationReceipt, cancellationToken);
@@ -142,7 +142,7 @@ public sealed class ImportDeliveryTests
         {
             var target = new SecretReference(admin.Authority,
                 new InfisicalFolderAddress(project, environment, environmentId, "/", name: name));
-            var receipt = new MutationReceipt(target);
+            var receipt = admin.CreateReceipt(target);
             var result = await admin.CreateFolderAsync(target, administrative, receipt, cancellationToken: cancellationToken);
             Require(result.Status, "folder-create");
             await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.Applied);
@@ -151,7 +151,7 @@ public sealed class ImportDeliveryTests
         async Task Write(string environment, string path, string name, SecretMaterial material)
         {
             var target = new SecretReference(admin.Authority, new InfisicalSecretAddress(project, environment, path, name));
-            var receipt = new MutationReceipt(target);
+            var receipt = admin.CreateReceipt(target);
             Require((await admin.CreateAsync(target, material, receipt, cancellationToken)).Status, "source-or-local-write");
             await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.Applied);
         }

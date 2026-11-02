@@ -173,6 +173,7 @@ public sealed class ManagementDateTimeFormatTests
         row["secretValue"] = "private-value";
         SecretMaterial? completed = null;
         using var request = new ManagementRequest<SharedValue>("infisical.post.v1.shared.secrets.by.id.access",
+            static (apis, body, token) => apis.Governance.AccessShare(Id, body!, token),
             HttpMethod.Post, "/api/v1/shared-secrets/" + Id + "/access", new(Org, resourceId: Id), null, value =>
             {
                 var metadata = new SharedSecretMetadata(value, Org, Id);

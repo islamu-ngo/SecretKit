@@ -209,7 +209,7 @@ public sealed class InfisicalNonSqlInputEffectTests
             NonSqlValidationKind.AdministrativeConnection, InfisicalNonSqlInputEffectFixture.ProjectId,
             "env", "/borrowed/" + name, NonSqlInputSource.ControlledFixture);
         var binding = await source.OpenAsync(root, profiles, token);
-        var folder = await native.CreateFolderAsync(folderTarget, authority, new(folderTarget), cancellationToken: token);
+        var folder = await native.CreateFolderAsync(folderTarget, authority, native.CreateReceipt(folderTarget), cancellationToken: token);
         await Assert.That(folder.IsSuccess).IsTrue();
         await using var client = new InfisicalDynamicClient(fixture.Origin, environment.Tokens(NativeIdentityRole.Setup),
             new("project-slug", "env", "/borrowed/" + name, Guid.Parse(folder.Value.Id)),
@@ -224,7 +224,7 @@ public sealed class InfisicalNonSqlInputEffectTests
         {
             // When actual backend administrative authentication rejects the save.
             var created = await client.CreateDefinitionAsync(target, profile, new(TimeSpan.FromSeconds(60)),
-                new(TimeSpan.FromSeconds(300)), receipt, token);
+                new(TimeSpan.FromSeconds(300)), receipt, cancellationToken: token);
             // Then independent state, not a submitted-body echo, proves no commit.
             await Assert.That(created.Status).IsEqualTo(SecretStatus.Invalid);
             await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.Rejected);
@@ -239,7 +239,7 @@ public sealed class InfisicalNonSqlInputEffectTests
         }
         finally
         {
-            await Assert.That((await native.DeleteFolderAsync(folderTarget, authority, new(folderTarget),
+            await Assert.That((await native.DeleteFolderAsync(folderTarget, authority, native.CreateReceipt(folderTarget),
                 cancellationToken: token)).IsSuccess).IsTrue();
             await source.CloseAsync(root, token);
         }
@@ -428,7 +428,7 @@ public sealed class InfisicalNonSqlInputEffectTests
         var binding = await source.OpenAsync(root, profiles, token);
         var folder = await native.CreateFolderAsync(folderTarget, new InfisicalNativeAuthority(native.Authority,
             environment.Tokens(NativeIdentityRole.Setup), InfisicalNonSqlInputEffectFixture.ProjectId),
-            new(folderTarget), cancellationToken: token);
+            native.CreateReceipt(folderTarget), cancellationToken: token);
         await Assert.That(folder.IsSuccess).IsTrue();
         var scope = new InfisicalDynamicScope("project-slug", "env", "/borrowed/" + name, Guid.Parse(folder.Value.Id));
         using var transport = new LifecycleTransport(cancelBoundary ? "cancellation-boundary" : "selected-contract");
@@ -446,7 +446,7 @@ public sealed class InfisicalNonSqlInputEffectTests
                 "CreateDefinitionAsync", "seed", "selected-contract", NonSqlInputConfiguration.Baseline), token);
             using var baseline = fixture.Create(false);
             var created = await client.CreateDefinitionAsync(target, baseline, new(TimeSpan.FromSeconds(60)),
-                new(TimeSpan.FromSeconds(300)), createReceipt, token);
+                new(TimeSpan.FromSeconds(300)), createReceipt, cancellationToken: token);
             await Assert.That(created.IsSuccess).IsTrue();
             await Assert.That(createReceipt.Evidence).IsEqualTo(DispatchEvidence.Applied);
             var seedFence = await source.CompleteAsync(seedArm, createReceipt.Evidence, token);
@@ -519,7 +519,7 @@ public sealed class InfisicalNonSqlInputEffectTests
             await Assert.That((await native.DeleteFolderAsync(folderTarget,
                 new InfisicalNativeAuthority(native.Authority, environment.Tokens(NativeIdentityRole.Setup),
                     InfisicalNonSqlInputEffectFixture.ProjectId),
-                new(folderTarget), cancellationToken: token)).IsSuccess).IsTrue();
+                native.CreateReceipt(folderTarget), cancellationToken: token)).IsSuccess).IsTrue();
             var closed = await source.CloseAsync(root, token);
             await Assert.That(closed.OwnedUpstreamMaterialDisposed && closed.OwnedUpstreamResourcesAbsent &&
                 closed.OriginalAttemptsSettled && closed.PendingDeliveries == 0 && closed.RemainingRegistrations == 0).IsTrue();

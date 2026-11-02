@@ -122,7 +122,7 @@ public sealed class InfisicalImportPermissionMaterialTests
                 r.Action == ImportPermissionAction.Edit);
             var changeTarget = new SecretReference(client.Authority, new InfisicalImportAddress(changedRow.Project,
                 changedRow.Environment, changedRow.Path, changedRow.FolderId.ToString(), changedRow.Id.ToString()));
-            var receipt = new MutationReceipt(changeTarget);
+            var receipt = client.CreateReceipt(changeTarget);
             var change = await client.UpdateImportAsync(changeTarget, new(client.Authority,
                 env.Tokens(SecretKit.TestFixtures.NativeIdentityRole.Setup), changedRow.Project, changedRow.Environment, changedRow.Path),
                 receipt, "source-b", ImportPermissionContract.SourcePath(changedRow, true), 7.5);

@@ -103,7 +103,7 @@ internal sealed class NotificationRuntimeTriggerCapture :
         internal Task<SecretOutcome<AzureSetSecretResult>>? OriginalTask;
         internal Task? SendTask;
         internal Guid Dispatch;
-        internal int Sends;
+        internal int Sends, Challenges;
         internal bool Claimed, Started, Finished, NativeProof, NativeRejected, PreDispatchRejected, EnteredTransport;
         internal DateTimeOffset StartedAt, FinishedAt;
         internal SecretStatus? Status;
@@ -353,6 +353,29 @@ internal sealed class NotificationRuntimeTriggerCapture :
         Check(call);
         ValidateRequest(call, message);
         Require(call.Sends == 0 && call.SendTask is null);
+        if (call.Receipt!.Evidence == DispatchEvidence.NotDispatched)
+        {
+            lock (gate)
+            {
+                Require(!disposed && call.Started && !call.Finished && call.Challenges == 0);
+                message.CancellationToken.ThrowIfCancellationRequested();
+                RequireDispatch(call);
+                call.Challenges++;
+            }
+            // Preserve the provider's challenge authority; only the SDK may mark its receipt.
+            if (message.Request.Content is { } hostContent) call.Storage.Add(hostContent);
+            message.Request.Content = null;
+            foreach (var header in message.Request.Headers.ToArray()) message.Request.Headers.Remove(header.Name);
+            message.BufferResponse = false;
+            await runtime.Transport.ProcessAsync(message).ConfigureAwait(false);
+            Require(message.HasResponse && message.Response.Status == 401);
+            ValidateRequest(call, message);
+            Headers(message.Response.Headers.Select(h => (h.Name, h.Value)));
+            Require(message.Request.Content is null && !message.Request.Headers.Contains("Authorization") &&
+                message.Response.Headers.TryGetValue("WWW-Authenticate", out _));
+            return;
+        }
+        Require(call.Receipt.Evidence == DispatchEvidence.PossiblyDispatched);
         if (message.Request.Content is { } original)
         {
             using var body = new RequestBuffer(limits.MaximumRequestBytes);
@@ -368,9 +391,8 @@ internal sealed class NotificationRuntimeTriggerCapture :
             if (root.TryGetProperty("attributes", out var attributes))
                 Require(attributes.ValueKind == JsonValueKind.Object && !attributes.EnumerateObject().Any());
         }
-        // Cold SDK challenge processing can strip content. The exact original
-        // typed request was checked above, so reconstruct ONLY its owned value.
-        // Never touch SDK challenge caches or use challenge/discovery sends.
+        // The original typed request and SDK dispatch transition were checked;
+        // freeze only its owned value after selecting the native credential.
         var token = await runtime.Credential.GetTokenAsync(
             new TokenRequestContext(["https://vault.azure.net/.default"]), message.CancellationToken).ConfigureAwait(false);
         DateTimeOffset now = Check(call);
@@ -395,10 +417,6 @@ internal sealed class NotificationRuntimeTriggerCapture :
                 Require(!disposed && call.Started && !call.Finished && call.Sends == 0);
                 message.CancellationToken.ThrowIfCancellationRequested();
                 RequireDispatch(call);
-                // The SDK's cold bodyless request has not marked its receipt.
-                // Mark the SAME receipt at this actual authorized boundary.
-                if (call.Receipt!.Evidence == DispatchEvidence.NotDispatched)
-                    call.Receipt.BeginDispatch(call.Request!.Target);
                 Require(call.Receipt.Evidence == DispatchEvidence.PossiblyDispatched);
                 message.BufferResponse = false;
                 call.Sends++;

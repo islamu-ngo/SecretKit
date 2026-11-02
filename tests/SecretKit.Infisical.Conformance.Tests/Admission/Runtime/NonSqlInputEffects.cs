@@ -62,7 +62,7 @@ internal static class NonSqlInputEffects
             var controlReceipt = new InfisicalDynamicMutationReceipt(controlTarget, InfisicalDynamicOperation.CreateDefinition);
             var created = await client.CreateDefinitionAsync(controlTarget, baseline,
                 new(TimeSpan.FromSeconds(input.DefaultSeconds)), new(TimeSpan.FromSeconds(input.MaximumSeconds)),
-                controlReceipt, token);
+                controlReceipt, cancellationToken: token);
             probe.Contract(created.IsSuccess, NativeFailure.MissingPrerequisite);
             var control = created.Value;
             var baselineFence = await trial.CompleteAsync(controlReceipt.Evidence, token);
@@ -111,7 +111,7 @@ internal static class NonSqlInputEffects
                         status = (await client.CreateDefinitionAsync(target, changed,
                             new(TimeSpan.FromSeconds(input.DefaultSeconds)),
                             variant == "maximumTtl.omitted" ? null : new(TimeSpan.FromSeconds(input.MaximumSeconds)),
-                            receipt!, cancellation.Token, options)).Status;
+                            receipt!, options, cancellation.Token)).Status;
                         break;
                     case "UpdateDefinitionAsync":
                         status = (await client.UpdateDefinitionAsync(control, new(

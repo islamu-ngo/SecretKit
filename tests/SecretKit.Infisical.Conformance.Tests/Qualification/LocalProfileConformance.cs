@@ -211,7 +211,7 @@ internal static class LocalProfileConformance
             NativeWorkflow.Require(await Remove(settings.ReadKey, token));
             using var material = SecretMaterial.FromText(Convert.ToHexString(RandomNumberGenerator.GetBytes(32)));
             var reference = Select(settings.ReadKey);
-            var receipt = new MutationReceipt(reference);
+            var receipt = client.CreateReceipt(reference);
             var created = await client.CreateAsync(reference, material, receipt, token);
             NativeWorkflow.Require(created.IsSuccess && created.Value.Disposition == InfisicalChangeDisposition.Applied &&
                 receipt.Evidence == DispatchEvidence.Applied);

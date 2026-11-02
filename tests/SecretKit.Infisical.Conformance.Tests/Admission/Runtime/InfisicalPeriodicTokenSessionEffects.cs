@@ -198,7 +198,7 @@ internal static class InfisicalPeriodicTokenSessionEffects
         using var value = SecretMaterial.FromText(input.ProtectedValue);
         var setupTarget = new SecretReference(setup.Authority, new InfisicalSecretAddress(input.Sandbox.ProjectId,
             input.Sandbox.Environment, folder.Path, key));
-        var receipt = new MutationReceipt(setupTarget);
+        var receipt = setup.CreateReceipt(setupTarget);
         var seeded = await setup.CreateAsync(setupTarget, value, receipt, token);
         probe.Contract(seeded.IsSuccess && seeded.Value.Disposition == InfisicalChangeDisposition.Applied &&
             receipt.Evidence == DispatchEvidence.Applied, NativeFailure.MissingPrerequisite);

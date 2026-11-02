@@ -19,7 +19,7 @@
         "additionalProperties": false,
         "required": ["file", "sha256"],
         "properties": {
-          "file": { "type": "string", "pattern": "^src/SecretKit\\.(Infisical|AzureKeyVault)(\\.Management)?/[A-Za-z0-9]+\\.cs$", "maxLength": 512 },
+          "file": { "type": "string", "pattern": "^src/SecretKit\\.(Infisical|AzureKeyVault)(\\.Management)?/(?:(?!(?:[bB][iI][nN]|[oO][bB][jJ])/)[A-Za-z0-9]+/)*[A-Za-z0-9]+\\.cs$", "maxLength": 512 },
           "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
         }
       }

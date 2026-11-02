@@ -1,0 +1,279 @@
+using System.Net;
+using System.Net.Http.Headers;
+using System.Text.Json;
+using SecretKit.Core;
+
+namespace SecretKit.Infisical.Management;
+
+/// <summary>
+/// Fixed-origin administrative transport disposed by its owner, never by clients.
+/// Safe modes enforce network safeguards; an explicitly host-controlled pipeline
+/// retains the host's policies and ownership.
+/// </summary>
+public sealed class ManagementTransport : IDisposable
+{
+    private readonly HttpClient _http;
+    private readonly InfisicalTransportBinding _binding;
+    private readonly ManagementRequestBuilder _requests;
+    internal int ResponseLimit { get; }
+
+    /// <summary>Creates a bounded transport for the selected origin and network policy; null selects safe defaults.</summary>
+    public ManagementTransport(Uri origin, InfisicalNetworkOptions? network = null)
+        : this(origin, network ?? new(), null)
+    {
+    }
+
+    internal ManagementTransport(Uri origin, int maximumResponseBytes, IWebProxy? proxy,
+        bool allowLoopbackDevelopmentHttp, HttpMessageHandler? handler)
+        : this(origin, new InfisicalNetworkOptions
+        {
+            MaximumResponseBytes = maximumResponseBytes,
+            Proxy = proxy,
+            AllowLoopbackDevelopmentHttp = allowLoopbackDevelopmentHttp
+        }, handler)
+    {
+    }
+
+    private ManagementTransport(Uri origin, InfisicalNetworkOptions network, HttpMessageHandler? handler)
+    {
+        ArgumentNullException.ThrowIfNull(origin);
+        InfisicalTransportBinding.ValidateOrigin(origin, network);
+        if (network.MaximumResponseBytes is < 1024 or > 16 * 1024 * 1024)
+        {
+            throw new ArgumentException("Invalid response byte budget.");
+        }
+        ResponseLimit = network.MaximumResponseBytes;
+        _binding = new(origin, network, handler);
+        _http = _binding.Client;
+        _requests = new ManagementRequestBuilder(_binding.Requests);
+    }
+
+    internal Task<HttpRequestMessage> BuildAsync<T>(ManagementRequest<T> request,
+        HttpContent? body, CancellationToken cancellationToken) where T : notnull =>
+        _requests.BuildAsync(request, body, cancellationToken);
+
+    internal Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+        _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+
+    /// <summary>Releases owned transport resources without disposing borrowed host clients or handlers.</summary>
+    public void Dispose() => _binding.Dispose();
+    /// <summary>Returns a redacted marker without origin or transport configuration.</summary>
+    public override string ToString() => "[ManagementTransport]";
+}
+
+/// <summary>
+/// Executes typed administrative requests using explicitly selected credentials
+/// and exact host grants. Borrows its transport and never chooses a fallback identity.
+/// </summary>
+public sealed class ManagementClient
+{
+    private readonly ManagementTransport _transport;
+    private readonly TimeProvider _time;
+    /// <summary>Gets this client's local binding identity for grants and receipts, not proof of provider permissions.</summary>
+    public SecretAuthority Authority { get; } = new();
+
+    /// <summary>Creates a client borrowing the transport; a null clock uses system UTC time for token expiry checks.</summary>
+    public ManagementClient(ManagementTransport transport, TimeProvider? timeProvider = null)
+    {
+        ArgumentNullException.ThrowIfNull(transport);
+        _transport = transport;
+        _time = timeProvider ?? TimeProvider.System;
+    }
+
+    /// <summary>Creates pre-dispatch evidence for this exact mutation request; retain it across cancellation or an unknown response.</summary>
+    public ManagementReceipt CreateReceipt<T>(ManagementRequest<T> request) where T : notnull
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        if (!request.IsMutation)
+        {
+            throw new ArgumentException("Only effectful requests have mutation receipts.");
+        }
+        return new ManagementReceipt(request, Authority);
+    }
+
+    /// <summary>
+    /// Executes once after checking the selected authority, exact grant and mutation
+    /// receipt. Null or mismatched grants deny access before token acquisition.
+    /// Dispose successful material-bearing results and the caller-owned request.
+    /// </summary>
+    /// <remarks>
+    /// Reads require no receipt; mutations require a fresh receipt from this client.
+    /// Cancellation propagates and does not roll back remote effects. Keep the
+    /// receipt when dispatch or response evidence is uncertain; execution never replays.
+    /// </remarks>
+    /// <exception cref="OperationCanceledException">The operation was canceled; inspect the retained receipt for known dispatch evidence.</exception>
+    public async ValueTask<SecretOutcome<T>> ExecuteAsync<T>(ManagementRequest<T> request,
+        ManagementAuthority authority, ManagementGrant? grant, ManagementReceipt? receipt = null,
+        CancellationToken cancellationToken = default) where T : notnull
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(authority);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (grant is null || !grant.Matches(Authority, authority, request.OperationId, request.Target))
+        {
+            return SecretOutcome<T>.Failure(SecretStatus.Denied);
+        }
+        if (request.IsMutation && (receipt is null || !receipt.Matches(request, Authority) ||
+            receipt.Evidence != DispatchEvidence.NotDispatched) || !request.IsMutation && receipt is not null)
+        {
+            return SecretOutcome<T>.Failure(SecretStatus.Invalid);
+        }
+
+        byte[]? body = request.CopyBody();
+        byte[] responseBytes = new byte[_transport.ResponseLimit + 1];
+        try
+        {
+            using var content = body is null ? null : new ByteArrayContent(body);
+            if (content is not null) content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+            using HttpRequestMessage message = await _transport.BuildAsync(request, content, cancellationToken).ConfigureAwait(false);
+            SecretOutcome<InfisicalAccessToken> tokenOutcome =
+                await authority.Tokens.GetTokenAsync(cancellationToken).ConfigureAwait(false);
+            if (!tokenOutcome.IsSuccess)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                return SecretOutcome<T>.Failure(tokenOutcome.Status, tokenOutcome.RetryAfter);
+            }
+            using InfisicalAccessToken token = tokenOutcome.Value;
+            cancellationToken.ThrowIfCancellationRequested();
+            if (token.ExpiresAt is { } expiry && expiry <= _time.GetUtcNow())
+            {
+                return SecretOutcome<T>.Failure(SecretStatus.Expired);
+            }
+            string bearer = token.Material.Reveal();
+            if (bearer.Length is 0 or > 16384 || bearer.Any(c => c <= ' ' || c >= 127))
+            {
+                return SecretOutcome<T>.Failure(SecretStatus.Invalid);
+            }
+            message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (receipt is not null && !receipt.TryBeginDispatch())
+            {
+                return SecretOutcome<T>.Failure(SecretStatus.Invalid);
+            }
+            using HttpResponseMessage response = await _transport.SendAsync(message, cancellationToken).ConfigureAwait(false);
+            bool credentialCheck = request.OperationId is
+                "infisical.post.v2.secret.rotations.postgres.credentials.by.rotationId.check.credentials" or
+                "infisical.post.v2.secret.rotations.mysql.credentials.by.rotationId.check.credentials" or
+                "infisical.post.v2.secret.rotations.mssql.credentials.by.rotationId.check.credentials";
+            if (credentialCheck && response.StatusCode == HttpStatusCode.NoContent)
+            {
+                using JsonDocument acknowledgementBody = JsonDocument.Parse("\"\"");
+                T acknowledgement = request.Parse(acknowledgementBody.RootElement);
+                receipt?.Record(DispatchEvidence.Applied);
+                cancellationToken.ThrowIfCancellationRequested();
+                return SecretOutcome<T>.Success(acknowledgement);
+            }
+            if (response.StatusCode == HttpStatusCode.Accepted)
+            {
+                receipt?.Record(DispatchEvidence.Pending);
+                cancellationToken.ThrowIfCancellationRequested();
+                return SecretOutcome<T>.Failure(SecretStatus.Pending);
+            }
+            if (response.StatusCode != HttpStatusCode.OK || credentialCheck)
+            {
+                SecretStatus status = response.StatusCode switch
+                {
+                    HttpStatusCode.BadRequest or HttpStatusCode.UnprocessableEntity => SecretStatus.Invalid,
+                    HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => SecretStatus.Denied,
+                    HttpStatusCode.NotFound => SecretStatus.Absent,
+                    HttpStatusCode.Conflict or HttpStatusCode.PreconditionFailed => SecretStatus.Conflict,
+                    HttpStatusCode.TooManyRequests => SecretStatus.Throttled,
+                    _ => SecretStatus.Unknown
+                };
+                if (status == SecretStatus.Conflict)
+                {
+                    receipt?.Record(DispatchEvidence.Conflict);
+                }
+                else if (status is SecretStatus.Invalid or SecretStatus.Denied or SecretStatus.Absent or SecretStatus.Throttled)
+                {
+                    receipt?.Record(DispatchEvidence.Rejected);
+                }
+                cancellationToken.ThrowIfCancellationRequested();
+                return SecretOutcome<T>.Failure(status);
+            }
+            if (response.Content.Headers.ContentLength > _transport.ResponseLimit)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                return SecretOutcome<T>.Failure(SecretStatus.Unknown);
+            }
+            using Stream stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+            int length = 0;
+            while (length < responseBytes.Length)
+            {
+                int count = await stream.ReadAsync(responseBytes.AsMemory(length), cancellationToken).ConfigureAwait(false);
+                if (count == 0)
+                {
+                    break;
+                }
+                length += count;
+            }
+            if (length > _transport.ResponseLimit)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                return SecretOutcome<T>.Failure(SecretStatus.Unknown);
+            }
+            using JsonDocument document = JsonDocument.Parse(responseBytes.AsMemory(0, length),
+                new JsonDocumentOptions { MaxDepth = 64 });
+            RejectDuplicateProperties(document.RootElement);
+            T result = request.Parse(document.RootElement);
+            receipt?.Record(DispatchEvidence.Applied);
+            // If cancellation wins after a complete response, preserve its known receipt,
+            // but do not leak an owned material result that the caller cannot receive.
+            if (cancellationToken.IsCancellationRequested)
+            {
+                (result as IDisposable)?.Dispose();
+                cancellationToken.ThrowIfCancellationRequested();
+            }
+            return SecretOutcome<T>.Success(result);
+        }
+        catch (OperationCanceledException)
+        {
+            throw new OperationCanceledException("Management operation canceled.", cancellationToken);
+        }
+        catch (ManagementContractException error)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return SecretOutcome<T>.Failure(error.Status);
+        }
+        catch (Exception error) when (error is HttpRequestException or IOException or JsonException or
+            InvalidOperationException or FormatException or ObjectDisposedException)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return SecretOutcome<T>.Failure(SecretStatus.Unknown);
+        }
+        finally
+        {
+            if (body is not null)
+            {
+                Array.Clear(body);
+            }
+            Array.Clear(responseBytes);
+        }
+    }
+
+    private static void RejectDuplicateProperties(JsonElement value)
+    {
+        if (value.ValueKind == JsonValueKind.Object)
+        {
+            var names = new HashSet<string>(StringComparer.Ordinal);
+            foreach (JsonProperty property in value.EnumerateObject())
+            {
+                if (!names.Add(property.Name))
+                {
+                    throw new ManagementContractException(SecretStatus.Unknown);
+                }
+                RejectDuplicateProperties(property.Value);
+            }
+        }
+        else if (value.ValueKind == JsonValueKind.Array)
+        {
+            foreach (JsonElement item in value.EnumerateArray())
+            {
+                RejectDuplicateProperties(item);
+            }
+        }
+    }
+
+    /// <summary>Returns a redacted marker without credentials or administrative scope.</summary>
+    public override string ToString() => "[ManagementClient]";
+}

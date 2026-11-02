@@ -168,7 +168,7 @@ public sealed class InfisicalDynamicPermissionCalibrationTests
                             {
                                 receipt = new(target, InfisicalDynamicOperation.CreateDefinition);
                                 status = (await client.CreateDefinitionAsync(target, profile, new(TimeSpan.FromSeconds(300)),
-                                    new(TimeSpan.FromSeconds(600)), receipt, timeout.Token)).Status;
+                                    new(TimeSpan.FromSeconds(600)), receipt, cancellationToken: timeout.Token)).Status;
                             }
                             break;
                         case DynamicPermissionAction.Edit:

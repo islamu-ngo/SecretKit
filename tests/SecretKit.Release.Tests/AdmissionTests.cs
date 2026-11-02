@@ -49,16 +49,10 @@ public sealed class AdmissionTests
         // The native assembly references, not cases or inventory contents, select
         // both the member denominator and the complete handwritten source roots.
         string root = RepositoryRoot();
-        string[] sourceFiles = NativeAssemblies()
+        string[] sourceRoots = NativeAssemblies()
             .Where(a => a.GetName().Name!.StartsWith("SecretKit." + provider, StringComparison.Ordinal))
-            .SelectMany(a => Directory.GetFiles(Path.Combine(root, "src", a.GetName().Name!), "*.cs"))
-            .Select(file => Path.GetRelativePath(root, file).Replace('\\', '/')).ToArray();
-        Manifest.ExactSet(inventory.Sources.Select(s => s.File), sourceFiles, "admission-source-coverage");
-        foreach (FileDigest source in inventory.Sources)
-        {
-            string actual = Manifest.Hash(await File.ReadAllBytesAsync(Path.Combine(root, source.File)));
-            await Assert.That(source.Sha256).IsEqualTo(actual);
-        }
+            .Select(a => Path.Combine(root, "src", a.GetName().Name!)).ToArray();
+        AdmissionSourceCoverage.Verify(root, sourceRoots, inventory.Sources);
 
         using JsonDocument schema = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(root,
             "docs", "internal", "releases", "admission", "admission.schema.json")));
@@ -163,6 +157,33 @@ public sealed class AdmissionTests
     // Evaluate the deliberately small schema vocabulary used by the admission
     // file. Unsupported validation keywords fail the test rather than silently
     // treating a future schema extension as checked. No schema package needed.
+    [Test]
+    [Arguments("src/SecretKit.Infisical/Client.cs", true)]
+    [Arguments("src/SecretKit.Infisical/Dynamic/Profiles/Profile.cs", true)]
+    [Arguments("src/SecretKit.AzureKeyVault.Management/Access/Scopes.cs", true)]
+    [Arguments("src/SecretKit.Infisical/../Client.cs", false)]
+    [Arguments("src/SecretKit.Infisical/Secrets//Client.cs", false)]
+    [Arguments("src/SecretKit.Infisical/bin/Client.cs", false)]
+    [Arguments("src/SecretKit.Infisical/Dynamic/OBJ/Client.cs", false)]
+    [Arguments("src/SecretKit.Infisical/Secrets/bIn/Client.cs", false)]
+    [Arguments("src/SecretKit.Infisical/Secrets/obj/Client.cs", false)]
+    [Arguments("src/SecretKit.Infisical/Secrets\\Client.cs", false)]
+    [Arguments("src/SecretKit.Core/Client.cs", false)]
+    [Arguments("/src/SecretKit.Infisical/Client.cs", false)]
+    public async Task SourcePathSchemaAdmitsOnlyHandwrittenProviderPaths(string file, bool valid)
+    {
+        using JsonDocument schema = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(RepositoryRoot(),
+            "docs", "internal", "releases", "admission", "admission.schema.json")));
+        using JsonDocument value = JsonDocument.Parse(JsonSerializer.Serialize(file));
+        JsonElement fileSchema = schema.RootElement.GetProperty("properties").GetProperty("sources")
+            .GetProperty("items").GetProperty("properties").GetProperty("file");
+        if (valid)
+            ValidateSchema(value.RootElement, fileSchema, schema.RootElement);
+        else
+            await Assert.That(() => ValidateSchema(value.RootElement, fileSchema, schema.RootElement))
+                .Throws<InvalidDataException>();
+    }
+
     private static void ValidateSchema(JsonElement value, JsonElement schema, JsonElement root)
     {
         string[] keywords = ["$schema", "title", "$defs", "$ref", "type", "const", "enum", "properties",
@@ -232,7 +253,7 @@ public sealed class AdmissionTests
     }
 
     private static AdmissionInventory Example() => new(1, "current-admission", "Infisical",
-        "complete-live", [new("src/SecretKit.Infisical/InfisicalClient.cs", new string('a', 64))],
+        "complete-live", [new("src/SecretKit.Infisical/Secrets/InfisicalClient.cs", new string('a', 64))],
         [new("read", "SecretKit.Infisical.InfisicalClient.ReadAsync", ["selected-version"],
             "implemented-subset", "Selected-authority owned material, not metadata-only visibility.",
             ["read-effect", "denied-read"], ["owned-environment", "runtime-identity", "observer-identity"])],
@@ -308,5 +329,34 @@ public sealed class AdmissionTests
         Directory.CreateDirectory(evidence);
         await File.WriteAllBytesAsync(Path.Combine(evidence, "compiled-remote-members.json"),
             JsonSerializer.SerializeToUtf8Bytes(inventory, Manifest.JsonOptions));
+    }
+}
+
+internal static class AdmissionSourceCoverage
+{
+    internal static void Verify(string root, IEnumerable<string> sourceRoots, IEnumerable<FileDigest> sources)
+    {
+        FileDigest[] inventory = sources.ToArray();
+        string[] files = sourceRoots.SelectMany(HandwrittenFiles)
+            .Select(file => Path.GetRelativePath(root, file).Replace('\\', '/')).ToArray();
+        Manifest.ExactSet(inventory.Select(source => source.File), files, "admission-source-coverage");
+        foreach (FileDigest source in inventory)
+            if (source.Sha256 != Manifest.Hash(File.ReadAllBytes(Path.Combine(root, source.File))))
+                throw new InvalidDataException("Admission source digest mismatch.");
+    }
+
+    private static IEnumerable<string> HandwrittenFiles(string directory)
+    {
+        foreach (string file in Directory.EnumerateFiles(directory, "*.cs"))
+            yield return file;
+        foreach (string child in Directory.EnumerateDirectories(directory))
+        {
+            string name = Path.GetFileName(child);
+            if (name.Equals("bin", StringComparison.OrdinalIgnoreCase) ||
+                name.Equals("obj", StringComparison.OrdinalIgnoreCase))
+                continue;
+            foreach (string file in HandwrittenFiles(child))
+                yield return file;
+        }
     }
 }

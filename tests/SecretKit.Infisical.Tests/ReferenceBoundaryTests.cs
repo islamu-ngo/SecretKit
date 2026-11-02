@@ -21,7 +21,7 @@ public sealed class ReferenceBoundaryTests
                 valueConstraints: new(8, 64, uniqueAcrossLastVersions: 3, uniqueWithinScope: true))
             : new InfisicalValidationInput("rule", passwordConstraints: constraints,
                 providers: [kind == InfisicalValidationKind.DynamicSecrets ? InfisicalValidationProvider.SqlDatabase : InfisicalValidationProvider.PostgresCredentials]);
-        var receipt = new MutationReceipt(create);
+        var receipt = client.CreateReceipt(create);
         InfisicalValidationRule rule = (await client.CreateValidationRuleAsync(create, input, admin, receipt)).Value;
         await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.Applied);
         await Assert.That(rule.Kind).IsEqualTo(kind);
@@ -30,7 +30,7 @@ public sealed class ReferenceBoundaryTests
         var list = new SecretReference(client.Authority, new InfisicalValidationAddress("project", kind));
         await Assert.That((await client.ListValidationRulesAsync(list)).Value.Items.Single().Id).IsEqualTo(rule.Id);
         var patch = new InfisicalValidationInput(name: "renamed-rule", clearDescription: true, clearEnvironment: true);
-        await Assert.That((await client.UpdateValidationRuleAsync(byId, patch, admin, new(byId))).Value.Name).IsEqualTo("renamed-rule");
+        await Assert.That((await client.UpdateValidationRuleAsync(byId, patch, admin, client.CreateReceipt(byId))).Value.Name).IsEqualTo("renamed-rule");
         InfisicalValidationRule fresh = (await client.ListValidationRulesAsync(list)).Value.Items.Single();
         await Assert.That(fresh.Environment is null).IsTrue();
         await Assert.That(kind == InfisicalValidationKind.StaticSecrets ? fresh.ValueConstraints!.UniqueAcrossLastVersions == 3 :
@@ -38,7 +38,7 @@ public sealed class ReferenceBoundaryTests
         await Assert.That(JsonSerializer.Serialize(fresh).Contains("protected-prefix", StringComparison.Ordinal)).IsFalse();
         await Assert.That(JsonSerializer.Serialize(input).Contains("rule", StringComparison.Ordinal)).IsFalse();
         var cleared = new SecretReference(client.Authority, new InfisicalValidationAddress("project", kind, rule.Id));
-        await Assert.That((await client.DeleteValidationRuleAsync(cleared, admin, new(cleared))).Value.Id).IsEqualTo(rule.Id);
+        await Assert.That((await client.DeleteValidationRuleAsync(cleared, admin, client.CreateReceipt(cleared))).Value.Id).IsEqualTo(rule.Id);
         await Assert.That((await client.ListValidationRulesAsync(list)).Value.Items.Count).IsEqualTo(0);
     }
 
@@ -61,7 +61,7 @@ public sealed class ReferenceBoundaryTests
     {
         await using InfisicalClient client = Phase5TestSupport.Client(new ValidationBackend(InfisicalValidationKind.DynamicSecrets));
         var target = new SecretReference(client.Authority, new InfisicalValidationAddress("project", InfisicalValidationKind.DynamicSecrets, environment: "dev", secretPath: "/"));
-        var receipt = new MutationReceipt(target);
+        var receipt = client.CreateReceipt(target);
         var forbidden = new Phase5TestSupport.Tokens("admin", true);
         var authority = new InfisicalNativeAuthority(client.Authority, forbidden, "project");
         var oversized = new InfisicalValidationInput("rule", passwordConstraints: new(2049),
@@ -84,7 +84,7 @@ public sealed class ReferenceBoundaryTests
         var backend = new ValidationBackend(InfisicalValidationKind.StaticSecrets) { WrongProject = true };
         await using InfisicalClient client = Phase5TestSupport.Client(backend);
         var target = new SecretReference(client.Authority, new InfisicalValidationAddress("project", InfisicalValidationKind.StaticSecrets, environment: "dev", secretPath: "/"));
-        var receipt = new MutationReceipt(target);
+        var receipt = client.CreateReceipt(target);
         var result = await client.CreateValidationRuleAsync(target, new("protected-policy-name"),
             Phase5TestSupport.Admin(client), receipt);
         await Assert.That(result.Status).IsEqualTo(SecretStatus.Unknown);
@@ -100,11 +100,11 @@ public sealed class ReferenceBoundaryTests
         var target = new SecretReference(client.Authority, new InfisicalValidationAddress("project", InfisicalValidationKind.StaticSecrets, environment: "dev", secretPath: "/"));
         InfisicalNativeAuthority admin = Phase5TestSupport.Admin(client);
         string id = (await client.CreateValidationRuleAsync(target, new("rule", keyConstraints: new(8), valueConstraints: new(10)),
-            admin, new(target))).Value.Id;
+            admin, client.CreateReceipt(target))).Value.Id;
         var byId = new SecretReference(client.Authority, new InfisicalValidationAddress("project", InfisicalValidationKind.StaticSecrets, id));
-        InfisicalValidationRule renamed = (await client.UpdateValidationRuleAsync(byId, new(name: "renamed"), admin, new(byId))).Value;
+        InfisicalValidationRule renamed = (await client.UpdateValidationRuleAsync(byId, new(name: "renamed"), admin, client.CreateReceipt(byId))).Value;
         await Assert.That(renamed.KeyConstraints!.MinimumLength).IsEqualTo(8);
-        InfisicalValidationRule cleared = (await client.UpdateValidationRuleAsync(byId, new(clearKeyConstraints: true), admin, new(byId))).Value;
+        InfisicalValidationRule cleared = (await client.UpdateValidationRuleAsync(byId, new(clearKeyConstraints: true), admin, client.CreateReceipt(byId))).Value;
         await Assert.That(cleared.KeyConstraints is null).IsTrue();
         await Assert.That(cleared.ValueConstraints!.MinimumLength).IsEqualTo(10);
     }

@@ -1,0 +1,388 @@
+using System.Globalization;
+using System.Net;
+using System.Net.Http.Headers;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using Refit;
+using SecretKit.Core;
+
+namespace SecretKit.Infisical;
+
+/// <summary>Closed, copied host proof. Disposal erases this copy, not host credentials.</summary>
+public sealed class InfisicalLoginProof : IDisposable
+{
+    private readonly object _gate = new();
+    private byte[]? _payload;
+    internal string Strategy { get; }
+
+    private InfisicalLoginProof(string strategy, string identityId, string? organizationSlug,
+        Action<Utf8JsonWriter> fields)
+    {
+        ValidateText(identityId, 1024);
+        if (organizationSlug is not null) ValidateText(organizationSlug, 64);
+        Strategy = strategy;
+        byte[] buffer = new byte[128 * 1024];
+        try
+        {
+            using var stream = new MemoryStream(buffer, writable: true);
+            using (var writer = new Utf8JsonWriter(stream))
+            {
+                writer.WriteStartObject();
+                writer.WriteString("identityId", identityId);
+                if (organizationSlug is not null) writer.WriteString("organizationSlug", organizationSlug);
+                fields(writer);
+                writer.WriteEndObject();
+            }
+            _payload = buffer.AsSpan(0, checked((int)stream.Position)).ToArray();
+        }
+        catch (NotSupportedException) { throw new ArgumentException("Proof exceeds its byte budget."); }
+        finally { Array.Clear(buffer); }
+    }
+
+    /// <summary>Completed signed AliCloud GetCallerIdentity fields; no signing or key acquisition.</summary>
+    public static InfisicalLoginProof AliCloud(string identityId, SecretMaterial accessKeyId,
+        SecretMaterial signature, SecretMaterial signatureNonce, string timestamp, string version,
+        string? organizationSlug = null)
+    {
+        ValidateText(timestamp, 1024);
+        if (!DateTimeOffset.TryParse(timestamp, CultureInfo.InvariantCulture, DateTimeStyles.None, out _) ||
+            !timestamp.Contains('T'))
+            throw new ArgumentException("Invalid proof timestamp.");
+        ValidateText(version, 1024);
+        return new("alicloud", identityId, organizationSlug, writer =>
+        {
+            WriteMaterial(writer, "AccessKeyId", accessKeyId);
+            writer.WriteString("Action", "GetCallerIdentity");
+            writer.WriteString("Format", "JSON");
+            WriteMaterial(writer, "Signature", signature);
+            writer.WriteString("SignatureMethod", "HMAC-SHA1");
+            WriteMaterial(writer, "SignatureNonce", signatureNonce);
+            writer.WriteString("SignatureVersion", "1.0");
+            writer.WriteString("Timestamp", timestamp);
+            writer.WriteString("Version", version);
+        });
+    }
+
+    /// <summary>Host-signed STS request body and headers in their native base64 representation.</summary>
+    public static InfisicalLoginProof Aws(string identityId, SecretMaterial iamRequestBody,
+        SecretMaterial iamRequestHeaders, string? iamHttpRequestMethod = null, string? organizationSlug = null)
+    {
+        if (iamHttpRequestMethod is not null) ValidateText(iamHttpRequestMethod, 1024);
+        return new("aws", identityId, organizationSlug, writer =>
+        {
+            WriteMaterial(writer, "iamRequestBody", iamRequestBody);
+            WriteMaterial(writer, "iamRequestHeaders", iamRequestHeaders);
+            if (iamHttpRequestMethod is not null) writer.WriteString("iamHttpRequestMethod", iamHttpRequestMethod);
+        });
+    }
+
+    /// <summary>Copies a host-acquired Azure JWT; does not acquire credentials or infer the selected principal.</summary>
+    public static InfisicalLoginProof Azure(string identityId, SecretMaterial jwt, string? organizationSlug = null) =>
+        JwtProof("azure", identityId, jwt, organizationSlug);
+    /// <summary>Copies a host-acquired GCP JWT for the explicitly selected identity.</summary>
+    public static InfisicalLoginProof Gcp(string identityId, SecretMaterial jwt, string? organizationSlug = null) =>
+        JwtProof("gcp", identityId, jwt, organizationSlug);
+    /// <summary>Copies JWT proof without interpreting claims as token-to-principal evidence.</summary>
+    public static InfisicalLoginProof Jwt(string identityId, SecretMaterial jwt, string? organizationSlug = null) =>
+        JwtProof("jwt", identityId, jwt, organizationSlug);
+    /// <summary>Copies a host-supplied Kubernetes JWT without reading cluster credentials.</summary>
+    public static InfisicalLoginProof Kubernetes(string identityId, SecretMaterial jwt, string? organizationSlug = null) =>
+        JwtProof("kubernetes", identityId, jwt, organizationSlug);
+    /// <summary>Copies host-supplied OIDC JWT proof without running an identity flow.</summary>
+    public static InfisicalLoginProof Oidc(string identityId, SecretMaterial jwt, string? organizationSlug = null) =>
+        JwtProof("oidc", identityId, jwt, organizationSlug);
+    /// <summary>JWT-SVID only; this route does not accept X.509-SVID.</summary>
+    public static InfisicalLoginProof Spiffe(string identityId, SecretMaterial jwt, string? organizationSlug = null) =>
+        JwtProof("spiffe", identityId, jwt, organizationSlug);
+
+    /// <summary>Copies an LDAP password and explicit username for the selected identity UUID.</summary>
+    public static InfisicalLoginProof Ldap(string identityId, string username, SecretMaterial password,
+        string? organizationSlug = null)
+    {
+        if (!Guid.TryParseExact(identityId, "D", out _)) throw new ArgumentException("Invalid LDAP identity selection.");
+        ValidateText(username, 255);
+        return new("ldap", identityId, organizationSlug, writer =>
+        {
+            writer.WriteString("username", username);
+            WriteMaterial(writer, "password", password, 1024);
+        });
+    }
+
+    /// <summary>Signed OCI headers remain JSON proof fields, never transport headers.</summary>
+    public static InfisicalLoginProof Oci(string identityId, string userOcid, SecretMaterial authorization,
+        string host, string? date = null, string? xDate = null, string? organizationSlug = null)
+    {
+        ValidateText(userOcid, 1024);
+        ValidateText(host, 1024);
+        if (date is not null) ValidateText(date, 1024);
+        if (xDate is not null) ValidateText(xDate, 1024);
+        return new("oci", identityId, organizationSlug, writer =>
+        {
+            writer.WriteString("userOcid", userOcid);
+            writer.WriteStartObject("headers");
+            WriteMaterial(writer, "authorization", authorization);
+            writer.WriteString("host", host);
+            if (date is not null) writer.WriteString("date", date);
+            if (xDate is not null) writer.WriteString("x-date", xDate);
+            writer.WriteEndObject();
+        });
+    }
+
+    /// <summary>Identity selection only. The host configures and owns mTLS certificate presentation.</summary>
+    public static InfisicalLoginProof TlsCertificate(string identityId, string? organizationSlug = null) =>
+        new("tls-cert", identityId, organizationSlug, _ => { });
+
+    private static InfisicalLoginProof JwtProof(string strategy, string identityId, SecretMaterial jwt,
+        string? organizationSlug) => new(strategy, identityId, organizationSlug, writer => WriteMaterial(writer, "jwt", jwt));
+
+    private static void ValidateText(string value, int maximum)
+    {
+        if (string.IsNullOrWhiteSpace(value) || value.Length > maximum || value.Any(char.IsControl))
+            throw new ArgumentException("Invalid protected proof field.");
+    }
+
+    private static void WriteMaterial(Utf8JsonWriter writer, string name, SecretMaterial material, int maximum = 16384)
+    {
+        ArgumentNullException.ThrowIfNull(material);
+        char[] characters = material.ExportCharacters();
+        try
+        {
+            if (characters.Length < 1 || characters.Length > maximum || characters.Any(char.IsControl))
+                throw new ArgumentException("Invalid host proof material.");
+            writer.WriteString(name, characters.AsSpan());
+        }
+        finally { Array.Clear(characters); }
+    }
+
+    internal byte[] CopyPayload()
+    {
+        lock (_gate)
+        {
+            ObjectDisposedException.ThrowIf(_payload is null, this);
+            return (byte[])_payload.Clone();
+        }
+    }
+
+    /// <summary>Erases this proof's copied payload; the host retains its original credentials.</summary>
+    public void Dispose()
+    {
+        lock (_gate)
+        {
+            if (_payload is null) return;
+            Array.Clear(_payload);
+            _payload = null;
+        }
+    }
+    /// <summary>Returns a fixed label without proof fields.</summary>
+    public override string ToString() => "[InfisicalLoginProof]";
+}
+
+/// <summary>One explicit host-proof exchange. No principal acquisition, background login or replay.</summary>
+public sealed partial class InfisicalProofAuthentication : IDisposable
+{
+    private readonly HttpClient _transport;
+    private readonly InfisicalTransportBinding _binding;
+    private readonly IInfisicalProofAuthenticationWire _wire;
+    private readonly Uri _origin;
+    private readonly TimeProvider _time;
+    private readonly int _responseLimit;
+    private readonly int _requestLimit;
+    private readonly TimeSpan _operationTimeout;
+    private bool _disposed;
+
+    /// <summary>Creates a fixed-origin proof client without acquiring credentials; borrowed transport stays host-owned.</summary>
+    public InfisicalProofAuthentication(Uri origin, InfisicalNetworkOptions? network = null,
+        TimeProvider? timeProvider = null) : this(origin, network ?? new(), timeProvider, null, true) { }
+
+    internal InfisicalProofAuthentication(Uri origin, HttpMessageHandler handler,
+        InfisicalNetworkOptions? network = null, TimeProvider? timeProvider = null)
+        : this(origin, network ?? new(), timeProvider, handler, false) { }
+
+    private InfisicalProofAuthentication(Uri origin, InfisicalNetworkOptions network,
+        TimeProvider? timeProvider, HttpMessageHandler? handler, bool ownsHandler)
+    {
+        ArgumentNullException.ThrowIfNull(origin);
+        InfisicalTransportBinding.ValidateOrigin(origin, network);
+        if (network.MaximumResponseBytes is < 1024 or > 16 * 1024 * 1024)
+            throw new ArgumentException("Invalid authentication response budget.");
+        _origin = origin;
+        _time = timeProvider ?? TimeProvider.System;
+        _responseLimit = network.MaximumResponseBytes;
+        _requestLimit = network.MaximumRequestBytes;
+        _operationTimeout = network.OperationTimeout;
+        _binding = new(origin, network, handler, ownsHandler);
+        _transport = _binding.Client;
+        _wire = RestService.ForGenerated<IInfisicalProofAuthenticationWire>(_binding.Requests, new RefitSettings
+        {
+            CaptureRequestContent = false,
+            CaptureMethodArguments = false,
+            ExceptionFactory = _ => ValueTask.FromResult<Exception?>(null)
+        });
+    }
+
+    /// <summary>Creates caller-retainable dispatch evidence bound to this authentication client.</summary>
+    public InfisicalProofLoginReceipt CreateReceipt()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return new(this);
+    }
+
+    /// <summary>Exchanges a copied host proof once and transfers a successful login to the caller.</summary>
+    /// <remarks>Cancellation propagates while the receipt retains possible dispatch. Unknown is not permission to
+    /// replay proof. The caller still owns the supplied proof and must dispose the returned login.</remarks>
+    public async ValueTask<SecretOutcome<InfisicalProofLogin>> LoginAsync(InfisicalLoginProof proof,
+        InfisicalProofLoginReceipt receipt, CancellationToken cancellationToken = default)
+    {
+        return await InfisicalOperationBudget.RunAsync(_operationTimeout, _time, cancellationToken,
+            InfisicalOperation.ProofLogin, ExecuteAsync, () => receipt?.Evidence ?? DispatchEvidence.NotDispatched).ConfigureAwait(false);
+
+        async ValueTask<SecretOutcome<InfisicalProofLogin>> ExecuteAsync(CancellationToken operationToken)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            ArgumentNullException.ThrowIfNull(proof);
+            ArgumentNullException.ThrowIfNull(receipt);
+            operationToken.ThrowIfCancellationRequested();
+            if (!ReferenceEquals(receipt.Owner, this) || receipt.Evidence != DispatchEvidence.NotDispatched)
+                return SecretOutcome<InfisicalProofLogin>.Failure(SecretStatus.Invalid, reason: SecretFailureReason.AuthorityMismatch);
+            byte[] payload = proof.CopyPayload();
+            byte[] bytes = new byte[_responseLimit + 1];
+            try
+            {
+                if (payload.Length > _requestLimit)
+                    return SecretOutcome<InfisicalProofLogin>.Failure(SecretStatus.Invalid, reason: SecretFailureReason.RequestTooLarge);
+                using var content = new ByteArrayContent(payload);
+                content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+                using HttpRequestMessage request = await BuildRequestAsync(proof.Strategy, content, operationToken).ConfigureAwait(false);
+                Uri destination = new(_origin, $"/api/v1/auth/{proof.Strategy}-auth/login");
+                if (request.RequestUri is { IsAbsoluteUri: false } relative) request.RequestUri = new(_origin, relative);
+                if (request.Method != HttpMethod.Post || request.RequestUri != destination)
+                    return SecretOutcome<InfisicalProofLogin>.Failure(SecretStatus.Invalid);
+                operationToken.ThrowIfCancellationRequested();
+                DateTimeOffset sentAt = _time.GetUtcNow();
+                if (!receipt.TryBeginDispatch()) return SecretOutcome<InfisicalProofLogin>.Failure(SecretStatus.Invalid);
+                using HttpResponseMessage response = await _transport.SendAsync(request,
+                    HttpCompletionOption.ResponseHeadersRead, operationToken).ConfigureAwait(false);
+                if (response.StatusCode != HttpStatusCode.OK)
+                {
+                    SecretStatus status = response.StatusCode switch
+                    {
+                        HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => SecretStatus.Denied,
+                        HttpStatusCode.BadRequest or HttpStatusCode.UnprocessableEntity => SecretStatus.Invalid,
+                        HttpStatusCode.TooManyRequests => SecretStatus.Throttled,
+                        _ => SecretStatus.Unknown
+                    };
+                    if (status != SecretStatus.Unknown) receipt.Record(DispatchEvidence.Rejected);
+                    return SecretOutcome<InfisicalProofLogin>.Failure(status);
+                }
+                if (response.Content.Headers.ContentLength > _responseLimit)
+                    return SecretOutcome<InfisicalProofLogin>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.ResponseTooLarge);
+                using Stream body = await response.Content.ReadAsStreamAsync(operationToken).ConfigureAwait(false);
+                int length = 0;
+                while (length < bytes.Length)
+                {
+                    int count = await body.ReadAsync(bytes.AsMemory(length), operationToken).ConfigureAwait(false);
+                    if (count == 0) break;
+                    length += count;
+                }
+                if (length > _responseLimit) return SecretOutcome<InfisicalProofLogin>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.ResponseTooLarge);
+                using var document = JsonDocument.Parse(bytes.AsMemory(0, length), new JsonDocumentOptions { MaxDepth = 8 });
+                JsonElement root = document.RootElement;
+                if (root.ValueKind != JsonValueKind.Object ||
+                    root.EnumerateObject().Select(p => p.Name).Distinct(StringComparer.Ordinal).Count() != root.EnumerateObject().Count() ||
+                    !root.TryGetProperty("accessToken", out var token) || token.ValueKind != JsonValueKind.String ||
+                    !root.TryGetProperty("tokenType", out var type) || type.ValueKind != JsonValueKind.String || type.GetString() != "Bearer" ||
+                    !root.TryGetProperty("expiresIn", out var expires) || expires.ValueKind != JsonValueKind.Number ||
+                    !expires.TryGetDouble(out double seconds) || !double.IsFinite(seconds) || seconds < 0.0000001 || seconds > 315360000 ||
+                    !root.TryGetProperty("accessTokenMaxTTL", out var maximum) || maximum.ValueKind != JsonValueKind.Number ||
+                    !maximum.TryGetDouble(out double max) || !double.IsFinite(max) || max < 0 || max > 315360000)
+                    return SecretOutcome<InfisicalProofLogin>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.InvalidResponse);
+                string text = token.GetString()!;
+                if (text.Length is < 1 or > 16384 || text.Any(c => c <= ' ' || c >= 127))
+                    return SecretOutcome<InfisicalProofLogin>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.InvalidResponse);
+                DateTimeOffset expiresAt = sentAt.AddSeconds(seconds);
+                var result = new InfisicalProofLogin(new(SecretMaterial.FromText(text), expiresAt), seconds, max);
+                receipt.Record(DispatchEvidence.Applied);
+                if (operationToken.IsCancellationRequested)
+                {
+                    result.Dispose();
+                    operationToken.ThrowIfCancellationRequested();
+                }
+                return SecretOutcome<InfisicalProofLogin>.Success(result);
+            }
+            catch (OperationCanceledException) { throw new OperationCanceledException("Proof login canceled.", operationToken); }
+            catch (Exception error) when (error is HttpRequestException or IOException or JsonException or
+                InvalidOperationException or ArgumentOutOfRangeException)
+            {
+                return SecretOutcome<InfisicalProofLogin>.Failure(SecretStatus.Unknown, reason: error is HttpRequestException or IOException
+                    ? SecretFailureReason.TransportFailure : SecretFailureReason.InvalidResponse);
+            }
+            finally
+            {
+                Array.Clear(payload);
+                Array.Clear(bytes);
+            }
+        }
+    }
+
+    private Task<HttpRequestMessage> BuildRequestAsync(string strategy, HttpContent content,
+        CancellationToken cancellationToken) => strategy switch
+        {
+            "alicloud" => _wire.AliCloudAsync(content, cancellationToken),
+            "aws" => _wire.AwsAsync(content, cancellationToken),
+            "azure" => _wire.AzureAsync(content, cancellationToken),
+            "gcp" => _wire.GcpAsync(content, cancellationToken),
+            "jwt" => _wire.JwtAsync(content, cancellationToken),
+            "kubernetes" => _wire.KubernetesAsync(content, cancellationToken),
+            "ldap" => _wire.LdapAsync(content, cancellationToken),
+            "oci" => _wire.OciAsync(content, cancellationToken),
+            "oidc" => _wire.OidcAsync(content, cancellationToken),
+            "spiffe" => _wire.SpiffeAsync(content, cancellationToken),
+            "tls-cert" => _wire.TlsCertificateAsync(content, cancellationToken),
+            _ => throw new InvalidOperationException("Invalid proof login binding.")
+        };
+
+    /// <summary>Releases owned transport resources without disposing borrowed pipelines or revoking logins.</summary>
+    public void Dispose()
+    {
+        _disposed = true;
+        _binding.Dispose();
+    }
+    /// <summary>Returns a fixed label without identity or origin details.</summary>
+    public override string ToString() => "[InfisicalProofAuthentication]";
+}
+
+/// <summary>Caller-held dispatch evidence, not an idempotency key or rollback promise.</summary>
+public sealed class InfisicalProofLoginReceipt
+{
+    internal InfisicalProofLoginReceipt(object owner) => Owner = owner;
+    internal object Owner { get; }
+    private int _evidence;
+    /// <summary>Local dispatch evidence that survives login failure or cancellation.</summary>
+    public DispatchEvidence Evidence => (DispatchEvidence)Volatile.Read(ref _evidence);
+    internal bool TryBeginDispatch() => Interlocked.CompareExchange(ref _evidence,
+        (int)DispatchEvidence.PossiblyDispatched, (int)DispatchEvidence.NotDispatched) == (int)DispatchEvidence.NotDispatched;
+    internal void Record(DispatchEvidence evidence) => Volatile.Write(ref _evidence, (int)evidence);
+    /// <summary>Returns evidence without proof or token material.</summary>
+    public override string ToString() => $"[InfisicalProofLoginReceipt:{Evidence}]";
+}
+
+/// <summary>Reported token lifetime; Max TTL is metadata, not an inferred original expiry ceiling.</summary>
+public sealed class InfisicalProofLogin : IDisposable
+{
+    internal InfisicalProofLogin(InfisicalAccessToken token, double expiresIn, double maximum)
+    {
+        Token = token;
+        ExpiresIn = TimeSpan.FromSeconds(expiresIn);
+        AccessTokenMaxTtl = TimeSpan.FromSeconds(maximum);
+    }
+    /// <summary>The token owned by this login; explicit exports create ordinary plaintext.</summary>
+    [JsonIgnore] public InfisicalAccessToken Token { get; }
+    /// <summary>Provider-reported expiry interval.</summary>
+    public TimeSpan ExpiresIn { get; }
+    /// <summary>Provider-reported maximum TTL, not independently verified lifetime policy.</summary>
+    public TimeSpan AccessTokenMaxTtl { get; }
+    /// <summary>Disposes this login's token material without remote revocation.</summary>
+    public void Dispose() => Token.Dispose();
+    /// <summary>Returns a fixed label without token details.</summary>
+    public override string ToString() => "[InfisicalProofLogin]";
+}

@@ -699,7 +699,7 @@ public sealed class InfisicalRotationValidationWitnessTests
             var seeded = await folder.Setup.CreateValidationRuleAsync(ruleTarget,
                 input.Change.Build("fixture-rule", folder, true),
                 new(folder.Setup.Authority, env.Tokens(NativeIdentityRole.Setup), "project"),
-                new(ruleTarget));
+                folder.Setup.CreateReceipt(ruleTarget));
             await Assert.That(seeded.IsSuccess).IsTrue();
             var second = await client.RotateSecretsAsync(target, new(target, InfisicalRotationAction.RotateSecrets));
             await Assert.That(second.IsSuccess).IsTrue();
@@ -754,7 +754,7 @@ public sealed class InfisicalRotationValidationWitnessTests
                 new InfisicalValidationAddress("project", InfisicalValidationKind.SecretRotations, seeded.Value.Id,
                     "env", folder.Folder));
             var deletedRule = await folder.Administrative.DeleteValidationRuleAsync(ownedRule,
-                new(folder.Administrative.Authority, env.Tokens(NativeIdentityRole.Administrative), "project"), new(ownedRule));
+                new(folder.Administrative.Authority, env.Tokens(NativeIdentityRole.Administrative), "project"), folder.Administrative.CreateReceipt(ownedRule));
             await Assert.That(deletedRule.IsSuccess).IsTrue();
         }
         finally { await accounts.DisposeAsync(); }

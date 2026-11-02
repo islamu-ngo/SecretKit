@@ -15,14 +15,14 @@ public sealed class OperationBudgetTests
         var authority = new InfisicalNativeAuthority(client.Authority, new FailureEvidenceTests.Tokens(), "project");
         string escaped = new('\u00e9', 600);
         var tag = new SecretReference(client.Authority, new InfisicalTagAddress("project", "tag", InfisicalOrganizationSelector.Slug));
-        var tagResult = await client.CreateTagAsync(tag, escaped, authority, new(tag));
+        var tagResult = await client.CreateTagAsync(tag, escaped, authority, client.CreateReceipt(tag));
         var import = new SecretReference(client.Authority,
             new InfisicalImportAddress("project", "test", "/", Guid.NewGuid().ToString()));
-        var importResult = await client.CreateImportAsync(import, new(escaped, "/"), false, authority, new(import));
+        var importResult = await client.CreateImportAsync(import, new(escaped, "/"), false, authority, client.CreateReceipt(import));
         var rule = new SecretReference(client.Authority,
             new InfisicalValidationAddress("project", InfisicalValidationKind.StaticSecrets, secretPath: "/"));
         var ruleResult = await client.CreateValidationRuleAsync(rule,
-            new(name: "rule", keyConstraints: new(regexPattern: escaped)), authority, new(rule));
+            new(name: "rule", keyConstraints: new(regexPattern: escaped)), authority, client.CreateReceipt(rule));
         var bulk = new SecretReference(client.Authority, new InfisicalBulkAddress("project", "test", "/"));
         using var material = SecretMaterial.FromText(escaped);
         InfisicalBulkSecret[] inputs = [new("key", material)];
@@ -66,7 +66,7 @@ public sealed class OperationBudgetTests
             });
         using var material = SecretMaterial.FromText(new string('x', 2000));
         var target = FailureEvidenceTests.Reference(client);
-        var receipt = new MutationReceipt(target);
+        var receipt = client.CreateReceipt(target);
         var result = await client.CreateAsync(target, material, receipt);
         await Assert.That(result.IsSuccess).IsTrue();
         await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.Applied);
@@ -85,7 +85,7 @@ public sealed class OperationBudgetTests
         await Assert.That(read.Status).IsEqualTo(SecretStatus.Invalid);
         await Assert.That(read.Reason).IsEqualTo(SecretFailureReason.ResponseTooLarge);
         using var material = SecretMaterial.FromText("value");
-        var receipt = new MutationReceipt(target);
+        var receipt = client.CreateReceipt(target);
         var mutation = await client.CreateAsync(target, material, receipt);
         await Assert.That(mutation.Status).IsEqualTo(SecretStatus.Unknown);
         await Assert.That(mutation.Reason).IsEqualTo(SecretFailureReason.ResponseTooLarge);
@@ -222,7 +222,7 @@ public sealed class OperationBudgetTests
             });
         using var value = SecretMaterial.FromText(new string('x', 2000));
         var target = FailureEvidenceTests.Reference(client);
-        var receipt = new MutationReceipt(target);
+        var receipt = client.CreateReceipt(target);
         var result = await client.CreateAsync(target, value, receipt);
         await Assert.That(result.Status).IsEqualTo(SecretStatus.Invalid);
         await Assert.That(result.Reason).IsEqualTo(SecretFailureReason.RequestTooLarge);

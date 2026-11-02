@@ -74,7 +74,7 @@ public sealed class MutationUncertaintyTests
             await using var client = new InfisicalClient(proxy.Origin, tokens,
                 new InfisicalNetworkOptions { AllowLoopbackDevelopmentHttp = true });
             var target = new SecretReference(client.Authority, new InfisicalSecretAddress(project, "dev", "/", key));
-            var receipt = new MutationReceipt(target);
+            var receipt = client.CreateReceipt(target);
             using var preCanceled = new CancellationTokenSource();
             preCanceled.Cancel();
             await Assert.That(async () => await client.CreateAsync(target, material, receipt, preCanceled.Token))

@@ -72,7 +72,7 @@ public sealed class AzureAuditNativeTriggerCaptureTests
         var runtime = new AzureKeyVaultClient(fixture.Origin, fixture.Credential, fixture.Transport);
         var reference = new SecretReference(runtime.Authority, new AzureSecretAddress("selected-secret"));
         using var material = SecretMaterial.FromText(Material);
-        var receipt = new MutationReceipt(reference);
+        var receipt = runtime.CreateReceipt(reference);
         var result = await runtime.SetSecretAsync(new(reference, material), receipt);
         await Assert.That(result.Status).IsEqualTo(SecretStatus.Success);
         await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.Applied);
@@ -165,7 +165,7 @@ public sealed class AzureAuditNativeTriggerCaptureTests
             var runtime = new AzureKeyVaultClient(fixture.Origin, fixture.Credential, fixture.Transport);
             var target = new SecretReference(runtime.Authority, new AzureSecretAddress("selected-secret"));
             using var material = SecretMaterial.FromText(Material);
-            var receipt = new MutationReceipt(target);
+            var receipt = runtime.CreateReceipt(target);
             var result = await runtime.SetSecretAsync(new(target, material), receipt);
             await Assert.That(result.Status).IsEqualTo(SecretStatus.Unknown);
             await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.PossiblyDispatched);

@@ -242,7 +242,7 @@ internal static class NativeWorkflow
         await Observe("runtime-write-denied", async () =>
         {
             SecretReference reference = Select(reader, s.ReadKey);
-            var receipt = new MutationReceipt(reference);
+            var receipt = reader.CreateReceipt(reference);
             var result = await reader.UpdateValueAsync(reference, material, receipt, token);
             return result.Status == SecretStatus.Denied && receipt.Evidence == DispatchEvidence.Rejected;
         });
@@ -329,7 +329,7 @@ internal static class NativeWorkflow
         {
             SecretMaterial selectedMaterial = create ? material : replacementMaterial;
             SecretReference reference = Select(writeClient, key);
-            var receipt = new MutationReceipt(reference);
+            var receipt = writeClient.CreateReceipt(reference);
             var result = create ? await CaptureCreateAsync(report, receipt,
                 () => writeClient.CreateAsync(reference, selectedMaterial, receipt, token).AsTask(), persist) :
                 await CaptureChangeAsync(report, receipt, pending,

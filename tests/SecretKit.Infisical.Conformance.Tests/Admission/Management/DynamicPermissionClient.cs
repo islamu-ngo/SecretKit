@@ -115,7 +115,7 @@ internal static class DynamicPermissionClient
                 {
                     receipt = new(target, InfisicalDynamicOperation.CreateDefinition);
                     var create = await client.CreateDefinitionAsync(target, profile, new(TimeSpan.FromSeconds(300)),
-                        new(TimeSpan.FromSeconds(600)), receipt, token);
+                        new(TimeSpan.FromSeconds(600)), receipt, cancellationToken: token);
                     status = create.Status;
                     DynamicPermissionContract.Require(!create.IsSuccess || create.Value.Id == row.Definition, "effect-mismatch");
                 }

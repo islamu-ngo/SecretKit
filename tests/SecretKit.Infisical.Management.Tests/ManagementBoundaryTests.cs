@@ -108,20 +108,21 @@ public sealed class ManagementBoundaryTests
     [Arguments("infisical.get.v1.app.connections", "/api/v1/app-connections")]
     [Arguments("infisical.get.v1.app.connections.1password", "/api/v1/app-connections/1password")]
     [Arguments("infisical.get.v1.secret.syncs.azure.key.vault", "/api/v1/secret-syncs/azure-key-vault")]
-    public async Task RetiredConnectorRoutesRejectBeforeTokenAcquisition(string operationId, string path)
+    public async Task RetiredConnectorIntentCannotUseAnEstablishedBuilder(string operationId, string path)
     {
         using var transport = Transport(new Backend());
         var client = new ManagementClient(transport);
         var tokens = new Tokens { Forbidden = true };
         var authority = new ManagementAuthority(client.Authority, tokens, OrgId);
-        using var request = new ManagementRequest<GroupMetadata>(operationId, HttpMethod.Get, path,
+        using var request = new ManagementRequest<GroupMetadata>(operationId,
+            (apis, _, token) => apis.Groups.Get(GroupId, token), HttpMethod.Get, path,
             new(OrgId), null, _ => throw new InvalidOperationException("Retired routes must not parse responses."),
             mutation: false);
 
         var result = await client.ExecuteAsync(request, authority,
             authority.IssueGrant(operationId, new(OrgId)));
 
-        await Assert.That(result.Status).IsEqualTo(SecretStatus.ContractNotEstablished);
+        await Assert.That(result.Status).IsEqualTo(SecretStatus.Invalid);
         await Assert.That(tokens.Acquired).IsFalse();
     }
 

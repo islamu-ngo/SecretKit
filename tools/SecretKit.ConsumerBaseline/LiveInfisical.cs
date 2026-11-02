@@ -32,7 +32,7 @@ internal static class LiveInfisical
             new InfisicalNetworkOptions { AllowLoopbackDevelopmentHttp = true });
         var target = new SecretReference(client.Authority, new InfisicalSecretAddress(project, "dev", "/", "SDK_LIVE_VALUE"));
         using var material = SecretMaterial.FromText(Convert.ToHexString(RandomNumberGenerator.GetBytes(32)));
-        var writeReceipt = new MutationReceipt(target);
+        var writeReceipt = client.CreateReceipt(target);
         var written = await client.CreateAsync(target, material, writeReceipt, deadline.Token);
         Require(written.Status, "secret-create", writeReceipt.Evidence);
         var observed = await client.ReadAsync(target, deadline.Token);

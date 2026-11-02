@@ -210,7 +210,7 @@ public sealed class InfisicalSqlInputEffectTests
         var folder = await native.CreateFolderAsync(folderTarget,
             new InfisicalNativeAuthority(native.Authority, environment.Tokens(NativeIdentityRole.Setup),
                 InfisicalSqlInputEffectFixture.ProjectId),
-            new(folderTarget), cancellationToken: token);
+            native.CreateReceipt(folderTarget), cancellationToken: token);
         await Assert.That(folder.IsSuccess).IsTrue();
         var scope = new InfisicalDynamicScope("project-slug", "env", "/borrowed/" + name, Guid.Parse(folder.Value.Id));
         await using var client = new InfisicalDynamicClient(fixture.Origin,
@@ -222,7 +222,7 @@ public sealed class InfisicalSqlInputEffectTests
             fixture.Baseline.Ca, fixture.Baseline.SslEnabled, fixture.Baseline.GatewayId, fixture.Baseline.GatewayPoolId);
         var createReceipt = new InfisicalDynamicMutationReceipt(target, InfisicalDynamicOperation.CreateDefinition);
         var created = await client.CreateDefinitionAsync(target, baseline, new(TimeSpan.FromSeconds(60)),
-            new(TimeSpan.FromSeconds(300)), createReceipt, token);
+            new(TimeSpan.FromSeconds(300)), createReceipt, cancellationToken: token);
         await Assert.That(created.IsSuccess).IsTrue();
         if (sourceObserver is not null)
             await sourceObserver.CompleteAsync(baselineArm!, createReceipt.Evidence, token);
@@ -315,7 +315,7 @@ public sealed class InfisicalSqlInputEffectTests
             var removedFolder = await native.DeleteFolderAsync(folderTarget,
                 new InfisicalNativeAuthority(native.Authority, environment.Tokens(NativeIdentityRole.Setup),
                     InfisicalSqlInputEffectFixture.ProjectId),
-                new(folderTarget), cancellationToken: token);
+                native.CreateReceipt(folderTarget), cancellationToken: token);
             await Assert.That(removedFolder.IsSuccess).IsTrue();
             await Assert.That(fixture.ResidualCount).IsEqualTo(0);
             await Assert.That(fixture.BorrowedRootIntact).IsTrue();

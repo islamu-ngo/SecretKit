@@ -204,7 +204,7 @@ internal static class NotificationAdministrationEffects
                 var runtime = new AzureKeyVaultClient(uri, env.Credential(NativeIdentityRole.Runtime), runtimeTransport);
                 var reference = new SecretReference(runtime.Authority, new AzureSecretAddress(lease.RuntimeSecretName));
                 using var material = SecretMaterial.FromText(input.TriggerSecretValue);
-                var triggerReceipt = new MutationReceipt(reference);
+                var triggerReceipt = runtime.CreateReceipt(reference);
                 var request = new AzureSetSecretRequest(reference, material);
                 var native = runtimeInvocation is null
                     ? await runtime.SetSecretAsync(request, triggerReceipt, token).ConfigureAwait(false)

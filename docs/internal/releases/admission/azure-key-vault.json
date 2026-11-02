@@ -5,64 +5,64 @@
   "policy": "complete-live",
   "sources": [
     {
-      "file": "src/SecretKit.AzureKeyVault.Management/AuditDiagnostics.cs",
-      "sha256": "2ed2a9fcde491448620c1765685b2abcc027f7923a0bef4ee01923e00ee5b5b5"
+      "file": "src/SecretKit.AzureKeyVault.Management/Access/RoleAdministration.cs",
+      "sha256": "905d93a69d5e69c310232ef101e5a5bec0f1e3f52b3755b461bc4fb8d37dbeda"
     },
     {
-      "file": "src/SecretKit.AzureKeyVault.Management/ControlledTransport.cs",
-      "sha256": "c8808ac38de406e88574e7b055d253c334aa360f32bde06d0ec09bdc76d5dd74"
+      "file": "src/SecretKit.AzureKeyVault.Management/Access/Scopes.cs",
+      "sha256": "6088f907f89a5f0921cbead57206ee2198a8bfaf7aea87bf48f8419919cc764d"
     },
     {
-      "file": "src/SecretKit.AzureKeyVault.Management/ManagementOperation.cs",
-      "sha256": "088977d59b3c506284d8955d842d9f328d9c645306cffb9f01c7d3d4f1b3a587"
+      "file": "src/SecretKit.AzureKeyVault.Management/Audit/AuditDiagnostics.cs",
+      "sha256": "ad8a53f85b775ce00619c5c6d66fe68bb40547820971e31502e637908be992b0"
     },
     {
-      "file": "src/SecretKit.AzureKeyVault.Management/NativeModels.cs",
-      "sha256": "864ee441d4f742149cfa364a8846ba088e3e9c3d9ec9f7d85cf28c463e134ddb"
+      "file": "src/SecretKit.AzureKeyVault.Management/Internal/ControlledTransport.cs",
+      "sha256": "d0409fa38c1e88159ed386608ac11485c7644f614d7038eabdcf8f923c029193"
     },
     {
-      "file": "src/SecretKit.AzureKeyVault.Management/NotificationAdministration.cs",
-      "sha256": "e92bfaef902d236a0f786b533bff3df944442e26f426f79335b26bd715cb44e7"
+      "file": "src/SecretKit.AzureKeyVault.Management/Internal/ManagementOperation.cs",
+      "sha256": "4b2c28b3f4c88a840a6b62abbf82628c85b5f1289822caef0b7b2795f0e3d474"
     },
     {
-      "file": "src/SecretKit.AzureKeyVault.Management/NotificationModels.cs",
-      "sha256": "110ad2686a07b701b6dfe4b36418aa7fd035a9e7e71f61e1ec27b07b3b41a401"
+      "file": "src/SecretKit.AzureKeyVault.Management/Internal/OperationSupport.cs",
+      "sha256": "0ad610b7cf6ecacf37cead1cf6dfbe0d90e7e324499d15458fd0f1dce983ecdc"
     },
     {
-      "file": "src/SecretKit.AzureKeyVault.Management/OperationSupport.cs",
-      "sha256": "ebdf6e6a1fd8a91bdbdd36f6883ba1847bb3f985a20b499d5caef47a154ff167"
+      "file": "src/SecretKit.AzureKeyVault.Management/Notifications/NotificationAdministration.cs",
+      "sha256": "75215296de48619c2ba2c0c9b458df479745e1f8da05ebfe349459dba16f71f1"
     },
     {
-      "file": "src/SecretKit.AzureKeyVault.Management/RoleAdministration.cs",
-      "sha256": "7f00d8480cc4193d42926abedc30dfa33a1d0a4872304fcc22abfa6a6cc482ed"
+      "file": "src/SecretKit.AzureKeyVault.Management/Notifications/NotificationModels.cs",
+      "sha256": "41f27a00f4ea302f3773b9557d83f268458f34aa9b46f58d506a9385f1483a16"
     },
     {
-      "file": "src/SecretKit.AzureKeyVault.Management/Scopes.cs",
-      "sha256": "719fa2d70f58da530d51b81690609af7754040dc77eafca045ff817d158a0fae"
+      "file": "src/SecretKit.AzureKeyVault.Management/Vaults/NativeModels.cs",
+      "sha256": "c5e7648c3e1cf2c3563f17b874617dc5fd2f44494c63dda04719e047d2fe232e"
     },
     {
-      "file": "src/SecretKit.AzureKeyVault.Management/VaultAdministration.cs",
-      "sha256": "6e449c7c04fb39475ed64317c9e03eb8051435362d1382b52e220d697f74635d"
+      "file": "src/SecretKit.AzureKeyVault.Management/Vaults/VaultAdministration.cs",
+      "sha256": "e9e13297ff721ab95373260917a707e2380940c989e50d594242dce9da2e6f89"
     },
     {
-      "file": "src/SecretKit.AzureKeyVault/AzureKeyVaultClient.cs",
-      "sha256": "50a8aa0b65047baa9408ea0d029d9de964e1607900c69f14ac06a23d2a4390c5"
+      "file": "src/SecretKit.AzureKeyVault/Lifecycle/AzureNativeLifecycle.cs",
+      "sha256": "01ab0167ea1bcea3bac7c8b939d8373b36ec6ead7b78f20510c1f95c57b954e0"
     },
     {
-      "file": "src/SecretKit.AzureKeyVault/AzureNativeLifecycle.cs",
-      "sha256": "00d0c32b91fecd4a1fbba4d4039a45d388895b18c842e27b69e06476bf5fe005"
+      "file": "src/SecretKit.AzureKeyVault/Lifecycle/AzureNativeModels.cs",
+      "sha256": "854198931aad465d2620992bb3953c7b834292473fcb53a038a9b5570f179284"
     },
     {
-      "file": "src/SecretKit.AzureKeyVault/AzureNativeModels.cs",
-      "sha256": "029106ba86c30737180a0f945975856575e7e6ca5a4e30557693dfa958e7ca6b"
+      "file": "src/SecretKit.AzureKeyVault/Secrets/AzureKeyVaultClient.cs",
+      "sha256": "b74dfbfd664e8cba4cbc5e8dda1d7ca053e5d3beb59a1e65f3d6f3546e5edf21"
     },
     {
-      "file": "src/SecretKit.AzureKeyVault/AzureSecretAddress.cs",
-      "sha256": "316ab95936ce57f76539ea4fff6b50e013db2fa659a38eeb8bce1ddc12cb18da"
+      "file": "src/SecretKit.AzureKeyVault/Secrets/AzureSecretAddress.cs",
+      "sha256": "58945c4730c6e0d73fa563da5a48e9806f5ac96845f09982f2d1fdbe081a64dd"
     },
     {
-      "file": "src/SecretKit.AzureKeyVault/AzureSetSecret.cs",
-      "sha256": "b7bf42aa18bc956248927c7650dd6eb50ca8737cd45468b92c6634b13f2bd4b3"
+      "file": "src/SecretKit.AzureKeyVault/Secrets/AzureSetSecret.cs",
+      "sha256": "b5feeeddd2c0dabbeae63e6f8853b42b81e6621325a19c3db2b9d986a4e9b1c2"
     }
   ],
   "operations": [

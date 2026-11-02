@@ -22,7 +22,7 @@ public sealed class DynamicSqlLifecycleTests
         const string folderName = "sdk-sql-effects";
         var folderTarget = new SecretReference(native.Authority,
             new InfisicalFolderAddress(project, "dev", environment.Value.Id, "/", name: folderName));
-        var folderReceipt = new MutationReceipt(folderTarget);
+        var folderReceipt = native.CreateReceipt(folderTarget);
         var folder = await native.CreateFolderAsync(folderTarget,
             new InfisicalNativeAuthority(native.Authority, administrator, project), folderReceipt,
             cancellationToken: cancellationToken);
@@ -39,7 +39,7 @@ public sealed class DynamicSqlLifecycleTests
         var target = lifecycle.Definition("sdk-sql");
         var createReceipt = new InfisicalDynamicMutationReceipt(target, InfisicalDynamicOperation.CreateDefinition);
         var created = await lifecycle.CreateDefinitionAsync(target, profile,
-            new(TimeSpan.FromSeconds(60)), new(TimeSpan.FromSeconds(300)), createReceipt, cancellationToken);
+            new(TimeSpan.FromSeconds(60)), new(TimeSpan.FromSeconds(300)), createReceipt, cancellationToken: cancellationToken);
         Require(created.Status, "definition-create", createReceipt.Evidence);
         record("dynamic-definition", created.Value.Id.ToString("D"));
         var inspection = await lifecycle.InspectDefinitionAsync(target, cancellationToken);

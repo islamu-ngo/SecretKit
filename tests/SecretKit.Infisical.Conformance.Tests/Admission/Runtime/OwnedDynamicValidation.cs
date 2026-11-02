@@ -84,7 +84,7 @@ internal sealed class OwnedDynamicValidation : IAsyncDisposable
         using var profile = InfisicalDynamicClientEffects.Profile(input.Profile, "passwordRequirements.value");
         var created = await client.CreateDefinitionAsync(target, profile,
             new(TimeSpan.FromSeconds(input.DefaultSeconds)), new(TimeSpan.FromSeconds(input.MaximumSeconds)),
-            new(target, InfisicalDynamicOperation.CreateDefinition), token);
+            new(target, InfisicalDynamicOperation.CreateDefinition), cancellationToken: token);
         probe.Contract(created.IsSuccess, NativeFailure.MissingPrerequisite);
         definition = created.Value;
         await DefinitionAsync(token);

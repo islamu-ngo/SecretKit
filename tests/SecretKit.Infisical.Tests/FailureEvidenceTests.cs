@@ -109,7 +109,7 @@ public sealed class FailureEvidenceTests
         await Assert.That(definitions.RetryAfter).IsEqualTo(TimeSpan.FromSeconds(7));
         await Assert.That(rotations.RetryAfter).IsEqualTo(TimeSpan.FromSeconds(7));
         var target = Reference(client);
-        var receipt = new MutationReceipt(target);
+        var receipt = client.CreateReceipt(target);
         using var material = SecretMaterial.FromText("mutation-canary");
         var mutation = await client.CreateAsync(target, material, receipt);
         await Assert.That(mutation.Status).IsEqualTo(SecretStatus.Unknown);
@@ -175,7 +175,7 @@ public sealed class FailureEvidenceTests
         await using var client = new InfisicalClient(new("https://coordinate-canary.test"), new Tokens(),
             new InfisicalNetworkOptions { Transport = InfisicalTransportOptions.HostControlled(wire) });
         var target = Reference(client);
-        var receipt = new MutationReceipt(target);
+        var receipt = client.CreateReceipt(target);
         using var material = SecretMaterial.FromText("material-canary");
         var result = await client.CreateAsync(target, material, receipt);
         await Assert.That(result.Status).IsEqualTo(SecretStatus.Conflict);

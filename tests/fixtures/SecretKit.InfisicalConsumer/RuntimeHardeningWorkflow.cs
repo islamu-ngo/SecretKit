@@ -73,14 +73,14 @@ internal static class IntegrationQualityWorkflow
             Observe(3, "429-and-503-delta-advice-with-one-dispatch");
             pipeline.Reply = (_, _) => throw new HttpRequestException("hostile-error-canary");
             using var mutation = SecretMaterial.FromText("mutation-canary");
-            var uncertain = new MutationReceipt(reference);
+            var uncertain = client.CreateReceipt(reference);
             var changed = await client.UpdateValueAsync(reference, mutation, uncertain, bound.Token);
             Require(!changed.IsSuccess && uncertain.Evidence == DispatchEvidence.PossiblyDispatched &&
                 !JsonSerializer.Serialize(changed).Contains("hostile-error-canary", StringComparison.Ordinal));
             Observe(4, "uncertain-mutation-retains-receipt-without-error-payload");
 
             using var oversized = SecretMaterial.FromText(new string('x', 2048));
-            var oversizedReceipt = new MutationReceipt(reference);
+            var oversizedReceipt = client.CreateReceipt(reference);
             int sends = pipeline.Requests;
             Require(!(await client.UpdateValueAsync(reference, oversized, oversizedReceipt, bound.Token)).IsSuccess &&
                 oversizedReceipt.Evidence == DispatchEvidence.NotDispatched && pipeline.Requests == sends);

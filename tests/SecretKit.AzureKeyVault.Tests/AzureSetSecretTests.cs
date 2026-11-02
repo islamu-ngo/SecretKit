@@ -11,18 +11,46 @@ namespace SecretKit.AzureKeyVault.Tests;
 public sealed class AzureSetSecretTests
 {
     [Test]
+    public async Task CallerIssuedReceiptCannotAuthorizeMutationEvidence()
+    {
+        var backend = new VersionBackend("foreign-receipt");
+        var credential = new TestCredential();
+        var client = new AzureKeyVaultClient(backend.Vault, credential, backend.Wire);
+        var target = Target(client);
+        var receipt = new MutationReceiptIssuer().Create(target);
+        using var material = SecretMaterial.FromText("material-canary");
+
+        var outcome = await client.SetSecretAsync(new AzureSetSecretRequest(target, material), receipt);
+
+        await Assert.That(outcome.Status).IsEqualTo(SecretStatus.Invalid);
+        await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.NotDispatched);
+        await Assert.That(backend.Versions.Count).IsEqualTo(0);
+        await Assert.That(backend.Wire.Requests.Count).IsEqualTo(0);
+        await Assert.That(credential.Scopes.Count).IsEqualTo(0);
+
+        var otherClient = new AzureKeyVaultClient(backend.Vault, credential, backend.Wire);
+        var foreign = otherClient.CreateReceipt(Target(otherClient));
+        await Assert.That((await client.SetSecretAsync(new AzureSetSecretRequest(target, material), foreign)).Status)
+            .IsEqualTo(SecretStatus.Invalid);
+        await Assert.That(backend.Wire.Requests.Count).IsEqualTo(0);
+        await Assert.That(credential.Scopes.Count).IsEqualTo(0);
+    }
+
+    [Test]
     public async Task CommittedVersionWithLostResponseRemainsUncertainWithoutReplay()
     {
         var backend = new VersionBackend("lost-write") { DropResponse = true };
         var client = new AzureKeyVaultClient(backend.Vault, new TestCredential(), backend.Wire);
         var target = Target(client);
-        var receipt = new MutationReceipt(target);
+        var receipt = client.CreateReceipt(target);
         using var material = SecretMaterial.FromText("material-canary");
 
         var outcome = await client.SetSecretAsync(new AzureSetSecretRequest(target, material), receipt);
 
         await Assert.That(outcome.Status).IsEqualTo(SecretStatus.Unknown);
         await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.PossiblyDispatched);
+        await Assert.That((await client.SetSecretAsync(new AzureSetSecretRequest(target, material), receipt)).Status)
+            .IsEqualTo(SecretStatus.Invalid);
         using var read = (await client.ReadAsync(target)).Value;
         await Assert.That(read.Material.Reveal()).IsEqualTo("material-canary");
         await Assert.That(backend.Versions.Count).IsEqualTo(1);
@@ -34,7 +62,7 @@ public sealed class AzureSetSecretTests
         var backend = new VersionBackend("challenge-write") { ChallengeAfterCommit = true };
         var client = new AzureKeyVaultClient(backend.Vault, new TestCredential(), backend.Wire);
         var target = Target(client);
-        var receipt = new MutationReceipt(target);
+        var receipt = client.CreateReceipt(target);
         using var material = SecretMaterial.FromText("material-canary");
 
         // Warm the SDK's verified challenge before the body-bearing mutation.
@@ -55,7 +83,7 @@ public sealed class AzureSetSecretTests
         var backend = new VersionBackend("cancel-write") { HoldResponse = true };
         var client = new AzureKeyVaultClient(backend.Vault, new TestCredential(), backend.Wire);
         var target = Target(client);
-        var receipt = new MutationReceipt(target);
+        var receipt = client.CreateReceipt(target);
         using var material = SecretMaterial.FromText("material-canary");
         using var cancellation = new CancellationTokenSource();
 
@@ -79,7 +107,7 @@ public sealed class AzureSetSecretTests
         var credential = new TestCredential();
         var client = new AzureKeyVaultClient(backend.Vault, credential, backend.Wire);
         var target = Target(client);
-        var receipt = new MutationReceipt(target);
+        var receipt = client.CreateReceipt(target);
         using var material = SecretMaterial.FromText("material-canary");
         var request = new AzureSetSecretRequest(target, material);
 
@@ -115,7 +143,7 @@ public sealed class AzureSetSecretTests
         var backend = new VersionBackend("precancel-write");
         var client = new AzureKeyVaultClient(backend.Vault, new TestCredential(), backend.Wire);
         var target = Target(client);
-        var receipt = new MutationReceipt(target);
+        var receipt = client.CreateReceipt(target);
         using var material = SecretMaterial.FromText("material-canary");
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
@@ -139,7 +167,7 @@ public sealed class AzureSetSecretTests
         var backend = new VersionBackend("condition-write");
         var client = new AzureKeyVaultClient(backend.Vault, new TestCredential(), backend.Wire);
         var target = Target(client, versioned ? new string('a', 32) : null);
-        var receipt = new MutationReceipt(target);
+        var receipt = client.CreateReceipt(target);
         using var material = SecretMaterial.FromText("material-canary");
 
         var outcome = await client.SetSecretAsync(new AzureSetSecretRequest(target, material, condition), receipt);
@@ -157,17 +185,18 @@ public sealed class AzureSetSecretTests
         var target = Target(client);
         var foreign = new SecretReference(new SecretAuthority(), new AzureSecretAddress("name-canary"));
         using var material = SecretMaterial.FromText("material-canary");
+        await Assert.That(() => client.CreateReceipt(foreign)).Throws<ArgumentException>();
         var foreignOutcome = await client.SetSecretAsync(new AzureSetSecretRequest(foreign, material),
-            new MutationReceipt(foreign));
+            new MutationReceiptIssuer().Create(foreign));
         var wrongReceipt = await client.SetSecretAsync(new AzureSetSecretRequest(target, material),
-            new MutationReceipt(Target(client)));
+            client.CreateReceipt(Target(client)));
         using var oversized = SecretMaterial.FromText(new string('x', 25 * 1024 + 1));
         var tooLarge = await client.SetSecretAsync(new AzureSetSecretRequest(target, oversized),
-            new MutationReceipt(target));
+            client.CreateReceipt(target));
         using var disposed = material.Copy();
         disposed.Dispose();
         var unavailableMaterial = await client.SetSecretAsync(new AzureSetSecretRequest(target, disposed),
-            new MutationReceipt(target));
+            client.CreateReceipt(target));
 
         foreach (var outcome in new[] { foreignOutcome, wrongReceipt, tooLarge, unavailableMaterial })
         {
@@ -188,7 +217,7 @@ public sealed class AzureSetSecretTests
         var backend = new VersionBackend("malformed-write") { ReturnedId = returnedId };
         var client = new AzureKeyVaultClient(backend.Vault, new TestCredential(), backend.Wire);
         var target = Target(client);
-        var receipt = new MutationReceipt(target);
+        var receipt = client.CreateReceipt(target);
         using var material = SecretMaterial.FromText("material-canary");
 
         var outcome = await client.SetSecretAsync(new AzureSetSecretRequest(target, material), receipt);
@@ -205,7 +234,7 @@ public sealed class AzureSetSecretTests
         var backend = new VersionBackend("concurrent-write") { HoldResponse = true };
         var client = new AzureKeyVaultClient(backend.Vault, new TestCredential(), backend.Wire);
         var target = Target(client);
-        var receipt = new MutationReceipt(target);
+        var receipt = client.CreateReceipt(target);
         using var material = SecretMaterial.FromText("material-canary");
         var request = new AzureSetSecretRequest(target, material);
         using var cancellation = new CancellationTokenSource();
@@ -230,7 +259,7 @@ public sealed class AzureSetSecretTests
         var client = new AzureKeyVaultClient(new Uri("https://credential-write.vault.azure.net"),
             new TestCredential { Fail = true }, wire);
         var target = Target(client);
-        var receipt = new MutationReceipt(target);
+        var receipt = client.CreateReceipt(target);
         using var material = SecretMaterial.FromText("material-canary");
 
         var outcome = await client.SetSecretAsync(new AzureSetSecretRequest(target, material), receipt);
@@ -248,7 +277,7 @@ public sealed class AzureSetSecretTests
         var wire = new WireTransport((_, _) => Task.FromResult(WireTransport.Challenge("https://evil.example")));
         var client = new AzureKeyVaultClient(new Uri("https://forged-write.vault.azure.net"), credential, wire);
         var target = Target(client);
-        var receipt = new MutationReceipt(target);
+        var receipt = client.CreateReceipt(target);
         using var material = SecretMaterial.FromText("material-canary");
 
         var outcome = await client.SetSecretAsync(new AzureSetSecretRequest(target, material), receipt);
@@ -267,7 +296,7 @@ public sealed class AzureSetSecretTests
         var backend = new VersionBackend($"status-{status}-write") { StatusAfterCommit = status };
         var client = new AzureKeyVaultClient(backend.Vault, new TestCredential(), backend.Wire);
         var target = Target(client);
-        var receipt = new MutationReceipt(target);
+        var receipt = client.CreateReceipt(target);
         using var material = SecretMaterial.FromText("material-canary");
 
         var outcome = await client.SetSecretAsync(new AzureSetSecretRequest(target, material), receipt);
@@ -286,7 +315,7 @@ public sealed class AzureSetSecretTests
         var credential = new BlockedCredential();
         var client = new AzureKeyVaultClient(backend.Vault, credential, backend.Wire);
         var target = Target(client);
-        var receipt = new MutationReceipt(target);
+        var receipt = client.CreateReceipt(target);
         using var material = SecretMaterial.FromText("material-canary");
         using var cancellation = new CancellationTokenSource();
 
@@ -310,7 +339,7 @@ public sealed class AzureSetSecretTests
         var backend = new VersionBackend("parse-write") { ResponseBody = responseBody };
         var client = new AzureKeyVaultClient(backend.Vault, new TestCredential(), backend.Wire);
         var target = Target(client);
-        var receipt = new MutationReceipt(target);
+        var receipt = client.CreateReceipt(target);
         using var material = SecretMaterial.FromText("material-canary");
 
         var outcome = await client.SetSecretAsync(new AzureSetSecretRequest(target, material), receipt);
@@ -340,7 +369,7 @@ public sealed class AzureSetSecretTests
         using var material = SecretMaterial.FromText("material-canary");
 
         var outcome = await client.SetSecretAsync(new AzureSetSecretRequest(target, material),
-            new MutationReceipt(target));
+            client.CreateReceipt(target));
 
         await Assert.That(outcome.IsSuccess).IsTrue();
         await Assert.That(events.Payloads.Any(text => text.Contains("canary") || text.Contains(".vault"))).IsFalse();
@@ -357,7 +386,7 @@ public sealed class AzureSetSecretTests
         var client = new AzureKeyVaultClient(backend.Vault, new TestCredential(), backend.Wire,
             maximumResponseBytes: 1024);
         var target = Target(client);
-        var receipt = new MutationReceipt(target);
+        var receipt = client.CreateReceipt(target);
         using var material = SecretMaterial.FromText("material-canary");
 
         var outcome = await client.SetSecretAsync(new AzureSetSecretRequest(target, material), receipt);
@@ -377,7 +406,7 @@ public sealed class AzureSetSecretTests
         var backend = new VersionBackend("encoding-write");
         var client = new AzureKeyVaultClient(backend.Vault, new TestCredential(), backend.Wire);
         var target = Target(client);
-        var receipt = new MutationReceipt(target);
+        var receipt = client.CreateReceipt(target);
         using var material = SecretMaterial.FromText(oversized ? new string('\u0800', 10000) : "\ud800");
 
         var outcome = await client.SetSecretAsync(new AzureSetSecretRequest(target, material), receipt);
@@ -400,7 +429,7 @@ public sealed class AzureSetSecretTests
         using var material = SecretMaterial.FromText("material-canary");
 
         var outcome = await client.SetSecretAsync(new AzureSetSecretRequest(target, material),
-            new MutationReceipt(target));
+            client.CreateReceipt(target));
 
         await Assert.That(outcome.IsSuccess).IsTrue();
         await Assert.That(credential.IsDisposed).IsFalse();

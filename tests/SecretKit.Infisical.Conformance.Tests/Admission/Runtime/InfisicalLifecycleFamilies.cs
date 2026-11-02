@@ -25,7 +25,7 @@ internal static partial class InfisicalLifecycleFamilies
             ],
             ["selected-contract", "denied-authority", "cancellation-boundary", "independent-effect", "lost-response-no-replay"]),
         new("i.runtime.InfisicalDynamicClient.CreateDefinitionAsync",
-            "SecretKit.Infisical.InfisicalDynamicClient.CreateDefinitionAsync(SecretKit.Infisical.InfisicalDynamicTarget,SecretKit.Infisical.Dynamic.InfisicalDynamicProfile,SecretKit.Infisical.InfisicalLeaseDuration,SecretKit.Infisical.InfisicalLeaseDuration,SecretKit.Infisical.InfisicalDynamicMutationReceipt,System.Threading.CancellationToken,SecretKit.Infisical.Dynamic.NativeDynamicDefinitionOptions)",
+            "SecretKit.Infisical.InfisicalDynamicClient.CreateDefinitionAsync(SecretKit.Infisical.InfisicalDynamicTarget,SecretKit.Infisical.Dynamic.InfisicalDynamicProfile,SecretKit.Infisical.InfisicalLeaseDuration,SecretKit.Infisical.InfisicalLeaseDuration,SecretKit.Infisical.InfisicalDynamicMutationReceipt,SecretKit.Infisical.Dynamic.NativeDynamicDefinitionOptions,System.Threading.CancellationToken)",
             [
                 "options.omitted",
                 "options.value",
@@ -1249,7 +1249,7 @@ internal sealed class LifecycleOwnedFolder : IAsyncDisposable
     internal async ValueTask InitializeAsync(CancellationToken token)
     {
         SecretReference target = Target(setup);
-        var receipt = new MutationReceipt(target);
+        var receipt = setup.CreateReceipt(target);
         attempted = true;
         var created = await setup.CreateFolderAsync(target, Authority(setup, NativeIdentityRole.Setup),
             receipt, cancellationToken: token);
@@ -1271,7 +1271,7 @@ internal sealed class LifecycleOwnedFolder : IAsyncDisposable
             {
                 SecretReference target = Target(administrative);
                 var result = await administrative.DeleteFolderAsync(target,
-                    Authority(administrative, NativeIdentityRole.Administrative), new(target),
+                    Authority(administrative, NativeIdentityRole.Administrative), administrative.CreateReceipt(target),
                     forceDelete: true, cancellationToken: deadline.Token);
                 var remaining = await observer.ListFoldersAsync(new(observer.Authority,
                     new InfisicalFolderAddress(input.ProjectId, input.Environment, input.EnvironmentId,

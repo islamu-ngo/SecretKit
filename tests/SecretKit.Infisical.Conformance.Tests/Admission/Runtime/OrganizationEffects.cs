@@ -139,7 +139,7 @@ internal static class OrganizationEffects
             if (!create)
             {
                 SecretReference seed = Target(f.Setup);
-                var receipt = new MutationReceipt(seed);
+                var receipt = f.Setup.CreateReceipt(seed);
                 SecretOutcome<InfisicalEnvironment> result = await f.Setup.CreateEnvironmentAsync(seed,
                     "seed", Authority(f.Setup, NativeIdentityRole.Setup), receipt, 1, token);
                 p.Contract(result.IsSuccess && receipt.Evidence == DispatchEvidence.Applied, NativeFailure.MissingPrerequisite);
@@ -150,7 +150,7 @@ internal static class OrganizationEffects
                 if (!get && !update && !delete)
                 {
                     SecretReference soft = Target(f.Setup);
-                    var softReceipt = new MutationReceipt(soft);
+                    var softReceipt = f.Setup.CreateReceipt(soft);
                     var softResult = await f.Setup.DeleteEnvironmentAsync(soft,
                         Authority(f.Setup, NativeIdentityRole.Setup), softReceipt, cancellationToken: token);
                     p.Contract(softResult.IsSuccess && softReceipt.Evidence == DispatchEvidence.Applied,
@@ -164,7 +164,7 @@ internal static class OrganizationEffects
             InfisicalClient c = denied ? f.Denied : f.Runtime;
             bool bySlug = get && d.Key.Variant == "selector.Slug";
             SecretReference target = Target(c, bySlug);
-            var receiptMain = new MutationReceipt(target);
+            var receiptMain = c.CreateReceipt(target);
             string path = "/api/v1/projects/" + Uri.EscapeDataString(i.Fixture.ProjectId) + "/environments" +
                 (create ? "" : bySlug ? "/slug/" + slug : "/" + id) +
                 (!create && !get && !update && !delete ? "/restore" : "");
@@ -217,7 +217,7 @@ internal static class OrganizationEffects
                 {
                     id = found.Value.Id;
                     var owned = Target(f.Administrative);
-                    var r = new MutationReceipt(owned);
+                    var r = f.Administrative.CreateReceipt(owned);
                     var removed = await f.Administrative.DeleteEnvironmentAsync(owned,
                         Authority(f.Administrative, NativeIdentityRole.Administrative), r, true, cleanup.Token);
                     var gone = await f.Observer.GetEnvironmentAsync(Target(f.Observer), cleanup.Token);
@@ -257,7 +257,7 @@ internal static class OrganizationEffects
             if (!create)
             {
                 var seed = Target(f.Setup);
-                var r = new MutationReceipt(seed);
+                var r = f.Setup.CreateReceipt(seed);
                 var result = await f.Setup.CreateTagAsync(seed, color, Authority(f.Setup, NativeIdentityRole.Setup), r, token);
                 p.Contract(result.IsSuccess && r.Evidence == DispatchEvidence.Applied, NativeFailure.MissingPrerequisite);
                 id = result.Value.Id;
@@ -269,7 +269,7 @@ internal static class OrganizationEffects
             InfisicalClient c = denied ? f.Denied : f.Runtime;
             bool bySlug = d.Key.Variant == "selector.Slug";
             var target = Target(c, bySlug, list);
-            var receipt = new MutationReceipt(target);
+            var receipt = c.CreateReceipt(target);
             string path = "/api/v1/projects/" + Uri.EscapeDataString(i.Fixture.ProjectId) + "/tags" +
                 (create || list ? "" : bySlug ? "/slug/" + slug : "/" + id);
             if (list)
@@ -321,7 +321,7 @@ internal static class OrganizationEffects
                     id = found.Value.Id;
                     var owned = Target(f.Administrative);
                     var removed = await f.Administrative.DeleteTagAsync(owned,
-                        Authority(f.Administrative, NativeIdentityRole.Administrative), new(owned), cleanup.Token);
+                        Authority(f.Administrative, NativeIdentityRole.Administrative), f.Administrative.CreateReceipt(owned), cleanup.Token);
                     var gone = await f.Observer.GetTagAsync(Target(f.Observer), cleanup.Token);
                     p.Contract((removed.IsSuccess || removed.Status == SecretStatus.Absent) &&
                         gone.Status == SecretStatus.Absent, NativeFailure.CleanupIncomplete);
@@ -357,7 +357,7 @@ internal static class OrganizationEffects
         if (!create)
         {
             var seed = Target(f.Setup, null, name);
-            var r = new MutationReceipt(seed);
+            var r = f.Setup.CreateReceipt(seed);
             var result = await f.Setup.CreateFolderAsync(seed, f.Authority(f.Setup, NativeIdentityRole.Setup), r, "seed", token);
             p.Contract(result.IsSuccess && r.Evidence == DispatchEvidence.Applied, NativeFailure.MissingPrerequisite);
             id = result.Value.Id;
@@ -377,7 +377,7 @@ internal static class OrganizationEffects
             f.Authority(c, role);
         var target = Target(c, list || batch || create || d.Key.Variant == "selector.name" ? null : id,
             list || batch ? null : create || delete ? name : get || move ? null : renamed);
-        var receipt = new MutationReceipt(target);
+        var receipt = c.CreateReceipt(target);
         string path = "/api/v2/folders" + (list || create ? "" : batch ? "/batch" : move ? "/move" :
             "/" + (d.Key.Variant == "selector.name" ? name : id));
         if (batch)
@@ -386,7 +386,7 @@ internal static class OrganizationEffects
             string secondName = "sk-" + Guid.NewGuid().ToString("N");
             var secondTarget = Target(f.Setup, null, secondName);
             var second = await f.Setup.CreateFolderAsync(secondTarget,
-                f.Authority(f.Setup, NativeIdentityRole.Setup), new(secondTarget), "seed", token);
+                f.Authority(f.Setup, NativeIdentityRole.Setup), f.Setup.CreateReceipt(secondTarget), "seed", token);
             p.Contract(second.IsSuccess, NativeFailure.MissingPrerequisite);
             var dispatch = await InfisicalImportPolicyFamilies.DispatchAsync(env, d, p, path, "PATCH",
                 ct => c.UpdateFoldersAsync(target,

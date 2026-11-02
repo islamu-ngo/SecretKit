@@ -60,12 +60,12 @@ public sealed class IdentitySetupTests
         using var material = SecretMaterial.FromText(Convert.ToHexString(RandomNumberGenerator.GetBytes(32)));
         using var otherMaterial = SecretMaterial.FromText(Convert.ToHexString(RandomNumberGenerator.GetBytes(32)));
         var writeTarget = new SecretReference(writer.Authority, new InfisicalSecretAddress(project.Id, "dev", "/", key));
-        var writeReceipt = new MutationReceipt(writeTarget);
+        var writeReceipt = writer.CreateReceipt(writeTarget);
         var written = await writer.CreateAsync(writeTarget, material, writeReceipt, deadline.Token);
         Require(written.Status, "machine-secret-create", writeReceipt.Evidence);
         var otherWriteTarget = new SecretReference(writer.Authority,
             new InfisicalSecretAddress(otherProject.Id, "dev", "/", key));
-        var otherWriteReceipt = new MutationReceipt(otherWriteTarget);
+        var otherWriteReceipt = writer.CreateReceipt(otherWriteTarget);
         var otherWritten = await writer.CreateAsync(otherWriteTarget, otherMaterial, otherWriteReceipt, deadline.Token);
         Require(otherWritten.Status, "isolation-secret-create", otherWriteReceipt.Evidence);
         var runtimeTarget = new SecretReference(reader.Authority, new InfisicalSecretAddress(project.Id, "dev", "/", key));
@@ -76,7 +76,7 @@ public sealed class IdentitySetupTests
             throw new InvalidOperationException("Owned runtime material did not match.");
         var selectedDeniedWrite = new SecretReference(reader.Authority,
             new InfisicalSecretAddress(project.Id, "dev", "/", "SDK_DENIED_WRITE"));
-        var actualDeniedReceipt = new MutationReceipt(selectedDeniedWrite);
+        var actualDeniedReceipt = reader.CreateReceipt(selectedDeniedWrite);
         var actualDenied = await reader.CreateAsync(selectedDeniedWrite, material, actualDeniedReceipt, deadline.Token);
         await Assert.That(actualDenied.Status).IsEqualTo(SecretStatus.Denied);
         await Assert.That(actualDeniedReceipt.Evidence).IsEqualTo(DispatchEvidence.Rejected);

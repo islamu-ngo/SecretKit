@@ -159,7 +159,7 @@ internal static class AuditDiagnosticsEffects
                     env.Credential(NativeIdentityRole.Runtime), runtimeTransport);
                 var reference = new SecretReference(runtime.Authority, new AzureSecretAddress(window.RuntimeSecretName));
                 using var material = SecretMaterial.FromText(input.TriggerSecretValue);
-                var receipt = new MutationReceipt(reference);
+                var receipt = runtime.CreateReceipt(reference);
                 var request = new AzureSetSecretRequest(reference, material);
                 var native = selectedInvocation is null
                     ? await runtime.SetSecretAsync(request, receipt, token).ConfigureAwait(false)

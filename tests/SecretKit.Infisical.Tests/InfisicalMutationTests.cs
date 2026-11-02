@@ -9,6 +9,97 @@ namespace SecretKit.Infisical.Tests;
 public sealed class InfisicalMutationTests
 {
     [Test]
+    public async Task ForeignReceiptIsRejectedBeforeCredentialAcquisition()
+    {
+        var backend = new Backend();
+        await using var client = new InfisicalClient(new Uri("https://infisical.test"),
+            new UnavailableTokens(), new InfisicalNetworkOptions(), null, backend);
+        SecretReference target = Target(client);
+        var receipt = new MutationReceiptIssuer().Create(target);
+        using SecretMaterial material = SecretMaterial.FromText(Material());
+
+        SecretOutcome<InfisicalStaticChange> result = await client.CreateAsync(target, material, receipt);
+
+        await Assert.That(result.Status).IsEqualTo(SecretStatus.Invalid);
+        await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.NotDispatched);
+        await Assert.That(backend.Committed.Task.IsCompleted).IsFalse();
+    }
+
+    private sealed class UnavailableTokens : IInfisicalTokenSource
+    {
+        public ValueTask<SecretOutcome<InfisicalAccessToken>> GetTokenAsync(CancellationToken cancellationToken) =>
+            ValueTask.FromResult(SecretOutcome<InfisicalAccessToken>.Failure(SecretStatus.Denied));
+    }
+
+    [Test]
+    public async Task IssuedReceiptRejectsForeignWritersAndClients()
+    {
+        var backend = new Backend();
+        await using InfisicalClient owner = Client(backend);
+        await using var other = new InfisicalClient(new Uri("https://infisical.test"),
+            new UnavailableTokens(), new InfisicalNetworkOptions(), null, new Backend());
+        SecretReference target = Target(owner);
+        MutationReceipt receipt = owner.CreateReceipt(target);
+        var foreign = new MutationReceiptIssuer();
+
+        await Assert.That(() => foreign.BeginDispatch(receipt, target)).Throws<InvalidOperationException>();
+        await Assert.That(() => foreign.Record(receipt, DispatchEvidence.Applied)).Throws<InvalidOperationException>();
+        await Assert.That(() => other.CreateReceipt(target)).Throws<ArgumentException>();
+        using SecretMaterial material = SecretMaterial.FromText(Material());
+        var rejected = await other.CreateAsync(Target(other), material, receipt);
+        await Assert.That(rejected.Status).IsEqualTo(SecretStatus.Invalid);
+        await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.NotDispatched);
+        await Assert.That(backend.Committed.Task.IsCompleted).IsFalse();
+
+        var accepted = await owner.CreateAsync(target, material, receipt);
+        await Assert.That(accepted.IsSuccess).IsTrue();
+        await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.Applied);
+    }
+
+    [Test]
+    public async Task ConcurrentReceiptAttemptsProduceOneAppliedVersion()
+    {
+        var backend = new Backend();
+        var tokens = new BarrierTokens();
+        await using var client = new InfisicalClient(new Uri("https://infisical.test"), tokens,
+            new InfisicalNetworkOptions(), null, backend);
+        SecretReference target = Target(client);
+        MutationReceipt receipt = client.CreateReceipt(target);
+        using SecretMaterial material = SecretMaterial.FromText(Material());
+        Task<bool> first = AttemptAsync();
+        Task<bool> second = AttemptAsync();
+        await tokens.BothEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        tokens.Release.TrySetResult();
+
+        bool[] outcomes = await Task.WhenAll(first, second);
+        await Assert.That(outcomes.Count(success => success)).IsEqualTo(1);
+        await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.Applied);
+        using SecretRead observed = (await client.ReadAsync(target)).Value;
+        await Assert.That(observed.Observation.Version).IsEqualTo("1");
+        await Assert.That(observed.Material.Reveal()).IsEqualTo(material.Reveal());
+
+        async Task<bool> AttemptAsync()
+        {
+            try { return (await client.CreateAsync(target, material, receipt)).IsSuccess; }
+            catch (InvalidOperationException) { return false; }
+        }
+    }
+
+    private sealed class BarrierTokens : IInfisicalTokenSource
+    {
+        private int _entered;
+        public TaskCompletionSource BothEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public async ValueTask<SecretOutcome<InfisicalAccessToken>> GetTokenAsync(CancellationToken cancellationToken)
+        {
+            if (Interlocked.Increment(ref _entered) == 2) BothEntered.TrySetResult();
+            await Release.Task.WaitAsync(cancellationToken);
+            return SecretOutcome<InfisicalAccessToken>.Success(new(SecretMaterial.FromText(Material())));
+        }
+    }
+
+    [Test]
     [Arguments("secretKey", "\"foreign\"", SecretStatus.Invalid)]
     [Arguments("workspace", "\"foreign\"", SecretStatus.Invalid)]
     [Arguments("environment", "\"foreign\"", SecretStatus.Invalid)]
@@ -46,7 +137,7 @@ public sealed class InfisicalMutationTests
         var backend = new Backend { MutationResponse = JsonSerializer.Serialize(new { secret = fields }) };
         await using InfisicalClient client = Client(backend);
         SecretReference target = Target(client);
-        var receipt = new MutationReceipt(target);
+        var receipt = client.CreateReceipt(target);
         using SecretMaterial material = SecretMaterial.FromText(Material());
         var result = await client.CreateAsync(target, material, receipt);
         await Assert.That(result.Status).IsEqualTo(expected);
@@ -68,7 +159,7 @@ public sealed class InfisicalMutationTests
         var backend = new Backend();
         await using InfisicalClient client = Client(backend);
         SecretReference target = Target(client);
-        var receipt = new MutationReceipt(target);
+        var receipt = client.CreateReceipt(target);
         using SecretMaterial material = SecretMaterial.FromText(value);
 
         SecretOutcome<InfisicalStaticChange> result = update
@@ -90,7 +181,7 @@ public sealed class InfisicalMutationTests
         var backend = new Backend { DropResponse = true };
         await using InfisicalClient client = Client(backend);
         SecretReference target = Target(client);
-        var receipt = new MutationReceipt(target);
+        var receipt = client.CreateReceipt(target);
         string value = Material();
         using SecretMaterial material = SecretMaterial.FromText(value);
 
@@ -113,7 +204,7 @@ public sealed class InfisicalMutationTests
         var backend = new Backend { AmbiguousResponse = true };
         await using InfisicalClient client = Client(backend);
         SecretReference target = Target(client);
-        var receipt = new MutationReceipt(target);
+        var receipt = client.CreateReceipt(target);
         using SecretMaterial material = SecretMaterial.FromText(Material());
 
         SecretOutcome<InfisicalStaticChange> result = await client.CreateAsync(target, material, receipt);
@@ -138,7 +229,7 @@ public sealed class InfisicalMutationTests
         var backend = new Backend { Approval = true };
         await using InfisicalClient client = Client(backend);
         SecretReference target = Target(client);
-        var receipt = new MutationReceipt(target);
+        var receipt = client.CreateReceipt(target);
         using SecretMaterial material = SecretMaterial.FromText(Material());
 
         SecretOutcome<InfisicalStaticChange> result = await client.UpdateValueAsync(target, material, receipt);
@@ -158,7 +249,7 @@ public sealed class InfisicalMutationTests
         var backend = new Backend { Reject = true };
         await using InfisicalClient client = Client(backend);
         SecretReference target = Target(client);
-        var receipt = new MutationReceipt(target);
+        var receipt = client.CreateReceipt(target);
         using SecretMaterial material = SecretMaterial.FromText(Material());
 
         SecretOutcome<InfisicalStaticChange> result = update
@@ -180,7 +271,7 @@ public sealed class InfisicalMutationTests
         var backend = new Backend();
         await using InfisicalClient client = Client(backend);
         SecretReference target = Target(client);
-        var receipt = new MutationReceipt(target);
+        var receipt = client.CreateReceipt(target);
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
         using SecretMaterial material = SecretMaterial.FromText(Material());
@@ -197,7 +288,7 @@ public sealed class InfisicalMutationTests
         var backend = new Backend { HoldResponse = true };
         await using InfisicalClient client = Client(backend);
         SecretReference target = Target(client);
-        var receipt = new MutationReceipt(target);
+        var receipt = client.CreateReceipt(target);
         using var cancellation = new CancellationTokenSource();
         using SecretMaterial material = SecretMaterial.FromText(Material());
         Task<SecretOutcome<InfisicalStaticChange>> pending = client.CreateAsync(target, material, receipt, cancellation.Token).AsTask();
@@ -223,7 +314,7 @@ public sealed class InfisicalMutationTests
         var backend = new Backend();
         await using InfisicalClient client = Client(backend);
         var target = new SecretReference(client.Authority, new InfisicalSecretAddress("project", "env", "/", "key", 7));
-        var receipt = new MutationReceipt(target);
+        var receipt = client.CreateReceipt(target);
         using SecretMaterial material = SecretMaterial.FromText(Material());
 
         SecretOutcome<InfisicalStaticChange> result = await client.UpdateValueAsync(target, material, receipt);

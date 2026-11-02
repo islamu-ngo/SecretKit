@@ -48,7 +48,7 @@ internal static class ImportPermissionClient
         // Native mutations select authority tokens, reads select client tokens.
         var mutationTokens = new ImportPermissionTokens(env.Tokens(role));
         var authority = new InfisicalNativeAuthority(client.Authority, mutationTokens, row.Project, row.Environment, row.Path);
-        MutationReceipt? receipt = row.Action == ImportPermissionAction.Read ? null : new(target);
+        MutationReceipt? receipt = row.Action == ImportPermissionAction.Read ? null : client.CreateReceipt(target);
         SecretStatus status; ImportPermissionValue[] values = []; bool complete = true;
         if (row.List)
         {

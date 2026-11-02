@@ -83,7 +83,7 @@ public sealed class InfisicalProjectFamilyTests
         using SecretMaterial material = SecretMaterial.FromText("offline-org-temporal-control");
         var address = new InfisicalSecretAddress(control, "witness", "/", "org-temporal-control");
         var reference = new SecretReference(setup.Authority, address);
-        await Assert.That((await setup.CreateAsync(reference, material, new MutationReceipt(reference), token)).IsSuccess).IsTrue();
+        await Assert.That((await setup.CreateAsync(reference, material, setup.CreateReceipt(reference), token)).IsSuccess).IsTrue();
         var attempt = new OrganizationGroupExpiryAttempt(Guid.NewGuid().ToString(), "fixture-" + method, method,
             "fixture-v1", Backend.AuthenticatedOrganizationScopes(), group.Id, owner.Id, link.Id, role.Id, role.Slug,
             before?.Id, MembershipExpirySource.ControlledFixture, Enum.Parse<OrganizationGroupExpiredMetadata>(policy));
@@ -1240,7 +1240,7 @@ public sealed class InfisicalProjectFamilyTests
         {
             var reference = new SecretReference(setup.Authority, new InfisicalSecretAddress(id, "witness", "/", "temporal-canary"));
             SecretOutcome<InfisicalStaticChange> created = await setup.CreateAsync(reference, material,
-                new MutationReceipt(reference), token);
+                setup.CreateReceipt(reference), token);
             await Assert.That(created.IsSuccess).IsTrue();
         }
         var attempt = new MembershipExpiryAttempt(Guid.NewGuid().ToString(), "fixture-characterization", Org,

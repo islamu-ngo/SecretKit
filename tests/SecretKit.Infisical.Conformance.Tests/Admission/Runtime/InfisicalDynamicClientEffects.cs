@@ -331,8 +331,8 @@ internal static class InfisicalDynamicClientEffects
                 var seeded = await client.CreateDefinitionAsync(target, seedProfile,
                     new(TimeSpan.FromSeconds(input.DefaultSeconds)),
                     new(TimeSpan.FromSeconds(input.MaximumSeconds)),
-                    new(target, InfisicalDynamicOperation.CreateDefinition), token,
-                    usernameWitness ? new(input.BaselineUsernameTemplate) : null);
+                    new(target, InfisicalDynamicOperation.CreateDefinition),
+                    usernameWitness ? new(input.BaselineUsernameTemplate) : null, token);
                 probe.Contract(seeded.IsSuccess, NativeFailure.MissingPrerequisite);
                 definition = seeded.Value;
             }
@@ -392,7 +392,7 @@ internal static class InfisicalDynamicClientEffects
                             new(TimeSpan.FromSeconds(input.DefaultSeconds)),
                             variant == "maximumTtl.omitted" ? null :
                                 new(TimeSpan.FromSeconds(input.MaximumSeconds)),
-                            receipt, cancellation.Token, Options(input, variant));
+                            receipt, Options(input, variant), cancellation.Token);
                         status = created.Status;
                         if (created.IsSuccess) definition = created.Value;
                         break;

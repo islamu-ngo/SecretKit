@@ -111,7 +111,7 @@ internal static class TemplatePrincipalEffects
         foreach (string environment in new[] { "baseline", "witness", "outside" })
         {
             var reference = new SecretReference(setup.Authority, new InfisicalSecretAddress(project, environment, "/", i.Key));
-            var receipt = new MutationReceipt(reference);
+            var receipt = setup.CreateReceipt(reference);
             var created = await setup.CreateAsync(reference, value, receipt, token);
             TemplatePrincipalContract.Require(created.IsSuccess && receipt.Evidence == DispatchEvidence.Applied, "effect-mismatch");
         }

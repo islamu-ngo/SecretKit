@@ -47,7 +47,7 @@ internal static class TagPermissionClient
         // Native mutations select authority tokens, reads select client tokens.
         var mutationTokens = new TagPermissionTokens(env.Tokens(role));
         var authority = new InfisicalNativeAuthority(client.Authority, mutationTokens, row.Project);
-        MutationReceipt? receipt = row.Action == TagPermissionAction.Read ? null : new(target);
+        MutationReceipt? receipt = row.Action == TagPermissionAction.Read ? null : client.CreateReceipt(target);
         SecretStatus status; TagPermissionValue[] values = []; bool complete = true;
         if (row.List)
         {

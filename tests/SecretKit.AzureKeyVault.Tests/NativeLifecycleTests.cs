@@ -9,6 +9,22 @@ public sealed class NativeLifecycleTests
     private const string Version = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
     [Test]
+    public async Task NativeMutationRejectsCallerIssuedReceiptBeforeDispatch()
+    {
+        var backend = new NativeBackend();
+        var client = backend.Client();
+        var target = Target(client);
+        var receipt = new MutationReceiptIssuer().Create(target);
+
+        var outcome = await client.StartDeleteSecretAsync(target, receipt);
+
+        await Assert.That(outcome.Status).IsEqualTo(SecretStatus.Invalid);
+        await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.NotDispatched);
+        await Assert.That(backend.Paths.Count).IsEqualTo(0);
+        await Assert.That(backend.Mutations).IsEqualTo(0);
+    }
+
+    [Test]
     public async Task NativeMetadataInputIsBoundedBeforeProviderUse()
     {
         var backend = new NativeBackend();
@@ -72,7 +88,7 @@ public sealed class NativeLifecycleTests
         var tags = new Dictionary<string, string> { ["tag-canary"] = "value-canary" };
         var request = new AzureUpdatePropertiesRequest(target, enabled: true, contentType: "content-canary", tags: tags);
         tags["tag-canary"] = "changed";
-        var receipt = new MutationReceipt(target);
+        var receipt = client.CreateReceipt(target);
         var result = await client.UpdatePropertiesAsync(request, receipt);
         await Assert.That(result.Status).IsEqualTo(SecretStatus.Success);
         await Assert.That(result.Value.Enabled == true).IsTrue();
@@ -95,7 +111,7 @@ public sealed class NativeLifecycleTests
         var backend = new NativeBackend { Deleted = recover };
         var client = backend.Client();
         var target = Target(client);
-        var receipt = new MutationReceipt(target);
+        var receipt = client.CreateReceipt(target);
         var result = recover
             ? await client.StartRecoverDeletedSecretAsync(target, receipt)
             : await client.StartDeleteSecretAsync(target, receipt);
@@ -141,7 +157,7 @@ public sealed class NativeLifecycleTests
         var backend = new NativeBackend { Deleted = operation is "recover" or "purge", DropResponse = true };
         var client = backend.Client();
         var target = Target(client, operation == "update" ? Version : null);
-        var receipt = new MutationReceipt(target);
+        var receipt = client.CreateReceipt(target);
         var status = await Mutate(client, target, receipt, operation);
         await Assert.That(status).IsEqualTo(SecretStatus.Unknown);
         await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.PossiblyDispatched);
@@ -170,7 +186,7 @@ public sealed class NativeLifecycleTests
         var backend = new NativeBackend { Deleted = operation is "recover" or "purge", HoldResponse = true };
         var client = backend.Client();
         var target = Target(client, operation == "update" ? Version : null);
-        var receipt = new MutationReceipt(target);
+        var receipt = client.CreateReceipt(target);
         using var cancellation = new CancellationTokenSource();
         var pending = Mutate(client, target, receipt, operation, cancellation.Token);
         await backend.Committed.Task.WaitAsync(TimeSpan.FromSeconds(10));
@@ -191,7 +207,7 @@ public sealed class NativeLifecycleTests
         var backend = new NativeBackend();
         var client = backend.Client();
         var target = Target(client, operation == "update" ? Version : null);
-        var receipt = new MutationReceipt(target);
+        var receipt = client.CreateReceipt(target);
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
         await Assert.That(async () => await Mutate(client, target, receipt, operation, cancellation.Token))
@@ -212,7 +228,7 @@ public sealed class NativeLifecycleTests
         var backend = new NativeBackend();
         var client = backend.Client();
         var target = Target(client, Version);
-        var receipt = new MutationReceipt(target);
+        var receipt = client.CreateReceipt(target);
         await Assert.That(await Mutate(client, target, receipt, operation)).IsEqualTo(SecretStatus.Unsupported);
         await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.NotDispatched);
         await Assert.That(backend.Paths.Count).IsEqualTo(0);
@@ -224,13 +240,13 @@ public sealed class NativeLifecycleTests
         var backend = new NativeBackend();
         var client = backend.Client();
         var target = Target(client, Version);
-        var receipt = new MutationReceipt(target);
+        var receipt = client.CreateReceipt(target);
         await Assert.That((await client.UpdatePropertiesAsync(new AzureUpdatePropertiesRequest(
             target, enabled: true, precondition: AzureSetSecretPrecondition.MatchVersion), receipt)).Status)
             .IsEqualTo(SecretStatus.Unsupported);
         var latest = Target(client);
         await Assert.That((await client.UpdatePropertiesAsync(new AzureUpdatePropertiesRequest(latest, enabled: true),
-            new MutationReceipt(latest))).Status).IsEqualTo(SecretStatus.Unsupported);
+            client.CreateReceipt(latest))).Status).IsEqualTo(SecretStatus.Unsupported);
         await Assert.That((await client.GetSecretVersionAsync(latest)).Status).IsEqualTo(SecretStatus.Unsupported);
         await Assert.That((await client.BackupSecretAsync(target)).Status).IsEqualTo(SecretStatus.Unsupported);
         await Assert.That(backend.Paths.Count).IsEqualTo(0);
@@ -255,7 +271,7 @@ public sealed class NativeLifecycleTests
         source[0] = 99;
         await Assert.That(imported.Export()[0]).IsEqualTo((byte)1);
         var target = Target(client);
-        var receipt = new MutationReceipt(target);
+        var receipt = client.CreateReceipt(target);
         var restored = await client.RestoreSecretBackupAsync(new AzureRestoreSecretRequest(target, copy), receipt);
         await Assert.That(restored.Status).IsEqualTo(SecretStatus.Success);
         await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.Applied);
@@ -283,7 +299,7 @@ public sealed class NativeLifecycleTests
         var backend = new NativeBackend { Corruption = corruption, Deleted = operation is "deleted" or "deleted-list" or "recover", Ready = true };
         var client = backend.Client();
         var target = Target(client, operation is "version" or "update" ? Version : null);
-        var receipt = new MutationReceipt(target);
+        var receipt = client.CreateReceipt(target);
         SecretStatus status = operation switch
         {
             "version" => (await client.GetSecretVersionAsync(target)).Status,
@@ -325,7 +341,7 @@ public sealed class NativeLifecycleTests
         var backend = new NativeBackend { Denied = true };
         var client = backend.Client();
         var target = Target(client);
-        var receipt = new MutationReceipt(target);
+        var receipt = client.CreateReceipt(target);
         await Assert.That((await client.StartDeleteSecretAsync(target, receipt)).Status).IsEqualTo(SecretStatus.Denied);
         await Assert.That(receipt.Evidence == DispatchEvidence.Applied).IsFalse();
         await Assert.That((await client.BackupSecretAsync(target)).Status).IsEqualTo(SecretStatus.Denied);
@@ -343,7 +359,7 @@ public sealed class NativeLifecycleTests
         var backend = new NativeBackend { ChallengeAfterCommit = true, Deleted = operation is "recover" or "purge" };
         var client = backend.Client();
         var target = Target(client, operation == "update" ? Version : null);
-        var receipt = new MutationReceipt(target);
+        var receipt = client.CreateReceipt(target);
         await Assert.That(await Mutate(client, target, receipt, operation)).IsEqualTo(SecretStatus.Unknown);
         await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.PossiblyDispatched);
         await Assert.That(backend.Mutations).IsEqualTo(1);
@@ -356,7 +372,7 @@ public sealed class NativeLifecycleTests
         var backend = new NativeBackend { HoldChallenge = true };
         var client = backend.Client();
         var target = Target(client);
-        var receipt = new MutationReceipt(target);
+        var receipt = client.CreateReceipt(target);
         using var cancellation = new CancellationTokenSource();
         var pending = client.StartDeleteSecretAsync(target, receipt, cancellation.Token).AsTask();
         await backend.ChallengeSeen.Task.WaitAsync(TimeSpan.FromSeconds(10));
@@ -411,12 +427,12 @@ public sealed class NativeLifecycleTests
         var client = backend.Client(1024);
         var target = Target(client);
         using var backup = AzureSecretBackup.FromBytes(new byte[1024]);
-        var receipt = new MutationReceipt(target);
+        var receipt = client.CreateReceipt(target);
         var restored = await client.RestoreSecretBackupAsync(new AzureRestoreSecretRequest(target, backup), receipt);
         await Assert.That(restored.Status).IsEqualTo(SecretStatus.Invalid);
         await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.NotDispatched);
         target = Target(client, Version);
-        receipt = new MutationReceipt(target);
+        receipt = client.CreateReceipt(target);
         var updated = await client.UpdatePropertiesAsync(new AzureUpdatePropertiesRequest(target,
             contentType: new string('x', 2000)), receipt);
         await Assert.That(updated.Status).IsEqualTo(SecretStatus.Invalid);
@@ -432,17 +448,18 @@ public sealed class NativeLifecycleTests
         using var backup = AzureSecretBackup.FromBytes(new byte[] { 1 });
         backup.Dispose();
         var target = Target(client);
-        var receipt = new MutationReceipt(target);
+        var receipt = client.CreateReceipt(target);
         var result = await client.RestoreSecretBackupAsync(new AzureRestoreSecretRequest(target, backup), receipt);
         await Assert.That(result.Status).IsEqualTo(SecretStatus.Invalid);
         await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.NotDispatched);
         var foreign = new SecretReference(new SecretAuthority(), new AzureSecretAddress("name-canary"));
-        await Assert.That((await client.StartDeleteSecretAsync(foreign, new MutationReceipt(foreign))).Status)
+        await Assert.That(() => client.CreateReceipt(foreign)).Throws<ArgumentException>();
+        await Assert.That((await client.StartDeleteSecretAsync(foreign, new MutationReceiptIssuer().Create(foreign))).Status)
             .IsEqualTo(SecretStatus.Invalid);
         await Assert.That((await client.BackupSecretAsync(foreign)).Status).IsEqualTo(SecretStatus.Invalid);
         await Assert.That((await client.GetDeletedSecretsAsync(new AzureInventoryScope(new SecretAuthority()))).Status)
             .IsEqualTo(SecretStatus.Invalid);
-        await Assert.That((await client.StartDeleteSecretAsync(target, new MutationReceipt(Target(client)))).Status)
+        await Assert.That((await client.StartDeleteSecretAsync(target, client.CreateReceipt(Target(client)))).Status)
             .IsEqualTo(SecretStatus.Invalid);
         await Assert.That(backend.Paths.Count).IsEqualTo(0);
     }
@@ -454,13 +471,13 @@ public sealed class NativeLifecycleTests
         var client = backend.Client();
         var target = Target(client, Version);
         await client.UpdatePropertiesAsync(new AzureUpdatePropertiesRequest(target, enabled: false),
-            new MutationReceipt(target));
+            client.CreateReceipt(target));
         using (var body = JsonDocument.Parse(backend.LastBody!))
         {
             await Assert.That(body.RootElement.TryGetProperty("tags", out _)).IsFalse();
             await Assert.That(body.RootElement.TryGetProperty("contentType", out _)).IsFalse();
         }
-        var receipt = new MutationReceipt(target);
+        var receipt = client.CreateReceipt(target);
         var cleared = await client.UpdatePropertiesAsync(new AzureUpdatePropertiesRequest(target,
             tags: new Dictionary<string, string>()), receipt);
         await Assert.That(cleared.Status).IsEqualTo(SecretStatus.Success);
@@ -512,7 +529,7 @@ public sealed class NativeLifecycleTests
         backend.Tags.Add("tag-canary", "value-canary");
         var client = backend.Client();
         var target = Target(client, Version);
-        var receipt = new MutationReceipt(target);
+        var receipt = client.CreateReceipt(target);
         var result = await client.UpdatePropertiesAsync(new AzureUpdatePropertiesRequest(target,
             tags: new Dictionary<string, string>()), receipt);
         await Assert.That(result.Status).IsEqualTo(SecretStatus.Success);
@@ -540,7 +557,7 @@ public sealed class NativeLifecycleTests
         var client = backend.Client();
         var target = Target(client, Version);
         var request = new AzureUpdatePropertiesRequest(target, tags: new Dictionary<string, string>());
-        var receipt = new MutationReceipt(target);
+        var receipt = client.CreateReceipt(target);
         var result = await client.UpdatePropertiesAsync(request, receipt);
         await Assert.That(receipt.Evidence).IsEqualTo(lostResponse
             ? DispatchEvidence.PossiblyDispatched : DispatchEvidence.Rejected);
@@ -557,7 +574,7 @@ public sealed class NativeLifecycleTests
         backend.Tags.Add("tag-canary", "value-canary");
         var client = backend.Client();
         var target = Target(client, Version);
-        var receipt = new MutationReceipt(target);
+        var receipt = client.CreateReceipt(target);
         using var cancellation = new CancellationTokenSource();
         var pending = client.UpdatePropertiesAsync(new AzureUpdatePropertiesRequest(target,
             tags: new Dictionary<string, string>()), receipt, cancellation.Token);
@@ -575,7 +592,7 @@ public sealed class NativeLifecycleTests
         var backend = new NativeBackend { Deleted = true, Ready = true };
         var client = backend.Client();
         var target = Target(client);
-        var receipt = new MutationReceipt(target);
+        var receipt = client.CreateReceipt(target);
         var result = await client.PurgeDeletedSecretAsync(target, receipt);
         await Assert.That(result.Status).IsEqualTo(SecretStatus.Success);
         await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.Applied);
@@ -592,7 +609,7 @@ public sealed class NativeLifecycleTests
         var target = Target(client);
         using var backup = AzureSecretBackup.FromBytes(new byte[] { 1, 2, 3, 4 });
         var pending = client.RestoreSecretBackupAsync(new AzureRestoreSecretRequest(target, backup),
-            new MutationReceipt(target)).AsTask();
+            client.CreateReceipt(target)).AsTask();
         await backend.Committed.Task.WaitAsync(TimeSpan.FromSeconds(10));
         backup.Dispose();
         backend.ResponseReleased.TrySetResult();
@@ -611,7 +628,7 @@ public sealed class NativeLifecycleTests
         var backend = new NativeBackend();
         var client = backend.Client();
         var target = Target(client);
-        var started = await client.StartDeleteSecretAsync(target, new MutationReceipt(target));
+        var started = await client.StartDeleteSecretAsync(target, client.CreateReceipt(target));
         backend.Ready = true;
         backend.Denied = denied;
         backend.Corruption = denied ? null : "recovery";

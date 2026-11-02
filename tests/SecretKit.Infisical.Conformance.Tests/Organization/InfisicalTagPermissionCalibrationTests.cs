@@ -147,7 +147,7 @@ public sealed class InfisicalTagPermissionCalibrationTests
                         row.Action == TagPermissionAction.Create ? InfisicalOrganizationSelector.Slug : InfisicalOrganizationSelector.Id));
                     var selected = new TagPermissionTokens(env.Tokens(role));
                     var authority = new InfisicalNativeAuthority(client.Authority, selected, row.Project);
-                    MutationReceipt? receipt = row.Action == TagPermissionAction.Read ? null : new(target);
+                    MutationReceipt? receipt = row.Action == TagPermissionAction.Read ? null : client.CreateReceipt(target);
                     SecretStatus status; TagPermissionValue[] values = []; bool complete = true;
                     // Direct public SDK calls; neither TagPermissionClient nor effect helpers are used.
                     TagPermissionValue Copy(InfisicalTag value) => new(Guid.Parse(value.Id),

@@ -101,7 +101,7 @@ internal sealed class ConsoleDemoApplication
     {
         await using InfisicalClient client = CreateClient(input.Connection);
         SecretReference reference = CreateReference(client, input.Connection);
-        _receipt = new MutationReceipt(reference);
+        _receipt = client.CreateReceipt(reference);
 
         SecretOutcome<InfisicalStaticChange> result =
             await client.CreateAsync(reference, input.Value, _receipt, cancellationToken);
@@ -112,7 +112,7 @@ internal sealed class ConsoleDemoApplication
     {
         await using InfisicalClient client = CreateClient(input.Connection);
         SecretReference reference = CreateReference(client, input.Connection);
-        _receipt = new MutationReceipt(reference);
+        _receipt = client.CreateReceipt(reference);
 
         SecretOutcome<InfisicalStaticChange> result =
             await client.UpdateValueAsync(reference, input.Value, _receipt, cancellationToken);

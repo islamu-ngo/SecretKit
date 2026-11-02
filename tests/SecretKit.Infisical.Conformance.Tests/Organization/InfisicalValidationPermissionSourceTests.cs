@@ -197,7 +197,7 @@ public sealed class InfisicalValidationPermissionSourceTests
         var barrier = beforeDispatch ? new ProjectTokenBarrier(tokens) : null;
         await using var client = new InfisicalClient(env.Origin, barrier ?? (IInfisicalTokenSource)tokens, new InfisicalNetworkOptions { AllowLoopbackDevelopmentHttp = true });
         var target = new SecretReference(client.Authority, new InfisicalSecretAddress(trial.Issued.Id(row.Project), p.Environment, p.Path, p.Name));
-        var receipt = new MutationReceipt(target); using var value = SecretMaterial.FromText(p.Value);
+        var receipt = client.CreateReceipt(target); using var value = SecretMaterial.FromText(p.Value);
         using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(deadline.Token);
         using var loss = beforeDispatch ? null : new ProjectResponseBoundary(env.Origin, cancellation);
         bool cancelled = false;
@@ -247,7 +247,7 @@ public sealed class InfisicalValidationPermissionSourceTests
         using var tokens = new MemberPermissionTokens(trial.Issued.Actors[3].Credential);
         await using var client = new InfisicalClient(env.Origin, tokens, new InfisicalNetworkOptions { AllowLoopbackDevelopmentHttp = true });
         var target = new SecretReference(client.Authority, new InfisicalSecretAddress(trial.Issued.Id(row.Project), p.Environment, p.Path, p.Name));
-        var receipt = new MutationReceipt(target); using var value = SecretMaterial.FromText(p.Value);
+        var receipt = client.CreateReceipt(target); using var value = SecretMaterial.FromText(p.Value);
         Task entered = provider.PipelineEntered.Task, closing = provider.CloseEntered.Task;
         var write = client.CreateAsync(target, value, receipt, deadline.Token).AsTask();
         Task? cleanup = null;

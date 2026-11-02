@@ -1,0 +1,185 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using SecretKit.Core;
+
+namespace SecretKit.Infisical;
+
+/// <summary>Distinguishes a validated applied response from approval submission.</summary>
+public enum InfisicalChangeDisposition
+{
+    /// <summary>The response identifies the selected secret and its applied version.</summary>
+    Applied,
+    /// <summary>An approval was submitted; secret application has not been observed.</summary>
+    SubmittedForApproval
+}
+
+/// <summary>Native change evidence; approval and applied version are distinct outcomes.</summary>
+public sealed class InfisicalStaticChange
+{
+    internal InfisicalStaticChange(InfisicalChangeDisposition disposition, string? version, string? approvalId)
+    {
+        Disposition = disposition;
+        Version = version;
+        ApprovalId = approvalId;
+    }
+
+    /// <summary>Whether the response proves application or only approval submission.</summary>
+    public InfisicalChangeDisposition Disposition { get; }
+    /// <summary>The validated applied version, absent for approval submission.</summary>
+    [JsonIgnore]
+    public string? Version { get; }
+    /// <summary>The approval identifier, absent for an applied response.</summary>
+    [JsonIgnore]
+    public string? ApprovalId { get; }
+    /// <summary>Returns disposition without identifiers or values.</summary>
+    public override string ToString() => $"[InfisicalStaticChange:{Disposition}]";
+}
+
+public sealed partial class InfisicalClient
+{
+    /// <summary>Creates a selected shared secret; provider policy may submit an approval instead.</summary>
+    /// <remarks>Copies borrowed material before awaiting. Retain the receipt across cancellation or Unknown:
+    /// dispatch may have occurred. Missing response evidence is Unknown; contradictory scope is Invalid.
+    /// Neither result authorizes replay.</remarks>
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode(InfisicalOperationBudget.PayloadTrimmingMessage)]
+    public ValueTask<SecretOutcome<InfisicalStaticChange>> CreateAsync(SecretReference target,
+        SecretMaterial material, MutationReceipt receipt, CancellationToken cancellationToken = default) =>
+        ChangeValueAsync(target, material, receipt, HttpMethod.Post, cancellationToken);
+
+    /// <summary>Updates a selected shared secret without pretending to provide compare-and-swap.</summary>
+    /// <remarks>The caller retains its input material and receipt. Approval is not application;
+    /// a lost response or cancellation does not undo a possibly dispatched write.</remarks>
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode(InfisicalOperationBudget.PayloadTrimmingMessage)]
+    public ValueTask<SecretOutcome<InfisicalStaticChange>> UpdateValueAsync(SecretReference target,
+        SecretMaterial material, MutationReceipt receipt, CancellationToken cancellationToken = default) =>
+        ChangeValueAsync(target, material, receipt, HttpMethod.Patch, cancellationToken);
+
+    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode(InfisicalOperationBudget.PayloadTrimmingMessage)]
+    private async ValueTask<SecretOutcome<InfisicalStaticChange>> ChangeValueAsync(SecretReference target,
+        SecretMaterial material, MutationReceipt receipt, HttpMethod method, CancellationToken cancellationToken)
+    {
+        return await InfisicalOperationBudget.RunAsync(_operationTimeout, _time, cancellationToken,
+            InfisicalOperation.StaticMutation, ExecuteAsync, () => receipt?.Evidence ?? DispatchEvidence.NotDispatched, shutdown: _shutdown.Token).ConfigureAwait(false);
+
+        async ValueTask<SecretOutcome<InfisicalStaticChange>> ExecuteAsync(CancellationToken operationToken)
+        {
+            ArgumentNullException.ThrowIfNull(target);
+            ArgumentNullException.ThrowIfNull(material);
+            ArgumentNullException.ThrowIfNull(receipt);
+            operationToken.ThrowIfCancellationRequested();
+            if (!target.BelongsTo(Authority) || target.Address is not InfisicalSecretAddress address ||
+                !_receipts.Owns(receipt) || !receipt.IsFor(target) || receipt.Evidence != DispatchEvidence.NotDispatched)
+            {
+                return SecretOutcome<InfisicalStaticChange>.Failure(SecretStatus.Invalid);
+            }
+
+            if (address.Version is not null || address.IncludeImports ||
+                address.Resolution != InfisicalResolution.Raw)
+            {
+                return SecretOutcome<InfisicalStaticChange>.Failure(SecretStatus.Unsupported, reason: SecretFailureReason.UnsupportedContract);
+            }
+
+            // Copy before awaiting token/network work; the caller continues owning its original.
+            if (material.GetUtf8ByteCount() > _requestLimit)
+                return SecretOutcome<InfisicalStaticChange>.Failure(SecretStatus.Invalid,
+                    reason: SecretFailureReason.RequestTooLarge);
+            using SecretMaterial owned = material.Copy();
+            byte[] payload = InfisicalOperationBudget.Payload(new
+            {
+                projectId = address.ProjectId,
+                environment = address.Environment,
+                secretPath = address.Folder,
+                secretValue = owned.Reveal(),
+                type = "shared",
+                skipMultilineEncoding = true
+            })(_requestLimit);
+            if (payload.Length == 0)
+            {
+                Array.Clear(payload);
+                return SecretOutcome<InfisicalStaticChange>.Failure(SecretStatus.Invalid, reason: SecretFailureReason.RequestTooLarge);
+            }
+
+            try
+            {
+                BeginOperation();
+            }
+            catch
+            {
+                Array.Clear(payload);
+                throw;
+            }
+
+            try
+            {
+                using var linked = new InfisicalOperationBudget(_operationTimeout, _time, operationToken, _shutdown.Token);
+                using var content = new ByteArrayContent(payload);
+                content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/json");
+                using HttpRequestMessage request = method == HttpMethod.Post
+                    ? await _staticWire.CreateAsync(address.Key, content, linked.Token).ConfigureAwait(false)
+                    : await _staticWire.UpdateAsync(address.Key, content, linked.Token).ConfigureAwait(false);
+                SecretOutcome<JsonDocument> result = await ReadDocumentAsync(request, linked, receipt, target);
+                if (!result.IsSuccess)
+                {
+                    SecretStatus status = receipt.Evidence == DispatchEvidence.PossiblyDispatched
+                        ? SecretStatus.Unknown : result.Status;
+                    return SecretOutcome<InfisicalStaticChange>.Failure(status,
+                        status is SecretStatus.Throttled or SecretStatus.Unavailable ? result.RetryAfter : null, result.Reason);
+                }
+
+                using JsonDocument document = result.Value;
+                JsonElement root = document.RootElement;
+                if (root.ValueKind != JsonValueKind.Object)
+                {
+                    return SecretOutcome<InfisicalStaticChange>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.InvalidResponse);
+                }
+
+                if (root.TryGetProperty("approval", out JsonElement approval) &&
+                    approval.ValueKind == JsonValueKind.Object)
+                {
+                    if (root.TryGetProperty("secret", out _) ||
+                        !approval.TryGetProperty("id", out JsonElement id) || id.ValueKind != JsonValueKind.String ||
+                        !Guid.TryParse(id.GetString(), out _) ||
+                        (approval.TryGetProperty("hasMerged", out JsonElement merged) &&
+                            merged.ValueKind != JsonValueKind.False))
+                    {
+                        return SecretOutcome<InfisicalStaticChange>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.InvalidResponse);
+                    }
+
+                    _receipts.Record(receipt, DispatchEvidence.Pending);
+                    return SecretOutcome<InfisicalStaticChange>.Success(new(
+                        InfisicalChangeDisposition.SubmittedForApproval, null, id.GetString()));
+                }
+
+                if (!root.TryGetProperty("secret", out JsonElement secret) || secret.ValueKind != JsonValueKind.Object ||
+                    !secret.TryGetProperty("secretKey", out JsonElement key) || key.ValueKind != JsonValueKind.String ||
+                    !secret.TryGetProperty("workspace", out JsonElement project) || project.ValueKind != JsonValueKind.String ||
+                    !secret.TryGetProperty("environment", out JsonElement environment) || environment.ValueKind != JsonValueKind.String)
+                {
+                    return SecretOutcome<InfisicalStaticChange>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.InvalidResponse);
+                }
+
+                if (key.GetString() != address.Key || project.GetString() != address.ProjectId ||
+                    environment.GetString() != address.Environment ||
+                    secret.TryGetProperty("secretPath", out JsonElement path) &&
+                        (path.ValueKind != JsonValueKind.String || path.GetString() != address.Folder) ||
+                    secret.TryGetProperty("type", out JsonElement type) &&
+                        (type.ValueKind != JsonValueKind.String || type.GetString() != "shared") ||
+                    secret.TryGetProperty("version", out JsonElement returnedVersion) &&
+                        returnedVersion.ValueKind == JsonValueKind.Number &&
+                        returnedVersion.TryGetInt32(out int number) && number <= 0)
+                    return SecretOutcome<InfisicalStaticChange>.Failure(SecretStatus.Invalid);
+
+                if (Version(secret) is not { } version)
+                    return SecretOutcome<InfisicalStaticChange>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.InvalidResponse);
+
+                _receipts.Record(receipt, DispatchEvidence.Applied);
+                return SecretOutcome<InfisicalStaticChange>.Success(new(InfisicalChangeDisposition.Applied, version, null));
+            }
+            finally
+            {
+                Array.Clear(payload);
+                EndOperation();
+            }
+        }
+    }
+}

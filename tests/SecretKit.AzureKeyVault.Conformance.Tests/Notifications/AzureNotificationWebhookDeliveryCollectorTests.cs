@@ -50,7 +50,7 @@ public sealed partial class AzureVaultFixtureProvisionerTests
         using var material = SecretMaterial.FromText(NotificationCaptureScope.Value);
         var capture = f.Source.Arm(f.Binding, material);
         var target = f.Target();
-        var result = await f.Source.RunSetAsync(f.Binding.Selector, f.Client, new(target, material), new(target), default);
+        var result = await f.Source.RunSetAsync(f.Binding.Selector, f.Client, new(target, material), f.Client.CreateReceipt(target), default);
         await Assert.That(result.Status).IsEqualTo(SecretStatus.Success);
         return capture;
     }

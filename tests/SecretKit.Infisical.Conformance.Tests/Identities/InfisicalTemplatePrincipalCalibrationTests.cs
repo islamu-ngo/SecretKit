@@ -186,7 +186,7 @@ public sealed class InfisicalTemplatePrincipalCalibrationTests
                 foreach (string environment in new[] { "baseline", "witness", "outside" })
                 {
                     var reference = new SecretReference(setup.Authority, new InfisicalSecretAddress(project, environment, "/", i.Key));
-                    var receipt = new MutationReceipt(reference);
+                    var receipt = setup.CreateReceipt(reference);
                     var result = await setup.CreateAsync(reference, value, receipt, timeout.Token);
                     await Assert.That(result.IsSuccess).IsTrue().Because(result.Status.ToString());
                     await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.Applied);

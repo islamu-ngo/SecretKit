@@ -58,7 +58,7 @@ public sealed class InfisicalTagPermissionSourceTests
         await Assert.That(read.Status).IsEqualTo(SecretStatus.Invalid);
         var authority = new InfisicalNativeAuthority(second.Authority, secondTokens,
             "30000000-0000-0000-0000-000000000001");
-        var receipt = new MutationReceipt(target);
+        var receipt = first.CreateReceipt(target);
         var mutation = await first.UpdateTagAsync(target, "changed", "#A1B2C3", authority, receipt);
         await Assert.That(mutation.Status).IsEqualTo(SecretStatus.Invalid);
         await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.NotDispatched);

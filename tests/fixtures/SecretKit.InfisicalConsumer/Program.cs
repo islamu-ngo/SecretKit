@@ -159,19 +159,19 @@ internal static class InstalledWorkflow
         scenarios.Add(new { id = "S06", subset = "metadata-query-scope-truncation-and-no-material", status = "passed" });
 
         using SecretMaterial update = SecretMaterial.FromText("installed-updated-canary");
-        var appliedReceipt = new MutationReceipt(reference);
+        var appliedReceipt = client.CreateReceipt(reference);
         SecretOutcome<InfisicalStaticChange> applied = await Change(appliedReceipt, 200, SecretBody(version: 2));
         Require(applied.IsSuccess && applied.Value.Disposition == InfisicalChangeDisposition.Applied &&
             appliedReceipt.Evidence == DispatchEvidence.Applied);
-        var pendingReceipt = new MutationReceipt(reference);
+        var pendingReceipt = client.CreateReceipt(reference);
         SecretOutcome<InfisicalStaticChange> pending = await Change(pendingReceipt, 200,
             """{"approval":{"id":"12345678-1234-1234-1234-123456789012","hasMerged":false}}""");
         Require(pending.IsSuccess && pending.Value.Disposition == InfisicalChangeDisposition.SubmittedForApproval &&
             pendingReceipt.Evidence == DispatchEvidence.Pending);
-        var rejectedReceipt = new MutationReceipt(reference);
+        var rejectedReceipt = client.CreateReceipt(reference);
         Require((await Change(rejectedReceipt, 403, "{}")).Status == SecretStatus.Denied &&
             rejectedReceipt.Evidence == DispatchEvidence.Rejected);
-        var unknownReceipt = new MutationReceipt(reference);
+        var unknownReceipt = client.CreateReceipt(reference);
         Require((await Change(unknownReceipt, 200, "{}")).Status == SecretStatus.Unknown &&
             unknownReceipt.Evidence == DispatchEvidence.PossiblyDispatched);
         Require((await client.UpdateValueAsync(reference, update, unknownReceipt, deadline.Token)).Status ==

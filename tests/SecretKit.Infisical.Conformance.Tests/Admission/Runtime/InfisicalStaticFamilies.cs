@@ -181,7 +181,7 @@ internal sealed class StaticOwnedFixture : IAsyncDisposable
         string path = parent + "/" + name;
         var target = new SecretReference(Setup.Authority, new InfisicalFolderAddress(
             Input.ProjectId, Input.Environment, Input.EnvironmentId, parent, name: name));
-        var receipt = new MutationReceipt(target);
+        var receipt = Setup.CreateReceipt(target);
         // Ownership is recorded before send, so a lost setup response still gets name-scoped cleanup.
         folders.Add((parent, name, null));
         SecretOutcome<InfisicalFolder> created = await Setup.CreateFolderAsync(target,
@@ -200,7 +200,7 @@ internal sealed class StaticOwnedFixture : IAsyncDisposable
     internal async ValueTask SeedAsync(string key, string value, string folder, CancellationToken token)
     {
         SecretReference target = Secret(Setup, key, folder);
-        var receipt = new MutationReceipt(target);
+        var receipt = Setup.CreateReceipt(target);
         using SecretMaterial material = SecretMaterial.FromText(value);
         SecretOutcome<InfisicalStaticChange> seeded = await Setup.CreateAsync(target, material, receipt, token);
         probe.Contract(seeded.IsSuccess && seeded.Value.Disposition == InfisicalChangeDisposition.Applied &&
@@ -275,7 +275,7 @@ internal sealed class StaticOwnedFixture : IAsyncDisposable
                     var target = new SecretReference(Administrative.Authority, new InfisicalFolderAddress(
                         Input.ProjectId, Input.Environment, Input.EnvironmentId, folder.Parent,
                         folder.Id, folder.Name));
-                    var receipt = new MutationReceipt(target);
+                    var receipt = Administrative.CreateReceipt(target);
                     SecretOutcome<InfisicalFolder> result = await Administrative.DeleteFolderAsync(target,
                         Authority(Administrative, NativeIdentityRole.Administrative, folder.Parent),
                         receipt, forceDelete: true, cancellationToken: deadline.Token);

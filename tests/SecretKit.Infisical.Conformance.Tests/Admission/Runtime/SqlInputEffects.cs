@@ -68,7 +68,7 @@ internal static class SqlInputEffects
             var controlReceipt = new InfisicalDynamicMutationReceipt(controlTarget, InfisicalDynamicOperation.CreateDefinition);
             var created = await client.CreateDefinitionAsync(controlTarget, original,
                 new(TimeSpan.FromSeconds(input.DefaultSeconds)), new(TimeSpan.FromSeconds(input.MaximumSeconds)),
-                controlReceipt, token);
+                controlReceipt, cancellationToken: token);
             probe.Contract(created.IsSuccess, NativeFailure.MissingPrerequisite);
             var control = created.Value;
             var baselineFence = await trial.CompleteAsync(controlReceipt.Evidence, token);
@@ -103,7 +103,7 @@ internal static class SqlInputEffects
                     status = (await client.CreateDefinitionAsync(target, changed,
                         new(TimeSpan.FromSeconds(input.DefaultSeconds)),
                         variant == "maximumTtl.omitted" ? null : new(TimeSpan.FromSeconds(input.MaximumSeconds)),
-                        receipt, cancellation.Token, options)).Status;
+                        receipt, options, cancellation.Token)).Status;
                 else if (method == "UpdateDefinitionPolicyAsync")
                     status = (await client.UpdateDefinitionPolicyAsync(control,
                         new(TimeSpan.FromSeconds(input.DefaultSeconds + 1)),

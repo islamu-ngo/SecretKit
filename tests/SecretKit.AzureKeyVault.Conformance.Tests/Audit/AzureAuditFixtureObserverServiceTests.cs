@@ -542,7 +542,7 @@ public sealed partial class AzureRoleFixtureProvisionerTests
                 Credentials[0], Service.RuntimeTransport);
             var reference = new SecretReference(client.Authority, new AzureSecretAddress(lease.Windows[0].RuntimeSecretName));
             using var material = SecretMaterial.FromText("selected-audit-value");
-            var result = await Service.RunSetAsync(Selector, client, new(reference, material), new(reference), default);
+            var result = await Service.RunSetAsync(Selector, client, new(reference, material), client.CreateReceipt(reference), default);
             if (result.Status != SecretStatus.Success) throw new InvalidOperationException("controlled-set-failed");
         }
         internal ValueTask<AuditDiagnosticsEffects.TriggerReceipt> Trigger(AuditDiagnosticsEffects.Lease lease, TriggerKind kind) =>

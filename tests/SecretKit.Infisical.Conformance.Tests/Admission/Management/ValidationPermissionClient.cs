@@ -36,7 +36,7 @@ internal static class ValidationPermissionClient
         string project = issued.Id(row.Project);
         var target = new SecretReference(client.Authority, new InfisicalValidationAddress(project, InfisicalValidationKind.StaticSecrets,
             row.Action == ValidationPermissionAction.Create ? null : issued.Id(row.Target), "dev", row.Slug));
-        var authority = new InfisicalNativeAuthority(client.Authority, tokens, project); var receipt = new MutationReceipt(target);
+        var authority = new InfisicalNativeAuthority(client.Authority, tokens, project); var receipt = client.CreateReceipt(target);
         var result = row.Action switch
         {
             ValidationPermissionAction.Read => await client.GetValidationRuleAsync(target, token),
@@ -93,7 +93,7 @@ internal static class ValidationPermissionClient
             var client = p.Actor == 0 ? policyClient : writerClient;
             string project = issued.Id(row.Project);
             var address = new InfisicalSecretAddress(project, p.Environment, p.Path, p.Name);
-            var target = new SecretReference(client.Authority, address); var receipt = new MutationReceipt(target);
+            var target = new SecretReference(client.Authority, address); var receipt = client.CreateReceipt(target);
             string input = InputHash(project, p);
             using var material = SecretMaterial.FromText(p.Value);
             var result = p.Update ? await client.UpdateValueAsync(target, material, receipt, token) : await client.CreateAsync(target, material, receipt, token);

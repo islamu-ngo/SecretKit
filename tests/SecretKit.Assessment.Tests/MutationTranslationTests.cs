@@ -30,7 +30,7 @@ public sealed class MutationTranslationTests
 
         var scenario = new ReviewedChangesScenario(keys.Select(key =>
             fixture.Selection(key, material, update)), 1);
-        MutationReceipt[] held = scenario.Results.Select(row => row.Receipt).ToArray();
+        MutationReceipt[] held = scenario.Results.Select(row => row.Receipt ?? throw new InvalidOperationException("Expected an issued receipt.")).ToArray();
 
         IReadOnlyList<ReviewedChangeResult> rows = await scenario.ExecuteAsync().WaitAsync(Deadline);
 
@@ -94,7 +94,7 @@ public sealed class MutationTranslationTests
             fixture.Selection("held", material),
             fixture.Selection("queued", material)
         ], 1);
-        MutationReceipt[] held = scenario.Results.Select(row => row.Receipt).ToArray();
+        MutationReceipt[] held = scenario.Results.Select(row => row.Receipt ?? throw new InvalidOperationException("Expected an issued receipt.")).ToArray();
         using var cancellation = new CancellationTokenSource();
 
         Task<IReadOnlyList<ReviewedChangeResult>> execution = scenario.ExecuteAsync(cancellation.Token);
@@ -169,7 +169,7 @@ public sealed class MutationTranslationTests
         await Assert.That(held.InfisicalChange!.Disposition).IsEqualTo(InfisicalChangeDisposition.Applied);
         await Assert.That(held.InfisicalChange!.Version).IsEqualTo("1");
         await Assert.That(async () => await scenario.ExecuteAsync()).Throws<InvalidOperationException>();
-        SecretOutcome<InfisicalStaticChange> replay = await fixture.Client.CreateAsync(target, material, held.Receipt);
+        SecretOutcome<InfisicalStaticChange> replay = await fixture.Client.CreateAsync(target, material, held.Receipt ?? throw new InvalidOperationException("Expected an issued receipt."));
         await Assert.That(replay.Status).IsEqualTo(SecretStatus.Invalid);
         using SecretRead read = (await fixture.Client.ReadAsync(fixture.Target("applied"))).Value;
         await Assert.That(read.Material.Reveal()).IsEqualTo(material.Reveal());

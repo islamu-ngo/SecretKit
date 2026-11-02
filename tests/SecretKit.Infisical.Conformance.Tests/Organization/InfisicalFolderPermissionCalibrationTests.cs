@@ -151,7 +151,7 @@ public sealed class InfisicalFolderPermissionCalibrationTests
                         row.List || row.Action == FolderPermissionAction.Create ? null : row.Id.ToString(), row.List ? null : row.Name));
                     var selected = new FolderPermissionTokens(env.Tokens(role));
                     var authority = new InfisicalNativeAuthority(client.Authority, selected, row.Project, row.Environment, row.Path);
-                    MutationReceipt? receipt = row.Action == FolderPermissionAction.Read ? null : new(target);
+                    MutationReceipt? receipt = row.Action == FolderPermissionAction.Read ? null : client.CreateReceipt(target);
                     SecretStatus status; FolderPermissionValue[] values = []; bool complete = true;
                     // Direct public SDK calls; neither FolderPermissionClient nor effect helpers are used.
                     FolderPermissionValue Copy(InfisicalFolder value) => new(Guid.Parse(value.Id),

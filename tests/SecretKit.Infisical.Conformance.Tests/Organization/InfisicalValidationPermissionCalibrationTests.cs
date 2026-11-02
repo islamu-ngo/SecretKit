@@ -112,7 +112,7 @@ public sealed class InfisicalValidationPermissionCalibrationTests
                 await using var client = new InfisicalClient(env.Origin, tokens, new InfisicalNetworkOptions { AllowLoopbackDevelopmentHttp = true });
                 string project = issued.Id(row.Project);
                 var target = new SecretReference(client.Authority, new InfisicalValidationAddress(project, InfisicalValidationKind.StaticSecrets, row.Action == ValidationPermissionAction.Create ? null : issued.Id(row.Target), "dev", row.Slug));
-                var auth = new InfisicalNativeAuthority(client.Authority, tokens, project); var receipt = new MutationReceipt(target);
+                var auth = new InfisicalNativeAuthority(client.Authority, tokens, project); var receipt = client.CreateReceipt(target);
                 bool edit = row.Action == ValidationPermissionAction.Edit;
                 var input = new InfisicalValidationInput(row.Name + (edit ? "-v2" : ""), edit ? "changed constraint" : "closed constraint", !edit,
                     new(5, 80, "^KEY_[A-Z0-9_]+_X$", "KEY_", "_X"), new(8, 40, edit ? "^NEXT_[A-Z0-9_]+_OK$" : "^PASS_[A-Z0-9_]+_OK$", edit ? "NEXT_" : "PASS_", "_OK"), environment: "dev", secretPath: row.Slug);
@@ -172,7 +172,7 @@ public sealed class InfisicalValidationPermissionCalibrationTests
                 var actor = issued!.Actors[p.Actor]; using var tokens = actor.Owned ? new MemberPermissionTokens(actor.Credential) : new MemberPermissionTokens(env.Tokens(NativeIdentityRole.Runtime));
                 await using var c = new InfisicalClient(env.Origin, tokens, new InfisicalNetworkOptions { AllowLoopbackDevelopmentHttp = true });
                 string project = issued.Id(row.Project); var address = new InfisicalSecretAddress(project, p.Environment, p.Path, p.Name); var target = new SecretReference(c.Authority, address);
-                var receipt = new MutationReceipt(target); using var value = SecretMaterial.FromText(p.Value);
+                var receipt = c.CreateReceipt(target); using var value = SecretMaterial.FromText(p.Value);
                 byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(new { projectId = project, environment = p.Environment, secretPath = p.Path, secretValue = p.Value, type = "shared", skipMultilineEncoding = true });
                 string hash; try { hash = ValidationPermissionContract.RawHash(bytes); } finally { CryptographicOperations.ZeroMemory(bytes); }
                 var write = p.Update ? await c.UpdateValueAsync(target, value, receipt, deadline.Token) : await c.CreateAsync(target, value, receipt, deadline.Token);

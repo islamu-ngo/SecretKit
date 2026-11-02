@@ -77,7 +77,7 @@ public sealed class InfisicalImportPermissionSourceTests
         var foreign = await second.ListImportsAsync(target);
         await Assert.That(foreign.Status).IsEqualTo(SecretStatus.Invalid);
         await Assert.That(selected.Calls).IsEqualTo(0);
-        var receipt = new MutationReceipt(target);
+        var receipt = first.CreateReceipt(target);
         var result = await first.CreateImportAsync(target, new("source-b", ImportPermissionContract.SourcePath(row, true), row.Project),
             false, new(first.Authority, selected, row.Project, row.Environment, row.Path), receipt);
         await Assert.That(result.Status).IsEqualTo(SecretStatus.Denied);

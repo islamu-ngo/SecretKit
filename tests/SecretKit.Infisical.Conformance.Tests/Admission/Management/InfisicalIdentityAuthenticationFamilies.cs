@@ -407,7 +407,7 @@ internal sealed class IdentityAuthContext : IAsyncDisposable
                 NativeIdentityRole.Setup, token);
             await using InfisicalClient setup = Environment.CreateClient(NativeIdentityRole.Setup);
             var reference = new SecretReference(setup.Authority, new InfisicalSecretAddress(project, "witness", "/", key));
-            var receipt = new MutationReceipt(reference);
+            var receipt = setup.CreateReceipt(reference);
             SecretOutcome<InfisicalStaticChange> created = await setup.CreateAsync(reference, canary, receipt, token);
             Probe.Contract(created.IsSuccess && created.Value.Disposition == InfisicalChangeDisposition.Applied &&
                 receipt.Evidence == DispatchEvidence.Applied, NativeFailure.MissingPrerequisite);

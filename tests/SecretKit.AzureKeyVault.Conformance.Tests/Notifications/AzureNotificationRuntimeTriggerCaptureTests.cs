@@ -26,7 +26,7 @@ public sealed partial class AzureVaultFixtureProvisionerTests
         using var material = SecretMaterial.FromText(NotificationCaptureScope.Value);
         var window = f.Source.Arm(f.Binding, material);
         var target = f.Target();
-        var receipt = new MutationReceipt(target);
+        var receipt = f.Client.CreateReceipt(target);
         var result = await f.Source.RunSetAsync(f.Binding.Selector, f.Client, new(target, material), receipt, default);
         var measurement = f.Source.Read(window, f.Binding);
         f.Source.ValidateMeasurement(f.Fixture.Journal, Owner, window, f.Binding, measurement);
@@ -36,6 +36,8 @@ public sealed partial class AzureVaultFixtureProvisionerTests
         await Assert.That(f.Fixture.Wire.Secret).IsEqualTo(NotificationCaptureScope.Value);
         await Assert.That(f.Native.Version).IsEqualTo(NotificationCaptureScope.FreshVersion);
         await Assert.That(f.Native.Sends).IsEqualTo(1);
+        await Assert.That(f.Native.Challenges).IsEqualTo(1);
+        await Assert.That(f.Native.ChallengesWithoutMaterial).IsTrue();
         await Assert.That(f.Native.Body).IsEqualTo("{\"value\":\"notification-original-value\"}");
         await Assert.That(f.Native.Authorization).IsEqualTo("Bearer source-runtime");
         await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.Applied);
@@ -52,6 +54,26 @@ public sealed partial class AzureVaultFixtureProvisionerTests
     }
 
     [Test]
+    public async Task NotificationColdRequestRequiresNativeChallengeBeforeMutation()
+    {
+        await using var f = await NotificationCaptureScope.Create("challenge-success");
+        using var material = SecretMaterial.FromText(NotificationCaptureScope.Value);
+        var window = f.Source.Arm(f.Binding, material);
+        var target = f.Target();
+        var receipt = f.Client.CreateReceipt(target);
+
+        var result = await f.Source.RunSetAsync(f.Binding.Selector, f.Client, new(target, material), receipt, default);
+
+        await Assert.That(result.IsSuccess).IsFalse();
+        await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.NotDispatched);
+        await Assert.That(f.Native.Challenges).IsEqualTo(1);
+        await Assert.That(f.Native.ChallengesWithoutMaterial).IsTrue();
+        await Assert.That(f.Native.Sends).IsEqualTo(0);
+        await Assert.That(f.Credential.Calls).IsEqualTo(0);
+        await Assert.That(f.Source.Read(window, f.Binding).NativeSettled).IsFalse();
+    }
+
+    [Test]
     public async Task NotificationFrozenBodyWinsOverCredentialCallbackMutation()
     {
         await using var f = await NotificationCaptureScope.Create();
@@ -62,7 +84,7 @@ public sealed partial class AzureVaultFixtureProvisionerTests
             f.Seam.Message!.Request.Content = RequestContent.Create(Encoding.UTF8.GetBytes("{\"value\":\"foreign\"}"));
         var target = f.Target();
         var result = await f.Source.RunSetAsync(f.Binding.Selector, f.Client, new(target, material),
-            new(target), default);
+            f.Client.CreateReceipt(target), default);
         await Assert.That(result.Status).IsEqualTo(SecretStatus.Success);
         await Assert.That(f.Native.Body).IsEqualTo("{\"value\":\"notification-original-value\"}");
         await Assert.That(f.Source.Read(window, f.Binding).NativeSettled).IsTrue();
@@ -76,7 +98,7 @@ public sealed partial class AzureVaultFixtureProvisionerTests
         using var material = SecretMaterial.FromText(NotificationCaptureScope.Value);
         var window = f.Source.Arm(f.Binding, material);
         var target = f.Target();
-        var task = f.Source.RunSetAsync(f.Binding.Selector, f.Client, new(target, material), new(target), default).AsTask();
+        var task = f.Source.RunSetAsync(f.Binding.Selector, f.Client, new(target, material), f.Client.CreateReceipt(target), default).AsTask();
         try
         {
             await f.Seam.AfterNative.Task.WaitAsync(TimeSpan.FromSeconds(10));
@@ -100,7 +122,7 @@ public sealed partial class AzureVaultFixtureProvisionerTests
         var window = f.Source.Arm(f.Binding, material);
         var target = f.Target();
         var task = f.Source.RunSetAsync(f.Binding.Selector, f.Client, new(target, material),
-            new(target), cancellation.Token).AsTask();
+            f.Client.CreateReceipt(target), cancellation.Token).AsTask();
         try
         {
             await f.Seam.AfterNative.Task.WaitAsync(TimeSpan.FromSeconds(10));
@@ -130,7 +152,7 @@ public sealed partial class AzureVaultFixtureProvisionerTests
         using var material = SecretMaterial.FromText(NotificationCaptureScope.Value);
         var window = f.Source.Arm(f.Binding, material);
         var target = f.Target();
-        var task = f.Source.RunSetAsync(f.Binding.Selector, f.Client, new(target, material), new(target), default).AsTask();
+        var task = f.Source.RunSetAsync(f.Binding.Selector, f.Client, new(target, material), f.Client.CreateReceipt(target), default).AsTask();
         Task? disposal = null;
         try
         {
@@ -190,7 +212,7 @@ public sealed partial class AzureVaultFixtureProvisionerTests
         using var material = SecretMaterial.FromText(NotificationCaptureScope.Value);
         var window = f.Source.Arm(f.Binding, material);
         var target = f.Target();
-        var result = await f.Source.RunSetAsync(f.Binding.Selector, f.Client, new(target, material), new(target), default);
+        var result = await f.Source.RunSetAsync(f.Binding.Selector, f.Client, new(target, material), f.Client.CreateReceipt(target), default);
         var measurement = f.Source.Read(window, f.Binding);
         await Assert.That(result.Status).IsEqualTo(SecretStatus.Unknown);
         await Assert.That(f.Native.Sends).IsEqualTo(1);
@@ -211,7 +233,7 @@ public sealed partial class AzureVaultFixtureProvisionerTests
         using var material = SecretMaterial.FromText(NotificationCaptureScope.Value);
         var window = f.Source.Arm(f.Binding, material);
         var target = f.Target();
-        var wrongReceipt = new MutationReceipt(f.Target()); // Equal coordinates, DIFFERENT reference.
+        var wrongReceipt = f.Client.CreateReceipt(f.Target()); // Equal coordinates, DIFFERENT reference.
         var result = await f.Source.RunSetAsync(f.Binding.Selector, f.Client, new(target, material), wrongReceipt, default);
         var measurement = f.Source.Read(window, f.Binding);
         await Assert.That(result.Status).IsEqualTo(SecretStatus.Invalid);
@@ -231,7 +253,7 @@ public sealed partial class AzureVaultFixtureProvisionerTests
         using var material = SecretMaterial.FromText(NotificationCaptureScope.Value);
         var window = f.Source.Arm(f.Binding, material);
         var target = f.Target();
-        _ = await f.Source.RunSetAsync(f.Binding.Selector, f.Client, new(target, material), new(target), default);
+        _ = await f.Source.RunSetAsync(f.Binding.Selector, f.Client, new(target, material), f.Client.CreateReceipt(target), default);
         await Assert.That(f.Native.Sends).IsEqualTo(0);
         await Assert.That(f.Source.Read(window, f.Binding).NativeSettled).IsFalse();
         await Assert.That(f.Fixture.Read().Resources.Any(r => r.ActiveDispatch != Guid.Empty)).IsTrue();
@@ -246,7 +268,7 @@ public sealed partial class AzureVaultFixtureProvisionerTests
         using var material = SecretMaterial.FromText(NotificationCaptureScope.Value);
         var window = f.Source.Arm(f.Binding, material);
         var target = f.Target();
-        var result = await f.Source.RunSetAsync(f.Binding.Selector, f.Client, new(target, material), new(target), default);
+        var result = await f.Source.RunSetAsync(f.Binding.Selector, f.Client, new(target, material), f.Client.CreateReceipt(target), default);
         var measurement = f.Source.Read(window, f.Binding);
         // Core preserves Unknown for a dispatched SDK RequestFailedException.
         // Native rejection settlement must not rewrite that actual SDK status.
@@ -273,10 +295,10 @@ public sealed partial class AzureVaultFixtureProvisionerTests
         await Assert.That(() => f.Source.Arm(f.Binding, material)).Throws<InvalidOperationException>();
         var target = f.Target();
         var request = new AzureSetSecretRequest(target, material);
-        var receipt = new MutationReceipt(target);
+        var receipt = f.Client.CreateReceipt(target);
         await f.Source.RunSetAsync(f.Binding.Selector, f.Client, request, receipt, default);
         var otherTarget = other.Target();
-        await other.Source.RunSetAsync(other.Binding.Selector, other.Client, new(otherTarget, material), new(otherTarget), default);
+        await other.Source.RunSetAsync(other.Binding.Selector, other.Client, new(otherTarget, material), other.Client.CreateReceipt(otherTarget), default);
         var measurement = f.Source.Read(window, f.Binding);
         var foreign = other.Source.Read(otherWindow, other.Binding);
         await Assert.That(() => f.Source.ValidateMeasurement(f.Fixture.Journal, Owner, window, f.Binding, foreign))
@@ -377,7 +399,7 @@ public sealed partial class AzureVaultFixtureProvisionerTests
         f.Clock.Elapsed = TimeSpan.FromMinutes(3);
         var target = f.Target();
         await Assert.That(async () => await f.Source.RunSetAsync(f.Binding.Selector, f.Client,
-            new(target, material), new(target), default)).Throws<InvalidOperationException>();
+            new(target, material), f.Client.CreateReceipt(target), default)).Throws<InvalidOperationException>();
         await Assert.That(f.Native.Sends).IsEqualTo(0);
         await Assert.That(f.Fixture.Read().Resources.All(r => r.ActiveDispatch == Guid.Empty)).IsTrue();
     }
@@ -391,7 +413,7 @@ public sealed partial class AzureVaultFixtureProvisionerTests
         f.Source.Arm(f.Binding, expected);
         var target = f.Target();
         await Assert.That(async () => await f.Source.RunSetAsync(f.Binding.Selector, f.Client,
-            new(target, different), new(target), default)).Throws<InvalidOperationException>();
+            new(target, different), f.Client.CreateReceipt(target), default)).Throws<InvalidOperationException>();
         await Assert.That(f.Native.Sends).IsEqualTo(0);
         await Assert.That(f.Fixture.Read().Resources.All(r => r.ActiveDispatch == Guid.Empty)).IsTrue();
     }
@@ -405,7 +427,7 @@ public sealed partial class AzureVaultFixtureProvisionerTests
         var window = f.Source.Arm(f.Binding, material);
         var target = f.Target();
         await Assert.That(async () => await f.Source.RunSetAsync(f.Binding.Selector, f.Client,
-            new(target, material), new(target), default)).Throws<InvalidOperationException>();
+            new(target, material), f.Client.CreateReceipt(target), default)).Throws<InvalidOperationException>();
         await f.Source.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
         await Assert.That(f.Tracking.DisposeAttempts > 0).IsTrue();
         await Assert.That(f.Tracking.ResponseBuffer).IsNotNull();
@@ -542,6 +564,7 @@ public sealed partial class AzureVaultFixtureProvisionerTests
                 message.Request.Headers.SetValue("Authorization", "Bearer unrelated-cached-token");
             }
             await inner.ProcessAsync(message);
+            if (message.Response.Status == 401) return;
             AfterNative.TrySetResult();
             if (HoldAfterNative) await Resume.Task;
         }
@@ -566,16 +589,27 @@ public sealed partial class AzureVaultFixtureProvisionerTests
     {
         internal readonly TaskCompletionSource BodyEntered = Signal(), BodyResume = Signal();
         internal bool BlockBody, Prejournaled = true, Disposed;
-        internal int Sends;
+        internal int Sends, Challenges;
+        internal bool ChallengesWithoutMaterial = true;
         internal string? Body, Authorization, Version;
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
-            Sends++;
             string path = "/secrets/canary";
             if (request.Method != HttpMethod.Put ||
                 request.RequestUri!.AbsoluteUri != "https://" + fixture.Wire.VaultName +
                     ".vault.azure.net" + path + "?api-version=2025-07-01")
                 throw new InvalidOperationException("controlled-exact-runtime-route");
+            if (request.Headers.Authorization is null)
+            {
+                Challenges++;
+                ChallengesWithoutMaterial &= request.Content is null;
+                var challenge = new HttpResponseMessage(fault == "challenge-success" ?
+                    HttpStatusCode.OK : HttpStatusCode.Unauthorized);
+                challenge.Headers.TryAddWithoutValidation("WWW-Authenticate",
+                    $"Bearer authorization=\"https://login.microsoftonline.com/{Tenant:D}\", resource=\"https://vault.azure.net\"");
+                return challenge;
+            }
+            Sends++;
             Prejournaled &= fixture.Read().Resources.Any(r =>
                 r.Id == fixture.Wire.VaultId + path && r.ActiveDispatch != Guid.Empty && !r.InvocationTerminated);
             Authorization = request.Headers.Authorization?.ToString();
