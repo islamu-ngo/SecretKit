@@ -15,7 +15,6 @@ public sealed class PortableInventoryTests
         SecretInventory inventory = (await fixture.Inventory.InspectAsync(fixture.Scope(1))).Value;
         await Assert.That(inventory.Items.Count).IsEqualTo(1);
         await Assert.That(inventory.IsComplete).IsFalse();
-        await Assert.That(inventory.IsPointInTime).IsFalse();
         await Assert.That(inventory.CompletedAt >= inventory.StartedAt).IsTrue();
         await Assert.That(JsonSerializer.Serialize(inventory).Contains("inventory-material-canary", StringComparison.Ordinal)).IsFalse();
         await Assert.That(inventory.ToString().Contains("inventory-material-canary", StringComparison.Ordinal)).IsFalse();

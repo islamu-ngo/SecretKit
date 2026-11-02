@@ -59,7 +59,7 @@ internal static class InfisicalUniversalAuthenticationEffects
                 receipt.Evidence == (denied ? DispatchEvidence.Rejected : DispatchEvidence.Applied),
                 NativeFailure.ContractMismatch);
             if (denied) await fixture.ObserveRejectedAsync(token);
-            else await fixture.ObserveLoginAsync(issued!.Token, issued.ExpiresIn, issued.AccessTokenMaxTTL,
+            else await fixture.ObserveLoginAsync(issued!.Token, issued.ExpiresIn.TotalSeconds, issued.AccessTokenMaxTtl.TotalSeconds,
                 "universal-auth", token, trial, receipt.Evidence);
         }
         finally { if (issuance is not null) await issuance.DisposeAsync(); }

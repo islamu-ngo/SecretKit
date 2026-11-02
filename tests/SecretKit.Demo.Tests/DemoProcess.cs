@@ -58,7 +58,7 @@ internal sealed class DemoProcess(string? diagnosticCapture = null,
         ConsumerInstallation installation = candidate.PrepareConsumer(run, mode);
         string app = Path.Combine(run, "app");
         Directory.CreateDirectory(app);
-        string source = Path.Combine(_root, $"samples/Infisical.{kind}Demo");
+        string source = Path.Combine(_root, $"tests/PackageQualification/Infisical.{kind}Demo");
         string[] appFiles = [$"Infisical.{kind}Demo.csproj", "Program.cs", "README.md", "packages.lock.json",
             .. kind switch
             {
@@ -85,7 +85,7 @@ internal sealed class DemoProcess(string? diagnosticCapture = null,
             .. kind == "Console" ? new[] { "MutationInput.cs" } : []];
         foreach (string name in sharedFiles)
         {
-            string file = Path.Combine(_root, "samples/Infisical.Demos", name);
+            string file = Path.Combine(_root, "tests/PackageQualification/Infisical.Demos", name);
             File.Copy(file, Path.Combine(shared, name));
             inputs.Add((file, Path.Combine(shared, name), Hash(file)));
         }
@@ -93,7 +93,7 @@ internal sealed class DemoProcess(string? diagnosticCapture = null,
         {
             string runtime = Path.Combine(run, "RuntimeConfiguration");
             Directory.CreateDirectory(runtime);
-            foreach (string file in new[] { "RuntimeIntegrationCoordinator.cs", "RuntimeGenerationLease.cs" })
+            foreach (string file in new[] { "IRuntimeIntegrationClient.cs" })
             {
                 File.Copy(Path.Combine(_root, "samples/RuntimeConfiguration", file), Path.Combine(runtime, file));
                 inputs.Add((Path.Combine(_root, "samples/RuntimeConfiguration", file),
@@ -260,7 +260,7 @@ internal sealed class DemoProcess(string? diagnosticCapture = null,
             "Configuration", "Configuration.Abstractions", "Configuration.Binder", "Configuration.CommandLine",
             "Configuration.EnvironmentVariables", "Configuration.FileExtensions", "Configuration.Json",
             "Configuration.UserSecrets", "DependencyInjection", "DependencyInjection.Abstractions",
-            "Diagnostics", "Diagnostics.Abstractions", "Diagnostics.HealthChecks.Abstractions",
+            "Diagnostics", "Diagnostics.Abstractions", "Diagnostics.HealthChecks", "Diagnostics.HealthChecks.Abstractions",
             "FileProviders.Abstractions", "FileProviders.Physical", "FileSystemGlobbing",
             "Hosting", "Hosting.Abstractions", "Logging", "Logging.Abstractions", "Logging.Configuration",
             "Logging.Console", "Logging.Debug", "Logging.EventLog", "Logging.EventSource",

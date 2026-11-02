@@ -95,7 +95,7 @@ public sealed class UniversalAuthenticationTests
             OriginalIssuedAt = login.RequestStartedAt,
             ExpiresAt = login.Token.ExpiresAt!.Value,
             Lifetime = lifetime,
-            ReportedMaximumTtl = TimeSpan.FromSeconds(login.AccessTokenMaxTTL)
+            ReportedMaximumTtl = login.AccessTokenMaxTtl
         });
         await using var session = new InfisicalPeriodicTokenSession(login, evidence,
             TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(5));
@@ -112,7 +112,7 @@ public sealed class UniversalAuthenticationTests
         ExpiresAt = login.Token.ExpiresAt!.Value,
         Lifetime = InfisicalTokenLifetime.Periodic,
         Period = TimeSpan.FromSeconds(120),
-        ReportedMaximumTtl = TimeSpan.FromSeconds(login.AccessTokenMaxTTL)
+        ReportedMaximumTtl = login.AccessTokenMaxTtl
     };
 
     [Test]
@@ -126,8 +126,8 @@ public sealed class UniversalAuthenticationTests
         var result = await client.LoginAsync("client-canary", secret, receipt, "selected-org");
         await Assert.That(result.Status).IsEqualTo(SecretStatus.Success);
         using var login = result.Value;
-        await Assert.That(login.ExpiresIn).IsEqualTo(120d);
-        await Assert.That(login.AccessTokenMaxTTL).IsEqualTo(30d);
+        await Assert.That(login.ExpiresIn).IsEqualTo(TimeSpan.FromSeconds(120));
+        await Assert.That(login.AccessTokenMaxTtl).IsEqualTo(TimeSpan.FromSeconds(30));
         await Assert.That(login.Token.ExpiresAt).IsEqualTo(clock.GetUtcNow().AddSeconds(120));
         using var copy = login.Token.Material.Copy();
         login.Dispose();

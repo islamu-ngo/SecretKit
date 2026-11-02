@@ -87,8 +87,8 @@ public sealed class ProofAuthenticationTests
         var outcome = await client.LoginAsync(proof, receipt);
         await Assert.That(outcome.Status).IsEqualTo(SecretStatus.Success);
         using var result = outcome.Value;
-        await Assert.That(result.ExpiresIn).IsEqualTo(120.5d);
-        await Assert.That(result.AccessTokenMaxTTL).IsEqualTo(30.25d);
+        await Assert.That(result.ExpiresIn).IsEqualTo(TimeSpan.FromSeconds(120.5));
+        await Assert.That(result.AccessTokenMaxTtl).IsEqualTo(TimeSpan.FromSeconds(30.25));
         await Assert.That(result.Token.ExpiresAt).IsEqualTo(clock.GetUtcNow().AddSeconds(120.5));
         using var copy = result.Token.Material.Copy();
         result.Dispose();
@@ -149,9 +149,12 @@ public sealed class ProofAuthenticationTests
     [Arguments("""{"accessToken":"issued-canary","expiresIn":0,"accessTokenMaxTTL":30,"tokenType":"Bearer"}""")]
     [Arguments("""{"accessToken":"issued-canary","expiresIn":-1,"accessTokenMaxTTL":30,"tokenType":"Bearer"}""")]
     [Arguments("""{"accessToken":"issued-canary","expiresIn":1e300,"accessTokenMaxTTL":30,"tokenType":"Bearer"}""")]
+    [Arguments("""{"accessToken":"issued-canary","expiresIn":315360001,"accessTokenMaxTTL":30,"tokenType":"Bearer"}""")]
+    [Arguments("""{"accessToken":"issued-canary","expiresIn":0.00000001,"accessTokenMaxTTL":30,"tokenType":"Bearer"}""")]
     [Arguments("""{"accessToken":"issued-canary","expiresIn":"120","accessTokenMaxTTL":30,"tokenType":"Bearer"}""")]
     [Arguments("""{"accessToken":"issued-canary","expiresIn":120,"accessTokenMaxTTL":-1,"tokenType":"Bearer"}""")]
     [Arguments("""{"accessToken":"issued-canary","expiresIn":120,"accessTokenMaxTTL":1e400,"tokenType":"Bearer"}""")]
+    [Arguments("""{"accessToken":"issued-canary","expiresIn":120,"accessTokenMaxTTL":315360001,"tokenType":"Bearer"}""")]
     [Arguments("""{"accessToken":"issued-canary","expiresIn":120,"accessTokenMaxTTL":30,"tokenType":"bearer"}""")]
     [Arguments("""{"accessToken":"issued-canary","expiresIn":120,"accessTokenMaxTTL":30,"tokenType":7}""")]
     [Arguments("""{"accessToken":null,"expiresIn":120,"accessTokenMaxTTL":30,"tokenType":"Bearer"}""")]
@@ -177,7 +180,7 @@ public sealed class ProofAuthenticationTests
 
     [Test]
     [Arguments(0d)]
-    [Arguments(1e300)]
+    [Arguments(315360000d)]
     public async Task FiniteMaximumIsReportedMetadataNotAnExpiryCeiling(double maximum)
     {
         string json = JsonSerializer.Serialize(new { accessToken = "issued-canary", expiresIn = 120.5, accessTokenMaxTTL = maximum, tokenType = "Bearer" });
@@ -188,7 +191,7 @@ public sealed class ProofAuthenticationTests
         var outcome = await client.LoginAsync(proof, client.CreateReceipt());
         await Assert.That(outcome.Status).IsEqualTo(SecretStatus.Success);
         using var login = outcome.Value;
-        await Assert.That(login.AccessTokenMaxTTL).IsEqualTo(maximum);
+        await Assert.That(login.AccessTokenMaxTtl).IsEqualTo(TimeSpan.FromSeconds(maximum));
         await Assert.That(login.Token.ExpiresAt).IsEqualTo(clock.GetUtcNow().AddSeconds(120.5));
     }
 

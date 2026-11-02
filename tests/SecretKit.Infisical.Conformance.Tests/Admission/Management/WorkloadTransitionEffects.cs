@@ -149,7 +149,7 @@ internal static class WorkloadTransitionEffects
             var result = await auth.LoginAsync(proof, receipt, token);
             using var login = result.IsSuccess ? result.Value : null;
             WorkloadTransitionContract.Require(allowed ? result.IsSuccess && receipt.Evidence == DispatchEvidence.Applied &&
-                login!.ExpiresIn == 600 && login.AccessTokenMaxTTL == 1800 :
+                login!.ExpiresIn == TimeSpan.FromSeconds(600) && login.AccessTokenMaxTtl == TimeSpan.FromSeconds(1800) :
                 result.Status == SecretStatus.Denied && receipt.Evidence == DispatchEvidence.Rejected, "effect-mismatch");
             var reads = new List<WorkloadTransitionRead>();
             string? hash = null;

@@ -387,7 +387,7 @@ public sealed class LocalProfileAdmissionTests
                     "SecretKit.Extensions.Configuration" => ["SecretKit.Core", "Microsoft.Extensions.Configuration"],
                     _ => ["SecretKit.Core", "SecretKit.Infisical", "Microsoft.Extensions.Hosting.Abstractions",
                         "Microsoft.Extensions.DependencyInjection.Abstractions",
-                        "Microsoft.Extensions.Diagnostics.HealthChecks.Abstractions"]
+                        "Microsoft.Extensions.Diagnostics.HealthChecks"]
                 };
                 string entries = string.Concat(dependencies.Select(d =>
                     $"""<dependency id="{d}" version="{(d.StartsWith("SecretKit.", StringComparison.Ordinal) ? "[" + Binding.Version + "]" : "1.0.0")}" />"""));

@@ -42,16 +42,16 @@ public sealed class NativeTokenPolicyTests
             Require(login.Status, loginReceipt.Evidence);
             await Assert.That(loginReceipt.Evidence).IsEqualTo(DispatchEvidence.Applied);
             using var issued = login.Value;
-            await Assert.That(issued.ExpiresIn).IsEqualTo(periodic ? 60 : 10);
+            await Assert.That(issued.ExpiresIn).IsEqualTo(TimeSpan.FromSeconds(periodic ? 60 : 10));
             // This pinned server retains configured max=20 in administration,
             // but reports an unlimited maximum (0) for the periodic credential.
-            await Assert.That(issued.AccessTokenMaxTTL).IsEqualTo(periodic ? 0 : 20);
+            await Assert.That(issued.AccessTokenMaxTtl).IsEqualTo(TimeSpan.FromSeconds(periodic ? 0 : 20));
             await using var session = new InfisicalPeriodicTokenSession(origin, issued.Token.Material,
                 new InfisicalTokenLifetimeEvidence
                 {
                     OriginalIssuedAt = sentAt,
-                    ExpiresAt = sentAt.AddSeconds(issued.ExpiresIn),
-                    ReportedMaximumTtl = TimeSpan.FromSeconds(issued.AccessTokenMaxTTL),
+                    ExpiresAt = sentAt.Add(issued.ExpiresIn),
+                    ReportedMaximumTtl = issued.AccessTokenMaxTtl,
                     Lifetime = periodic ? InfisicalTokenLifetime.Periodic : InfisicalTokenLifetime.Finite,
                     Period = periodic ? TimeSpan.FromSeconds(60) : null
                 }, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(10), network);

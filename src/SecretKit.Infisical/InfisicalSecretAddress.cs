@@ -29,10 +29,12 @@ public sealed class InfisicalSecretAddress : SecretAddress
             throw new ArgumentException("An absolute provider folder is required.", nameof(folder));
         }
 
-        if (key is "." or ".." || version is <= 0 || !Enum.IsDefined(resolution))
-        {
-            throw new ArgumentException("Invalid native secret selector.");
-        }
+        if (key is "." or "..")
+            throw new ArgumentException("A secret key cannot be a traversal segment.", nameof(key));
+        if (version is <= 0)
+            throw new ArgumentOutOfRangeException(nameof(version), "A positive version is required.");
+        if (!Enum.IsDefined(resolution))
+            throw new ArgumentOutOfRangeException(nameof(resolution), "A defined resolution is required.");
 
         ProjectId = projectId;
         Environment = environment;

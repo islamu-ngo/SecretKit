@@ -12,7 +12,7 @@ namespace SecretKit.Infisical;
 /// Native v4 reads through one immutable origin and host-selected identity.
 /// Owns its default transport; supplied token sources and transports remain host-owned.
 /// </summary>
-public sealed partial class InfisicalClient : ISecretReader, ISecretInventory, IAsyncDisposable
+public sealed partial class InfisicalClient : IInfisicalSecretReader, IAsyncDisposable
 {
     private readonly Uri _origin;
     private readonly IInfisicalTokenSource _tokens;

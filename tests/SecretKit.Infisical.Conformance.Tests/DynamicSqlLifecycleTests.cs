@@ -1,3 +1,4 @@
+using SecretKit.Infisical.Dynamic;
 using SecretKit.Core;
 
 namespace SecretKit.Infisical.Conformance.Tests;

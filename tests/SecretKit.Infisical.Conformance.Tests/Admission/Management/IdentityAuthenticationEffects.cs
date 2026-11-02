@@ -176,8 +176,8 @@ internal static class IdentityAuthenticationEffects
         if (enabled)
         {
             if (configuration is null || !outcome.IsSuccess || receipt.Evidence != DispatchEvidence.Applied ||
-                login!.ExpiresIn != (configuration.AccessTokenPeriod > 0 ? configuration.AccessTokenPeriod : configuration.AccessTokenTTL) ||
-                login.AccessTokenMaxTTL != (configuration.AccessTokenPeriod > 0 ? 0 : configuration.AccessTokenMaxTTL) ||
+                login!.ExpiresIn.TotalSeconds != (configuration.AccessTokenPeriod > 0 ? configuration.AccessTokenPeriod : configuration.AccessTokenTTL) ||
+                login.AccessTokenMaxTtl.TotalSeconds != (configuration.AccessTokenPeriod > 0 ? 0 : configuration.AccessTokenMaxTTL) ||
                 !await c.UseTokenAsync(login.Token.Material, true, token)) return false;
         }
         else if (outcome.Status != SecretStatus.Denied || receipt.Evidence != DispatchEvidence.Rejected) return false;

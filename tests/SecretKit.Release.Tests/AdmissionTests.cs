@@ -138,7 +138,7 @@ public sealed class AdmissionTests
         foreach (string method in new[] { "CreateDefinitionAsync", "UpdateDefinitionAsync",
             "AcquireDatabaseAsync", "RenewAsync", "RevokeAsync" })
             RequireVariants(infisical, "InfisicalDynamicClient." + method,
-                Enum.GetNames<SecretKit.Infisical.NativeSqlEngine>().Select(v => "SqlDatabase.engine." + v));
+                Enum.GetNames<SecretKit.Infisical.Dynamic.NativeSqlEngine>().Select(v => "SqlDatabase.engine." + v));
         foreach (string method in new[] { "ListAsync", "GetAsync", "RotateSecretsAsync", "SetAutomaticRotationAsync" })
             RequireVariants(infisical, "InfisicalRotationClient." + method,
                 Enum.GetNames<SecretKit.Infisical.InfisicalRotationProfile>().Select(v => "profile." + v));

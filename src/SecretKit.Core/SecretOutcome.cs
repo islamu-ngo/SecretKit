@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Serialization;
 
 namespace SecretKit.Core;
@@ -67,6 +68,34 @@ public sealed class SecretOutcome<T> where T : notnull
     /// <exception cref="InvalidOperationException">This is a non-success outcome.</exception>
     [JsonIgnore]
     public T Value => IsSuccess ? _value! : throw new InvalidOperationException("Outcome has no successful value.");
+
+    /// <summary>Projects the successful value without copying or disposing it.</summary>
+    /// <param name="value">The existing value on success; otherwise the type's default value.</param>
+    /// <returns>Whether the outcome contains a successful value.</returns>
+    public bool TryGetValue([MaybeNullWhen(false)] out T value)
+    {
+        value = _value!;
+        return IsSuccess;
+    }
+
+    /// <summary>Gets the successful value or throws a bounded, coordinate-free exception.</summary>
+    /// <returns>The existing successful value, with unchanged ownership.</returns>
+    /// <exception cref="SecretUnavailableException">The operation did not succeed.</exception>
+    public T GetValueOrThrow() => IsSuccess ? _value! : throw new SecretUnavailableException(Status, Reason, RetryAfter);
+
+    /// <summary>Projects success or closed failure evidence through the selected callback.</summary>
+    /// <typeparam name="TResult">The projection result type.</typeparam>
+    /// <param name="onSuccess">Receives the existing value without transferring or copying ownership.</param>
+    /// <param name="onFailure">Receives status, reason and optional retry advice; advice never authorizes replay.</param>
+    /// <returns>The selected callback's result.</returns>
+    /// <exception cref="ArgumentNullException">Either callback is null.</exception>
+    public TResult Match<TResult>(Func<T, TResult> onSuccess,
+        Func<SecretStatus, SecretFailureReason, TimeSpan?, TResult> onFailure)
+    {
+        ArgumentNullException.ThrowIfNull(onSuccess);
+        ArgumentNullException.ThrowIfNull(onFailure);
+        return IsSuccess ? onSuccess(_value!) : onFailure(Status, Reason, RetryAfter);
+    }
 
     /// <summary>Wraps a non-null successful result without copying it.</summary>
     /// <param name="value">The result; its disposal remains the caller's responsibility when applicable.</param>

@@ -1,20 +1,15 @@
-namespace SecretKit.Samples.RuntimeConfiguration;
+namespace SecretKit.Extensions.Configuration;
 
-/// <summary>Application-defined work; acceptance and client construction belong to the validator.</summary>
-public interface IRuntimeIntegrationClient : IAsyncDisposable
-{
-    ValueTask<string> ExecuteAsync(CancellationToken cancellationToken = default);
-}
-
-/// <summary>Pins a client without exposing its shared disposable instance.</summary>
-public sealed class RuntimeGenerationLease : IAsyncDisposable
+/// <summary>Pins an application client for operations through a bounded callback lifetime.</summary>
+/// <typeparam name="TClient">The independently owned client type.</typeparam>
+public sealed class SecretGenerationLease<TClient> : IAsyncDisposable where TClient : class, IAsyncDisposable
 {
     private readonly object _gate = new();
-    private RuntimeClientGeneration? _generation;
+    private SecretClientGeneration<TClient>? _generation;
     private readonly long _revision;
     private TaskCompletionSource? _disposal;
 
-    internal RuntimeGenerationLease(RuntimeClientGeneration generation)
+    internal SecretGenerationLease(SecretClientGeneration<TClient> generation)
     {
         _generation = generation;
         _revision = generation.Revision;
@@ -23,9 +18,17 @@ public sealed class RuntimeGenerationLease : IAsyncDisposable
     /// <summary>The local accepted revision pinned by this lease, not a remote snapshot version.</summary>
     public long Revision => _revision;
 
-    public async ValueTask<string> ExecuteAsync(CancellationToken cancellationToken = default)
+    /// <summary>Runs an operation while retaining a pin even if this lease is concurrently disposed.</summary>
+    /// <remarks>
+    /// The callback borrows the client and must not retain or dispose it. Cancellation and callback
+    /// exceptions propagate; client retirement failures expose only bounded diagnostics.
+    /// Do not await coordinator disposal inside this callback, which still owns an operation pin.
+    /// </remarks>
+    public async ValueTask<TResult> ExecuteAsync<TResult>(
+        Func<TClient, CancellationToken, ValueTask<TResult>> action, CancellationToken cancellationToken = default)
     {
-        RuntimeClientGeneration generation;
+        ArgumentNullException.ThrowIfNull(action);
+        SecretClientGeneration<TClient> generation;
         lock (_gate)
         {
             ObjectDisposedException.ThrowIf(_generation is null, this);
@@ -37,14 +40,15 @@ public sealed class RuntimeGenerationLease : IAsyncDisposable
             cancellationToken.ThrowIfCancellationRequested();
             if (generation.Time.GetUtcNow() >= generation.Deadline)
                 throw new InvalidOperationException("The consumer generation deadline has elapsed.");
-            return await generation.Client.ExecuteAsync(cancellationToken).ConfigureAwait(false);
+            return await action(generation.Client, cancellationToken).ConfigureAwait(false);
         }
         finally { await generation.ReleaseAsync().ConfigureAwait(false); }
     }
 
+    /// <summary>Releases this lease once; already running operations retain their own client pins.</summary>
     public async ValueTask DisposeAsync()
     {
-        RuntimeClientGeneration? generation;
+        SecretClientGeneration<TClient>? generation;
         TaskCompletionSource completion;
         bool ownsRelease;
         lock (_gate)
@@ -70,14 +74,15 @@ public sealed class RuntimeGenerationLease : IAsyncDisposable
     }
 }
 
-internal sealed class RuntimeClientGeneration(
-    IRuntimeIntegrationClient client, long revision, DateTimeOffset collectedAt,
-    DateTimeOffset deadline, TimeProvider time, Action<RuntimeClientGeneration, bool> retired)
+internal sealed class SecretClientGeneration<TClient>(
+    TClient client, long revision, DateTimeOffset collectedAt,
+    DateTimeOffset deadline, TimeProvider time, Action<SecretClientGeneration<TClient>, bool> retired)
+    where TClient : class, IAsyncDisposable
 {
     private int _references = 1;
     private readonly TaskCompletionSource _completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
     internal Task Completion => _completion.Task;
-    internal IRuntimeIntegrationClient Client { get; } = client;
+    internal TClient Client { get; } = client;
     internal long Revision { get; } = revision;
     internal DateTimeOffset CollectedAt { get; } = collectedAt;
     internal DateTimeOffset Deadline { get; } = deadline;

@@ -580,7 +580,7 @@ public sealed class LocalQualificationTests
                 "SecretKit.Core" => [],
                 "SecretKit.Infisical" => ["Refit"],
                 "SecretKit.Extensions.Configuration" => ["Microsoft.Extensions.Configuration"],
-                _ => ["Microsoft.Extensions.Hosting.Abstractions", "Microsoft.Extensions.Diagnostics.HealthChecks.Abstractions",
+                _ => ["Microsoft.Extensions.Hosting.Abstractions", "Microsoft.Extensions.Diagnostics.HealthChecks",
                     "Microsoft.Extensions.DependencyInjection.Abstractions"]
             };
             entries += string.Concat(external.Select(d => $"""<dependency id="{d}" version="1.0.0" />"""));

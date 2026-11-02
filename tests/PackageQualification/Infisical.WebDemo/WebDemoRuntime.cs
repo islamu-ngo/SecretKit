@@ -28,16 +28,16 @@ internal sealed class WebDemoRuntime
         Optional = options.OptionalKey is { } key ? CreateCoordinator(provider, input, key) : null;
     }
 
-    internal RuntimeIntegrationCoordinator Required { get; }
-    internal RuntimeIntegrationCoordinator? Optional { get; }
+    internal SecretGenerationCoordinator<IRuntimeIntegrationClient> Required { get; }
+    internal SecretGenerationCoordinator<IRuntimeIntegrationClient>? Optional { get; }
 
-    private RuntimeIntegrationCoordinator CreateCoordinator(InfisicalClient provider, DemoInput input,
+    private SecretGenerationCoordinator<IRuntimeIntegrationClient> CreateCoordinator(InfisicalClient provider, DemoInput input,
         string selectedKey) => new(provider,
         new Dictionary<string, SecretReference>
         {
             ["credential"] = new(provider.Authority,
                 new InfisicalSecretAddress(input.Project, input.Environment, input.Folder, selectedKey))
-        }, ValidateCandidate, RuntimeStalePolicy.BoundedLastKnown, TimeSpan.FromMinutes(5), TimeProvider.System);
+        }, ValidateCandidate, SecretGenerationStalePolicy.BoundedLastKnown, TimeSpan.FromMinutes(5), TimeProvider.System);
 
     private ValueTask<SecretOutcome<IRuntimeIntegrationClient>> ValidateCandidate(
         SecretSnapshotHandle candidate, CancellationToken token)
@@ -111,7 +111,7 @@ internal sealed class WebDemoRuntime
         try
         {
             // Reserve the desired revision before exposing the collecting event to the operator.
-            Task<RuntimeActivationObservation> pending = (enable
+            Task<SecretGenerationObservation> pending = (enable
                 ? Required.EnableAsync(budget.Token) : Required.CheckAgainAsync(budget.Token)).AsTask();
             DemoOutput.Write("collecting", 0);
             WriteObservation(enable ? "enabled" : "checked", await pending);
@@ -126,7 +126,7 @@ internal sealed class WebDemoRuntime
         }
     }
 
-    private async Task PrepareOptionalAsync(RuntimeIntegrationCoordinator optional)
+    private async Task PrepareOptionalAsync(SecretGenerationCoordinator<IRuntimeIntegrationClient> optional)
     {
         // Independent from required startup's budget; retained until shutdown even on cancellation.
         using var budget = CancellationTokenSource.CreateLinkedTokenSource(_lifetime);
@@ -164,7 +164,7 @@ internal sealed class WebDemoRuntime
         }
     }
 
-    private static void WriteObservation(string outcome, RuntimeActivationObservation observation) =>
+    private static void WriteObservation(string outcome, SecretGenerationObservation observation) =>
         Console.WriteLine(JsonSerializer.Serialize(new
         {
             outcome,

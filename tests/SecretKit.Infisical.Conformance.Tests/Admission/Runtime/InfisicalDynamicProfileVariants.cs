@@ -1,3 +1,4 @@
+using SecretKit.Infisical.Dynamic;
 namespace SecretKit.Infisical.Conformance.Tests;
 
 // Closed admission selectors only; construction and transport remain in the public SDK.

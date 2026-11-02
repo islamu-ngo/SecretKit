@@ -147,7 +147,7 @@ public sealed class InfisicalProofMtlsTests
                 if (issued is not null)
                 {
                     await Assert.That(issued.Token.Material.Reveal()).IsEqualTo("fixture-token");
-                    await Assert.That(issued.ExpiresIn).IsEqualTo(600);
+                    await Assert.That(issued.ExpiresIn).IsEqualTo(TimeSpan.FromSeconds(600));
                 }
             }
             if (outcome.IsSuccess)

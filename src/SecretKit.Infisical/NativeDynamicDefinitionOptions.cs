@@ -1,7 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace SecretKit.Infisical;
+namespace SecretKit.Infisical.Dynamic;
 
 /// <summary>Bounded protected native metadata, excluded from default JSON and formatting.</summary>
 public sealed class NativeDynamicMetadata

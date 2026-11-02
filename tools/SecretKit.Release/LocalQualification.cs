@@ -479,7 +479,7 @@ public static partial class LocalQualification
                 "SecretKit.Core" => [],
                 "SecretKit.Infisical" => ["Refit"],
                 "SecretKit.Extensions.Configuration" => ["Microsoft.Extensions.Configuration"],
-                _ => ["Microsoft.Extensions.Hosting.Abstractions", "Microsoft.Extensions.Diagnostics.HealthChecks.Abstractions",
+                _ => ["Microsoft.Extensions.Hosting.Abstractions", "Microsoft.Extensions.Diagnostics.HealthChecks",
                     "Microsoft.Extensions.DependencyInjection.Abstractions"]
             };
             Manifest.ExactSet(entries.Select(e => (string?)e.Attribute("id") ?? ""),

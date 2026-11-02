@@ -107,7 +107,7 @@ public sealed class BootstrapRecoveryChildTests
         await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.Applied);
         using var issued = login.Value;
         await using var session = new InfisicalPeriodicTokenSession(origin, issued.Token.Material,
-            Evidence(issued.ExpiresIn, issued.AccessTokenMaxTTL), TimeSpan.FromSeconds(10),
+            Evidence(issued.ExpiresIn.TotalSeconds, issued.AccessTokenMaxTtl.TotalSeconds), TimeSpan.FromSeconds(10),
             TimeSpan.FromSeconds(10), network);
         await using var reader = new InfisicalClient(origin, session, network);
         var result = await reader.ReadAsync(new SecretReference(reader.Authority,

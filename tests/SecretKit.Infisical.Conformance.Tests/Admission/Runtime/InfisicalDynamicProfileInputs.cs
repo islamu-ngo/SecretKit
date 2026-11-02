@@ -1,3 +1,4 @@
+using SecretKit.Infisical.Dynamic;
 namespace SecretKit.Infisical.Conformance.Tests;
 
 internal sealed record InfisicalDynamicProfileInput(

@@ -51,9 +51,6 @@ public sealed class SecretInventory
     /// <summary>Gets whether collection is complete within its admitted scope, not whether delivery is authorized.</summary>
     public bool IsComplete { get; }
 
-    /// <summary>Always returns false; collection does not establish simultaneous remote state.</summary>
-    public bool IsPointInTime => false;
-
     /// <summary>Returns a fixed marker without enumerating observations or coordinates.</summary>
     public override string ToString() => "[SecretInventory]";
 }

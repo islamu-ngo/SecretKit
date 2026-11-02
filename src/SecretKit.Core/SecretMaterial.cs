@@ -1,5 +1,7 @@
+using System.Buffers;
+using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Text;
-using System.Text.Json.Serialization;
 
 namespace SecretKit.Core;
 
@@ -34,7 +36,7 @@ public sealed class SecretMaterial : IDisposable
         catch (DecoderFallbackException)
         {
             if (characters is not null)
-                Array.Clear(characters);
+                CryptographicOperations.ZeroMemory(MemoryMarshal.AsBytes(characters.AsSpan()));
             throw new ArgumentException("Material must contain valid UTF-8.", nameof(utf8));
         }
     }
@@ -121,6 +123,142 @@ public sealed class SecretMaterial : IDisposable
         }
     }
 
+    /// <summary>Consumes a temporary character snapshot outside the owner's lock.</summary>
+    /// <param name="action">A synchronous callback; the span is valid only during its invocation.</param>
+    /// <remarks>The snapshot is cleared on return or exception. Copies made by the callback remain caller-owned.</remarks>
+    public void Use(SecretSpanAction action)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+        Use(action, static (span, callback) => { callback(span); return 0; });
+    }
+
+    /// <summary>Consumes a temporary character snapshot with caller-supplied state.</summary>
+    /// <typeparam name="TState">The caller's state type.</typeparam>
+    /// <param name="state">State supplied to the callback.</param>
+    /// <param name="action">A synchronous callback; the span is valid only during its invocation.</param>
+    public void Use<TState>(TState state, SecretSpanAction<TState> action)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+        Use((state, action), static (span, context) => { context.action(span, context.state); return 0; });
+    }
+
+    /// <summary>Projects a temporary character snapshot outside the owner's lock.</summary>
+    /// <typeparam name="TResult">The result type.</typeparam>
+    /// <param name="function">A synchronous callback; the span is valid only during its invocation.</param>
+    /// <returns>The callback result. Any copied material becomes caller-owned.</returns>
+    public TResult Use<TResult>(SecretSpanFunc<TResult> function)
+    {
+        ArgumentNullException.ThrowIfNull(function);
+        return Use(function, static (span, callback) => callback(span));
+    }
+
+    /// <summary>Projects a temporary character snapshot with caller-supplied state outside the owner's lock.</summary>
+    /// <typeparam name="TState">The caller's state type.</typeparam>
+    /// <typeparam name="TResult">The result type.</typeparam>
+    /// <param name="state">State supplied to the callback.</param>
+    /// <param name="function">A synchronous callback; the span is valid only during its invocation.</param>
+    /// <returns>The callback result. Any copied material becomes caller-owned.</returns>
+    /// <exception cref="ArgumentNullException">The callback is null.</exception>
+    /// <exception cref="ObjectDisposedException">This owner was disposed before the snapshot was taken.</exception>
+    /// <remarks>Concurrent or reentrant disposal does not invalidate the callback's snapshot. The snapshot is cleared even if the callback throws.</remarks>
+    public TResult Use<TState, TResult>(TState state, SecretSpanFunc<TState, TResult> function)
+    {
+        ArgumentNullException.ThrowIfNull(function);
+        char[]? snapshot = null;
+        int length = 0;
+        try
+        {
+            lock (_gate)
+            {
+                ObjectDisposedException.ThrowIf(_characters is null, this);
+                length = _characters.Length;
+                snapshot = ArrayPool<char>.Shared.Rent(length);
+                _characters.AsSpan().CopyTo(snapshot);
+            }
+            return function(snapshot.AsSpan(0, length), state);
+        }
+        finally
+        {
+            if (snapshot is not null)
+            {
+                CryptographicOperations.ZeroMemory(MemoryMarshal.AsBytes(snapshot.AsSpan(0, length)));
+                ArrayPool<char>.Shared.Return(snapshot);
+            }
+        }
+    }
+
+    /// <summary>Consumes a temporary UTF-8 snapshot outside the owner's lock.</summary>
+    /// <param name="action">A synchronous callback; the span is valid only during its invocation.</param>
+    /// <remarks>The snapshot is cleared on return or exception. Copies made by the callback remain caller-owned.</remarks>
+    public void UseUtf8(SecretUtf8SpanAction action)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+        UseUtf8(action, static (span, callback) => { callback(span); return 0; });
+    }
+
+    /// <summary>Consumes a temporary UTF-8 snapshot with caller-supplied state.</summary>
+    /// <typeparam name="TState">The caller's state type.</typeparam>
+    /// <param name="state">State supplied to the callback.</param>
+    /// <param name="action">A synchronous callback; the span is valid only during its invocation.</param>
+    public void UseUtf8<TState>(TState state, SecretUtf8SpanAction<TState> action)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+        UseUtf8((state, action), static (span, context) => { context.action(span, context.state); return 0; });
+    }
+
+    /// <summary>Projects a temporary UTF-8 snapshot outside the owner's lock.</summary>
+    /// <typeparam name="TResult">The result type.</typeparam>
+    /// <param name="function">A synchronous callback; the span is valid only during its invocation.</param>
+    /// <returns>The callback result. Any copied material becomes caller-owned.</returns>
+    public TResult UseUtf8<TResult>(SecretUtf8SpanFunc<TResult> function)
+    {
+        ArgumentNullException.ThrowIfNull(function);
+        return UseUtf8(function, static (span, callback) => callback(span));
+    }
+
+    /// <summary>Projects a temporary UTF-8 snapshot with caller-supplied state outside the owner's lock.</summary>
+    /// <typeparam name="TState">The caller's state type.</typeparam>
+    /// <typeparam name="TResult">The result type.</typeparam>
+    /// <param name="state">State supplied to the callback.</param>
+    /// <param name="function">A synchronous callback; the span is valid only during its invocation.</param>
+    /// <returns>The callback result. Any copied material becomes caller-owned.</returns>
+    /// <exception cref="ArgumentNullException">The callback is null.</exception>
+    /// <exception cref="ArgumentException">Owned text contains invalid UTF-16; no rejected text is retained in the exception.</exception>
+    /// <exception cref="ObjectDisposedException">This owner was disposed before the snapshot was taken.</exception>
+    /// <remarks>Concurrent or reentrant disposal does not invalidate the callback's snapshot. The snapshot is cleared even if the callback throws.</remarks>
+    public TResult UseUtf8<TState, TResult>(TState state, SecretUtf8SpanFunc<TState, TResult> function)
+    {
+        ArgumentNullException.ThrowIfNull(function);
+        byte[]? snapshot = null;
+        int length = 0;
+        try
+        {
+            lock (_gate)
+            {
+                ObjectDisposedException.ThrowIf(_characters is null, this);
+                try
+                {
+                    length = StrictUtf8.GetByteCount(_characters);
+                    snapshot = ArrayPool<byte>.Shared.Rent(length);
+                    StrictUtf8.GetBytes(_characters, snapshot);
+                }
+                catch (EncoderFallbackException)
+                {
+                    throw new ArgumentException("Material must contain valid UTF-16.");
+                }
+            }
+            return function(snapshot.AsSpan(0, length), state);
+        }
+        finally
+        {
+            if (snapshot is not null)
+            {
+                CryptographicOperations.ZeroMemory(snapshot.AsSpan(0, length));
+                ArrayPool<byte>.Shared.Return(snapshot);
+            }
+        }
+    }
+
     /// <summary>Clears owned characters and prevents further copies or exports; repeated disposal is harmless.</summary>
     public void Dispose()
     {
@@ -131,7 +269,7 @@ public sealed class SecretMaterial : IDisposable
                 return;
             }
 
-            Array.Clear(_characters);
+            CryptographicOperations.ZeroMemory(MemoryMarshal.AsBytes(_characters.AsSpan()));
             _characters = null;
         }
     }

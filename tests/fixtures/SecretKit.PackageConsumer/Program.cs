@@ -96,7 +96,7 @@ using SecretRead ownedFirst = generation.Read("first");
 using SecretRead ownedSecond = generation.Read("second");
 ownedFirst.Dispose();
 Require(ownedSecond.Material.Reveal() == value);
-using SecretConfigurationExport export = SecretConfigurationExport.CreateAcknowledgingManagedStrings(generation, [
+using SecretConfigurationExport export = SecretConfigurationExport.Create(generation, [
     new SecretConfigurationMapping("first", "consumer:first"),
     new SecretConfigurationMapping("second", "consumer:second")
 ]);
@@ -105,7 +105,6 @@ configurationBuilder.Add(export);
 using var configuration = (ConfigurationRoot)configurationBuilder.Build();
 Require(configuration["consumer:first"] == value && configuration["consumer:second"] == value);
 Require(!export.GetRedactedDebugView().Contains(value, StringComparison.Ordinal));
-Require(!generation.RemoteSnapshotGuaranteed);
 SecretReference runtimeReference = new(azure.Authority, new AzureSecretAddress("fixture", version));
 SecretOutcome<BootstrapCandidate> bootstrap = await BootstrapScenario.PrepareAsync(azure,
     new Dictionary<string, SecretReference> { ["consumer:required"] = runtimeReference });

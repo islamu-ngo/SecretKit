@@ -106,7 +106,7 @@ internal static class InfisicalSpiffeRefreshEffects
             using InfisicalProofLogin? login = result.IsSuccess ? result.Value : null;
             InfisicalSpiffeRefreshSource.Require(allowed ?
                 result.IsSuccess && receipt.Evidence == DispatchEvidence.Applied &&
-                login!.ExpiresIn == 600 && login.AccessTokenMaxTTL == 1800 &&
+                login!.ExpiresIn == TimeSpan.FromSeconds(600) && login.AccessTokenMaxTtl == TimeSpan.FromSeconds(1800) &&
                 await c.UseTokenAsync(login.Token.Material, true, token) :
                 result.Status == SecretStatus.Denied && receipt.Evidence == DispatchEvidence.Rejected);
             SpiffeRefreshProofFacts journal = await source.ProofAsync(binding, arm, phase, kind, jwt, token);

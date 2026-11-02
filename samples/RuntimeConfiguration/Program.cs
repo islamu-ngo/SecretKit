@@ -32,7 +32,7 @@ using SecretRead oldUsername = logicalOperation.Read("Database:Username");
 await generations.RefreshAsync();
 using SecretRead oldPassword = logicalOperation.Read("Database:Password");
 using SecretSnapshotHandle nextOperation = generations.Acquire();
-Console.WriteLine($"LOGICAL_GENERATION_{logicalOperation.Generation}_NEXT_{nextOperation.Generation}_REMOTE_SNAPSHOT_{logicalOperation.RemoteSnapshotGuaranteed}");
+Console.WriteLine($"LOGICAL_GENERATION_{logicalOperation.Generation}_NEXT_{nextOperation.Generation}");
 return 0;
 
 sealed class DemonstrationAddress : SecretAddress;

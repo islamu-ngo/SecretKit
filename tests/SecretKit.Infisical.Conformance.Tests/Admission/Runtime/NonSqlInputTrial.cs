@@ -1,3 +1,4 @@
+using SecretKit.Infisical.Dynamic;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using SecretKit.Core;

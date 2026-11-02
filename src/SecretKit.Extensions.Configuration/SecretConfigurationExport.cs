@@ -47,8 +47,9 @@ public sealed class SecretConfigurationExport : IConfigurationSource, IDisposabl
         _provider.Publish(Prepare(generation));
     }
 
-    /// <summary>Explicitly acknowledges ordinary managed strings outside material-owner protection.</summary>
-    public static SecretConfigurationExport CreateAcknowledgingManagedStrings(
+    /// <summary>Creates an explicit configuration export from one acquired generation.</summary>
+    /// <remarks>Exported values are ordinary managed strings. Disposing material or this source cannot erase escaped strings.</remarks>
+    public static SecretConfigurationExport Create(
         SecretSnapshotHandle generation, IEnumerable<SecretConfigurationMapping> mapping)
     {
         ArgumentNullException.ThrowIfNull(generation);
@@ -70,10 +71,11 @@ public sealed class SecretConfigurationExport : IConfigurationSource, IDisposabl
     /// Preparation failure preserves values and token. Notification failure leaves values committed.
     /// No reader I/O occurs.
     /// </summary>
+    /// <remarks>Replacement creates ordinary managed strings; prior strings retained by consumers cannot be erased.</remarks>
     /// <exception cref="InvalidOperationException">
     /// Values were committed, but a reload callback failed. Callback details are not retained.
     /// </exception>
-    public void ReplaceAcknowledgingManagedStrings(SecretSnapshotHandle generation)
+    public void Replace(SecretSnapshotHandle generation)
     {
         ArgumentNullException.ThrowIfNull(generation);
         lock (_gate)

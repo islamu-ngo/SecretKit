@@ -76,7 +76,7 @@ internal static class InstalledInfisical
         using var loader = new SecretSnapshotLoader([new SecretSelection("required", runtime, selected)]);
         Require((await loader.RefreshAsync(deadline.Token)).IsSuccess);
         using var pinned = loader.Acquire();
-        using var export = SecretConfigurationExport.CreateAcknowledgingManagedStrings(pinned,
+        using var export = SecretConfigurationExport.Create(pinned,
             [new SecretConfigurationMapping("required", "consumer:required")]);
         var builder = new Microsoft.Extensions.Configuration.ConfigurationBuilder();
         builder.Add(export);

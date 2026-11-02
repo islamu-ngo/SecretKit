@@ -1,3 +1,5 @@
+using SecretKit.Extensions.Configuration;
+
 namespace SecretKit.Samples.RuntimeConfiguration;
 
 /// <summary>Material-free local message shape. No persistence or actual fleet convergence is claimed.</summary>
@@ -6,7 +8,7 @@ public sealed record RuntimeReplicaAcknowledgement(string Replica, long DesiredR
     long ObservedRevision, bool Active);
 
 /// <summary>Independent replica objects reconcile explicit monotonic desired revisions.</summary>
-public sealed class ReplicaRevisionScenario(string replica, RuntimeIntegrationCoordinator coordinator)
+public sealed class ReplicaRevisionScenario(string replica, SecretGenerationCoordinator<IRuntimeIntegrationClient> coordinator)
 {
     private readonly object _gate = new();
     private long _desired;
@@ -16,7 +18,7 @@ public sealed class ReplicaRevisionScenario(string replica, RuntimeIntegrationCo
     public async ValueTask<RuntimeReplicaAcknowledgement> ApplyAsync(RuntimeDesiredRevision desired,
         CancellationToken cancellationToken = default)
     {
-        ValueTask<RuntimeActivationObservation> activation;
+        ValueTask<SecretGenerationObservation> activation;
         lock (_gate)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -37,7 +39,7 @@ public sealed class ReplicaRevisionScenario(string replica, RuntimeIntegrationCo
                 activation = coordinator.EnableAsync(cancellationToken);
             }
         }
-        RuntimeActivationObservation local = await activation.ConfigureAwait(false);
+        SecretGenerationObservation local = await activation.ConfigureAwait(false);
         lock (_gate)
         {
             if (_desired == desired.Revision && _enabled == desired.Enabled &&

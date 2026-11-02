@@ -15,7 +15,7 @@ public sealed class ConfigurationTests
         using var loader = CreateLoader(reader);
         await loader.RefreshAsync();
         using var handle = loader.Acquire();
-        using var export = SecretConfigurationExport.CreateAcknowledgingManagedStrings(
+        using var export = SecretConfigurationExport.Create(
             handle, [new("first", "Service:User"), new("second", "Service:Password")]);
         IConfigurationRoot authorityOnly = new ConfigurationBuilder().Add(export).Build();
         using var configurationLifetime = (IDisposable)authorityOnly;
@@ -157,7 +157,6 @@ public sealed class ConfigurationTests
         using SecretRead read = handle.Read("first");
         await Assert.That(handle.CollectionStartedAt).IsEqualTo(start);
         await Assert.That(handle.CollectionCompletedAt).IsEqualTo(start.AddMinutes(2));
-        await Assert.That(handle.RemoteSnapshotGuaranteed).IsFalse();
         await Assert.That(read.Observation.Version).IsEqualTo(reader.Version);
         await Assert.That(read.Observation.Reference.BelongsTo(reader.Authority)).IsTrue();
     }
@@ -209,12 +208,12 @@ public sealed class ConfigurationTests
         using var loader = CreateLoader(reader);
         await loader.RefreshAsync();
         using var handle = loader.Acquire();
-        await Assert.That(() => SecretConfigurationExport.CreateAcknowledgingManagedStrings(
+        await Assert.That(() => SecretConfigurationExport.Create(
             handle, [new("first", "Service:Value"), new("second", "service:value")]))
             .Throws<ArgumentException>();
         handle.Dispose();
         // Collision validation precedes all material access, even on a closed handle.
-        await Assert.That(() => SecretConfigurationExport.CreateAcknowledgingManagedStrings(
+        await Assert.That(() => SecretConfigurationExport.Create(
             handle, [new("first", "Service:Value"), new("second", "service:value")]))
             .Throws<ArgumentException>();
     }
@@ -226,7 +225,7 @@ public sealed class ConfigurationTests
         using var loader = CreateLoader(reader);
         await loader.RefreshAsync();
         using var handle = loader.Acquire();
-        using var export = SecretConfigurationExport.CreateAcknowledgingManagedStrings(
+        using var export = SecretConfigurationExport.Create(
             handle, [new("first", "Service:User"), new("second", "Service:Password")]);
         IConfigurationRoot configuration = new ConfigurationBuilder().Add(export).Build();
         var token = configuration.GetReloadToken();
@@ -234,7 +233,7 @@ public sealed class ConfigurationTests
         reader.Value = NewMaterial();
         await incomplete.RefreshAsync();
         using var next = incomplete.Acquire();
-        await Assert.That(() => export.ReplaceAcknowledgingManagedStrings(next)).Throws<ArgumentException>();
+        await Assert.That(() => export.Replace(next)).Throws<ArgumentException>();
         using SecretRead previous = handle.Read("first");
         await Assert.That(configuration["Service:User"]).IsEqualTo(previous.Material.Reveal());
         await Assert.That(token.HasChanged).IsFalse();
@@ -296,7 +295,7 @@ public sealed class ConfigurationTests
         using var loader = CreateLoader(reader);
         await loader.RefreshAsync();
         using var handle = loader.Acquire();
-        using var export = SecretConfigurationExport.CreateAcknowledgingManagedStrings(
+        using var export = SecretConfigurationExport.Create(
             handle, [new("first", "Service:Value")]);
         string original = reader.Value;
         reader.Value = NewMaterial();
@@ -304,7 +303,7 @@ public sealed class ConfigurationTests
         configuration.Reload();
         await Assert.That(configuration["Service:Value"]).IsEqualTo(original);
         (configuration as IDisposable)?.Dispose();
-        await Assert.That(() => export.ReplaceAcknowledgingManagedStrings(handle))
+        await Assert.That(() => export.Replace(handle))
             .Throws<ObjectDisposedException>();
         await Assert.That(configuration["Service:Value"] is null).IsTrue();
     }
@@ -330,7 +329,7 @@ public sealed class ConfigurationTests
         using var loader = CreateLoader(reader);
         await loader.RefreshAsync();
         using var handle = loader.Acquire();
-        using var export = SecretConfigurationExport.CreateAcknowledgingManagedStrings(
+        using var export = SecretConfigurationExport.Create(
             handle, [new("first", "Service:User"), new("second", "Service:Password")]);
         IConfigurationRoot configuration = new ConfigurationBuilder().Add(export).Build();
         string escaped = configuration["Service:Password"]!;
@@ -342,7 +341,7 @@ public sealed class ConfigurationTests
         reader.Value = NewMaterial();
         await loader.RefreshAsync();
         using var next = loader.Acquire();
-        export.ReplaceAcknowledgingManagedStrings(next);
+        export.Replace(next);
         await reloaded.Task.WaitAsync(TimeSpan.FromSeconds(10));
         await Assert.That(configuration["Service:Password"]).IsEqualTo(reader.Value);
         await Assert.That(configuration.GetSection("Service").GetChildren().Count()).IsEqualTo(2);
@@ -367,7 +366,7 @@ public sealed class ConfigurationTests
         await loader.RefreshAsync();
         using var handle = loader.Acquire();
         var mapping = new SecretConfigurationMapping(consumerKey, exportKey);
-        using var export = SecretConfigurationExport.CreateAcknowledgingManagedStrings(handle, [mapping]);
+        using var export = SecretConfigurationExport.Create(handle, [mapping]);
         object[] surfaces = [selection, loader, handle, mapping, export, loader.LastAttempt!];
         foreach (object surface in surfaces)
         {
@@ -388,7 +387,7 @@ public sealed class ConfigurationTests
         using var loader = CreateLoader(reader);
         await loader.RefreshAsync();
         using var handle = loader.Acquire();
-        using var export = SecretConfigurationExport.CreateAcknowledgingManagedStrings(
+        using var export = SecretConfigurationExport.Create(
             handle, [new("first", "Service:Value")]);
         IConfigurationRoot root = new ConfigurationBuilder().Add(export).Build();
         using var lifetime = (IDisposable)root;
@@ -399,7 +398,7 @@ public sealed class ConfigurationTests
         reader.Value = NewMaterial();
         await loader.RefreshAsync();
         using var next = loader.Acquire();
-        export.ReplaceAcknowledgingManagedStrings(next);
+        export.Replace(next);
         await Assert.That(root["Service:Value"]).IsEqualTo(reader.Value);
     }
 
@@ -410,7 +409,7 @@ public sealed class ConfigurationTests
         using var loader = CreateLoader(reader);
         await loader.RefreshAsync();
         using var handle = loader.Acquire();
-        using var export = SecretConfigurationExport.CreateAcknowledgingManagedStrings(
+        using var export = SecretConfigurationExport.Create(
             handle, [new("first", "Service:Value")]);
         var start = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -452,7 +451,7 @@ public sealed class ConfigurationTests
         using var loader = CreateLoader(reader);
         await loader.RefreshAsync();
         using var handle = loader.Acquire();
-        using var export = SecretConfigurationExport.CreateAcknowledgingManagedStrings(
+        using var export = SecretConfigurationExport.Create(
             handle, [new("first", "Service:Value")]);
         await Assert.That(() => new ConfigurationBuilder().Add(export).Add(new FailingSource()).Build())
             .Throws<InvalidOperationException>();
@@ -471,7 +470,7 @@ public sealed class ConfigurationTests
         using var loader = CreateLoader(reader);
         await loader.RefreshAsync();
         using var handle = loader.Acquire();
-        using var export = SecretConfigurationExport.CreateAcknowledgingManagedStrings(
+        using var export = SecretConfigurationExport.Create(
             handle, [new("first", "Service:Value")]);
         var start = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var disposed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -498,7 +497,7 @@ public sealed class ConfigurationTests
         await Assert.That(root is null).IsEqualTo(disposeFirst);
         if (root is not null) await Assert.That(root["Service:Value"]).IsNull();
         await Assert.That(() => export.Build(new ConfigurationBuilder())).Throws<ObjectDisposedException>();
-        await Assert.That(() => export.ReplaceAcknowledgingManagedStrings(handle)).Throws<ObjectDisposedException>();
+        await Assert.That(() => export.Replace(handle)).Throws<ObjectDisposedException>();
     }
 
     [Test]
@@ -510,7 +509,7 @@ public sealed class ConfigurationTests
         using var loader = CreateLoader(reader);
         await loader.RefreshAsync();
         using var handle = loader.Acquire();
-        using var export = SecretConfigurationExport.CreateAcknowledgingManagedStrings(
+        using var export = SecretConfigurationExport.Create(
             handle, [new("first", "Service:Value")]);
         IConfigurationRoot root = new ConfigurationBuilder().Add(export).Build();
         using var lifetime = (IDisposable)root;
@@ -527,7 +526,7 @@ public sealed class ConfigurationTests
         await loader.RefreshAsync();
         using var next = loader.Acquire();
         Exception? failure = null;
-        try { export.ReplaceAcknowledgingManagedStrings(next); }
+        try { export.Replace(next); }
         catch (Exception error) { failure = error; }
 
         await Assert.That(observed).IsEqualTo(reader.Value);
@@ -546,7 +545,7 @@ public sealed class ConfigurationTests
         using var loader = CreateLoader(reader);
         await loader.RefreshAsync();
         using var initial = loader.Acquire();
-        using var export = SecretConfigurationExport.CreateAcknowledgingManagedStrings(
+        using var export = SecretConfigurationExport.Create(
             initial, [new("first", "Service:Value")]);
         IConfigurationRoot root = new ConfigurationBuilder().Add(export).Build();
         using var lifetime = (IDisposable)root;
@@ -563,11 +562,11 @@ public sealed class ConfigurationTests
             Task.Run(() =>
             {
                 observed = root["Service:Value"];
-                export.ReplaceAcknowledgingManagedStrings(reentrant);
+                export.Replace(reentrant);
             }).WaitAsync(TimeSpan.FromSeconds(10)).GetAwaiter().GetResult();
         }, null);
 
-        await Task.Run(() => export.ReplaceAcknowledgingManagedStrings(next))
+        await Task.Run(() => export.Replace(next))
             .WaitAsync(TimeSpan.FromSeconds(10));
         await Assert.That(observed).IsEqualTo(committed);
         await Assert.That(root["Service:Value"]).IsEqualTo(reader.Value);
@@ -582,7 +581,7 @@ public sealed class ConfigurationTests
         using var loader = CreateLoader(reader);
         await loader.RefreshAsync();
         using var handle = loader.Acquire();
-        using var export = SecretConfigurationExport.CreateAcknowledgingManagedStrings(
+        using var export = SecretConfigurationExport.Create(
             handle, [new("first", "Service:Value")]);
         IConfigurationRoot root = new ConfigurationBuilder().Add(export).Build();
         using var lifetime = (IDisposable)root;
@@ -598,7 +597,7 @@ public sealed class ConfigurationTests
         reader.Value = NewMaterial();
         await loader.RefreshAsync();
         using var next = loader.Acquire();
-        Task replace = Task.Run(() => export.ReplaceAcknowledgingManagedStrings(next));
+        Task replace = Task.Run(() => export.Replace(next));
         try
         {
             await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
@@ -608,7 +607,7 @@ public sealed class ConfigurationTests
                 if (disposeRoot) ((IDisposable)root).Dispose();
                 else export.Dispose();
             }).WaitAsync(TimeSpan.FromSeconds(10));
-            await Assert.That(() => export.ReplaceAcknowledgingManagedStrings(handle))
+            await Assert.That(() => export.Replace(handle))
                 .Throws<ObjectDisposedException>();
             await Assert.That(() => export.Build(new ConfigurationBuilder()))
                 .Throws<InvalidOperationException>();
@@ -628,7 +627,7 @@ public sealed class ConfigurationTests
         using var loader = CreateLoader(reader);
         await loader.RefreshAsync();
         using var handle = loader.Acquire();
-        using var export = SecretConfigurationExport.CreateAcknowledgingManagedStrings(
+        using var export = SecretConfigurationExport.Create(
             handle, [new("first", "Service:Value")]);
         IConfigurationRoot root = new ConfigurationBuilder().Add(export).Build();
         using var lifetime = (IDisposable)root;
@@ -639,10 +638,10 @@ public sealed class ConfigurationTests
             if (disposeRoot) ((IDisposable)root).Dispose();
             else Task.Run(export.Dispose).WaitAsync(TimeSpan.FromSeconds(10)).GetAwaiter().GetResult();
         }, null);
-        await Task.Run(() => export.ReplaceAcknowledgingManagedStrings(handle))
+        await Task.Run(() => export.Replace(handle))
             .WaitAsync(TimeSpan.FromSeconds(10));
         await Assert.That(root["Service:Value"]).IsNull();
-        await Assert.That(() => export.ReplaceAcknowledgingManagedStrings(handle))
+        await Assert.That(() => export.Replace(handle))
             .Throws<ObjectDisposedException>();
     }
 

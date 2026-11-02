@@ -1,3 +1,4 @@
+using SecretKit.Infisical.Dynamic;
 using System.Diagnostics.Tracing;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -24,7 +25,7 @@ internal static partial class InfisicalLifecycleFamilies
             ],
             ["selected-contract", "denied-authority", "cancellation-boundary", "independent-effect", "lost-response-no-replay"]),
         new("i.runtime.InfisicalDynamicClient.CreateDefinitionAsync",
-            "SecretKit.Infisical.InfisicalDynamicClient.CreateDefinitionAsync(SecretKit.Infisical.InfisicalDynamicTarget,SecretKit.Infisical.InfisicalDynamicProfile,SecretKit.Infisical.InfisicalLeaseDuration,SecretKit.Infisical.InfisicalLeaseDuration,SecretKit.Infisical.InfisicalDynamicMutationReceipt,System.Threading.CancellationToken,SecretKit.Infisical.NativeDynamicDefinitionOptions)",
+            "SecretKit.Infisical.InfisicalDynamicClient.CreateDefinitionAsync(SecretKit.Infisical.InfisicalDynamicTarget,SecretKit.Infisical.Dynamic.InfisicalDynamicProfile,SecretKit.Infisical.InfisicalLeaseDuration,SecretKit.Infisical.InfisicalLeaseDuration,SecretKit.Infisical.InfisicalDynamicMutationReceipt,System.Threading.CancellationToken,SecretKit.Infisical.Dynamic.NativeDynamicDefinitionOptions)",
             [
                 "options.omitted",
                 "options.value",
@@ -598,7 +599,7 @@ internal static partial class InfisicalLifecycleFamilies
             ],
             ["selected-contract", "denied-authority", "cancellation-boundary", "independent-effect", "lost-response-no-replay"]),
         new("i.runtime.InfisicalDynamicClient.UpdateDefinitionAsync",
-            "SecretKit.Infisical.InfisicalDynamicClient.UpdateDefinitionAsync(SecretKit.Infisical.InfisicalDynamicDefinition,SecretKit.Infisical.NativeDynamicDefinitionPatch,SecretKit.Infisical.InfisicalDynamicMutationReceipt,System.Threading.CancellationToken)",
+            "SecretKit.Infisical.InfisicalDynamicClient.UpdateDefinitionAsync(SecretKit.Infisical.InfisicalDynamicDefinition,SecretKit.Infisical.Dynamic.NativeDynamicDefinitionPatch,SecretKit.Infisical.InfisicalDynamicMutationReceipt,System.Threading.CancellationToken)",
             [
                 "profile.SqlDatabase",
                 "profile.Clickhouse",

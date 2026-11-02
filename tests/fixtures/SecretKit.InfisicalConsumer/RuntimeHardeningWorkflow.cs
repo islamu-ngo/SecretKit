@@ -276,7 +276,7 @@ internal static class IntegrationQualityWorkflow
             Require((await loader.RefreshAsync(token)).IsSuccess);
             using var absent = loader.Acquire();
             Require(absent.Count == 0 && absent.SelectionCount == 1 && absent.Generation > old.Generation);
-            using var export = SecretConfigurationExport.CreateAcknowledgingManagedStrings(absent, [new("optional", "Value")]);
+            using var export = SecretConfigurationExport.Create(absent, [new("optional", "Value")]);
             IConfigurationRoot root = new ConfigurationBuilder()
                 .AddInMemoryCollection(new Dictionary<string, string?> { ["Value"] = "fallback" }).Add(export).Build();
             using var rootOwner = (IDisposable)root;
@@ -330,11 +330,11 @@ internal static class IntegrationQualityWorkflow
         using (var prepared = (await PreparedSecretConfiguration.PrepareAsync([mixed[0]], cancellationToken: token)).Value)
         {
             bool invalidMapping = false;
-            try { prepared.ExportAcknowledgingManagedStrings([new("unknown", "Value")]); }
+            try { prepared.Export([new("unknown", "Value")]); }
             catch (ArgumentException) { invalidMapping = true; }
             Require(invalidMapping);
             using var copy = prepared.Read("required");
-            IConfigurationRoot root = prepared.ExportAcknowledgingManagedStrings([new("required", "Value")]);
+            IConfigurationRoot root = prepared.Export([new("required", "Value")]);
             Require(root["Value"] == "first");
             prepared.Dispose();
             Require(copy.Material.Reveal() == "first");
@@ -346,7 +346,7 @@ internal static class IntegrationQualityWorkflow
         {
             Require((await loader.RefreshAsync(token)).IsSuccess);
             using var first = loader.Acquire();
-            using var export = SecretConfigurationExport.CreateAcknowledgingManagedStrings(first, [new("required", "Value")]);
+            using var export = SecretConfigurationExport.Create(first, [new("required", "Value")]);
             IConfigurationProvider provider = export.Build(new ConfigurationBuilder());
             using var notification = provider.GetReloadToken().RegisterChangeCallback(
                 _ => throw new InvalidOperationException("notification-canary"), null);
@@ -354,7 +354,7 @@ internal static class IntegrationQualityWorkflow
             Require((await loader.RefreshAsync(token)).IsSuccess);
             using var next = loader.Acquire();
             bool notifiedFailure = false;
-            try { export.ReplaceAcknowledgingManagedStrings(next); }
+            try { export.Replace(next); }
             catch (InvalidOperationException exception)
             {
                 notifiedFailure = exception.InnerException is null &&
@@ -460,7 +460,7 @@ internal static class RuntimeHardeningWorkflow
         Require((await wire.Exchange(() => loader.RefreshAsync(deadline.Token).AsTask(),
             "GET", "/api/v4/secrets/" + Key, 200, SecretBody(), Token)).IsSuccess);
         using SecretSnapshotHandle old = loader.Acquire();
-        using var export = SecretConfigurationExport.CreateAcknowledgingManagedStrings(old,
+        using var export = SecretConfigurationExport.Create(old,
             [new SecretConfigurationMapping("required", "Application:Value")]);
         IConfigurationRoot configuration = new ConfigurationBuilder().Add(export).Build();
         using var configurationOwner = (IDisposable)configuration;
@@ -470,7 +470,7 @@ internal static class RuntimeHardeningWorkflow
             "GET", "/api/v4/secrets/" + Key, 200, SecretBody(version: 2, value: "replacement-canary"),
             Token)).Value == 2);
         using SecretSnapshotHandle next = loader.Acquire();
-        export.ReplaceAcknowledgingManagedStrings(next);
+        export.Replace(next);
         using (SecretRead pinned = old.Read("required")) Require(pinned.Material.Reveal() == Value);
         Require(next.Generation == 2 && configuration["Application:Value"] == "replacement-canary");
         Require((await wire.Exchange(() => loader.RefreshAsync(deadline.Token).AsTask(),
@@ -709,7 +709,7 @@ internal sealed class NativeRuntimeHardening
                 new SecretSelection("required-" + i.ToString(CultureInfo.InvariantCulture), requiredReader, reference)));
             Require((await loader.RefreshAsync(token)).Value == 1);
             using var old = loader.Acquire();
-            using var export = SecretConfigurationExport.CreateAcknowledgingManagedStrings(old, references.Select((_, i) =>
+            using var export = SecretConfigurationExport.Create(old, references.Select((_, i) =>
                 new SecretConfigurationMapping("required-" + i.ToString(CultureInfo.InvariantCulture),
                     "Required:" + i.ToString(CultureInfo.InvariantCulture))));
             IConfigurationRoot configuration = new ConfigurationBuilder().Add(export).Build();
@@ -725,7 +725,7 @@ internal sealed class NativeRuntimeHardening
             _current = "RH03";
             Require((await loader.RefreshAsync(token)).Value == 2);
             using var next = loader.Acquire();
-            export.ReplaceAcknowledgingManagedStrings(next);
+            export.Replace(next);
             using (var pinned = old.Read("required-0"))
                 Require(old.Generation == 1 && next.Generation == 2 && Equal(pinned.Material, pinnedCopy.Material));
             for (int i = 0; i < references.Length; i++)
@@ -868,7 +868,7 @@ internal sealed class NativeRuntimeHardening
         var login = result.Value;
         try
         {
-            Require(login.ExpiresIn == _input.Ttl && login.AccessTokenMaxTTL == _input.MaximumTtl);
+            Require(login.ExpiresIn == TimeSpan.FromSeconds(_input.Ttl) && login.AccessTokenMaxTtl == TimeSpan.FromSeconds(_input.MaximumTtl));
             return login;
         }
         catch { login.Dispose(); throw; }

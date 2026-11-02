@@ -239,41 +239,40 @@ public static class DemoInputs
         _ => throw new ReleaseException("demo-app")
     };
     private static string Project(string id) => $"Infisical.{Kind(id)}Demo.csproj";
-    private static string AppDirectory(string id) => $"samples/Infisical.{Kind(id)}Demo";
+    private static string AppDirectory(string id) => $"tests/PackageQualification/Infisical.{Kind(id)}Demo";
     private static string SourceLock(string id) => AppDirectory(id) + "/packages.lock.json";
     private static string[] InputFiles(string id) =>
     [
         $"{AppDirectory(id)}/{Project(id)}", $"{AppDirectory(id)}/Program.cs", $"{AppDirectory(id)}/README.md",
-        "samples/Infisical.Demos/DemoInput.cs", "samples/Infisical.Demos/DemoInputReader.cs",
-        "samples/Infisical.Demos/DemoOutput.cs",
-        .. id == "worker" ? new[] { "samples/Infisical.Demos/WorkerInput.cs" } :
-            new[] { "samples/Infisical.Demos/DemoTokenSource.cs" },
+        "tests/PackageQualification/Infisical.Demos/DemoInput.cs", "tests/PackageQualification/Infisical.Demos/DemoInputReader.cs",
+        "tests/PackageQualification/Infisical.Demos/DemoOutput.cs",
+        .. id == "worker" ? new[] { "tests/PackageQualification/Infisical.Demos/WorkerInput.cs" } :
+            new[] { "tests/PackageQualification/Infisical.Demos/DemoTokenSource.cs" },
         .. id switch
         {
             "console" => new[]
             {
-                "samples/Infisical.Demos/MutationInput.cs",
-                "samples/Infisical.ConsoleDemo/ConsoleDemoApplication.cs",
-                "samples/Infisical.ConsoleDemo/ConsoleDemoCommand.cs",
-                "samples/Infisical.ConsoleDemo/ConsoleDemoOutcomes.cs"
+                "tests/PackageQualification/Infisical.Demos/MutationInput.cs",
+                "tests/PackageQualification/Infisical.ConsoleDemo/ConsoleDemoApplication.cs",
+                "tests/PackageQualification/Infisical.ConsoleDemo/ConsoleDemoCommand.cs",
+                "tests/PackageQualification/Infisical.ConsoleDemo/ConsoleDemoOutcomes.cs"
             },
-            "worker" => new[] { "samples/Infisical.WorkerDemo/WorkerDemoApplication.cs",
-                "samples/Infisical.WorkerDemo/SecretWorker.cs" },
-            "web" => new[] { "samples/Infisical.WebDemo/WebDemoApplication.cs",
-                "samples/Infisical.WebDemo/WebDemoRuntime.cs", "samples/Infisical.WebDemo/WebDemoEndpoints.cs",
-                "samples/Infisical.WebDemo/WebDemoOptions.cs", "samples/Infisical.WebDemo/JobClient.cs" },
+            "worker" => new[] { "tests/PackageQualification/Infisical.WorkerDemo/WorkerDemoApplication.cs",
+                "tests/PackageQualification/Infisical.WorkerDemo/SecretWorker.cs" },
+            "web" => new[] { "tests/PackageQualification/Infisical.WebDemo/WebDemoApplication.cs",
+                "tests/PackageQualification/Infisical.WebDemo/WebDemoRuntime.cs", "tests/PackageQualification/Infisical.WebDemo/WebDemoEndpoints.cs",
+                "tests/PackageQualification/Infisical.WebDemo/WebDemoOptions.cs", "tests/PackageQualification/Infisical.WebDemo/JobClient.cs" },
             _ => throw new ReleaseException("demo-app")
         },
         .. id == "web" ? new[]
         {
-            "samples/RuntimeConfiguration/RuntimeIntegrationCoordinator.cs",
-            "samples/RuntimeConfiguration/RuntimeGenerationLease.cs"
+            "samples/RuntimeConfiguration/IRuntimeIntegrationClient.cs"
         } : []
     ];
     private static string CopyPath(string workspace, string id, string input) =>
         input.StartsWith(AppDirectory(id) + "/", StringComparison.Ordinal)
             ? Path.Combine(workspace, "app", Path.GetFileName(input))
-            : Path.Combine(workspace, input["samples/".Length..]);
+            : Path.Combine(workspace, input.StartsWith("tests/PackageQualification/", StringComparison.Ordinal) ? input["tests/PackageQualification/".Length..] : input["samples/".Length..]);
 
     private static byte[] Read(string source, string relative) =>
         Manifest.ReadFile(Path.Combine(source, Path.GetDirectoryName(relative)!),

@@ -441,7 +441,6 @@ public sealed class InfisicalReadTests
 
         await Assert.That(outcome.Value.Items.Count).IsEqualTo(1);
         await Assert.That(outcome.Value.IsComplete).IsFalse();
-        await Assert.That(outcome.Value.IsPointInTime).IsFalse();
         await Assert.That(query!.Contains("viewSecretValue=false", StringComparison.Ordinal)).IsTrue();
         await Assert.That(JsonSerializer.Serialize(outcome.Value).Contains(canary, StringComparison.Ordinal)).IsFalse();
     }

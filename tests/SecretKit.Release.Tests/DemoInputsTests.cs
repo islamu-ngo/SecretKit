@@ -86,10 +86,10 @@ public sealed class DemoInputsTests
                 File.AppendAllText(Path.Combine(fixture.Bundle, $"originals/SecretKit.Core.{TestBundle.Version}.nupkg"), " ");
                 break;
             case "source-lock":
-                File.AppendAllText(Path.Combine(fixture.Local.Source, "samples/Infisical.ConsoleDemo/packages.lock.json"), " ");
+                File.AppendAllText(Path.Combine(fixture.Local.Source, "tests/PackageQualification/Infisical.ConsoleDemo/packages.lock.json"), " ");
                 break;
             case "input":
-                File.AppendAllText(Path.Combine(fixture.Local.Source, "samples/Infisical.ConsoleDemo/Program.cs"), "changed");
+                File.AppendAllText(Path.Combine(fixture.Local.Source, "tests/PackageQualification/Infisical.ConsoleDemo/Program.cs"), "changed");
                 break;
             case "extra-input": File.WriteAllText(Path.Combine(fixture.Bundle, "locks/console/extra"), "extra"); break;
             case "lock-link":
@@ -151,7 +151,7 @@ public sealed class DemoInputsTests
     public async Task PreparationRejectsMismatchedBaselineWithoutRegeneratingSourceLocks()
     {
         using var fixture = new DemoFixture();
-        string path = Path.Combine(fixture.Local.Source, "samples/Infisical.ConsoleDemo/packages.lock.json");
+        string path = Path.Combine(fixture.Local.Source, "tests/PackageQualification/Infisical.ConsoleDemo/packages.lock.json");
         File.WriteAllText(path, File.ReadAllText(path).Replace(TestBundle.Version, "0.2.0", StringComparison.Ordinal));
         string qualification = Path.Combine(fixture.Local.Root, "changed-record");
         LocalQualification.Prepare(fixture.Local.Source, fixture.Local.Packages, qualification);
@@ -175,7 +175,7 @@ public sealed class DemoInputsTests
             string root = Path.GetFullPath("../../../../../", AppContext.BaseDirectory);
             foreach (string kind in Kinds)
             {
-                string relative = $"samples/Infisical.{kind}Demo";
+                string relative = $"tests/PackageQualification/Infisical.{kind}Demo";
                 Directory.CreateDirectory(Path.Combine(Local.Source, relative));
                 foreach (string path in Directory.GetFiles(Path.Combine(root, relative)))
                     File.Copy(path, Path.Combine(Local.Source, relative, Path.GetFileName(path)));
@@ -194,11 +194,10 @@ public sealed class DemoInputsTests
             }
             foreach (string relative in new[]
             {
-                "samples/Infisical.Demos/DemoInput.cs", "samples/Infisical.Demos/DemoInputReader.cs",
-                "samples/Infisical.Demos/DemoOutput.cs", "samples/Infisical.Demos/DemoTokenSource.cs",
-                "samples/Infisical.Demos/MutationInput.cs", "samples/Infisical.Demos/WorkerInput.cs",
-                "samples/RuntimeConfiguration/RuntimeIntegrationCoordinator.cs",
-                "samples/RuntimeConfiguration/RuntimeGenerationLease.cs", "global.json"
+                "tests/PackageQualification/Infisical.Demos/DemoInput.cs", "tests/PackageQualification/Infisical.Demos/DemoInputReader.cs",
+                "tests/PackageQualification/Infisical.Demos/DemoOutput.cs", "tests/PackageQualification/Infisical.Demos/DemoTokenSource.cs",
+                "tests/PackageQualification/Infisical.Demos/MutationInput.cs", "tests/PackageQualification/Infisical.Demos/WorkerInput.cs",
+                "samples/RuntimeConfiguration/IRuntimeIntegrationClient.cs", "global.json"
             })
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(Path.Combine(Local.Source, relative))!);
@@ -225,33 +224,32 @@ public sealed class DemoInputsTests
                 File.WriteAllBytes(Path.Combine(directory, "packages.lock.json"), staged);
                 string[] inputs =
                 [
-                    $"samples/Infisical.{kind}Demo/Infisical.{kind}Demo.csproj",
-                    $"samples/Infisical.{kind}Demo/Program.cs",
-                    $"samples/Infisical.{kind}Demo/README.md",
-                    "samples/Infisical.Demos/DemoInput.cs", "samples/Infisical.Demos/DemoInputReader.cs",
-                    "samples/Infisical.Demos/DemoOutput.cs",
-                    .. kind == "Worker" ? new[] { "samples/Infisical.Demos/WorkerInput.cs" } :
-                        new[] { "samples/Infisical.Demos/DemoTokenSource.cs" },
+                    $"tests/PackageQualification/Infisical.{kind}Demo/Infisical.{kind}Demo.csproj",
+                    $"tests/PackageQualification/Infisical.{kind}Demo/Program.cs",
+                    $"tests/PackageQualification/Infisical.{kind}Demo/README.md",
+                    "tests/PackageQualification/Infisical.Demos/DemoInput.cs", "tests/PackageQualification/Infisical.Demos/DemoInputReader.cs",
+                    "tests/PackageQualification/Infisical.Demos/DemoOutput.cs",
+                    .. kind == "Worker" ? new[] { "tests/PackageQualification/Infisical.Demos/WorkerInput.cs" } :
+                        new[] { "tests/PackageQualification/Infisical.Demos/DemoTokenSource.cs" },
                     .. kind switch
                     {
                         "Console" => new[]
                         {
-                            "samples/Infisical.Demos/MutationInput.cs",
-                            "samples/Infisical.ConsoleDemo/ConsoleDemoApplication.cs",
-                            "samples/Infisical.ConsoleDemo/ConsoleDemoCommand.cs",
-                            "samples/Infisical.ConsoleDemo/ConsoleDemoOutcomes.cs"
+                            "tests/PackageQualification/Infisical.Demos/MutationInput.cs",
+                            "tests/PackageQualification/Infisical.ConsoleDemo/ConsoleDemoApplication.cs",
+                            "tests/PackageQualification/Infisical.ConsoleDemo/ConsoleDemoCommand.cs",
+                            "tests/PackageQualification/Infisical.ConsoleDemo/ConsoleDemoOutcomes.cs"
                         },
-                        "Worker" => new[] { "samples/Infisical.WorkerDemo/WorkerDemoApplication.cs",
-                            "samples/Infisical.WorkerDemo/SecretWorker.cs" },
-                        "Web" => new[] { "samples/Infisical.WebDemo/WebDemoApplication.cs",
-                            "samples/Infisical.WebDemo/WebDemoRuntime.cs", "samples/Infisical.WebDemo/WebDemoEndpoints.cs",
-                            "samples/Infisical.WebDemo/WebDemoOptions.cs", "samples/Infisical.WebDemo/JobClient.cs" },
+                        "Worker" => new[] { "tests/PackageQualification/Infisical.WorkerDemo/WorkerDemoApplication.cs",
+                            "tests/PackageQualification/Infisical.WorkerDemo/SecretWorker.cs" },
+                        "Web" => new[] { "tests/PackageQualification/Infisical.WebDemo/WebDemoApplication.cs",
+                            "tests/PackageQualification/Infisical.WebDemo/WebDemoRuntime.cs", "tests/PackageQualification/Infisical.WebDemo/WebDemoEndpoints.cs",
+                            "tests/PackageQualification/Infisical.WebDemo/WebDemoOptions.cs", "tests/PackageQualification/Infisical.WebDemo/JobClient.cs" },
                         _ => throw new InvalidOperationException()
                     },
                     .. kind == "Web" ? new[]
                     {
-                        "samples/RuntimeConfiguration/RuntimeIntegrationCoordinator.cs",
-                        "samples/RuntimeConfiguration/RuntimeGenerationLease.cs"
+                        "samples/RuntimeConfiguration/IRuntimeIntegrationClient.cs"
                     } : []
                 ];
                 apps.Add(new
@@ -281,7 +279,7 @@ public sealed class DemoInputsTests
             TestBundle.Commit, "12", "1", "10.0.302"]);
 
         internal bool SourceLocksUnchanged() => Kinds.All(kind => _locks[kind].SequenceEqual(
-            File.ReadAllBytes(Path.Combine(Local.Source, $"samples/Infisical.{kind}Demo/packages.lock.json"))));
+            File.ReadAllBytes(Path.Combine(Local.Source, $"tests/PackageQualification/Infisical.{kind}Demo/packages.lock.json"))));
 
         internal void ChangeManifest(Action<JsonObject> change)
         {

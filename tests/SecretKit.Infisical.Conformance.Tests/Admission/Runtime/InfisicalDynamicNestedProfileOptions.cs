@@ -1,3 +1,4 @@
+using SecretKit.Infisical.Dynamic;
 namespace SecretKit.Infisical.Conformance.Tests;
 
 // Closed private admission selection. Only the public factories construct protected SDK profiles.

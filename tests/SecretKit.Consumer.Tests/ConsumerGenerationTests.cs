@@ -41,7 +41,6 @@ public sealed class ConsumerGenerationTests
         await Assert.That(second.Material.Reveal()).IsEqualTo(old);
         await Assert.That(newFirst.Material.Reveal()).IsEqualTo(next);
         await Assert.That(newSecond.Material.Reveal()).IsEqualTo(next);
-        await Assert.That(operation.RemoteSnapshotGuaranteed).IsFalse();
         await Assert.That(newOperation.Generation > operation.Generation).IsTrue();
     }
 

@@ -34,13 +34,13 @@ internal static class Measurements
         {
             Require((await loader.RefreshAsync()).IsSuccess);
             using var initial = loader.Acquire();
-            using var export = SecretConfigurationExport.CreateAcknowledgingManagedStrings(initial, Mapping());
+            using var export = SecretConfigurationExport.Create(initial, Mapping());
             IConfigurationProvider provider = export.Build(new ConfigurationBuilder());
             await MeasureAsync("refresh-export", async () =>
             {
                 Require((await loader.RefreshAsync()).IsSuccess);
                 using var handle = loader.Acquire();
-                export.ReplaceAcknowledgingManagedStrings(handle);
+                export.Replace(handle);
                 Require(provider.TryGet("Work:0", out string? value) && value?.Length == 256);
             });
         }
@@ -53,7 +53,7 @@ internal static class Measurements
                 for (int i = 0; i < LeasesPerBatch; i++)
                 {
                     await using var lease = coordinator.Acquire() ?? throw new InvalidOperationException();
-                    Require(await lease.ExecuteAsync() == "accepted");
+                    Require(await lease.ExecuteAsync(static (client, token) => client.ExecuteAsync(token)) == "accepted");
                 }
             });
             await MeasureAsync("handover", async () =>
@@ -62,7 +62,7 @@ internal static class Measurements
                 long old = held.Revision;
                 Require((await coordinator.EnableAsync()).Active);
                 await using var next = coordinator.Acquire() ?? throw new InvalidOperationException();
-                Require(next.Revision > old && await held.ExecuteAsync() == "accepted");
+                Require(next.Revision > old && await held.ExecuteAsync(static (client, token) => client.ExecuteAsync(token)) == "accepted");
             });
         }
         await MeasureAsync("cancellation", async () => { Require(await CancelAsync()); });
@@ -133,7 +133,7 @@ internal static class Measurements
             selections, options: CollectionOptions())).Value;
         using SecretRead copy = prepared.Read("key0");
         bool optionalAbsent = prepared.ReadOutcome("optional").Status == SecretStatus.Absent;
-        IConfigurationRoot configuration = prepared.ExportAcknowledgingManagedStrings(
+        IConfigurationRoot configuration = prepared.Export(
             [.. Mapping(), new("optional", "Work:Optional")]);
         bool preparedNullPresent = configuration.Providers.Single().TryGet("Work:Optional", out string? optional) &&
             optional is null;
@@ -142,7 +142,7 @@ internal static class Measurements
         using var maskLoader = new SecretSnapshotLoader(selections, options: CollectionOptions());
         Require((await maskLoader.RefreshAsync()).IsSuccess);
         using var maskHandle = maskLoader.Acquire();
-        using var maskSource = SecretConfigurationExport.CreateAcknowledgingManagedStrings(
+        using var maskSource = SecretConfigurationExport.Create(
             maskHandle, [.. Mapping(), new("optional", "Work:Optional")]);
         IConfigurationRoot fallback = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> { ["Work:Optional"] = "fallback" })
@@ -175,7 +175,7 @@ internal static class Measurements
             Require((await coordinator.EnableAsync()).Active);
             live.Add(owned.Live);
         }
-        bool coherent = held.Revision == revision && await held.ExecuteAsync() == "accepted";
+        bool coherent = held.Revision == revision && await held.ExecuteAsync(static (client, token) => client.ExecuteAsync(token)) == "accepted";
         await held.DisposeAsync();
         int afterRelease = owned.Live;
         var final = coordinator.Acquire() ?? throw new InvalidOperationException();
@@ -235,7 +235,7 @@ internal static class Measurements
     private static IEnumerable<SecretConfigurationMapping> Mapping() =>
         Enumerable.Range(0, Keys).Select(i => new SecretConfigurationMapping("key" + i, "Work:" + i));
 
-    private static RuntimeIntegrationCoordinator Coordinator(Reader reader, Resources resources) => new(reader,
+    private static SecretGenerationCoordinator<IRuntimeIntegrationClient> Coordinator(Reader reader, Resources resources) => new(reader,
         Enumerable.Range(0, Keys).ToDictionary(i => "key" + i,
             _ => new SecretReference(reader.Authority, new Address())),
         (candidate, token) =>
@@ -245,7 +245,7 @@ internal static class Measurements
             using SecretRead read = candidate.Read("key0");
             Require(read.Material.Reveal().Length == 256);
             return ValueTask.FromResult(SecretOutcome<IRuntimeIntegrationClient>.Success(new Client(resources)));
-        }, RuntimeStalePolicy.FailClosed, TimeSpan.FromHours(1), TimeProvider.System);
+        }, SecretGenerationStalePolicy.FailClosed, TimeSpan.FromHours(1), TimeProvider.System);
 
     private static void Require(bool condition)
     {

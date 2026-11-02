@@ -27,17 +27,17 @@ public sealed class DemoQualityTests
         Directory.CreateDirectory(shared);
         string[] sources =
         [
-            "samples/Infisical.ConsoleDemo/Infisical.ConsoleDemo.csproj",
-            "samples/Infisical.ConsoleDemo/Program.cs",
-            "samples/Infisical.ConsoleDemo/ConsoleDemoApplication.cs",
-            "samples/Infisical.ConsoleDemo/ConsoleDemoCommand.cs",
-            "samples/Infisical.ConsoleDemo/ConsoleDemoOutcomes.cs",
-            "samples/Infisical.ConsoleDemo/packages.lock.json",
-            "samples/Infisical.Demos/DemoInput.cs",
-            "samples/Infisical.Demos/DemoInputReader.cs",
-            "samples/Infisical.Demos/MutationInput.cs",
-            "samples/Infisical.Demos/DemoTokenSource.cs",
-            "samples/Infisical.Demos/DemoOutput.cs"
+            "tests/PackageQualification/Infisical.ConsoleDemo/Infisical.ConsoleDemo.csproj",
+            "tests/PackageQualification/Infisical.ConsoleDemo/Program.cs",
+            "tests/PackageQualification/Infisical.ConsoleDemo/ConsoleDemoApplication.cs",
+            "tests/PackageQualification/Infisical.ConsoleDemo/ConsoleDemoCommand.cs",
+            "tests/PackageQualification/Infisical.ConsoleDemo/ConsoleDemoOutcomes.cs",
+            "tests/PackageQualification/Infisical.ConsoleDemo/packages.lock.json",
+            "tests/PackageQualification/Infisical.Demos/DemoInput.cs",
+            "tests/PackageQualification/Infisical.Demos/DemoInputReader.cs",
+            "tests/PackageQualification/Infisical.Demos/MutationInput.cs",
+            "tests/PackageQualification/Infisical.Demos/DemoTokenSource.cs",
+            "tests/PackageQualification/Infisical.Demos/DemoOutput.cs"
         ];
         foreach (string source in sources)
             File.Copy(Path.Combine(root, source), Path.Combine(
@@ -147,9 +147,8 @@ public sealed class DemoQualityTests
         Directory.CreateDirectory(app);
         string[] sources =
         [
-            "samples/Infisical.Demos/Measurements.cs",
-            "samples/RuntimeConfiguration/RuntimeIntegrationCoordinator.cs",
-            "samples/RuntimeConfiguration/RuntimeGenerationLease.cs"
+            "tests/Benchmarks/SecretKit.Benchmarks/Measurements.cs",
+            "samples/RuntimeConfiguration/IRuntimeIntegrationClient.cs"
         ];
         foreach (string source in sources)
             File.Copy(Path.Combine(root, source), Path.Combine(app, Path.GetFileName(source)));

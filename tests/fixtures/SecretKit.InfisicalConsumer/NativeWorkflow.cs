@@ -387,7 +387,7 @@ internal static class NativeWorkflow
                     login = result.Value;
                     return receipt.Evidence == DispatchEvidence.Applied;
                 });
-                if (login is not null && (auth.Lifetime == "periodic" || login.AccessTokenMaxTTL > 0))
+                if (login is not null && (auth.Lifetime == "periodic" || login.AccessTokenMaxTtl > TimeSpan.Zero))
                 {
                     var evidence = login.BindLifetimeEvidence(new()
                     {
@@ -395,7 +395,7 @@ internal static class NativeWorkflow
                         ExpiresAt = login.Token.ExpiresAt!.Value,
                         Lifetime = auth.Lifetime == "periodic" ? InfisicalTokenLifetime.Periodic : InfisicalTokenLifetime.Finite,
                         Period = auth.PeriodSeconds is int period ? TimeSpan.FromSeconds(period) : null,
-                        ReportedMaximumTtl = TimeSpan.FromSeconds(login.AccessTokenMaxTTL)
+                        ReportedMaximumTtl = login.AccessTokenMaxTtl
                     });
                     await using var session = new InfisicalPeriodicTokenSession(login, evidence,
                         TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(10), network);
@@ -411,13 +411,13 @@ internal static class NativeWorkflow
                         await Observe("renew-token", async () =>
                             await session.RenewAsync(token) == SecretStatus.Success &&
                             session.LastRenewal?.Evidence == InfisicalRenewalEvidence.Applied);
-                    else if (login.ExpiresIn <= 45)
+                    else if (login.ExpiresIn <= TimeSpan.FromSeconds(45))
                         await Observe("expired-token", async () =>
                         {
                             // Time itself is the native behavior under observation. The response
                             // completion plus TTL is a conservative upper bound, not a reset
                             // of the session's original issue/expiry evidence.
-                            DateTimeOffset upperExpiry = DateTimeOffset.UtcNow.AddSeconds(login.ExpiresIn);
+                            DateTimeOffset upperExpiry = DateTimeOffset.UtcNow.Add(login.ExpiresIn);
                             await Task.Delay(upperExpiry - DateTimeOffset.UtcNow, token);
                             using var expired = new LocalNativeTokens(login.Token.Material.Reveal());
                             await using var expiredReader = new InfisicalClient(origin, expired, network);
@@ -442,7 +442,7 @@ internal static class NativeWorkflow
                         var read = await recoveredReader.ReadNativeAsync(Select(recoveredReader, s.ReadKey), token);
                         if (!read.IsSuccess) return false;
                         read.Value.Dispose();
-                        if (recovered.AccessTokenMaxTTL > 0 || auth.Lifetime == "periodic")
+                        if (recovered.AccessTokenMaxTtl > TimeSpan.Zero || auth.Lifetime == "periodic")
                         {
                             var evidence = recovered.BindLifetimeEvidence(new()
                             {
@@ -450,7 +450,7 @@ internal static class NativeWorkflow
                                 ExpiresAt = recovered.Token.ExpiresAt!.Value,
                                 Lifetime = auth.Lifetime == "periodic" ? InfisicalTokenLifetime.Periodic : InfisicalTokenLifetime.Finite,
                                 Period = auth.PeriodSeconds is int period ? TimeSpan.FromSeconds(period) : null,
-                                ReportedMaximumTtl = TimeSpan.FromSeconds(recovered.AccessTokenMaxTTL)
+                                ReportedMaximumTtl = recovered.AccessTokenMaxTtl
                             });
                             await using var recoveredSession = new InfisicalPeriodicTokenSession(recovered, evidence,
                                 TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(10), network);

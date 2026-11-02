@@ -2,7 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using SecretKit.Core;
 
-namespace SecretKit.Infisical;
+namespace SecretKit.Infisical.Dynamic;
 
 /// <summary>
 /// Independently authored definition inputs. Each profile owns copies; disposal performs no I/O.

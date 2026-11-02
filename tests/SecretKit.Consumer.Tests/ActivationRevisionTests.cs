@@ -11,12 +11,12 @@ public sealed class ActivationRevisionTests
     {
         var fixture = new RuntimeFixture { Value = "prepared" };
         var client = new DualDisposalClient();
-        await using var coordinator = new RuntimeIntegrationCoordinator(fixture.Reader,
+        await using var coordinator = new SecretGenerationCoordinator<IRuntimeIntegrationClient>(fixture.Reader,
             new Dictionary<string, SecretReference>
             {
                 ["credential"] = new(fixture.Reader.Authority, new RuntimeFixture.Address())
             }, (_, _) => ValueTask.FromResult(SecretOutcome<IRuntimeIntegrationClient>.Success(client)),
-            RuntimeStalePolicy.FailClosed, TimeSpan.FromMinutes(1), fixture.Time);
+            SecretGenerationStalePolicy.FailClosed, TimeSpan.FromMinutes(1), fixture.Time);
         await coordinator.EnableAsync();
 
         await coordinator.DisableAsync();
@@ -56,7 +56,7 @@ public sealed class ActivationRevisionTests
         try
         {
             await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
-            RuntimeActivationObservation state = await Task.Run(coordinator.Observe)
+            SecretGenerationObservation state = await Task.Run(coordinator.Observe)
                 .WaitAsync(TimeSpan.FromSeconds(5));
             await Assert.That(state.Active).IsFalse();
             await Assert.That(disable.IsCompleted).IsFalse();
@@ -73,12 +73,12 @@ public sealed class ActivationRevisionTests
         var client = new DualDisposalClient();
         var coordinator = AsyncCoordinator(fixture, client);
         await coordinator.EnableAsync();
-        RuntimeGenerationLease lease = coordinator.Acquire()!;
+        SecretGenerationLease<IRuntimeIntegrationClient> lease = coordinator.Acquire()!;
         Task stop = coordinator.DisposeAsync().AsTask();
         try
         {
             await Assert.That(() => coordinator.Acquire()).Throws<ObjectDisposedException>();
-            await Assert.That(await lease.ExecuteAsync()).IsEqualTo("prepared");
+            await Assert.That(await lease.ExecuteAsync(static (client, token) => client.ExecuteAsync(token))).IsEqualTo("prepared");
             using var cancellation = new CancellationTokenSource();
             cancellation.Cancel();
             await Assert.That(async () => await stop.WaitAsync(cancellation.Token))
@@ -106,7 +106,7 @@ public sealed class ActivationRevisionTests
             Cleanup = async () => { retiring.SetResult(); await releaseRetirement.Task; }
         };
         using var cancellation = new CancellationTokenSource();
-        await using var coordinator = new RuntimeIntegrationCoordinator(fixture.Reader,
+        await using var coordinator = new SecretGenerationCoordinator<IRuntimeIntegrationClient>(fixture.Reader,
             new Dictionary<string, SecretReference>
             {
                 ["credential"] = new(fixture.Reader.Authority, new RuntimeFixture.Address())
@@ -115,7 +115,7 @@ public sealed class ActivationRevisionTests
                 validating.SetResult();
                 await releaseValidation.Task;
                 return SecretOutcome<IRuntimeIntegrationClient>.Success(client);
-            }, RuntimeStalePolicy.FailClosed, TimeSpan.FromMinutes(1), fixture.Time);
+            }, SecretGenerationStalePolicy.FailClosed, TimeSpan.FromMinutes(1), fixture.Time);
         Task preparation = coordinator.EnableAsync(cancellation.Token).AsTask();
         try
         {
@@ -157,13 +157,13 @@ public sealed class ActivationRevisionTests
         await Assert.That(client.AsynchronousDisposals).IsEqualTo(1);
     }
 
-    private static RuntimeIntegrationCoordinator AsyncCoordinator(RuntimeFixture fixture,
+    private static SecretGenerationCoordinator<IRuntimeIntegrationClient> AsyncCoordinator(RuntimeFixture fixture,
         IRuntimeIntegrationClient client) =>
         new(fixture.Reader, new Dictionary<string, SecretReference>
         {
             ["credential"] = new(fixture.Reader.Authority, new RuntimeFixture.Address())
         }, (_, _) => ValueTask.FromResult(SecretOutcome<IRuntimeIntegrationClient>.Success(client)),
-            RuntimeStalePolicy.FailClosed, TimeSpan.FromMinutes(1), fixture.Time);
+            SecretGenerationStalePolicy.FailClosed, TimeSpan.FromMinutes(1), fixture.Time);
 
     [Test]
     public async Task ConcurrentFinalLeaseReleasesAwaitExactlyOneAsyncRetirement()
@@ -177,8 +177,8 @@ public sealed class ActivationRevisionTests
         };
         await using var coordinator = AsyncCoordinator(fixture, client);
         await coordinator.EnableAsync();
-        RuntimeGenerationLease first = coordinator.Acquire()!;
-        RuntimeGenerationLease second = coordinator.Acquire()!;
+        SecretGenerationLease<IRuntimeIntegrationClient> first = coordinator.Acquire()!;
+        SecretGenerationLease<IRuntimeIntegrationClient> second = coordinator.Acquire()!;
         await coordinator.DisableAsync();
         Task drain = Task.WhenAll(Task.Run(async () => await first.DisposeAsync()),
             Task.Run(async () => await second.DisposeAsync()));
@@ -204,7 +204,7 @@ public sealed class ActivationRevisionTests
         var coordinator = AsyncCoordinator(fixture, client);
         try
         {
-            RuntimeActivationObservation result = await coordinator.CheckAgainAsync();
+            SecretGenerationObservation result = await coordinator.CheckAgainAsync();
             await Assert.That(result.LastStatus).IsEqualTo(SecretStatus.Unknown);
             await Assert.That(result.Active).IsFalse();
         }
@@ -233,7 +233,7 @@ public sealed class ActivationRevisionTests
         };
         var coordinator = AsyncCoordinator(fixture, client);
         await coordinator.EnableAsync();
-        RuntimeGenerationLease lease = coordinator.Acquire()!;
+        SecretGenerationLease<IRuntimeIntegrationClient> lease = coordinator.Acquire()!;
         await coordinator.DisableAsync();
         Task first = lease.DisposeAsync().AsTask();
         Task? repeated = null;
@@ -265,13 +265,13 @@ public sealed class ActivationRevisionTests
     {
         var fixture = new RuntimeFixture { Value = "test-active" };
         await using var coordinator = fixture.Create();
-        RuntimeActivationObservation active = await coordinator.EnableAsync();
+        SecretGenerationObservation active = await coordinator.EnableAsync();
         fixture.Value = "test-checked";
 
-        RuntimeActivationObservation checkedAgain = await coordinator.CheckAgainAsync();
+        SecretGenerationObservation checkedAgain = await coordinator.CheckAgainAsync();
 
-        await using RuntimeGenerationLease lease = coordinator.Acquire()!;
-        await Assert.That(await lease.ExecuteAsync()).IsEqualTo("test-active");
+        await using SecretGenerationLease<IRuntimeIntegrationClient> lease = coordinator.Acquire()!;
+        await Assert.That(await lease.ExecuteAsync(static (client, token) => client.ExecuteAsync(token))).IsEqualTo("test-active");
         await Assert.That(checkedAgain.ObservedRevision).IsEqualTo(active.ObservedRevision);
         await Assert.That(fixture.Clients.Single(client => client.Identity == "test-checked").Disposed).IsTrue();
     }
@@ -284,7 +284,7 @@ public sealed class ActivationRevisionTests
         await coordinator.EnableAsync();
         fixture.Value = "test-now-readable";
 
-        RuntimeActivationObservation checkedAgain = await coordinator.CheckAgainAsync();
+        SecretGenerationObservation checkedAgain = await coordinator.CheckAgainAsync();
 
         await Assert.That(checkedAgain.DesiredEnabled).IsTrue();
         await Assert.That(checkedAgain.LastStatus).IsEqualTo(SecretStatus.Success);
@@ -305,12 +305,12 @@ public sealed class ActivationRevisionTests
             await release.Task.WaitAsync(token);
         };
         await using var coordinator = fixture.Create();
-        Task<RuntimeActivationObservation> enable = coordinator.EnableAsync().AsTask();
+        Task<SecretGenerationObservation> enable = coordinator.EnableAsync().AsTask();
         await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
         fixture.BeforeValidation = null;
         fixture.Value = "test-check-candidate";
 
-        RuntimeActivationObservation checkedAgain = await coordinator.CheckAgainAsync();
+        SecretGenerationObservation checkedAgain = await coordinator.CheckAgainAsync();
         release.SetResult();
         await enable.WaitAsync(TimeSpan.FromSeconds(10));
 
@@ -325,14 +325,14 @@ public sealed class ActivationRevisionTests
     {
         var fixture = new RuntimeFixture();
         await using var coordinator = fixture.Create();
-        RuntimeActivationObservation absent = await coordinator.EnableAsync();
+        SecretGenerationObservation absent = await coordinator.EnableAsync();
         await Assert.That(absent.LastStatus).IsEqualTo(SecretStatus.Absent);
         await Assert.That(coordinator.Acquire()).IsNull();
         fixture.Value = "new-test-credential";
         await Assert.That(coordinator.Observe().Active).IsFalse();
-        RuntimeActivationObservation enabled = await coordinator.EnableAsync();
-        await using RuntimeGenerationLease lease = coordinator.Acquire()!;
-        await Assert.That(await lease.ExecuteAsync()).IsEqualTo(fixture.Value);
+        SecretGenerationObservation enabled = await coordinator.EnableAsync();
+        await using SecretGenerationLease<IRuntimeIntegrationClient> lease = coordinator.Acquire()!;
+        await Assert.That(await lease.ExecuteAsync(static (client, token) => client.ExecuteAsync(token))).IsEqualTo(fixture.Value);
         await Assert.That(fixture.ValidatedWithIntendedAuthority).IsTrue();
         await Assert.That(enabled.ObservedRevision).IsEqualTo(enabled.DesiredRevision);
     }
@@ -342,14 +342,14 @@ public sealed class ActivationRevisionTests
     {
         var fixture = new RuntimeFixture { Value = "test-first" };
         await using var coordinator = fixture.Create();
-        RuntimeActivationObservation prepared = await coordinator.CheckAgainAsync();
+        SecretGenerationObservation prepared = await coordinator.CheckAgainAsync();
         await Assert.That(prepared.LastStatus).IsEqualTo(SecretStatus.Success);
         await Assert.That(prepared.Active).IsFalse();
         await Assert.That(fixture.Clients.Single().Disposed).IsTrue();
         fixture.Value = "test-second";
         await coordinator.EnableAsync();
-        await using RuntimeGenerationLease lease = coordinator.Acquire()!;
-        await Assert.That(await lease.ExecuteAsync()).IsEqualTo("test-second");
+        await using SecretGenerationLease<IRuntimeIntegrationClient> lease = coordinator.Acquire()!;
+        await Assert.That(await lease.ExecuteAsync(static (client, token) => client.ExecuteAsync(token))).IsEqualTo("test-second");
     }
 
     [Test]
@@ -364,11 +364,11 @@ public sealed class ActivationRevisionTests
             await release.Task.WaitAsync(token);
         };
         await using var coordinator = fixture.Create();
-        Task<RuntimeActivationObservation> refresh = coordinator.EnableAsync().AsTask();
+        Task<SecretGenerationObservation> refresh = coordinator.EnableAsync().AsTask();
         await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
-        RuntimeActivationObservation disabled = await coordinator.DisableAsync();
+        SecretGenerationObservation disabled = await coordinator.DisableAsync();
         release.SetResult();
-        RuntimeActivationObservation late = await refresh.WaitAsync(TimeSpan.FromSeconds(10));
+        SecretGenerationObservation late = await refresh.WaitAsync(TimeSpan.FromSeconds(10));
         await Assert.That(late.DesiredRevision).IsEqualTo(disabled.DesiredRevision);
         await Assert.That(late.Active).IsFalse();
         await Assert.That(fixture.Clients.Single().Disposed).IsTrue();
@@ -386,7 +386,7 @@ public sealed class ActivationRevisionTests
             await release.Task.WaitAsync(token);
         };
         await using var coordinator = fixture.Create();
-        Task<RuntimeActivationObservation> enable = coordinator.EnableAsync().AsTask();
+        Task<SecretGenerationObservation> enable = coordinator.EnableAsync().AsTask();
         await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
         await coordinator.DisableAsync();
         release.SetResult();
@@ -407,15 +407,15 @@ public sealed class ActivationRevisionTests
             await release.Task.WaitAsync(token);
         };
         await using var coordinator = fixture.Create();
-        Task<RuntimeActivationObservation> old = coordinator.EnableAsync().AsTask();
+        Task<SecretGenerationObservation> old = coordinator.EnableAsync().AsTask();
         await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
         fixture.BeforeValidation = null;
         fixture.Value = "test-new";
         await coordinator.EnableAsync();
         release.SetResult();
         await old.WaitAsync(TimeSpan.FromSeconds(10));
-        await using RuntimeGenerationLease lease = coordinator.Acquire()!;
-        await Assert.That(await lease.ExecuteAsync()).IsEqualTo("test-new");
+        await using SecretGenerationLease<IRuntimeIntegrationClient> lease = coordinator.Acquire()!;
+        await Assert.That(await lease.ExecuteAsync(static (client, token) => client.ExecuteAsync(token))).IsEqualTo("test-new");
         await Assert.That(fixture.Clients.Single(client => client.Identity == "test-old").Disposed).IsTrue();
     }
 
@@ -433,17 +433,17 @@ public sealed class ActivationRevisionTests
             entered.SetResult();
             await release.Task.WaitAsync(token);
         };
-        RuntimeGenerationLease lease = coordinator.Acquire()!;
-        Task<string> operation = lease.ExecuteAsync().AsTask();
+        SecretGenerationLease<IRuntimeIntegrationClient> lease = coordinator.Acquire()!;
+        Task<string> operation = lease.ExecuteAsync(static (client, token) => client.ExecuteAsync(token)).AsTask();
         await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
         fixture.Value = "test-new";
         await coordinator.EnableAsync();
         await lease.DisposeAsync();
         await Assert.That(old.Disposed).IsFalse();
-        await using RuntimeGenerationLease next = coordinator.Acquire()!;
+        await using SecretGenerationLease<IRuntimeIntegrationClient> next = coordinator.Acquire()!;
         await Assert.That(lease.Revision).IsEqualTo(1L);
         await Assert.That(next.Revision).IsEqualTo(2L);
-        await Assert.That(await next.ExecuteAsync()).IsEqualTo("test-new");
+        await Assert.That(await next.ExecuteAsync(static (client, token) => client.ExecuteAsync(token))).IsEqualTo("test-new");
         release.SetResult();
         await Assert.That(await operation.WaitAsync(TimeSpan.FromSeconds(10))).IsEqualTo("test-old");
         await Assert.That(old.Disposed).IsTrue();
@@ -531,7 +531,7 @@ public sealed class ActivationRevisionTests
         var second = new SecretReference(fixture.Reader.Authority, new RuntimeFixture.Address());
         fixture.Reader.AbsentReference = second;
         bool validated = false;
-        await using var coordinator = new RuntimeIntegrationCoordinator(fixture.Reader,
+        await using var coordinator = new SecretGenerationCoordinator<IRuntimeIntegrationClient>(fixture.Reader,
             new Dictionary<string, SecretReference>
             {
                 ["first"] = new(fixture.Reader.Authority, new RuntimeFixture.Address()),
@@ -541,7 +541,7 @@ public sealed class ActivationRevisionTests
                 validated = true;
                 return ValueTask.FromResult(SecretOutcome<IRuntimeIntegrationClient>.Success(
                     new RuntimeFixture.Client("invalid-partial")));
-            }, RuntimeStalePolicy.FailClosed, TimeSpan.FromMinutes(1), fixture.Time);
+            }, SecretGenerationStalePolicy.FailClosed, TimeSpan.FromMinutes(1), fixture.Time);
         await Assert.That((await coordinator.EnableAsync()).LastStatus).IsEqualTo(SecretStatus.Absent);
         await Assert.That(validated).IsFalse();
         await Assert.That(coordinator.Acquire()).IsNull();
@@ -553,7 +553,7 @@ public sealed class ActivationRevisionTests
         var fixture = new RuntimeFixture { Value = "test-cancelled" };
         using var cancellation = new CancellationTokenSource();
         var client = new RuntimeFixture.Client("test-cancelled");
-        await using var coordinator = new RuntimeIntegrationCoordinator(fixture.Reader,
+        await using var coordinator = new SecretGenerationCoordinator<IRuntimeIntegrationClient>(fixture.Reader,
             new Dictionary<string, SecretReference>
             {
                 ["credential"] = new(fixture.Reader.Authority, new RuntimeFixture.Address())
@@ -561,7 +561,7 @@ public sealed class ActivationRevisionTests
             {
                 cancellation.Cancel();
                 return ValueTask.FromResult(SecretOutcome<IRuntimeIntegrationClient>.Success(client));
-            }, RuntimeStalePolicy.FailClosed, TimeSpan.FromMinutes(1), fixture.Time);
+            }, SecretGenerationStalePolicy.FailClosed, TimeSpan.FromMinutes(1), fixture.Time);
         await Assert.That(async () => await coordinator.EnableAsync(cancellation.Token))
             .Throws<OperationCanceledException>();
         await Assert.That(client.Disposed).IsTrue();
@@ -626,7 +626,7 @@ internal sealed class RuntimeFixture
     internal List<Client> Clients { get; } = [];
     internal static TaskCompletionSource Signal() => new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-    internal RuntimeIntegrationCoordinator Create(RuntimeStalePolicy policy = RuntimeStalePolicy.FailClosed) =>
+    internal SecretGenerationCoordinator<IRuntimeIntegrationClient> Create(SecretGenerationStalePolicy policy = SecretGenerationStalePolicy.FailClosed) =>
         new(Reader, new Dictionary<string, SecretReference>
         {
             ["credential"] = new(Reader.Authority, new Address())

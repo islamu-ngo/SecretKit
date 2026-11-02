@@ -135,9 +135,9 @@ public sealed class InfisicalUniversalAuthentication : IDisposable
                     !root.TryGetProperty("accessToken", out var token) || token.ValueKind != JsonValueKind.String ||
                     !root.TryGetProperty("tokenType", out var type) || type.ValueKind != JsonValueKind.String || type.GetString() != "Bearer" ||
                     !root.TryGetProperty("expiresIn", out var expires) || expires.ValueKind != JsonValueKind.Number || !expires.TryGetDouble(out double seconds) ||
-                    !double.IsFinite(seconds) || seconds <= 0 || seconds > 3153600000 ||
+                    !double.IsFinite(seconds) || seconds < 0.0000001 || seconds > 315360000 ||
                     !root.TryGetProperty("accessTokenMaxTTL", out var maximum) || maximum.ValueKind != JsonValueKind.Number || !maximum.TryGetDouble(out double max) ||
-                    !double.IsFinite(max) || max < 0)
+                    !double.IsFinite(max) || max < 0 || max > 315360000)
                     return SecretOutcome<InfisicalUniversalLogin>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.InvalidResponse);
                 string text = token.GetString()!;
                 if (text.Length is < 1 or > 16384 || text.Any(c => c <= ' ' || c >= 127))
@@ -214,8 +214,8 @@ public sealed class InfisicalUniversalLogin : IDisposable
         Uri origin, DateTimeOffset requestStartedAt, TimeProvider timeProvider)
     {
         Token = token;
-        ExpiresIn = expiresIn;
-        AccessTokenMaxTTL = maximum;
+        ExpiresIn = TimeSpan.FromSeconds(expiresIn);
+        AccessTokenMaxTtl = TimeSpan.FromSeconds(maximum);
         Origin = origin;
         RequestStartedAt = requestStartedAt;
         TimeProvider = timeProvider;
@@ -224,10 +224,10 @@ public sealed class InfisicalUniversalLogin : IDisposable
     internal TimeProvider TimeProvider { get; }
     /// <summary>The token owned by this login; copy its material before independent retention.</summary>
     [JsonIgnore] public InfisicalAccessToken Token { get; }
-    /// <summary>Provider-reported seconds to expiry, conservatively measured from request start locally.</summary>
-    public double ExpiresIn { get; }
-    /// <summary>Provider-reported maximum TTL in seconds; zero alone does not establish periodic semantics.</summary>
-    public double AccessTokenMaxTTL { get; }
+    /// <summary>Provider-reported interval to expiry, conservatively measured from request start locally.</summary>
+    public TimeSpan ExpiresIn { get; }
+    /// <summary>Provider-reported maximum TTL; zero alone does not establish periodic semantics.</summary>
+    public TimeSpan AccessTokenMaxTtl { get; }
     /// <summary>A conservative caller-observed bound, not proof of server issuance time.</summary>
     public DateTimeOffset RequestStartedAt { get; }
 
@@ -241,7 +241,7 @@ public sealed class InfisicalUniversalLogin : IDisposable
         if (verifiedEvidence.Login is not null && !ReferenceEquals(verifiedEvidence.Login, this) ||
             verifiedEvidence.ExpiresAt != Token.ExpiresAt ||
             verifiedEvidence.OriginalIssuedAt > RequestStartedAt ||
-            verifiedEvidence.ReportedMaximumTtl.TotalSeconds != AccessTokenMaxTTL)
+            verifiedEvidence.ReportedMaximumTtl != AccessTokenMaxTtl)
             throw new ArgumentException("Lifetime evidence does not match this login.", nameof(verifiedEvidence));
         return new InfisicalTokenLifetimeEvidence
         {

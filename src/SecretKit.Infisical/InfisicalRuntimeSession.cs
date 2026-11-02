@@ -9,15 +9,146 @@ public sealed class InfisicalRuntimeSession : IAsyncDisposable
     private readonly object _gate = new();
     private readonly TimeSpan _shutdownTimeout;
     private readonly TimeProvider _time;
+    private readonly InfisicalRuntimeOptions _options;
+    private readonly CancellationTokenSource _openingCancellation = new();
+    private Func<CancellationToken, ValueTask<SecretMaterial>>? _bootstrap;
+    private InfisicalPeriodicTokenSession? _tokenSession;
+    private Task<SecretOutcome<InfisicalRuntimeSession>>? _authentication;
     private Task? _stopTask;
 
     private InfisicalRuntimeSession(InfisicalClient client, InfisicalPeriodicTokenSession session,
         InfisicalRuntimeOptions options)
     {
         Client = client;
-        TokenSession = session;
+        _tokenSession = session;
+        _options = options;
         _shutdownTimeout = options.Network.ShutdownTimeout;
         _time = options.TimeProvider;
+    }
+
+    private InfisicalRuntimeSession(InfisicalRuntimeOptions options,
+        Func<CancellationToken, ValueTask<SecretMaterial>> bootstrap)
+    {
+        _options = options;
+        _bootstrap = bootstrap;
+        _shutdownTimeout = options.Network.ShutdownTimeout;
+        _time = options.TimeProvider;
+        Client = new(options.Origin, new DeferredTokenSource(this), options.Network, options.TimeProvider);
+    }
+
+    /// <summary>Creates an owned runtime without acquiring credentials or performing network I/O.</summary>
+    /// <remarks>The factory transfers one fresh material instance on first explicit authentication or read.
+    /// Admission is single-attempt: failure and dispatch uncertainty are retained, never implicitly replayed.
+    /// The cooperative operation deadline covers credential acquisition through token publication.
+    /// Supplied pipelines remain host-owned. Dispose the runtime even if authentication never starts.</remarks>
+    public static InfisicalRuntimeSession CreateDeferred(InfisicalRuntimeOptions options,
+        Func<CancellationToken, ValueTask<SecretMaterial>> clientSecret)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(clientSecret);
+        ValidateOptions(options);
+        return new(options, clientSecret);
+    }
+
+    /// <summary>Retains the single bootstrap attempt and its dispatch evidence for explicit recovery decisions.</summary>
+    [JsonIgnore]
+    public InfisicalRuntimeOpenAttempt OpeningAttempt { get; private set; } = new();
+
+    /// <summary>Reports whether authentication published a token session, without acquiring credentials.</summary>
+    public bool IsAuthenticated { get { lock (_gate) return _tokenSession is not null && _stopTask is null; } }
+
+    /// <summary>Joins the one authentication attempt without retrying login or changing principal.</summary>
+    /// <remarks>Cancellation ends this caller's wait. Runtime disposal cancels and drains the shared operation.
+    /// A failed or canceled shared attempt remains latched; recovery requires an explicitly new runtime.</remarks>
+    public async ValueTask<SecretOutcome<InfisicalRuntimeSession>> EnsureAuthenticatedAsync(
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        TaskCompletionSource<SecretOutcome<InfisicalRuntimeSession>>? completion = null;
+        Task<SecretOutcome<InfisicalRuntimeSession>> pending;
+        lock (_gate)
+        {
+            ObjectDisposedException.ThrowIf(_stopTask is not null, this);
+            if (_tokenSession is not null) return SecretOutcome<InfisicalRuntimeSession>.Success(this);
+            if (_authentication is null)
+            {
+                completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                _authentication = completion.Task;
+            }
+            pending = _authentication;
+        }
+        if (completion is not null) _ = AuthenticateAsync(completion);
+        return await pending.WaitAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task AuthenticateAsync(TaskCompletionSource<SecretOutcome<InfisicalRuntimeSession>> completion)
+    {
+        try { completion.TrySetResult(await AuthenticateCoreAsync().ConfigureAwait(false)); }
+        catch (OperationCanceledException) { completion.TrySetCanceled(_openingCancellation.Token); }
+        catch (Exception) { completion.TrySetResult(SecretOutcome<InfisicalRuntimeSession>.Failure(SecretStatus.Unavailable)); }
+    }
+
+    private async Task<SecretOutcome<InfisicalRuntimeSession>> AuthenticateCoreAsync()
+    {
+        using var budget = new InfisicalOperationBudget(_options.Network.OperationTimeout, _time,
+            CancellationToken.None, _openingCancellation.Token);
+        InfisicalPeriodicTokenSession? candidate = null;
+        try
+        {
+            budget.Check();
+            var bootstrap = Interlocked.Exchange(ref _bootstrap, null)!;
+            if (!AdmitsOpeningPolicy(_options))
+            {
+                return SecretOutcome<InfisicalRuntimeSession>.Failure(SecretStatus.RecoveryRequired);
+            }
+            using SecretMaterial secret = await bootstrap(budget.Token).ConfigureAwait(false);
+            budget.Check();
+            if (!OpeningAttempt.TryBegin()) throw new InvalidOperationException();
+            var result = await LoginOnceAsync(_options, secret, OpeningAttempt, budget.Token)
+                .ConfigureAwait(false);
+            if (!result.IsSuccess)
+            {
+                return SecretOutcome<InfisicalRuntimeSession>.Failure(result.Status, result.RetryAfter, result.Reason);
+            }
+            using InfisicalUniversalLogin login = result.Value;
+            budget.Check();
+            var evidence = login.BindLifetimeEvidence(new()
+            {
+                OriginalIssuedAt = _options.OriginalIssuedAt!.Value,
+                ExpiresAt = login.Token.ExpiresAt!.Value,
+                Lifetime = _options.Lifetime,
+                ReportedMaximumTtl = login.AccessTokenMaxTtl,
+                Period = _options.Period,
+                AbsoluteLifetimeLimit = _options.AbsoluteLifetimeLimit
+            });
+            candidate = new(_options.Origin, login.Token.Material, evidence, _options.RenewBefore,
+                _options.RequestTimeout, _options.Network, _time);
+            if (candidate.State is InfisicalTokenSessionState.RecoveryRequired or InfisicalTokenSessionState.Expired)
+            {
+                return SecretOutcome<InfisicalRuntimeSession>.Failure(SecretStatus.RecoveryRequired);
+            }
+            budget.Check();
+            lock (_gate)
+            {
+                if (_stopTask is not null) throw new OperationCanceledException(_openingCancellation.Token);
+                budget.Token.ThrowIfCancellationRequested();
+                _tokenSession = candidate;
+                candidate = null;
+            }
+            return SecretOutcome<InfisicalRuntimeSession>.Success(this);
+        }
+        catch (OperationCanceledException)
+        {
+            SecretFailureReason reason = budget.CancellationReason();
+            return SecretOutcome<InfisicalRuntimeSession>.Failure(
+                OpeningAttempt.LoginReceipt?.Evidence == DispatchEvidence.PossiblyDispatched
+                    ? SecretStatus.Unknown : SecretStatus.Unavailable, reason: reason);
+        }
+        finally
+        {
+            if (candidate is not null)
+                try { await candidate.DisposeAsync().ConfigureAwait(false); } catch (Exception) { }
+        }
     }
 
     /// <summary>Borrowed native access; the aggregate owns disposal and the child owns operation admission.</summary>
@@ -26,7 +157,14 @@ public sealed class InfisicalRuntimeSession : IAsyncDisposable
 
     /// <summary>Borrowed explicit maintenance access; do not independently dispose this aggregate-owned session.</summary>
     [JsonIgnore]
-    public InfisicalPeriodicTokenSession TokenSession { get; }
+    public InfisicalPeriodicTokenSession TokenSession
+    {
+        get
+        {
+            lock (_gate)
+                return _tokenSession ?? throw new InvalidOperationException("Runtime authentication has not completed.");
+        }
+    }
 
     /// <summary>Opens once using borrowed bootstrap material and retains actual dispatch evidence in the supplied attempt.</summary>
     /// <remarks>Independent policy is bound to the actual login, never inferred from its maximum TTL.
@@ -59,20 +197,19 @@ public sealed class InfisicalRuntimeSession : IAsyncDisposable
                     authenticated.Status, authenticated.RetryAfter, authenticated.Reason);
             login = authenticated.Value;
             cancellationToken.ThrowIfCancellationRequested();
-            if (login.AccessTokenMaxTTL > TimeSpan.FromDays(36500).TotalSeconds)
-                return SecretOutcome<InfisicalRuntimeSession>.Failure(SecretStatus.RecoveryRequired);
             InfisicalTokenLifetimeEvidence evidence = login.BindLifetimeEvidence(new()
             {
                 OriginalIssuedAt = options.OriginalIssuedAt!.Value,
                 ExpiresAt = login.Token.ExpiresAt!.Value,
                 Lifetime = options.Lifetime,
-                ReportedMaximumTtl = TimeSpan.FromSeconds(login.AccessTokenMaxTTL),
+                ReportedMaximumTtl = login.AccessTokenMaxTtl,
                 Period = options.Period,
                 AbsoluteLifetimeLimit = options.AbsoluteLifetimeLimit
             });
             var opened = CreateOwned(options, login.Token.Material, evidence);
             if (!opened.IsSuccess) return opened;
             candidate = opened.Value;
+            candidate.OpeningAttempt = attempt;
             cancellationToken.ThrowIfCancellationRequested();
             var result = candidate;
             candidate = null;
@@ -222,9 +359,11 @@ public sealed class InfisicalRuntimeSession : IAsyncDisposable
     {
         // Register the aggregate deadline before child retirement can execute callbacks.
         var retired = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        bool retirementStarted = false;
         try
         {
             Task<bool> bounded = retired.Task.WaitAsync(_shutdownTimeout, _time);
+            retirementStarted = true;
             _ = CompleteRetirementAsync(retired);
             if (await bounded.ConfigureAwait(false))
                 completion.TrySetResult();
@@ -238,13 +377,36 @@ public sealed class InfisicalRuntimeSession : IAsyncDisposable
         catch (Exception)
         {
             // Even a failing host clock cannot abandon the owned children's retirement.
-            _ = RetireUnpublishedAsync(Client, TokenSession);
+            if (!retirementStarted) _ = CompleteRetirementAsync(retired);
             completion.TrySetException(new InvalidOperationException("Runtime shutdown failed."));
         }
     }
 
-    private async Task CompleteRetirementAsync(TaskCompletionSource<bool> completion) =>
-        completion.TrySetResult(await RetireUnpublishedAsync(Client, TokenSession).ConfigureAwait(false));
+    private async Task CompleteRetirementAsync(TaskCompletionSource<bool> completion)
+    {
+        bool succeeded = true;
+        Interlocked.Exchange(ref _bootstrap, null);
+        try { await _openingCancellation.CancelAsync().ConfigureAwait(false); }
+        catch (Exception) { succeeded = false; }
+        if (_authentication is not null)
+            try { await _authentication.ConfigureAwait(false); }
+            catch (OperationCanceledException) { }
+            catch (Exception) { succeeded = false; }
+        succeeded &= await RetireUnpublishedAsync(Client, _tokenSession).ConfigureAwait(false);
+        _openingCancellation.Dispose();
+        completion.TrySetResult(succeeded);
+    }
+
+    private sealed class DeferredTokenSource(InfisicalRuntimeSession runtime) : IInfisicalTokenSource
+    {
+        public async ValueTask<SecretOutcome<InfisicalAccessToken>> GetTokenAsync(CancellationToken cancellationToken)
+        {
+            var outcome = await runtime.EnsureAuthenticatedAsync(cancellationToken).ConfigureAwait(false);
+            return outcome.IsSuccess
+                ? await runtime.TokenSession.GetTokenAsync(cancellationToken).ConfigureAwait(false)
+                : SecretOutcome<InfisicalAccessToken>.Failure(outcome.Status, outcome.RetryAfter, outcome.Reason);
+        }
+    }
 
     private static async Task<bool> RetireUnpublishedAsync(
         InfisicalClient? client, InfisicalPeriodicTokenSession? session)

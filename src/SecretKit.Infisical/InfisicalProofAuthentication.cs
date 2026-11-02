@@ -292,9 +292,9 @@ public sealed partial class InfisicalProofAuthentication : IDisposable
                     !root.TryGetProperty("accessToken", out var token) || token.ValueKind != JsonValueKind.String ||
                     !root.TryGetProperty("tokenType", out var type) || type.ValueKind != JsonValueKind.String || type.GetString() != "Bearer" ||
                     !root.TryGetProperty("expiresIn", out var expires) || expires.ValueKind != JsonValueKind.Number ||
-                    !expires.TryGetDouble(out double seconds) || !double.IsFinite(seconds) || seconds <= 0 || seconds > 3153600000 ||
+                    !expires.TryGetDouble(out double seconds) || !double.IsFinite(seconds) || seconds < 0.0000001 || seconds > 315360000 ||
                     !root.TryGetProperty("accessTokenMaxTTL", out var maximum) || maximum.ValueKind != JsonValueKind.Number ||
-                    !maximum.TryGetDouble(out double max) || !double.IsFinite(max) || max < 0)
+                    !maximum.TryGetDouble(out double max) || !double.IsFinite(max) || max < 0 || max > 315360000)
                     return SecretOutcome<InfisicalProofLogin>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.InvalidResponse);
                 string text = token.GetString()!;
                 if (text.Length is < 1 or > 16384 || text.Any(c => c <= ' ' || c >= 127))
@@ -372,15 +372,15 @@ public sealed class InfisicalProofLogin : IDisposable
     internal InfisicalProofLogin(InfisicalAccessToken token, double expiresIn, double maximum)
     {
         Token = token;
-        ExpiresIn = expiresIn;
-        AccessTokenMaxTTL = maximum;
+        ExpiresIn = TimeSpan.FromSeconds(expiresIn);
+        AccessTokenMaxTtl = TimeSpan.FromSeconds(maximum);
     }
     /// <summary>The token owned by this login; explicit exports create ordinary plaintext.</summary>
     [JsonIgnore] public InfisicalAccessToken Token { get; }
-    /// <summary>Provider-reported expiry interval in seconds.</summary>
-    public double ExpiresIn { get; }
-    /// <summary>Provider-reported maximum TTL in seconds, not independently verified lifetime policy.</summary>
-    public double AccessTokenMaxTTL { get; }
+    /// <summary>Provider-reported expiry interval.</summary>
+    public TimeSpan ExpiresIn { get; }
+    /// <summary>Provider-reported maximum TTL, not independently verified lifetime policy.</summary>
+    public TimeSpan AccessTokenMaxTtl { get; }
     /// <summary>Disposes this login's token material without remote revocation.</summary>
     public void Dispose() => Token.Dispose();
     /// <summary>Returns a fixed label without token details.</summary>

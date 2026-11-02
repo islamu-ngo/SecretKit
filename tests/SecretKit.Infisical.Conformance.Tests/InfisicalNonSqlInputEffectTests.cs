@@ -1,3 +1,4 @@
+using SecretKit.Infisical.Dynamic;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using SecretKit.Core;

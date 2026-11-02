@@ -1,15 +1,33 @@
 using SecretKit.Core;
-using SecretKit.Extensions.Configuration;
 
-namespace SecretKit.Samples.RuntimeConfiguration;
+namespace SecretKit.Extensions.Configuration;
 
-public enum RuntimeStalePolicy { FailClosed, BoundedLastKnown }
-public enum RuntimeFreshness { None, Fresh, Stale, DeadlineElapsed }
+/// <summary>Determines whether a failed collection immediately removes the active client.</summary>
+public enum SecretGenerationStalePolicy
+{
+    /// <summary>Remove the active client when collection or validation fails.</summary>
+    FailClosed,
+    /// <summary>Retain the last accepted client only until its original deadline.</summary>
+    BoundedLastKnown
+}
+
+/// <summary>Local freshness of the accepted client generation.</summary>
+public enum SecretGenerationFreshness
+{
+    /// <summary>No client generation is active.</summary>
+    None,
+    /// <summary>The last collection succeeded and the deadline has not elapsed.</summary>
+    Fresh,
+    /// <summary>The last collection failed but the original deadline has not elapsed.</summary>
+    Stale,
+    /// <summary>The accepted generation can no longer be used.</summary>
+    DeadlineElapsed
+}
 
 /// <summary>Local consumer evidence only; neither saved provider state nor fleet readiness.</summary>
-public sealed record RuntimeActivationObservation(
+public sealed record SecretGenerationObservation(
     long DesiredRevision, long ObservedRevision, bool DesiredEnabled, bool Active,
-    SecretStatus LastStatus, RuntimeFreshness Freshness, DateTimeOffset? CollectedAt,
+    SecretStatus LastStatus, SecretGenerationFreshness Freshness, DateTimeOffset? CollectedAt,
     DateTimeOffset? UsableUntil);
 
 /// <summary>
@@ -18,31 +36,45 @@ public sealed record RuntimeActivationObservation(
 /// The app validator owns acceptance,
 /// constructs a new independent client, and must not retain the borrowed candidate handle.
 /// </summary>
-public sealed class RuntimeIntegrationCoordinator : IAsyncDisposable
+/// <typeparam name="TClient">An independently owned application client.</typeparam>
+/// <remarks>
+/// Successful validation transfers client ownership to the coordinator. Never return a shared client.
+/// Dispose leases before disposing this owner; owner disposal waits for all leases and operations.
+/// Validators and client disposers must not await disposal of this coordinator from within a callback.
+/// Activation and configuration export are separate operations, not one joint transaction.
+/// </remarks>
+public sealed class SecretGenerationCoordinator<TClient> : IAsyncDisposable where TClient : class, IAsyncDisposable
 {
     private readonly object _gate = new();
     private readonly SecretSelection[] _selections;
     private readonly Func<SecretSnapshotHandle, CancellationToken,
-        ValueTask<SecretOutcome<IRuntimeIntegrationClient>>> _validate;
+        ValueTask<SecretOutcome<TClient>>> _validate;
     private readonly TimeProvider _time;
     private readonly TimeSpan _maxAge;
-    private readonly RuntimeStalePolicy _policy;
-    private RuntimeClientGeneration? _current;
+    private readonly SecretGenerationStalePolicy _policy;
+    private SecretClientGeneration<TClient>? _current;
     private long _desiredRevision;
     private long _observedRevision;
     private bool _enabled;
     private bool _disposed;
     private bool _retirementFailed;
-    private readonly HashSet<RuntimeClientGeneration> _generations = [];
+    private readonly HashSet<SecretClientGeneration<TClient>> _generations = [];
     private readonly HashSet<Task> _collections = [];
     private TaskCompletionSource? _disposal;
     private SecretStatus _lastStatus = SecretStatus.Absent;
 
-    public RuntimeIntegrationCoordinator(ISecretReader intendedReader,
+    /// <summary>Creates caller-driven collection and activation policy without performing reader I/O.</summary>
+    /// <param name="intendedReader">The explicitly selected, borrowed reader.</param>
+    /// <param name="requiredKeys">Nonempty required consumer keys and their authority-bound references.</param>
+    /// <param name="validate">Validates a borrowed snapshot and returns a newly owned client.</param>
+    /// <param name="stalePolicy">Treatment of the accepted generation when a new attempt fails.</param>
+    /// <param name="maximumAge">Positive maximum lifetime, bounded further by secret expiry.</param>
+    /// <param name="clock">Clock used for collection and operation admission.</param>
+    public SecretGenerationCoordinator(ISecretReader intendedReader,
         IReadOnlyDictionary<string, SecretReference> requiredKeys,
         Func<SecretSnapshotHandle, CancellationToken,
-            ValueTask<SecretOutcome<IRuntimeIntegrationClient>>> validate,
-        RuntimeStalePolicy stalePolicy, TimeSpan maximumAge, TimeProvider clock)
+            ValueTask<SecretOutcome<TClient>>> validate,
+        SecretGenerationStalePolicy stalePolicy, TimeSpan maximumAge, TimeProvider clock)
     {
         ArgumentNullException.ThrowIfNull(intendedReader);
         ArgumentNullException.ThrowIfNull(requiredKeys);
@@ -60,16 +92,19 @@ public sealed class RuntimeIntegrationCoordinator : IAsyncDisposable
         _time = clock;
     }
 
-    public ValueTask<RuntimeActivationObservation> EnableAsync(CancellationToken cancellationToken = default) =>
+    /// <summary>Collects and validates fresh material, then activates only the latest requested revision.</summary>
+    public ValueTask<SecretGenerationObservation> EnableAsync(CancellationToken cancellationToken = default) =>
         CollectAsync(enable: true, cancellationToken);
 
-    public ValueTask<RuntimeActivationObservation> CheckAgainAsync(CancellationToken cancellationToken = default) =>
+    /// <summary>Collects and validates fresh material without activating the candidate client.</summary>
+    public ValueTask<SecretGenerationObservation> CheckAgainAsync(CancellationToken cancellationToken = default) =>
         CollectAsync(enable: false, cancellationToken);
 
-    public async ValueTask<RuntimeActivationObservation> DisableAsync()
+    /// <summary>Stops new acquisition and retires the current client after existing pins are released.</summary>
+    public async ValueTask<SecretGenerationObservation> DisableAsync()
     {
-        RuntimeClientGeneration? retired;
-        RuntimeActivationObservation observation;
+        SecretClientGeneration<TClient>? retired;
+        SecretGenerationObservation observation;
         lock (_gate)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
@@ -84,7 +119,8 @@ public sealed class RuntimeIntegrationCoordinator : IAsyncDisposable
         return observation;
     }
 
-    public RuntimeActivationObservation Observe()
+    /// <summary>Returns material-free evidence for this local owner without performing reader I/O.</summary>
+    public SecretGenerationObservation Observe()
     {
         lock (_gate)
         {
@@ -93,18 +129,19 @@ public sealed class RuntimeIntegrationCoordinator : IAsyncDisposable
         }
     }
 
-    public RuntimeGenerationLease? Acquire()
+    /// <summary>Pins the current usable client or returns null when local policy rejects acquisition.</summary>
+    public SecretGenerationLease<TClient>? Acquire()
     {
         lock (_gate)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             if (!ObserveLocked().Active) return null;
             _current!.AddReference();
-            return new RuntimeGenerationLease(_current);
+            return new SecretGenerationLease<TClient>(_current);
         }
     }
 
-    private async ValueTask<RuntimeActivationObservation> CollectAsync(bool enable, CancellationToken cancellationToken)
+    private async ValueTask<SecretGenerationObservation> CollectAsync(bool enable, CancellationToken cancellationToken)
     {
         long revision;
         var finished = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -118,8 +155,8 @@ public sealed class RuntimeIntegrationCoordinator : IAsyncDisposable
         }
         // Application readers/validators/disposers must not run under a caller's revision gate.
         await Task.Yield();
-        IRuntimeIntegrationClient? client = null;
-        RuntimeClientGeneration? retired = null;
+        TClient? client = null;
+        SecretClientGeneration<TClient>? retired = null;
         SecretStatus status = SecretStatus.Unknown;
         DateTimeOffset collected = default;
         DateTimeOffset deadline = default;
@@ -140,7 +177,7 @@ public sealed class RuntimeIntegrationCoordinator : IAsyncDisposable
                     using SecretRead read = candidate.Read(selection.ConsumerKey);
                     if (read.Observation.ExpiresAt is { } expiry && expiry < deadline) deadline = expiry;
                 }
-                SecretOutcome<IRuntimeIntegrationClient> validation =
+                SecretOutcome<TClient> validation =
                     await _validate(candidate, cancellationToken).ConfigureAwait(false);
                 status = validation.Status;
                 if (validation.IsSuccess) client = validation.Value;
@@ -154,18 +191,18 @@ public sealed class RuntimeIntegrationCoordinator : IAsyncDisposable
                     _lastStatus = status;
                     if (status == SecretStatus.Success && enable && _enabled)
                     {
-                        RuntimeClientGeneration? previous = _current;
-                        _current = new RuntimeClientGeneration(client!, revision, collected, deadline, _time,
+                        SecretClientGeneration<TClient>? previous = _current;
+                        _current = new SecretClientGeneration<TClient>(client!, revision, collected, deadline, _time,
                             ObserveRetirement);
                         _generations.Add(_current);
                         client = null;
                         _observedRevision = revision;
                         retired = previous;
                     }
-                    else if (status != SecretStatus.Success && _policy == RuntimeStalePolicy.FailClosed) retired = Detach();
+                    else if (status != SecretStatus.Success && _policy == SecretGenerationStalePolicy.FailClosed) retired = Detach();
                 }
             }
-            RuntimeClientGeneration? release = retired;
+            SecretClientGeneration<TClient>? release = retired;
             retired = null;
             if (release is not null) await release.ReleaseAsync().ConfigureAwait(false);
         }
@@ -176,7 +213,7 @@ public sealed class RuntimeIntegrationCoordinator : IAsyncDisposable
                 if (!_disposed && revision == _desiredRevision)
                 {
                     _lastStatus = SecretStatus.Unknown;
-                    if (_policy == RuntimeStalePolicy.FailClosed) retired = Detach();
+                    if (_policy == SecretGenerationStalePolicy.FailClosed) retired = Detach();
                 }
             }
             if (retired is not null) await retired.ReleaseAsync().ConfigureAwait(false);
@@ -189,7 +226,7 @@ public sealed class RuntimeIntegrationCoordinator : IAsyncDisposable
                 if (!_disposed && revision == _desiredRevision)
                 {
                     _lastStatus = SecretStatus.Unknown;
-                    if (_policy == RuntimeStalePolicy.FailClosed) retired = Detach();
+                    if (_policy == SecretGenerationStalePolicy.FailClosed) retired = Detach();
                 }
             }
             if (retired is not null) await retired.ReleaseAsync().ConfigureAwait(false);
@@ -214,24 +251,24 @@ public sealed class RuntimeIntegrationCoordinator : IAsyncDisposable
         lock (_gate) return ObserveLocked();
     }
 
-    private RuntimeActivationObservation ObserveLocked()
+    private SecretGenerationObservation ObserveLocked()
     {
-        RuntimeFreshness freshness = _current is null ? RuntimeFreshness.None :
-            _time.GetUtcNow() >= _current.Deadline ? RuntimeFreshness.DeadlineElapsed :
-            _lastStatus == SecretStatus.Success ? RuntimeFreshness.Fresh : RuntimeFreshness.Stale;
+        SecretGenerationFreshness freshness = _current is null ? SecretGenerationFreshness.None :
+            _time.GetUtcNow() >= _current.Deadline ? SecretGenerationFreshness.DeadlineElapsed :
+            _lastStatus == SecretStatus.Success ? SecretGenerationFreshness.Fresh : SecretGenerationFreshness.Stale;
         return new(_desiredRevision, _observedRevision, _enabled,
-            _enabled && !_retirementFailed && _current is not null && freshness != RuntimeFreshness.DeadlineElapsed,
+            _enabled && !_retirementFailed && _current is not null && freshness != SecretGenerationFreshness.DeadlineElapsed,
             _lastStatus, freshness, _current?.CollectedAt, _current?.Deadline);
     }
 
-    private RuntimeClientGeneration? Detach()
+    private SecretClientGeneration<TClient>? Detach()
     {
-        RuntimeClientGeneration? previous = _current;
+        SecretClientGeneration<TClient>? previous = _current;
         _current = null;
         return previous;
     }
 
-    private void ObserveRetirement(RuntimeClientGeneration generation, bool failed)
+    private void ObserveRetirement(SecretClientGeneration<TClient> generation, bool failed)
     {
         lock (_gate)
         {
@@ -240,11 +277,13 @@ public sealed class RuntimeIntegrationCoordinator : IAsyncDisposable
         }
     }
 
+    /// <summary>Rejects new work and waits for collections, leases, and client retirement to complete.</summary>
+    /// <exception cref="InvalidOperationException">A client could not be retired; details are suppressed.</exception>
     public async ValueTask DisposeAsync()
     {
         TaskCompletionSource completion;
         Task[] pending;
-        RuntimeClientGeneration? retired = null;
+        SecretClientGeneration<TClient>? retired = null;
         bool ownsDisposal;
         lock (_gate)
         {

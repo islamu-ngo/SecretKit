@@ -262,7 +262,7 @@
     },
     {
       "file": "src/SecretKit.Infisical/InfisicalClient.cs",
-      "sha256": "a190c45769a123bac0005df2d16161e17da18d662f2cb4df9fcdf903c1185bd7"
+      "sha256": "2a48602283990d455c2422e7b21ba38c2e0688b77c73f0992b9b799bdb3f66f8"
     },
     {
       "file": "src/SecretKit.Infisical/InfisicalContractAvailability.cs",
@@ -274,7 +274,7 @@
     },
     {
       "file": "src/SecretKit.Infisical/InfisicalDynamicClient.cs",
-      "sha256": "a3d78dcb414c3c5f7140f2f986eda000417a4ead9600785f5aa522f1efef2f52"
+      "sha256": "1a5c5d452d2d0cf7c48be08d134e711979fcd80938ef3fb9c1c3abc701af6412"
     },
     {
       "file": "src/SecretKit.Infisical/InfisicalDynamicTypes.cs",
@@ -287,6 +287,10 @@
     {
       "file": "src/SecretKit.Infisical/InfisicalLeaseTypes.cs",
       "sha256": "3d19b1999d0a73124447ded35aa0b90e8e782d01426945b8c6a9e47cb602c9ad"
+    },
+    {
+      "file": "src/SecretKit.Infisical/InfisicalMutationOperation.cs",
+      "sha256": "f729ff1d9bb3dca08f680cce91cf7096a473bd7daff4767afbfab2b987ec27c4"
     },
     {
       "file": "src/SecretKit.Infisical/InfisicalNetworkOptions.cs",
@@ -302,7 +306,7 @@
     },
     {
       "file": "src/SecretKit.Infisical/InfisicalProofAuthentication.cs",
-      "sha256": "91e0839cb08ea18d51bc32369bece88d8e876200dbe25533c25738ab221269d8"
+      "sha256": "3ed16728888b1b47bdf89fa999a55d2a36e12b5a23ca254bf319169c568b5c8d"
     },
     {
       "file": "src/SecretKit.Infisical/InfisicalRotationApi.cs",
@@ -326,11 +330,11 @@
     },
     {
       "file": "src/SecretKit.Infisical/InfisicalRuntimeSession.cs",
-      "sha256": "e475e0e70ccf94e4ca8893a9252c871a97401f6e7c971b279daea73406b3fc9b"
+      "sha256": "2f42d7a83b5373719cdb372146f789baf2aeaf5f47ca60812d9a9df208ecfb73"
     },
     {
       "file": "src/SecretKit.Infisical/InfisicalSecretAddress.cs",
-      "sha256": "e5853bcdc101a3779b2838070d62253c518776df5e1da575b1be321e3a77b8c3"
+      "sha256": "67244ba336f50cf4859665df90a062f86e35236a4fb0079536dcf471b8698cbf"
     },
     {
       "file": "src/SecretKit.Infisical/InfisicalSecretRead.cs",
@@ -339,6 +343,10 @@
     {
       "file": "src/SecretKit.Infisical/InfisicalSecretRevision.cs",
       "sha256": "85a04494309317775caf808022e1dd971283c43def4ad4c2bca1a5821a16372d"
+    },
+    {
+      "file": "src/SecretKit.Infisical/InfisicalSecretScope.cs",
+      "sha256": "05870dbeaef0958b29b912258b317edd6cd614b7ae94d6cd00bfe900e84321a8"
     },
     {
       "file": "src/SecretKit.Infisical/InfisicalStaticChanges.cs",
@@ -358,7 +366,7 @@
     },
     {
       "file": "src/SecretKit.Infisical/InfisicalUniversalAuthentication.cs",
-      "sha256": "3f22ce7a3a42e679b844789d3c7e665d006ac8e4c74e0bbe8d7c090d3ed23eaa"
+      "sha256": "27dc3d61abb87a79c06640486555261c9437666d854d4c85ba08f282b978fb45"
     },
     {
       "file": "src/SecretKit.Infisical/NativeAuthority.cs",
@@ -370,15 +378,15 @@
     },
     {
       "file": "src/SecretKit.Infisical/NativeDynamicDefinitionOptions.cs",
-      "sha256": "02a7cdf42d47326bbbf78a365bfd70d7e289d7c950d6f0d40972b09ad82cf0c7"
+      "sha256": "36475cf73607840bdf9705af2a072cce4cd263e76e9d4ad53201fd349d160bbc"
     },
     {
       "file": "src/SecretKit.Infisical/NativeDynamicProfileOptions.cs",
-      "sha256": "00e46cb36bea3c10904f2ee9537e7dc6587b9230d9ea5cf8e6864b88d92c3511"
+      "sha256": "4ffd9f36d5fb360d8e211e6ceaafb9d74066ebad585f7594bf87f08169abe6cb"
     },
     {
       "file": "src/SecretKit.Infisical/NativeDynamicProfiles.cs",
-      "sha256": "bd34355a8fdb2820561711c99c578b149814ca916cbe57b0be9923a0fab60f0b"
+      "sha256": "3b55db8a8a01b3e425eee172e63d847d6863ce76b394c06c675575178fcb9066"
     },
     {
       "file": "src/SecretKit.Infisical/NativeWire.cs",
@@ -398,6 +406,147 @@
     }
   ],
   "operations": [
+    {
+      "id": "i.runtime.InfisicalSecretScope.ReadAsync",
+      "member": "SecretKit.Infisical.InfisicalSecretScope.ReadAsync(System.String,System.Threading.CancellationToken)",
+      "variants": [
+        "latest.Raw.direct.scoped-key"
+      ],
+      "contract": "implemented-subset",
+      "effect": "Read owned material under the scope's explicitly selected authority and native coordinates; verify independent state and disposal. No cached material or fallback identity is introduced.",
+      "requiredCases": [
+        "selected-contract",
+        "denied-authority",
+        "cancellation-boundary",
+        "independent-effect"
+      ],
+      "prerequisites": [
+        "owned-origin-api-revision",
+        "selected-runtime-identity",
+        "separate-observer-identity",
+        "approved-sandbox-cleanup"
+      ]
+    },
+    {
+      "id": "i.runtime.InfisicalSecretScope.GetSecretAsync",
+      "member": "SecretKit.Infisical.InfisicalSecretScope.GetSecretAsync(System.String,System.Threading.CancellationToken)",
+      "variants": [
+        "latest.Raw.direct.required-secret"
+      ],
+      "contract": "implemented-subset",
+      "effect": "Read a required owned secret through the selected scope or throw coordinate-free classified failure; cancellation remains cancellation. Live proof must exercise the selected runtime authority.",
+      "requiredCases": [
+        "selected-contract",
+        "denied-authority",
+        "cancellation-boundary",
+        "independent-effect"
+      ],
+      "prerequisites": [
+        "owned-origin-api-revision",
+        "selected-runtime-identity",
+        "separate-observer-identity",
+        "approved-sandbox-cleanup"
+      ]
+    },
+    {
+      "id": "i.runtime.InfisicalSecretScope.TryGetSecretAsync",
+      "member": "SecretKit.Infisical.InfisicalSecretScope.TryGetSecretAsync(System.String,System.Threading.CancellationToken)",
+      "variants": [
+        "latest.Raw.direct.optional-secret",
+        "latest.Raw.direct.absent"
+      ],
+      "contract": "implemented-subset",
+      "effect": "Return null only for provider-established absence; denied, unavailable and uncertain reads remain classified failures, without revealing coordinates. Returned material remains caller-owned.",
+      "requiredCases": [
+        "selected-contract",
+        "denied-authority",
+        "cancellation-boundary",
+        "independent-effect"
+      ],
+      "prerequisites": [
+        "owned-origin-api-revision",
+        "selected-runtime-identity",
+        "separate-observer-identity",
+        "approved-sandbox-cleanup"
+      ]
+    },
+    {
+      "id": "i.runtime.InfisicalSecretScope.InspectAsync",
+      "member": "SecretKit.Infisical.InfisicalSecretScope.InspectAsync(System.String,System.Threading.CancellationToken)",
+      "variants": [
+        "direct-folder.metadata.selected-key",
+        "direct-folder.metadata.incomplete-missing-unknown"
+      ],
+      "contract": "implemented-subset",
+      "effect": "Select value-free metadata from bounded folder inventory under the exact authority. Missing metadata in incomplete inventory remains Unknown; visibility never establishes permission to read material.",
+      "requiredCases": [
+        "selected-contract",
+        "denied-authority",
+        "cancellation-boundary",
+        "independent-effect"
+      ],
+      "prerequisites": [
+        "owned-origin-api-revision",
+        "selected-runtime-identity",
+        "separate-observer-identity",
+        "approved-sandbox-cleanup"
+      ]
+    },
+    {
+      "id": "i.runtime.InfisicalMutationOperation.ExecuteAsync",
+      "member": "SecretKit.Infisical.InfisicalMutationOperation.ExecuteAsync(System.Threading.CancellationToken)",
+      "variants": [
+        "create.shared.raw.unversioned",
+        "update.shared.raw.unversioned",
+        "pre-dispatch-recovery",
+        "dispatched-no-replay"
+      ],
+      "contract": "implemented-subset",
+      "effect": "Execute one prepared static mutation with a retained local receipt and reject overlap. Retry is allowed only before dispatch; uncertainty or any dispatch forbids replay. Independent native readback establishes effect, never the receipt identifier.",
+      "requiredCases": [
+        "selected-contract",
+        "denied-authority",
+        "cancellation-boundary",
+        "independent-effect",
+        "lost-response-no-replay"
+      ],
+      "prerequisites": [
+        "owned-origin-api-revision",
+        "selected-runtime-identity",
+        "separate-observer-identity",
+        "approved-sandbox-cleanup"
+      ]
+    },
+    {
+      "id": "i.runtime.InfisicalRuntimeSession.EnsureAuthenticatedAsync",
+      "member": "SecretKit.Infisical.InfisicalRuntimeSession.EnsureAuthenticatedAsync(System.Threading.CancellationToken)",
+      "variants": [
+        "organizationSlug.omitted",
+        "organizationSlug.value",
+        "lifetime.finite",
+        "lifetime.periodic",
+        "deferred.single-admission"
+      ],
+      "contract": "implemented-subset",
+      "effect": "Join explicit deferred runtime admission under independently verified lifetime policy. Retain a single authentication attempt and its dispatch uncertainty without implicit replay or principal fallback; startup and waiting alone prove no native authority.",
+      "requiredCases": [
+        "selected-contract",
+        "denied-authority",
+        "cancellation-boundary",
+        "independent-effect",
+        "lost-response-no-replay"
+      ],
+      "prerequisites": [
+        "owned-origin-api-revision",
+        "selected-runtime-identity",
+        "separate-observer-identity",
+        "approved-sandbox-cleanup",
+        "auth-mechanism-authority",
+        "auth-mechanism-entitlement",
+        "intended-token-consumer",
+        "independent-token-lifetime-evidence"
+      ]
+    },
     {
       "id": "i.runtime.InfisicalClient.CreateAsync",
       "member": "SecretKit.Infisical.InfisicalClient.CreateAsync(SecretKit.Core.SecretReference,SecretKit.Core.SecretMaterial,SecretKit.Core.MutationReceipt,System.Threading.CancellationToken)",
@@ -1414,7 +1563,7 @@
     },
     {
       "id": "i.runtime.InfisicalDynamicClient.CreateDefinitionAsync",
-      "member": "SecretKit.Infisical.InfisicalDynamicClient.CreateDefinitionAsync(SecretKit.Infisical.InfisicalDynamicTarget,SecretKit.Infisical.InfisicalDynamicProfile,SecretKit.Infisical.InfisicalLeaseDuration,SecretKit.Infisical.InfisicalLeaseDuration,SecretKit.Infisical.InfisicalDynamicMutationReceipt,System.Threading.CancellationToken,SecretKit.Infisical.NativeDynamicDefinitionOptions)",
+      "member": "SecretKit.Infisical.InfisicalDynamicClient.CreateDefinitionAsync(SecretKit.Infisical.InfisicalDynamicTarget,SecretKit.Infisical.Dynamic.InfisicalDynamicProfile,SecretKit.Infisical.InfisicalLeaseDuration,SecretKit.Infisical.InfisicalLeaseDuration,SecretKit.Infisical.InfisicalDynamicMutationReceipt,System.Threading.CancellationToken,SecretKit.Infisical.Dynamic.NativeDynamicDefinitionOptions)",
       "variants": [
         "options.omitted",
         "options.value",
@@ -2174,7 +2323,7 @@
     },
     {
       "id": "i.runtime.InfisicalDynamicClient.UpdateDefinitionAsync",
-      "member": "SecretKit.Infisical.InfisicalDynamicClient.UpdateDefinitionAsync(SecretKit.Infisical.InfisicalDynamicDefinition,SecretKit.Infisical.NativeDynamicDefinitionPatch,SecretKit.Infisical.InfisicalDynamicMutationReceipt,System.Threading.CancellationToken)",
+      "member": "SecretKit.Infisical.InfisicalDynamicClient.UpdateDefinitionAsync(SecretKit.Infisical.InfisicalDynamicDefinition,SecretKit.Infisical.Dynamic.NativeDynamicDefinitionPatch,SecretKit.Infisical.InfisicalDynamicMutationReceipt,System.Threading.CancellationToken)",
       "variants": [
         "profile.SqlDatabase",
         "profile.Clickhouse",

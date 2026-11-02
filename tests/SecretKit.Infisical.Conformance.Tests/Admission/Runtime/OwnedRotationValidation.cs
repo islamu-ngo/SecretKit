@@ -1,3 +1,4 @@
+using SecretKit.Infisical.Dynamic;
 using SecretKit.Core;
 using SecretKit.Infisical.Management;
 using SecretKit.TestFixtures;

@@ -153,7 +153,8 @@ first-party MIT license does not replace those notices.
 | Microsoft.Extensions.Configuration.Abstractions 10.0.12 | Configuration and Hosting transitive | MIT expression and runtime notice payload below |
 | Microsoft.Extensions.Primitives 10.0.12 | Configuration and Hosting transitive | MIT expression and runtime notice payload below |
 | Microsoft.Extensions.Hosting.Abstractions 10.0.12 | Direct Hosting dependency | MIT expression and runtime notice payload below |
-| Microsoft.Extensions.Diagnostics.HealthChecks.Abstractions 10.0.12 | Direct Hosting dependency | MIT expression and distinct ASP.NET notice payload below |
+| Microsoft.Extensions.Diagnostics.HealthChecks 10.0.12 | Direct Hosting dependency for opt-in health check registration | MIT expression and distinct ASP.NET notice payload below |
+| Microsoft.Extensions.Diagnostics.HealthChecks.Abstractions 10.0.12 | Hosting transitive | MIT expression and distinct ASP.NET notice payload below |
 | Microsoft.Extensions.DependencyInjection.Abstractions 10.0.12 | Hosting transitive | MIT expression and runtime notice payload below |
 | Microsoft.Extensions.Diagnostics.Abstractions 10.0.12 | Hosting transitive | MIT expression and runtime notice payload below |
 | Microsoft.Extensions.FileProviders.Abstractions 10.0.12 | Hosting transitive | MIT expression and runtime notice payload below |

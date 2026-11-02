@@ -1,3 +1,4 @@
+using SecretKit.Infisical.Dynamic;
 using System.Text.Json.Serialization;
 using SecretKit.Core;
 using SecretKit.TestFixtures;

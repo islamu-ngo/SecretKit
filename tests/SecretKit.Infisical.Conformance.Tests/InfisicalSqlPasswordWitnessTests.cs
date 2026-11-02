@@ -1,3 +1,4 @@
+using SecretKit.Infisical.Dynamic;
 using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;

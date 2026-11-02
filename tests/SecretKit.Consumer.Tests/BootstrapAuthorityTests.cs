@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text.Json;
 using SecretKit.Core;
+using SecretKit.Extensions.Configuration;
 using SecretKit.Samples.RuntimeConfiguration;
 
 namespace SecretKit.Consumer.Tests;
@@ -46,11 +47,11 @@ public sealed class BootstrapAuthorityTests
         using BootstrapCandidate required = (await BootstrapScenario.PrepareAsync(reader, Bindings(reader))).Value;
         var optionalReader = new Reader((_, _) =>
             ValueTask.FromResult(SecretOutcome<SecretRead>.Failure(failure)));
-        await using var optional = new RuntimeIntegrationCoordinator(optionalReader, Bindings(optionalReader),
+        await using var optional = new SecretGenerationCoordinator<IRuntimeIntegrationClient>(optionalReader, Bindings(optionalReader),
             (_, _) => throw new InvalidOperationException("Incomplete optional group reached construction."),
-            RuntimeStalePolicy.FailClosed, TimeSpan.FromMinutes(1), TimeProvider.System);
+            SecretGenerationStalePolicy.FailClosed, TimeSpan.FromMinutes(1), TimeProvider.System);
 
-        RuntimeActivationObservation checkedAgain = await optional.CheckAgainAsync();
+        SecretGenerationObservation checkedAgain = await optional.CheckAgainAsync();
 
         using SecretRead username = required.Read("Database:Username");
         using SecretRead password = required.Read("Database:Password");

@@ -512,7 +512,7 @@ internal sealed class IdentityAuthContext : IAsyncDisposable
                 issued[0].AuthMethod != strategy + "-auth" || issued[0].IsAccessTokenRevoked != false)) return false;
             if (allowed && (policy is null || issued[0].AccessTokenTTL != policy.Ttl ||
                 issued[0].AccessTokenMaxTTL != policy.MaximumTtl || issued[0].AccessTokenNumUsesLimit != policy.UsesLimit ||
-                login!.ExpiresIn != policy.Ttl || login.AccessTokenMaxTTL != policy.MaximumTtl)) return false;
+                login!.ExpiresIn.TotalSeconds != policy.Ttl || login.AccessTokenMaxTtl.TotalSeconds != policy.MaximumTtl)) return false;
         }
         return true;
     }

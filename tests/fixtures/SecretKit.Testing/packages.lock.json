@@ -1,32 +1,7 @@
 {
-  "version": 1,
+  "version": 2,
   "dependencies": {
     "net10.0": {
-      "SecretKit.Core": {
-        "type": "Direct",
-        "requested": "[0.2.0-integration.3, 0.2.0-integration.3]",
-        "resolved": "0.2.0-integration.3",
-        "contentHash": "Z0fdmOzb3qy3hnOTuupVVNT86eUzjRe0z5oHQPiPYJuMQC6nngzXMlOpgkFkI3Rjwrl9dY3asWEayLeo7VbvsQ=="
-      },
-      "SecretKit.Extensions.Configuration": {
-        "type": "Direct",
-        "requested": "[0.2.0-integration.3, 0.2.0-integration.3]",
-        "resolved": "0.2.0-integration.3",
-        "contentHash": "Mm27wZGUyE38CZMC4ntIptasjZFvCVejHgt9ai7xL6JzCZh5BTPBkQ+15ZwoELHDAgQAqMHlM9DDcy6XslabVg==",
-        "dependencies": {
-          "SecretKit.Core": "0.2.0-integration.3"
-        }
-      },
-      "SecretKit.Infisical": {
-        "type": "Direct",
-        "requested": "[0.2.0-integration.3, 0.2.0-integration.3]",
-        "resolved": "0.2.0-integration.3",
-        "contentHash": "CSRt34f1LGoxZyE21eVi0fo9BdD6C+WqxdS2Xf8kSDiPpVliuZr5tf1ml6xHdxWgu8M/8klDpODPKKjVBsr90A==",
-        "dependencies": {
-          "Refit": "16.3.0",
-          "SecretKit.Core": "0.2.0-integration.3"
-        }
-      },
       "ReactiveUI.Disposables": {
         "type": "Transitive",
         "resolved": "8.2.0",
@@ -49,8 +24,19 @@
           "ReactiveUI.Disposables": "8.2.0"
         }
       },
+      "secretkit.core": {
+        "type": "Project"
+      },
+      "secretkit.infisical": {
+        "type": "Project",
+        "dependencies": {
+          "Refit": "[16.3.0, )",
+          "SecretKit.Core": "[0.1.0-preview.1, )"
+        }
+      },
       "Refit": {
-        "type": "Transitive",
+        "type": "CentralTransitive",
+        "requested": "[16.3.0, )",
         "resolved": "16.3.0",
         "contentHash": "tQS8KnCqSrQPFIjYNglhU1heHSo0NOR82fLSqa4btzrtsvNs3JR8/VETFil2wFB+vncJ/vUpULhR4T0YxfZzTQ==",
         "dependencies": {

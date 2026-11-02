@@ -33,7 +33,7 @@ public sealed class DemoLockInputTests
             throw new InvalidOperationException("Select demo originals.");
         string root = Path.GetFullPath("../../../../../", AppContext.BaseDirectory);
         using var sourceLock = System.Text.Json.JsonDocument.Parse(File.ReadAllBytes(
-            Path.Combine(root, "samples/Infisical.ConsoleDemo/packages.lock.json")));
+            Path.Combine(root, "tests/PackageQualification/Infisical.ConsoleDemo/packages.lock.json")));
         string version = sourceLock.RootElement.GetProperty("dependencies").GetProperty("net10.0")
             .GetProperty("SecretKit.Core").GetProperty("resolved").GetString()!;
         DemoResult result = await new DemoProcess(candidateSelection: (directory, version))

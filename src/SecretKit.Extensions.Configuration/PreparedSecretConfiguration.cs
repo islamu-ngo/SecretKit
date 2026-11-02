@@ -67,11 +67,14 @@ public sealed class PreparedSecretConfiguration : IDisposable
     }
 
     /// <summary>Explicitly exports ordinary managed strings once, returning a borrowed root.</summary>
-    /// <remarks>The root belongs to this owner. Build and Load perform no reader I/O.</remarks>
+    /// <remarks>
+    /// The root belongs to this owner. Build and Load perform no reader I/O.
+    /// Export creates ordinary managed strings; disposing this owner cannot erase strings retained by consumers.
+    /// </remarks>
     /// <exception cref="ArgumentException">A mapped selection is unknown or destinations collide.</exception>
     /// <exception cref="InvalidOperationException">This owner has already exported its generation.</exception>
     /// <exception cref="ObjectDisposedException">This owner was disposed.</exception>
-    public IConfigurationRoot ExportAcknowledgingManagedStrings(IEnumerable<SecretConfigurationMapping> mapping)
+    public IConfigurationRoot Export(IEnumerable<SecretConfigurationMapping> mapping)
     {
         ArgumentNullException.ThrowIfNull(mapping);
         // Enumerating host-supplied mappings may execute host code; do it outside the owner gate.
@@ -82,7 +85,7 @@ public sealed class PreparedSecretConfiguration : IDisposable
             if (_export is not null)
                 throw new InvalidOperationException("Prepared configuration supports only one export.");
             SecretConfigurationExport export =
-                SecretConfigurationExport.CreateAcknowledgingManagedStrings(_handle, entries);
+                SecretConfigurationExport.Create(_handle, entries);
             try
             {
                 _root = new ConfigurationBuilder().Add(export).Build();

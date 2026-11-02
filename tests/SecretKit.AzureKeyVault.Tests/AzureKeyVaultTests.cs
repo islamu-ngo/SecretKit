@@ -209,7 +209,6 @@ public sealed class AzureKeyVaultTests
         await Assert.That(outcome.Status).IsEqualTo(SecretStatus.Success);
         await Assert.That(outcome.Value.Items.Count).IsEqualTo(2);
         await Assert.That(outcome.Value.IsComplete).IsTrue();
-        await Assert.That(outcome.Value.IsPointInTime).IsFalse();
         await Assert.That(outcome.Value.Items[0].Validity).IsEqualTo(SecretValidity.Expired);
         await Assert.That(outcome.Value.Items[1].Validity).IsEqualTo(SecretValidity.Disabled);
         await Assert.That(wire.Requests.All(uri => uri.AbsolutePath.TrimEnd('/') == "/secrets")).IsTrue();

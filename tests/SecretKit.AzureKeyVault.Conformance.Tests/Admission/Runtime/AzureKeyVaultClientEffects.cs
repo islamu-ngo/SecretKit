@@ -228,7 +228,7 @@ internal static class AzureKeyVaultClientEffects
                                 observed.Add((property.Name, property.Version));
                             probe.Contract(inventory.Value.Items.All(i => i.Reference.Address is AzureSecretAddress address &&
                                 observed.Contains((address.Name, address.Version!))) &&
-                                inventory.Value.Items.Count <= items && !inventory.Value.IsPointInTime,
+                                inventory.Value.Items.Count <= items,
                                 NativeFailure.ContractMismatch);
                             probe.Effect(InventoryMatches(inventory.Value.Items.Select(i =>
                                 (AzureSecretAddress)i.Reference.Address).Select(a => (a.Name, a.Version!)).ToArray(),

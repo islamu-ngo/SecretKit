@@ -31,8 +31,6 @@ public sealed class SecretSnapshotHandle : IDisposable
     public int Count { get; }
     /// <summary>The number of declared selections, including absent optional selections.</summary>
     public int SelectionCount { get; }
-    /// <summary>Local coherence cannot manufacture a provider transaction.</summary>
-    public bool RemoteSnapshotGuaranteed => false;
 
     /// <summary>Copies material and preserves actual provider observation metadata.</summary>
     /// <returns>An independent read that the caller must dispose.</returns>

@@ -28,13 +28,13 @@ public static class BootstrapScenario
         using PreparedSecretConfiguration operation =
             (await PreparedSecretConfiguration.PrepareAsync(selections, options: collectionOptions)).Value;
         // This dedicated configuration root has no local/environment fallback sources.
-        IConfigurationRoot authorityOnly = operation.ExportAcknowledgingManagedStrings(
+        IConfigurationRoot authorityOnly = operation.Export(
             [new("username", "Service:Username"), new("password", "Service:Password")]);
         string username = authorityOnly["Service:Username"]!;
         string password = authorityOnly["Service:Password"]!;
         Func<bool> applicationOwnedConsumer = () => username.Length > 0 && password.Length > 0;
 
-        await using var optional = new RuntimeIntegrationCoordinator(reader,
+        await using var optional = new SecretGenerationCoordinator<IRuntimeIntegrationClient>(reader,
             new Dictionary<string, SecretReference>
             {
                 ["credential"] = new(reader.Authority, new CompositionAddress(true))
@@ -44,17 +44,17 @@ public static class BootstrapScenario
                 using SecretRead read = candidate.Read("credential");
                 return ValueTask.FromResult(SecretOutcome<IRuntimeIntegrationClient>.Success(
                     new CompositionClient(read.Material.Reveal())));
-            }, RuntimeStalePolicy.FailClosed, TimeSpan.FromMinutes(1), TimeProvider.System);
-        RuntimeActivationObservation absent = await optional.CheckAgainAsync();
+            }, SecretGenerationStalePolicy.FailClosed, TimeSpan.FromMinutes(1), TimeProvider.System);
+        SecretGenerationObservation absent = await optional.CheckAgainAsync();
         if (absent.LastStatus != SecretStatus.Absent || !applicationOwnedConsumer())
             throw new InvalidOperationException("Optional absence affected required startup.");
         reader.OptionalAvailable = true;
-        RuntimeActivationObservation checkedAgain = await optional.CheckAgainAsync();
+        SecretGenerationObservation checkedAgain = await optional.CheckAgainAsync();
         if (checkedAgain.Active || optional.Acquire() is not null)
             throw new InvalidOperationException("A capability check activated a consumer.");
         await optional.EnableAsync();
-        await using RuntimeGenerationLease active = optional.Acquire()!;
-        await active.ExecuteAsync();
+        await using SecretGenerationLease<IRuntimeIntegrationClient> active = optional.Acquire()!;
+        await active.ExecuteAsync(static (client, token) => client.ExecuteAsync(token));
 
         reader.RequiredValue = "offline-next";
         using PreparedSecretConfiguration next =

@@ -1,3 +1,4 @@
+using SecretKit.Infisical.Dynamic;
 using System.Net;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;

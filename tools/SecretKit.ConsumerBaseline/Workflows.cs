@@ -34,9 +34,9 @@ internal sealed class KitPath(string name, ISecretReader reader, ISecretInventor
         using SecretRead first = generation.Read("first");
         using SecretRead second = generation.Read("second");
         first.Dispose();
-        if (second.Material.Reveal() != expected || generation.RemoteSnapshotGuaranteed)
+        if (second.Material.Reveal() != expected)
             throw new InvalidOperationException("Generation contract failed.");
-        using SecretConfigurationExport export = SecretConfigurationExport.CreateAcknowledgingManagedStrings(
+        using SecretConfigurationExport export = SecretConfigurationExport.Create(
             generation, [
                 new SecretConfigurationMapping("first", "controlled:first"),
                 new SecretConfigurationMapping("second", "controlled:second")

@@ -18,7 +18,7 @@ public sealed class OptionalSelectionTests
         await Assert.That(absent.ReadOutcome("optional").Status).IsEqualTo(SecretStatus.Absent);
         await Assert.That(() => absent.Read("optional")).Throws<InvalidOperationException>();
         await Assert.That(() => absent.ReadOutcome("unknown")).Throws<ArgumentException>();
-        using var export = SecretConfigurationExport.CreateAcknowledgingManagedStrings(
+        using var export = SecretConfigurationExport.Create(
             absent, [new("optional", "Service:Value")]);
         IConfigurationRoot root = new ConfigurationBuilder().AddInMemoryCollection(
             new Dictionary<string, string?> { ["Service:Value"] = "must-not-resurrect" }).Add(export).Build();

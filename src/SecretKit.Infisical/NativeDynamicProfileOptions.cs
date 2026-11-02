@@ -1,7 +1,7 @@
 using System.Text.Json;
 using SecretKit.Core;
 
-namespace SecretKit.Infisical;
+namespace SecretKit.Infisical.Dynamic;
 
 // Only fixed, handwritten option constructors supply these field names.
 internal sealed class NativeProfileOptionData : IDisposable

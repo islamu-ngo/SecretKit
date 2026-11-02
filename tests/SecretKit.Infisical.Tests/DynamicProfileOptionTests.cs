@@ -1,5 +1,6 @@
 using System.Text.Json;
 using SecretKit.Core;
+using SecretKit.Infisical.Dynamic;
 
 namespace SecretKit.Infisical.Tests;
 

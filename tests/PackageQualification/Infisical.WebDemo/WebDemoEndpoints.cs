@@ -1,10 +1,11 @@
 using System.Text.Json;
+using SecretKit.Extensions.Configuration;
 using SecretKit.Samples.RuntimeConfiguration;
 
 namespace SecretKit.Samples.Infisical.WebDemo;
 
 internal sealed class WebDemoEndpoints(
-    RuntimeIntegrationCoordinator required, RuntimeIntegrationCoordinator? optional)
+    SecretGenerationCoordinator<IRuntimeIntegrationClient> required, SecretGenerationCoordinator<IRuntimeIntegrationClient>? optional)
 {
     private static readonly TimeSpan WorkTimeout = TimeSpan.FromSeconds(30);
 
@@ -43,8 +44,8 @@ internal sealed class WebDemoEndpoints(
 
     private async Task WorkAsync(HttpContext context)
     {
-        RuntimeIntegrationCoordinator? selected = context.Request.Query["optional"] == "true" ? optional : required;
-        await using RuntimeGenerationLease? lease = selected?.Acquire();
+        SecretGenerationCoordinator<IRuntimeIntegrationClient>? selected = context.Request.Query["optional"] == "true" ? optional : required;
+        await using SecretGenerationLease<IRuntimeIntegrationClient>? lease = selected?.Acquire();
         if (lease is null)
         {
             await ReplyAsync(context, 503, new { outcome = "unavailable" });
@@ -52,7 +53,7 @@ internal sealed class WebDemoEndpoints(
         }
         using var operation = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted);
         operation.CancelAfter(WorkTimeout);
-        string outcome = await lease.ExecuteAsync(operation.Token);
+        string outcome = await lease.ExecuteAsync(static (client, token) => client.ExecuteAsync(token), operation.Token);
         await ReplyAsync(context, outcome == "accepted" ? 200 : 502, new { outcome, revision = lease.Revision });
     }
 

@@ -15,10 +15,10 @@ public sealed class PreparedConfigurationTests
         using var prepared = outcome.Value;
         using SecretRead copy = prepared.Read("value");
         await Assert.That(reader.Reads).IsEqualTo(1);
-        IConfigurationRoot root = prepared.ExportAcknowledgingManagedStrings([new("value", "Service:Value")]);
+        IConfigurationRoot root = prepared.Export([new("value", "Service:Value")]);
         await Assert.That(root["Service:Value"]).IsEqualTo(reader.Text);
         await Assert.That(reader.Reads).IsEqualTo(1);
-        await Assert.That(() => prepared.ExportAcknowledgingManagedStrings([new("value", "Other")]))
+        await Assert.That(() => prepared.Export([new("value", "Other")]))
             .Throws<InvalidOperationException>();
         prepared.Dispose();
         prepared.Dispose();
@@ -26,7 +26,7 @@ public sealed class PreparedConfigurationTests
         await Assert.That(root["Service:Value"]).IsNull();
         await Assert.That(copy.Material.Reveal()).IsEqualTo(reader.Text);
         await Assert.That(() => prepared.ReadOutcome("value")).Throws<ObjectDisposedException>();
-        await Assert.That(() => prepared.ExportAcknowledgingManagedStrings([new("value", "Other")]))
+        await Assert.That(() => prepared.Export([new("value", "Other")]))
             .Throws<ObjectDisposedException>();
     }
 
@@ -53,11 +53,11 @@ public sealed class PreparedConfigurationTests
     {
         var reader = new SelectionReader();
         using var prepared = (await PreparedSecretConfiguration.PrepareAsync([reader.Select("value")])).Value;
-        await Assert.That(() => prepared.ExportAcknowledgingManagedStrings(
+        await Assert.That(() => prepared.Export(
             [new("value", "same"), new("value", "SAME")])).Throws<ArgumentException>();
-        await Assert.That(() => prepared.ExportAcknowledgingManagedStrings(
+        await Assert.That(() => prepared.Export(
             [new("value", "first"), new("unknown", "second")])).Throws<ArgumentException>();
-        IConfigurationRoot root = prepared.ExportAcknowledgingManagedStrings([new("value", "Service:Value")]);
+        IConfigurationRoot root = prepared.Export([new("value", "Service:Value")]);
         await Assert.That(root["Service:Value"]).IsEqualTo(reader.Text);
         await Assert.That(reader.Reads).IsEqualTo(1);
     }
@@ -70,7 +70,7 @@ public sealed class PreparedConfigurationTests
             [reader.Select("optional", SecretPresencePolicy.Optional)])).Value;
         await Assert.That(prepared.ReadOutcome("optional").Status).IsEqualTo(SecretStatus.Absent);
         await Assert.That(() => prepared.Read("optional")).Throws<InvalidOperationException>();
-        IConfigurationRoot root = prepared.ExportAcknowledgingManagedStrings([new("optional", "Value")]);
+        IConfigurationRoot root = prepared.Export([new("optional", "Value")]);
         await Assert.That(root.Providers.Single().TryGet("Value", out string? value)).IsTrue();
         await Assert.That(value).IsNull();
     }

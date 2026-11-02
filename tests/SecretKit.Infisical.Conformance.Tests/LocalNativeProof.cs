@@ -326,7 +326,7 @@ internal sealed class LocalNativeProof : IAsyncDisposable
             RetainToken(issued.Token.Material.Reveal(), "bootstrap:" + actor.SecretId);
             Ledger.Acknowledged(operation);
             var trial = new LocalNativeTrial(actor.Purpose, actor.Identity, actor.ClientId, issued.Token.Material.Reveal(),
-                issued.RequestStartedAt, time.GetUtcNow(), issued.ExpiresIn, issued.AccessTokenMaxTTL,
+                issued.RequestStartedAt, time.GetUtcNow(), issued.ExpiresIn.TotalSeconds, issued.AccessTokenMaxTtl.TotalSeconds,
                 actor.Ttl, actor.Maximum, actor.Period, actor.Uses, actor.BootstrapUses,
                 new(RunId, binding.RecordSha256, selection.ProjectId, selection.Environment, selection.Folder));
             return new(SecretStatus.Success, receipt.Evidence, trial);

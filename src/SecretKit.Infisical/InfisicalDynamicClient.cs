@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Refit;
 using SecretKit.Core;
+using SecretKit.Infisical.Dynamic;
 
 namespace SecretKit.Infisical;
 

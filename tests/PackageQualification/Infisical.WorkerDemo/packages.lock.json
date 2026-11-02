@@ -36,16 +36,16 @@
         "type": "Direct",
         "requested": "[0.2.0-integration.3, 0.2.0-integration.3]",
         "resolved": "0.2.0-integration.3",
-        "contentHash": "Z0fdmOzb3qy3hnOTuupVVNT86eUzjRe0z5oHQPiPYJuMQC6nngzXMlOpgkFkI3Rjwrl9dY3asWEayLeo7VbvsQ=="
+        "contentHash": "r/FuXMSRISN6SKLLlkS5d4F4+oowZCmcpb/Bj3MmSs3sWDUJm0dWWJE1c+dNZKkkxaPAV8bya7C/Oqwtt/KxJA=="
       },
       "SecretKit.Extensions.Hosting": {
         "type": "Direct",
         "requested": "[0.2.0-integration.3, 0.2.0-integration.3]",
         "resolved": "0.2.0-integration.3",
-        "contentHash": "X2UlbJstUO5RU675vJPfwxVAKrHm8iC6PCDiO+27VERiTlV/uLYmdMCeFlWhMfqzCda57E9VB0ThtX+cXGqjKg==",
+        "contentHash": "YPup6XcgliDHBwC7JnR3XfkMgxZg9s2wDL9ntSMbhVLOAjx8s573TiJj1CN3yksk77ygyJbQmg4Ur4+hQjwusg==",
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.12",
-          "Microsoft.Extensions.Diagnostics.HealthChecks.Abstractions": "10.0.12",
+          "Microsoft.Extensions.Diagnostics.HealthChecks": "10.0.12",
           "Microsoft.Extensions.Hosting.Abstractions": "10.0.12",
           "SecretKit.Core": "0.2.0-integration.3",
           "SecretKit.Infisical": "0.2.0-integration.3"
@@ -55,7 +55,7 @@
         "type": "Direct",
         "requested": "[0.2.0-integration.3, 0.2.0-integration.3]",
         "resolved": "0.2.0-integration.3",
-        "contentHash": "CSRt34f1LGoxZyE21eVi0fo9BdD6C+WqxdS2Xf8kSDiPpVliuZr5tf1ml6xHdxWgu8M/8klDpODPKKjVBsr90A==",
+        "contentHash": "X/swKpVXHHVXFHhNjrgjwOP1iGXA/HLmQ8J0uid4TSt7i7dLOLlzLKstoAuWTwuBFemPri34IHrCNN4Pm0so9w==",
         "dependencies": {
           "Refit": "16.3.0",
           "SecretKit.Core": "0.2.0-integration.3"
@@ -168,6 +168,17 @@
         "contentHash": "fMp91qlRlMOuHfMyp7LuAnOS+MOeWTF1obJmyFcs4nZCXu6pr+QB1AbFJcl2qpBltBrqF/Y7+Rn9IuNcSuctig==",
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.12",
+          "Microsoft.Extensions.Options": "10.0.12"
+        }
+      },
+      "Microsoft.Extensions.Diagnostics.HealthChecks": {
+        "type": "Transitive",
+        "resolved": "10.0.12",
+        "contentHash": "Ck8nkBxEYPOGtUCp0whKwfE4qAHBnsK0DY1kgZLKvzf7s9xyr4lASa4K4AKNN1VHy7r3Z1Z57U6C0TMzFjD8ig==",
+        "dependencies": {
+          "Microsoft.Extensions.Diagnostics.HealthChecks.Abstractions": "10.0.12",
+          "Microsoft.Extensions.Hosting.Abstractions": "10.0.12",
+          "Microsoft.Extensions.Logging.Abstractions": "10.0.12",
           "Microsoft.Extensions.Options": "10.0.12"
         }
       },

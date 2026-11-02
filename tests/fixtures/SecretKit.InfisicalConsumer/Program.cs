@@ -149,7 +149,7 @@ internal static class InstalledWorkflow
             () => client.InspectAsync(scope, deadline.Token).AsTask(),
             "GET", "/api/v4/secrets", 200, inventoryBody, Token)).Value;
         Require(inventory.Items.Count == 1 && !inventory.IsComplete &&
-            !inventory.IsPointInTime && inventory.Items[0].Version == "1" &&
+            inventory.Items[0].Version == "1" &&
             inventory.Items[0].Validity == SecretValidity.Unknown &&
             inventory.Items[0].Reference.BelongsTo(client.Authority));
         Require(!JsonSerializer.Serialize(inventory).Contains("inventory-material", StringComparison.Ordinal));
@@ -185,11 +185,11 @@ internal static class InstalledWorkflow
             "GET", "/api/v4/secrets/" + Key, 200, SecretBody(), Token)).IsSuccess);
         using SecretSnapshotHandle old = requiredLoader.Acquire();
         using SecretRead independent = old.Read("required");
-        using var export = SecretConfigurationExport.CreateAcknowledgingManagedStrings(old,
+        using var export = SecretConfigurationExport.Create(old,
             [new SecretConfigurationMapping("required", "Application:Value")]);
         IConfigurationRoot configuration = new ConfigurationBuilder().Add(export).Build();
         using var configurationOwner = (IDisposable)configuration;
-        Require(configuration["Application:Value"] == Value && !old.RemoteSnapshotGuaranteed);
+        Require(configuration["Application:Value"] == Value);
         using PreparedSecretConfiguration optionalPrepared = (await wire.Exchange(
             () => PreparedSecretConfiguration.PrepareAsync(
                 [new("optional", client, reference, SecretPresencePolicy.Optional)], clock,
@@ -197,7 +197,7 @@ internal static class InstalledWorkflow
                 deadline.Token).AsTask(),
             "GET", "/api/v4/secrets/" + Key, 404, "{}", Token)).Value;
         Require(optionalPrepared.ReadOutcome("optional").Status == SecretStatus.Absent);
-        IConfigurationRoot optionalConfiguration = optionalPrepared.ExportAcknowledgingManagedStrings(
+        IConfigurationRoot optionalConfiguration = optionalPrepared.Export(
             [new("optional", "Application:Optional")]);
         Require(optionalConfiguration["Application:Optional"] is null);
         Require((await wire.Exchange(() => requiredLoader.RefreshAsync(deadline.Token).AsTask(),
@@ -205,7 +205,7 @@ internal static class InstalledWorkflow
             Token)).Value == 2);
         using SecretSnapshotHandle next = requiredLoader.Acquire();
         Require(old.Generation == 1 && next.Generation == 2);
-        export.ReplaceAcknowledgingManagedStrings(next);
+        export.Replace(next);
         using (SecretRead pinned = old.Read("required")) Require(pinned.Material.Reveal() == Value);
         Require(configuration["Application:Value"] == "next-generation-canary");
         Require((await wire.Exchange(() => requiredLoader.RefreshAsync(deadline.Token).AsTask(),
