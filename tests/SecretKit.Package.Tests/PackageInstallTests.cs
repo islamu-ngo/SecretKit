@@ -77,14 +77,16 @@ public sealed class PackageInstallTests
                 ["T:SecretKit.Infisical.InfisicalTransportOptions", "P:SecretKit.Infisical.InfisicalTransportOptions.SafeDefault"],
             "SecretKit.Infisical.Management" =>
                 ["T:SecretKit.Infisical.Management.ManagementClient", "P:SecretKit.Infisical.Management.ManagementClient.Authority"],
+            "SecretKit.AzureKeyVault" =>
+                ["T:SecretKit.AzureKeyVault.AzureKeyVaultClient", "P:SecretKit.AzureKeyVault.AzureKeyVaultClient.Authority"],
+            "SecretKit.AzureKeyVault.Management" =>
+                ["T:SecretKit.AzureKeyVault.Management.VaultAdministration", "M:SecretKit.AzureKeyVault.Management.VaultAdministration.PrepareReceipt(SecretKit.AzureKeyVault.Management.ManagementScope,SecretKit.AzureKeyVault.Management.ManagementMutation)"],
             "SecretKit.Extensions.Configuration" =>
                 ["T:SecretKit.Extensions.Configuration.SecretConfigurationExport", "M:SecretKit.Extensions.Configuration.SecretConfigurationExport.Dispose"],
             "SecretKit.Extensions.Hosting" =>
                 ["T:SecretKit.Extensions.Hosting.InfisicalAuthenticationMaintenance", "P:SecretKit.Extensions.Hosting.InfisicalAuthenticationMaintenance.State"],
-            _ => []
+            _ => throw new InvalidOperationException("Unknown shipped package.")
         };
-        // Excluded Azure packages keep their own documentation scope.
-        if (members.Length == 0) return;
         ZipArchiveEntry? entry = archive.GetEntry($"lib/net10.0/{package}.xml");
         await Assert.That(entry is not null && entry.Length is > 0 and <= 4 * 1024 * 1024).IsTrue();
         using Stream stream = entry!.Open();

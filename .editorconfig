@@ -8,7 +8,7 @@ trim_trailing_whitespace = true
 indent_style = space
 indent_size = 4
 
-[*.{json,yml,yaml,xml,csproj,props,slnx}]
+[*.{json,yml,yaml,xml,csproj,props,targets,slnx}]
 indent_size = 2
 
 [*.cs]
@@ -17,3 +17,7 @@ csharp_style_var_for_built_in_types = false:suggestion
 csharp_style_var_when_type_is_apparent = true:suggestion
 csharp_style_var_elsewhere = false:suggestion
 dotnet_sort_system_directives_first = true
+
+[src/SecretKit.Core/**/SecretOutcome.cs]
+# Typed outcome factories preserve the successful value type without an extra factory abstraction.
+dotnet_diagnostic.CA1000.severity = none

@@ -9,7 +9,7 @@ checked on 2026-10-09 declares MIT for TUnit 1.73.19, Azure.Security.KeyVault.Se
 4.11.2, Azure.Core 1.63.0 and Microsoft.Extensions packages 10.0.12.
 Their copyrights and licenses remain with their respective contributors.
 
-Core has no external dependency. Azure packages are optional provider dependencies;
+Core has no external runtime dependency. Azure packages are optional provider dependencies;
 Microsoft.Extensions packages are optional composition dependencies. TUnit is
 test-only and is not distributed as a runtime dependency.
 
@@ -43,6 +43,17 @@ f1ce8e8a389e35c76d1c108ec29b06e58ad7960c and
 707f264e1c541be0f5af8d9215f00ed5eabb5173, inspected on 2026-10-09. They remain
 management-only dependencies; selection does not establish callable family
 coverage, permission or live conformance.
+
+## Build-only trimming analysis
+
+Reviewed on 2026-11-02: the pinned .NET SDK selects
+Microsoft.NET.ILLink.Tasks **10.0.10** for library trimming analysis. Its restored
+NuGet nuspec declares **MIT**, Microsoft Corporation copyright, and
+`dotnet/dotnet` revision `f7d90799ce4ef09a0bb257852a57248d2a8fb8dd`.
+The seven library locks record this SDK-owned, private build dependency; it is
+not a dependency of a shipped SecretKit package or its runtime closure.
+Retain its original archive and legal notices if distributing build tools.
+Enabling its analyzer does not declare trimming or NativeAOT compatibility.
 
 ## Nonpackable notification authentication verification
 
@@ -161,7 +172,7 @@ first-party MIT license does not replace those notices.
 | Microsoft.Extensions.Logging.Abstractions 10.0.12 | Hosting transitive | MIT expression and runtime notice payload below |
 | Microsoft.Extensions.Options 10.0.12 | Hosting transitive through Diagnostics.Abstractions | MIT expression and runtime notice payload below |
 
-Core's selected graph has no external packages. Configuration references Core,
+Core's selected runtime graph has no external packages. Configuration references Core,
 not Infisical. Hosting references Core and Infisical, so its selected closure
 also includes Refit and all three ReactiveUI packages. Other-framework
 dependencies in the upstream nuspecs are not additions to this `net10.0` graph.
@@ -256,6 +267,6 @@ without automatically changing dependencies.
 The build operator must also inspect newly packed nuspecs and embedded
 `README.md`/`THIRD-PARTY-NOTICES.md`, and verify that any redistributed dependency
 archives or extracted assemblies retain the legal files described above.
-Existing build props embed the root README and this notice file; source metadata
+Build targets embed each package's own README and this notice file; source metadata
 inspection alone does not prove the contents of a future archive or local-feed
 handoff.
