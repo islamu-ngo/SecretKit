@@ -22,9 +22,9 @@ not current performance guarantees.
 
 | Application | Installed SecretKit packages | Application responsibility |
 | --- | --- | --- |
-| [Console](../../samples/Infisical.ConsoleDemo/README.md) | Core + Infisical | One selected read or deliberate create/update; retain mutation uncertainty |
-| [Worker](../../samples/Infisical.WorkerDemo/README.md) | Core + Infisical + Hosting | Await preparation, explicitly start maintenance, stop/drain before disposal |
-| [Loopback web API](../../samples/Infisical.WebDemo/README.md) | Core + Infisical + Configuration | Validate/activate clients, pin request leases, retire old clients after release |
+| [Console](../../tests/PackageQualification/Infisical.ConsoleDemo/README.md) | Core + Infisical | One selected read or deliberate create/update; retain mutation uncertainty |
+| [Worker](../../tests/PackageQualification/Infisical.WorkerDemo/README.md) | Core + Infisical + Hosting | Await preparation, explicitly start maintenance, stop/drain before disposal |
+| [Loopback web API](../../tests/PackageQualification/Infisical.WebDemo/README.md) | Core + Infisical + Configuration | Validate/activate clients, pin request leases, retire old clients after release |
 
 The worker additionally uses Microsoft.Extensions.Hosting `10.0.12`. The web
 application alone uses the ASP.NET Core shared framework. Neither expands the
@@ -155,7 +155,7 @@ Review host-created plaintext and telemetry separately from SDK omission.
 
 ## Reproduce controlled measurements
 
-The nonpackable [workload source](../../samples/Infisical.Demos/Measurements.cs)
+The nonpackable [workload source](../../tests/PackageQualification/Infisical.Demos/Measurements.cs)
 is linked only into a generated standalone consumer by
 [DemoQualityTests](../../tests/SecretKit.Demo.Tests/DemoQualityTests.cs).
 It does not enter the minimal console, worker or web graph, install a benchmark

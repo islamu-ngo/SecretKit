@@ -1,5 +1,10 @@
 # SecretKit.AzureKeyVault.Management
 
+Choose this optional package for Azure control-plane and audit tasks. Application
+secret reads belong in `SecretKit.AzureKeyVault`; this package cannot replace a
+runtime reader or infer its authority. Start with the explicit credentials and
+ownership rules below, then check the exact operation's verification scope.
+
 [Current support](../../docs/public/provider-support.md) distinguishes these
 offline-tested subsets from unverified remote effects and release admission.
 

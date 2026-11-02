@@ -147,7 +147,7 @@ metadata still require sensitive handling.
 produce ordinary managed strings or copies. Buffer disposal cannot erase those
 strings, old options, downstream fields, logs, dumps or host traces.
 `SecretSnapshotLoader` publishes complete local acquired generations; its
-`Generation` is not a provider revision and `RemoteSnapshotGuaranteed` is false.
+`Generation` is not a provider revision or a remote snapshot guarantee.
 Configuration reload is not application activation. Review host debug views and
 instrumentation before export. Sources:
 [configuration ownership](../../src/SecretKit.Extensions.Configuration/README.md)

@@ -1,5 +1,33 @@
 # SecretKit.Infisical
 
+Infisical runtime access, authentication and typed native secret lifecycle for
+.NET 10. Core is included as a dependency; administration and hosting are optional.
+This is an unpublished development preview. See [current support](../../docs/public/provider-support.md)
+for implemented subsets and live-verification limits.
+
+## Read one key
+
+Integration fragment: `client` is your authorized `InfisicalClient`; all coordinates
+and cancellation come from your host.
+
+```csharp
+using SecretKit.Infisical;
+
+var scope = client.CreateScope(projectId, environment, folder);
+using var read = await scope.GetSecretAsync(key, cancellationToken);
+int length = read.Material.Use(static characters => characters.Length);
+```
+
+`ReadAsync` preserves explicit outcomes; `TryGetSecretAsync` returns `null` only
+for absence. `InspectAsync` remains metadata-only. A scope fixes coordinates;
+it does not grant additional permissions or select another identity.
+
+Use `PrepareCreate` or `PrepareUpdateValue` on the native client to retain one
+receipt across explicitly attempted execution. Overlapping executions are rejected;
+possible dispatch blocks replay. No helper turns an uncertain write into a safe retry.
+Login TTL properties use `TimeSpan` (`ExpiresIn` and `AccessTokenMaxTtl`). Native
+dynamic profiles are in `SecretKit.Infisical.Dynamic`.
+
 ## Explicit runtime ownership
 
 `InfisicalRuntimeSession.OpenUniversalAsync` accepts immutable runtime options,

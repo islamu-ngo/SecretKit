@@ -164,7 +164,7 @@ binds selection to an authority.
 
 `SecretInventory.Items` contains observations, never secret values.
 `StartedAt`/`CompletedAt` record a collection window; `IsComplete` indicates
-whether the bounded result is complete. `IsPointInTime` is always false.
+whether the bounded result is complete. Inventory is not a point-in-time snapshot.
 Completeness within an admitted scope does not prove simultaneous remote state,
 value-read permission, delivery, or application readiness.
 

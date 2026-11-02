@@ -3,7 +3,7 @@
 > **Audience:** Application developers, SDK contributors, operators, and AI agents
 > **Status:** Documentation entry point for the development preview
 > **Owner:** SecretKit maintainers
-> **Last verified:** 2026-10-25 against repository documentation and source
+> **Last verified:** 2026-11-02 source review of the adoption APIs; verification gates remain separate
 > **Source anchors:** [repository contract](../AGENTS.md), [project map](../PROJECTS.md)
 
 **In development. Not ready for production. APIs may change without backward
@@ -13,6 +13,13 @@ offline tests, live conformance and release approval are separate claims.
 ## Use the library
 
 Start with the [developer documentation](public/README.md).
+
+For a runnable first step, use [QuickStart](../samples/QuickStart/). The
+[package table and short examples](../README.md) introduce scoped Infisical reads,
+`SecretMaterial.Use` / `UseUtf8`, options and keyed hosting registration, and
+explicit configuration replacement. The [configuration package guide](../src/SecretKit.Extensions.Configuration/README.md)
+explains validated client generations and leases. Onboarding samples live under
+`samples/`; package-only qualification harnesses live under `tests/PackageQualification/`.
 
 - **First use:** [getting started](public/getting-started.md), then
   [local package installation](public/local-packages.md).

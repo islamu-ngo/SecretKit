@@ -8,6 +8,21 @@ namespace SecretKit.Package.Tests;
 public sealed class PackageSelectionTests
 {
     [Test]
+    public async Task SelectedPackagesContainTheirOwnReadme()
+    {
+        string root = Path.GetFullPath("../../../../../", AppContext.BaseDirectory);
+        var candidate = PackageCandidate.FromEnvironment(root);
+        foreach (string package in PackageCandidate.PackageIds)
+        {
+            using ZipArchive archive = ZipFile.OpenRead(candidate.ArchivePath(package));
+            ZipArchiveEntry? entry = archive.GetEntry("README.md");
+            await Assert.That(entry is not null).IsTrue();
+            using var reader = new StreamReader(entry!.Open());
+            await Assert.That(await reader.ReadLineAsync()).IsEqualTo($"# {package}");
+        }
+    }
+
+    [Test]
     public async Task ExplicitNonDefaultCandidateIgnoresStaleDefaultDirectory()
     {
         using var fixture = new CandidateFixture();

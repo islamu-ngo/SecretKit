@@ -156,7 +156,7 @@ erase upstream parser strings or caller-created plaintext.
 `Generation`, `CollectionStartedAt`, `CollectionCompletedAt`, `Count` and `SelectionCount` describe
 the local collected set. Each read retains its observed provider version,
 reference and validity metadata. Unknown provider versions remain unknown.
-`RemoteSnapshotGuaranteed` is always `false`: serial reads may observe different
+Serial reads may observe different
 remote moments. A local generation is not a provider transaction, native resource
 revision or proof that related credentials changed together.
 
@@ -171,7 +171,7 @@ For one-shot ownership, first await
 `PreparedSecretConfiguration.PrepareAsync(selections, options: options,
 cancellationToken: cancellationToken)`. On success, dispose the returned owner.
 `Read` and `ReadOutcome` provide material-only acquisition. Only an explicit
-`ExportAcknowledgingManagedStrings(mapping)` creates the single borrowed root;
+`Export(mapping)` creates the single borrowed root;
 the prepared owner disposes root/export before its pinned handle and loader.
 Borrowed readers and caller-held read copies retain independent lifetimes.
 
@@ -198,7 +198,7 @@ Given an acquired `generation` containing the two keys above:
 using Microsoft.Extensions.Configuration;
 using SecretKit.Extensions.Configuration;
 
-using var export = SecretConfigurationExport.CreateAcknowledgingManagedStrings(
+using var export = SecretConfigurationExport.Create(
     generation,
     [new("username", "Service:Username"), new("password", "Service:Password")]);
 IConfigurationRoot authorityOnly = new ConfigurationBuilder().Add(export).Build();
@@ -225,7 +225,7 @@ SecretOutcome<long> refreshed = await loader.RefreshAsync(cancellationToken);
 if (refreshed.IsSuccess)
 {
     using SecretSnapshotHandle next = loader.Acquire();
-    export.ReplaceAcknowledgingManagedStrings(next);
+    export.Replace(next);
 }
 // On failure, apply the application's stale-use/readiness policy.
 ```
@@ -270,9 +270,9 @@ work drains; refresh alone does not replace them.
 The executable [bootstrap scenario](../../samples/RuntimeConfiguration/BootstrapScenario.cs)
 shows separate required and optional groups, an authority-only export and a
 pinned handle across refresh. Its
-[RuntimeIntegrationCoordinator](../../samples/RuntimeConfiguration/RuntimeIntegrationCoordinator.cs)
-and [generation lease](../../samples/RuntimeConfiguration/RuntimeGenerationLease.cs)
-are **sample/application code, not shipped SDK APIs**. They demonstrate fresh
+[SecretGenerationCoordinator<TClient>](../../src/SecretKit.Extensions.Configuration/SecretGenerationCoordinator.cs)
+and [generation lease](../../src/SecretKit.Extensions.Configuration/SecretGenerationLease.cs)
+are shipped by the optional Configuration package. They support fresh
 `CheckAgainAsync` without activation, explicit `EnableAsync`, revision-checked
 handover, fail-closed or bounded-last-known policy and lease-based retirement.
 They do not supply a durable tenant model, persistence or fleet coordination.
@@ -309,5 +309,5 @@ rerun for this change. Offline contract evidence does not establish remote snaps
 downstream connectivity, deployment or production qualification.
 See [current preview](current-preview.md) for dated evidence and open gates.
 Next, compose [authentication and hosting](authentication-and-hosting.md), or
-follow the installed [worker](../../samples/Infisical.WorkerDemo/README.md) and
-[web](../../samples/Infisical.WebDemo/README.md) examples.
+follow the installed [worker](../../tests/PackageQualification/Infisical.WorkerDemo/README.md) and
+[web](../../tests/PackageQualification/Infisical.WebDemo/README.md) examples.

@@ -1,4 +1,9 @@
-# Azure Key Vault native lifecycle
+# SecretKit.AzureKeyVault
+
+Direct Azure Key Vault secret access for .NET 10. Start with an explicitly selected
+`AzureKeyVaultClient`, bind references to its authority, and dispose each successful
+`SecretRead`. Common reader helpers and `SecretMaterial.Use` / `UseUtf8` are available
+through Core. This package does not depend on Infisical or require hosting integration.
 
 See [current support](../../docs/public/provider-support.md) for current offline
 evidence and the outstanding Azure live/platform gates.

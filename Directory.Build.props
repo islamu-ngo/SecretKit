@@ -22,7 +22,8 @@
     <IsPackable Condition="'$(IsPackable)' == ''">false</IsPackable>
   </PropertyGroup>
   <ItemGroup Condition="'$(IsPackable)' == 'true'">
-    <None Include="$(MSBuildThisFileDirectory)README.md" Pack="true" PackagePath="/" />
+    <None Include="$(MSBuildProjectDirectory)/README.md" Pack="true" PackagePath="/" Condition="Exists('$(MSBuildProjectDirectory)/README.md')" />
+    <None Include="$(MSBuildThisFileDirectory)README.md" Pack="true" PackagePath="/" Condition="!Exists('$(MSBuildProjectDirectory)/README.md')" />
     <None Include="$(MSBuildThisFileDirectory)THIRD-PARTY-NOTICES.md" Pack="true" PackagePath="/" />
   </ItemGroup>
 </Project>

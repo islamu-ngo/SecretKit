@@ -1,5 +1,10 @@
 # SecretKit.Infisical.Management
 
+Choose this optional package only for administrative workflows. For application
+secret reads, scoped reads, prepared static writes, and authentication, start with
+`SecretKit.Infisical`. Administrative visibility does not establish runtime access;
+select a dedicated authorized identity for each responsibility.
+
 [Current support](../../docs/public/provider-support.md) records the latest
 offline foundation; historical counts below retain their original boundaries.
 

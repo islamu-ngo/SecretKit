@@ -258,7 +258,7 @@ in [local native compatibility](../internal/compatibility/infisical-local-profil
 ## Frozen app locks and CI verification inputs
 
 Normal local final-candidate tests use the finalized source-owned
-`samples/Infisical.{Console,Worker,Web}Demo/packages.lock.json` files unchanged.
+`tests/PackageQualification/Infisical.{Console,Worker,Web}Demo/packages.lock.json` files unchanged.
 Generate and review those locks from the selected staging originals before
 freezing the local candidate. Final tests copy them into independent app
 workspaces and restore with `--locked-mode`; they never regenerate source locks.

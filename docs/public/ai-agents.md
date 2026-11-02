@@ -35,7 +35,7 @@ invent compatibility aliases, deprecated wrappers or migration guarantees.
 | Direct Azure read/lifecycle | [Azure Key Vault](providers/azure-key-vault.md) | [runtime package](../../src/SecretKit.AzureKeyVault/), [runtime tests](../../tests/SecretKit.AzureKeyVault.Tests/) |
 | Azure management/audit | [Management](providers/management.md) | [management package](../../src/SecretKit.AzureKeyVault.Management/), [management tests](../../tests/SecretKit.AzureKeyVault.Management.Tests/) |
 | Multi-key collection/export | [Configuration and runtime](configuration-and-runtime.md) | [configuration package](../../src/SecretKit.Extensions.Configuration/), [configuration tests](../../tests/SecretKit.Configuration.Tests/) |
-| Application activation/leases | [Demos](demos-and-recovery.md) | [offline sample](../../samples/RuntimeConfiguration/), [web sample](../../samples/Infisical.WebDemo/), [consumer tests](../../tests/SecretKit.Consumer.Tests/) |
+| Application activation/leases | [Demos](demos-and-recovery.md) | [offline sample](../../samples/RuntimeConfiguration/), [web sample](../../tests/PackageQualification/Infisical.WebDemo/), [consumer tests](../../tests/SecretKit.Consumer.Tests/) |
 | Local archives/profile/locks | [Local packages](local-packages.md) | [profile](../internal/local/infisical-runtime.json), [release tool](../../tools/SecretKit.Release/), [package tests](../../tests/SecretKit.Package.Tests/) |
 | Broader engineering decisions | [Internal hub](../internal/README.md) | [architecture](../internal/SDK_ARCHITECTURE.md), [runtime contracts](../internal/RUNTIME_CONTRACTS.md), [ADRs](../internal/adr/) |
 

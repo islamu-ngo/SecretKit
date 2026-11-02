@@ -1,4 +1,42 @@
-# Explicit Infisical authentication maintenance
+# SecretKit.Extensions.Hosting
+
+Optional .NET hosting integration with explicit options, keyed runtime registrations,
+startup admission and material-free health classifications. This development preview
+preserves host-selected authority and requires separate live-provider qualification.
+
+## Register a runtime
+
+Integration fragment: `services` is the host's `IServiceCollection`; `runtimeOptions`
+is an immutable `InfisicalRuntimeOptions` with explicit origin, identity, project and
+verified lifetime policy. `loadBootstrapMaterialAsync` is a host-supplied
+`Func<CancellationToken, ValueTask<SecretMaterial>>` returning fresh owned material.
+The host also supplies the scope coordinates.
+
+```csharp
+using Microsoft.Extensions.DependencyInjection;
+
+services.AddSecretKitInfisical(options =>
+{
+    options.Runtime = runtimeOptions;
+    options.ClientSecret = loadBootstrapMaterialAsync;
+})
+.WithDefaultScope(projectId, environment, folder)
+.WithStartupAdmission()
+.WithHealthChecks();
+```
+
+`InfisicalHostingOptions` wraps the existing immutable provider options. Validation
+rejects unusable configuration without including protected coordinates in diagnostics.
+The bootstrap factory transfers ownership of its returned material and is consumed
+once. Registration performs no network I/O. `WithStartupAdmission` uses the host's
+starting lifecycle to authenticate before services start; failures prevent startup.
+Without admission, authentication is deferred to explicit `EnsureAuthenticatedAsync`
+or reader use. Failed bootstrap does not silently replay or select another principal.
+
+Use `AddKeyedSecretKitInfisical(serviceKey, configure)` for separate sessions and
+default scopes. Resolve with the matching service key. `WithHealthChecks` is opt-in;
+token health alone does not establish application readiness. Diagnostics expose
+bounded classifications, not origins, keys, tokens or provider exception text.
 
 This package is optional in the
 [Infisical-first local adoption profile](../../docs/public/local-packages.md).
@@ -135,7 +173,7 @@ The RuntimeConfiguration sample demonstrates explicit startup, renewal,
 uncertain-response recovery and separately authorized replacement under the
 same selected principal. No automatic recovery callback is installed.
 
-The package-only [Generic Host worker](../../samples/Infisical.WorkerDemo/)
+The package-only [Generic Host worker](../../tests/PackageQualification/Infisical.WorkerDemo/)
 awaits a required selected read before constructing/starting its actual host,
 registers pre-created application-owned instances, and opts into this helper
 only with `run --maintain`. Its worker performs selected reads, exposes bounded

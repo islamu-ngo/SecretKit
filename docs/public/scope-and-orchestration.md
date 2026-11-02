@@ -3,7 +3,7 @@
 > **Audience:** Application developers and integration designers
 > **Status:** Current product boundary; future orchestration is not implemented
 > **Owner:** SecretKit maintainers
-> **Last verified:** 2026-10-25 against current support and package boundaries
+> **Last verified:** 2026-11-02 source review of adoption APIs and package boundaries
 > **Source anchors:** [Architecture](../internal/SDK_ARCHITECTURE.md), [support](provider-support.md), [accepted scope](connector-scope-decision.md)
 
 SecretKit supplies in-process provider access. The application decides what the
@@ -49,6 +49,25 @@ an Infisical Azure connection.
 Applications own credential injection, access policy, validation, activation,
 persistence and readiness. Optional configuration export and explicitly started
 hosting support remain independently selectable.
+
+Scoped Infisical reads bind project, environment and folder once, then accept a
+single key per operation. They preserve authority checks and explicit absence,
+denial and failure outcomes. Callback material access (`Use` / `UseUtf8`) gives
+each callback an owned temporary snapshot without requiring ordinary strings.
+Disposing the returned read remains the consumer's responsibility.
+
+Hosting adds options validation, keyed session isolation, and opt-in startup
+admission. Registration performs no I/O; startup authentication requires the
+explicit admission choice. Configuration adds `SecretGenerationCoordinator<TClient>`
+for application-validated activation and lease-delayed retirement. The application
+still chooses stale policy, age bounds, validation and when to refresh. None of
+these features adds a fleet scheduler, hidden identity fallback or automatic
+mutation replay. `SecretConfigurationExport.Create` / `Replace` and prepared
+configuration `Export` deliberately cross into ordinary managed strings.
+
+These conveniences remain within the existing seven packages. Test doubles are
+nonpackable fixtures; runtime reads do not require a testing package or an eighth
+dependency-injection package. See the [runnable examples](../../README.md#runnable-examples).
 
 Database credentials remain opaque material at the Core boundary. Infisical's
 typed credential-generation and rotation APIs are legitimate provider features,

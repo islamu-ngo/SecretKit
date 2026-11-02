@@ -1,9 +1,56 @@
 # SecretKit.Extensions.Configuration
 
+Prepare complete local generations, pin them for a logical operation, and opt into
+ordinary-string configuration export only where required. This development preview
+does not provide a remote snapshot transaction or an automatic refresh worker.
+
+## Publish configuration
+
+Integration fragment: the host supplies `IEnumerable<SecretSelection> selections`,
+`IEnumerable<SecretConfigurationMapping> mappings` and a cancellation token.
+
+```csharp
+using Microsoft.Extensions.Configuration;
+using SecretKit.Extensions.Configuration;
+
+using var loader = new SecretSnapshotLoader(selections);
+(await loader.RefreshAsync(cancellationToken)).GetValueOrThrow();
+using var initial = loader.Acquire();
+using var export = SecretConfigurationExport.Create(initial, mappings);
+IConfigurationRoot root = new ConfigurationBuilder().Add(export).Build();
+using IDisposable rootLifetime = (IDisposable)root;
+(await loader.RefreshAsync(cancellationToken)).GetValueOrThrow();
+using var replacement = loader.Acquire();
+export.Replace(replacement);
+```
+
+The export contains ordinary plaintext strings. Disposing the source does not erase
+strings retained by configuration consumers, options, logs or downstream code.
+
+## Activate a validated client
+
+`SecretGenerationCoordinator<TClient>` owns successful application-created clients
+implementing `IAsyncDisposable`. The application supplies an intended reader, required
+reference mapping, a candidate validator, stale policy, maximum age and clock.
+The validator borrows its `SecretSnapshotHandle` only for the call, and must construct
+an independent client before returning `SecretOutcome<TClient>.Success(client)`.
+
+`EnableAsync` collects and validates a candidate. `Acquire` returns a
+`SecretGenerationLease<TClient>` when the current generation is usable, or `null`.
+Run work through `lease.ExecuteAsync((client, token) => ...)`; the callback borrows the
+client, and must neither retain nor dispose it. Dispose the lease asynchronously.
+Retiring a generation waits for existing leases and in-flight work before disposing
+its client. Disposing the coordinator rejects new acquisition and retires generations.
+
+`CheckAgainAsync` validates without enabling a disabled integration. `DisableAsync`
+retires the active client. Choose `FailClosed` or explicitly bounded `BoundedLastKnown`
+policy; provider expiry still limits usability. Client activation and string export
+are separate operations, with no joint atomic commit.
+
 For [Infisical-first local adoption](../../docs/public/local-packages.md), this
 package is optional. Selections default to required; mark an explicitly optional
 selection with `SecretPresencePolicy.Optional`. Application key naming, tenant bindings, cache/refresh
-policy, Data Protection admission and activation remain outside the package.
+policy and Data Protection admission remain application choices.
 Installed-consumer qualification does not add those policies to the runtime
 library. The RuntimeConfiguration sample composes separate required and
 optional groups; capability checks and explicit client activation remain
@@ -13,7 +60,7 @@ See [current support](../../docs/public/provider-support.md) for package
 boundaries and observed offline evidence.
 
 This optional package references Core and Microsoft.Extensions.Configuration.
-Core remains BCL-only. It installs no cache policy, TTL, worker or hosting lifecycle.
+Core remains BCL-only. It installs no automatic worker or hosting lifecycle.
 Supplied readers and transports remain caller-owned.
 
 ## Logical multi-key operations
@@ -56,7 +103,7 @@ counts absent selections.
 
 `Generation` is a local publication number. Collection start/end times and each
 read's actual `SecretObservation` retain version and provider evidence; unknown
-versions stay unknown. `RemoteSnapshotGuaranteed` is always false. Local
+versions stay unknown. Local
 immutability does not establish a remote transaction or simultaneous remote reads.
 
 ## Bounded collection
@@ -92,7 +139,7 @@ containing an owner of the loader and one pinned generation. Preparation perform
 asynchronous reads but creates no ordinary plaintext strings. Use `Read` or
 `ReadOutcome` to obtain independently owned material.
 
-Call `prepared.ExportAcknowledgingManagedStrings(mappings)` only when plaintext
+Call `prepared.Export(mappings)` only when plaintext
 configuration is intended. All consumer keys and destination collisions are
 validated before any reveal. The returned `IConfigurationRoot` is borrowed; the
 prepared owner owns its root and export, permits one successful export and releases
@@ -102,7 +149,7 @@ and previously returned material copies remain independently usable.
 
 ## Deliberate plaintext export
 
-Call `SecretConfigurationExport.CreateAcknowledgingManagedStrings(handle, mappings)`
+Call `SecretConfigurationExport.Create(handle, mappings)`
 only when ordinary managed strings are intended. Each
 `SecretConfigurationMapping` explicitly names its consumer key and destination
 configuration key. The complete mapping is checked for ordinal case-insensitive
@@ -116,7 +163,7 @@ builders. A second build throws `InvalidOperationException` without affecting
 the winning root. The slot is consumed when the source returns its provider;
 if a later sibling source fails, dispose the export rather than rebuilding it.
 
-`ReplaceAcknowledgingManagedStrings(nextHandle)` prepares all mapped values,
+`Replace(nextHandle)` prepares all mapped values,
 atomically replaces the provider's string dictionary and signals reload.
 Preparation failure leaves prior strings and the reload token unchanged.
 Publication is committed before notification: a throwing reload callback leaves

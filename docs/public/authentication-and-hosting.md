@@ -373,7 +373,7 @@ services.AddSingleton<IHostedService>(maintenance);
 // enclosing application-owned scopes after host work drains.
 ```
 
-The [worker's actual host composition](../../samples/Infisical.WorkerDemo/WorkerDemoApplication.cs)
+The [worker's actual host composition](../../tests/PackageQualification/Infisical.WorkerDemo/WorkerDemoApplication.cs)
 uses this instance-registration pattern. Supplied instances remain
 application-owned. DI-created disposable services instead need container-managed
 lifetimes; do not mix ownership models, create a second helper for the same
@@ -396,10 +396,10 @@ restart recovery in these packages.
 The [offline authentication scenario](../../samples/RuntimeConfiguration/AuthenticationScenario.cs)
 demonstrates explicit Universal login, lifetime binding, renewal, response-loss
 recovery and separately authorized replacement under the same selected principal.
-The installed [WorkerDemo](../../samples/Infisical.WorkerDemo/README.md) awaits a
+The installed [WorkerDemo](../../tests/PackageQualification/Infisical.WorkerDemo/README.md) awaits a
 required read before building its host, opts into scheduled maintenance only with
 `run --maintain`, and provides bounded work/renew/stop controls.
-[WebDemo](../../samples/Infisical.WebDemo/README.md) demonstrates separate
+[WebDemo](../../tests/PackageQualification/Infisical.WebDemo/README.md) demonstrates separate
 liveness/readiness and request-pinned application clients.
 
 ## Evidence and remaining qualification

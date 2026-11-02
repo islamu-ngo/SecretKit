@@ -47,7 +47,7 @@ Read [`Program.cs`](../../samples/RuntimeConfiguration/Program.cs). It prepares
 required values before dependent services, acquires generation 1, refreshes the
 loader, and shows that the old handle still reads generation 1 while a new handle
 reads generation 2. Both returned reads are independently disposable.
-`RemoteSnapshotGuaranteed` is false: local coherence is not a remote transaction.
+Local coherence is not a remote transaction.
 
 ## 3. Observe identity separation
 

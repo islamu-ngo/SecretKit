@@ -60,9 +60,9 @@ for this documentation update.
 
 ## Working examples and evidence
 
-The package-only [console](../../samples/Infisical.ConsoleDemo/),
-[worker](../../samples/Infisical.WorkerDemo/) and
-[web](../../samples/Infisical.WebDemo/) apps demonstrate explicit reads/writes,
+The package-only [console](../../tests/PackageQualification/Infisical.ConsoleDemo/),
+[worker](../../tests/PackageQualification/Infisical.WorkerDemo/) and
+[web](../../tests/PackageQualification/Infisical.WebDemo/) apps demonstrate explicit reads/writes,
 awaited admission, opt-in maintenance and request-pinned consumer generations.
 The [demos and recovery guide](demos-and-recovery.md) explains their controls,
 recovery ownership and fixed local-overhead workload. Controlled installed
