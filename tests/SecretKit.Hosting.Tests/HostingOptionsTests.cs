@@ -270,7 +270,7 @@ public sealed class HostingOptionsTests
         var builder = Host.CreateApplicationBuilder();
         builder.Services.AddSecretKitInfisical(options =>
         {
-            Configure(options, wire, insecureOrigin);
+            Configure(options, wire, insecureOrigin, safeTransport: insecureOrigin);
             if (!insecureOrigin) options.ClientSecret = null;
         });
         using var host = builder.Build();
@@ -321,8 +321,68 @@ public sealed class HostingOptionsTests
         await Assert.That(firstWire.Disposed || secondWire.Disposed).IsFalse();
     }
 
+    [Test]
+    [Arguments("safe-https", true, false)]
+    [Arguments("safe-https", true, true)]
+    [Arguments("ordinary-http", false, false)]
+    [Arguments("ordinary-http", false, true)]
+    [Arguments("loopback-http", true, false)]
+    [Arguments("loopback-http", true, true)]
+    [Arguments("host-http", true, false)]
+    [Arguments("host-http", true, true)]
+    [Arguments("decorated-origin", false, false)]
+    [Arguments("host-proxy", false, false)]
+    public async Task HostingAdmitsExplicitProviderTransportPolicyWithoutAcquiringCredentials(
+        string selection, bool admitted, bool keyed)
+    {
+        using var wire = new Wire(HttpStatusCode.OK);
+        bool acquired = false;
+        var time = new TestClock();
+        var runtime = new InfisicalRuntimeOptions
+        {
+            Origin = new(selection switch
+            {
+                "ordinary-http" or "host-http" => "http://canary-origin.invalid",
+                "loopback-http" => "http://127.0.0.1",
+                "decorated-origin" => "https://canary-origin.invalid/path",
+                _ => "https://canary-origin.invalid"
+            }),
+            ClientId = "selected-client",
+            ProjectId = "selected-project",
+            OriginalIssuedAt = time.GetUtcNow().AddSeconds(-1),
+            TimeProvider = time,
+            Lifetime = InfisicalTokenLifetime.Finite,
+            Network = new()
+            {
+                Transport = selection is "host-http" or "host-proxy"
+                    ? InfisicalTransportOptions.HostControlled(wire)
+                    : InfisicalTransportOptions.SafeDefault,
+                AllowLoopbackDevelopmentHttp = selection == "loopback-http",
+                Proxy = selection == "host-proxy" ? new WebProxy("http://proxy.invalid") : null
+            }
+        };
+        var builder = Host.CreateApplicationBuilder();
+        void ConfigurePolicy(InfisicalHostingOptions options)
+        {
+            options.Runtime = runtime;
+            options.ClientSecret = _ =>
+            {
+                acquired = true;
+                return ValueTask.FromResult(SecretMaterial.FromText("unrequested-bootstrap"));
+            };
+        }
+        if (keyed) builder.Services.AddKeyedSecretKitInfisical("selected", ConfigurePolicy);
+        else builder.Services.AddSecretKitInfisical(ConfigurePolicy);
+        using var host = builder.Build();
+        if (admitted) await host.StartAsync();
+        else await Assert.That(async () => await host.StartAsync()).Throws<OptionsValidationException>();
+        await Assert.That(acquired).IsFalse();
+        await Assert.That(wire.Requests).IsEqualTo(0);
+        await host.StopAsync();
+    }
+
     private static void Configure(InfisicalHostingOptions options, Wire wire, bool insecureOrigin = false,
-        TimeProvider? clock = null)
+        TimeProvider? clock = null, bool safeTransport = false)
     {
         options.Runtime = new()
         {
@@ -332,7 +392,11 @@ public sealed class HostingOptionsTests
             Lifetime = InfisicalTokenLifetime.Finite,
             OriginalIssuedAt = (clock ?? TimeProvider.System).GetUtcNow().AddSeconds(-1),
             TimeProvider = clock ?? TimeProvider.System,
-            Network = new() { Transport = InfisicalTransportOptions.HostControlled(wire) }
+            Network = new()
+            {
+                Transport = safeTransport
+                ? InfisicalTransportOptions.SafeDefault : InfisicalTransportOptions.HostControlled(wire)
+            }
         };
         options.ClientSecret = _ => ValueTask.FromResult(SecretMaterial.FromText("canary-secret"));
     }

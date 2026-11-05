@@ -46,7 +46,7 @@ public sealed class InfisicalRuntimeSession : IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(clientSecret);
-        ValidateOptions(options);
+        options.ValidateForBootstrap();
         return new(options, clientSecret);
     }
 
@@ -184,7 +184,7 @@ public sealed class InfisicalRuntimeSession : IAsyncDisposable
         if (!attempt.TryBegin())
             return SecretOutcome<InfisicalRuntimeSession>.Failure(SecretStatus.Invalid);
         cancellationToken.ThrowIfCancellationRequested();
-        ValidateOptions(options);
+        options.ValidateForBootstrap();
         using var diagnostics = InfisicalDiagnostics.Defer();
         InfisicalUniversalLogin? login = null;
         InfisicalRuntimeSession? candidate = null;
@@ -247,7 +247,7 @@ public sealed class InfisicalRuntimeSession : IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(token);
-        ValidateOptions(options, bootstrap: false);
+        options.ValidateForTokenHandoff();
         if (admittedEvidence is null)
             return SecretOutcome<InfisicalRuntimeSession>.Failure(SecretStatus.RecoveryRequired);
         return CreateOwned(options, token, admittedEvidence);
@@ -304,25 +304,6 @@ public sealed class InfisicalRuntimeSession : IAsyncDisposable
                 throw new InvalidOperationException("Runtime bootstrap cleanup failed.");
             }
         }
-    }
-
-    private static void ValidateOptions(InfisicalRuntimeOptions options, bool bootstrap = true)
-    {
-        ArgumentNullException.ThrowIfNull(options.Origin);
-        ArgumentNullException.ThrowIfNull(options.Network);
-        ArgumentNullException.ThrowIfNull(options.TimeProvider);
-        InfisicalTransportBinding.ValidateOrigin(options.Origin, options.Network);
-        if (bootstrap && (string.IsNullOrWhiteSpace(options.ClientId) || options.ClientId.Length > 1024 ||
-            options.ClientId.Any(char.IsControl)) || string.IsNullOrWhiteSpace(options.ProjectId) ||
-            options.ProjectId.Length > 1024 || options.ProjectId.Any(char.IsControl) ||
-            options.OrganizationSlug is { } organization &&
-                (organization.Length is < 1 or > 64 || organization.Any(char.IsControl)) ||
-            options.RenewBefore <= TimeSpan.Zero || options.RenewBefore > TimeSpan.FromDays(1) ||
-            options.RequestTimeout <= TimeSpan.Zero || options.RequestTimeout > TimeSpan.FromMinutes(1) ||
-            options.Network.MaximumResponseBytes is < 1024 or > 16 * 1024 * 1024 ||
-            options.Network.ShutdownTimeout <= TimeSpan.Zero ||
-            options.Network.ShutdownTimeout > TimeSpan.FromMinutes(1))
-            throw new ArgumentException("Invalid runtime context or budget.");
     }
 
     private static bool AdmitsOpeningPolicy(InfisicalRuntimeOptions options)

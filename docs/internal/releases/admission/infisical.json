@@ -278,11 +278,11 @@
     },
     {
       "file": "src/SecretKit.Infisical/Authentication/InfisicalRuntimeOptions.cs",
-      "sha256": "9813b5418f5746234ab2df4cfdc5e14b3f374a4efb82b9ecb1ac7a2f225fc5fe"
+      "sha256": "310991717628b579f48a0f1c17af3c0cefb759cdf85476e75f7ce2d6e3127deb"
     },
     {
       "file": "src/SecretKit.Infisical/Authentication/InfisicalRuntimeSession.cs",
-      "sha256": "7d9fd9f4bb1bdd99a518eafc5495e9045bb15b580f732c1a60762c2523f5a2e8"
+      "sha256": "6d7265201aa5fa9e52858b8743f3e022f95e0a4da7e73e9a1d5d5f8bdb49721b"
     },
     {
       "file": "src/SecretKit.Infisical/Authentication/InfisicalTokenRevocation.cs",

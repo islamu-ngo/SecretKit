@@ -48,6 +48,34 @@ public sealed class InfisicalRuntimeOptions
     [JsonIgnore]
     public TimeProvider TimeProvider { get; init; } = TimeProvider.System;
 
+    /// <summary>Validates bootstrap context, origin and budgets without acquiring credentials or performing I/O.</summary>
+    /// <remarks>Opening still requires separately admitted lifetime evidence and provider authorization.</remarks>
+    /// <exception cref="ArgumentException">The context, transport selection or budgets are invalid.</exception>
+    public void ValidateForBootstrap() => ValidateContext(bootstrap: true);
+
+    /// <summary>Validates supplied-token context without requiring a bootstrap client identity or acquiring credentials.</summary>
+    /// <remarks>The token's admitted lifetime evidence is validated separately.</remarks>
+    /// <exception cref="ArgumentException">The context, transport selection or budgets are invalid.</exception>
+    public void ValidateForTokenHandoff() => ValidateContext(bootstrap: false);
+
+    private void ValidateContext(bool bootstrap)
+    {
+        ArgumentNullException.ThrowIfNull(Origin);
+        ArgumentNullException.ThrowIfNull(Network);
+        ArgumentNullException.ThrowIfNull(TimeProvider);
+        InfisicalTransportBinding.ValidateOrigin(Origin, Network);
+        if (bootstrap && (string.IsNullOrWhiteSpace(ClientId) || ClientId.Length > 1024 ||
+            ClientId.Any(char.IsControl)) || string.IsNullOrWhiteSpace(ProjectId) ||
+            ProjectId.Length > 1024 || ProjectId.Any(char.IsControl) ||
+            OrganizationSlug is { } organization &&
+                (organization.Length is < 1 or > 64 || organization.Any(char.IsControl)) ||
+            RenewBefore <= TimeSpan.Zero || RenewBefore > TimeSpan.FromDays(1) ||
+            RequestTimeout <= TimeSpan.Zero || RequestTimeout > TimeSpan.FromMinutes(1) ||
+            Network.MaximumResponseBytes is < 1024 or > 16 * 1024 * 1024 ||
+            Network.ShutdownTimeout <= TimeSpan.Zero || Network.ShutdownTimeout > TimeSpan.FromMinutes(1))
+            throw new ArgumentException("Invalid runtime context or budget.");
+    }
+
     /// <summary>Returns a fixed label without selected coordinates or identity.</summary>
     public override string ToString() => "[InfisicalRuntimeOptions]";
 }

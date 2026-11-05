@@ -28,22 +28,11 @@ internal sealed class InfisicalHostingOptionsValidator : IValidateOptions<Infisi
     {
         if (options.Runtime is not { } runtime || options.ClientSecret is null)
             return ValidateOptionsResult.Fail("An explicit runtime and bootstrap material factory are required.");
-        if (runtime.Origin is not { IsAbsoluteUri: true } origin || origin.Scheme != Uri.UriSchemeHttps ||
-            origin.UserInfo.Length != 0 || origin.AbsolutePath != "/" ||
-            origin.Query.Length != 0 || origin.Fragment.Length != 0)
-            return ValidateOptionsResult.Fail("Runtime Origin must be a fixed HTTPS origin.");
-        if (!ValidCoordinate(runtime.ClientId) || !ValidCoordinate(runtime.ProjectId) ||
-            runtime.OrganizationSlug is { } organization &&
-                (organization.Length is < 1 or > 64 || organization.Any(char.IsControl)))
-            return ValidateOptionsResult.Fail("Runtime identity and project selection must be valid.");
-        if (runtime.TimeProvider is null || runtime.Network is null || runtime.Network.Transport is null ||
-            runtime.RenewBefore <= TimeSpan.Zero || runtime.RenewBefore > TimeSpan.FromDays(1) ||
-            runtime.RequestTimeout <= TimeSpan.Zero || runtime.RequestTimeout > TimeSpan.FromMinutes(1) ||
-            runtime.Network.ShutdownTimeout <= TimeSpan.Zero || runtime.Network.ShutdownTimeout > TimeSpan.FromMinutes(1) ||
-            runtime.Network.OperationTimeout <= TimeSpan.Zero || runtime.Network.OperationTimeout > TimeSpan.FromMinutes(1) ||
-            runtime.Network.MaximumRequestBytes is < 1024 or > 16 * 1024 * 1024 ||
-            runtime.Network.MaximumResponseBytes is < 1024 or > 16 * 1024 * 1024)
-            return ValidateOptionsResult.Fail("Runtime network and timing budgets must be valid.");
+        try { runtime.ValidateForBootstrap(); }
+        catch (ArgumentException)
+        {
+            return ValidateOptionsResult.Fail("Runtime context or network selection is invalid.");
+        }
         if (runtime.OriginalIssuedAt is not { } original || original > runtime.TimeProvider.GetUtcNow() ||
             runtime.Lifetime == InfisicalTokenLifetime.Finite && (runtime.Period is not null || runtime.AbsoluteLifetimeLimit is not null) ||
             runtime.Lifetime == InfisicalTokenLifetime.Periodic &&
@@ -53,7 +42,4 @@ internal sealed class InfisicalHostingOptionsValidator : IValidateOptions<Infisi
             return ValidateOptionsResult.Fail("Runtime lifetime requires independently established valid evidence.");
         return ValidateOptionsResult.Success;
     }
-
-    private static bool ValidCoordinate(string? value) => !string.IsNullOrWhiteSpace(value) &&
-        value.Length <= 1024 && !value.Any(char.IsControl);
 }
