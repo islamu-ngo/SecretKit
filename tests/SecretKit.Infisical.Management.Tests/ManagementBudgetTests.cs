@@ -159,6 +159,52 @@ public sealed class ManagementBudgetTests
         })).Throws<ArgumentException>();
     }
 
+    [Test]
+    [Arguments(429, "30", 30)]
+    [Arguments(503, "30", 30)]
+    [Arguments(503, "Wed, 01 Jan 2025 00:00:00 GMT", 86400)]
+    [Arguments(429, "Thu, 01 Jan 1970 00:00:12 GMT", 12)]
+    [Arguments(429, "Wed, 31 Dec 1969 23:59:59 GMT", 0)]
+    [Arguments(429, "999999", 86400)]
+    [Arguments(429, "invalid", -1)]
+    [Arguments(503, "", -1)]
+    public async Task RetryAdvicePreservesSchedulingEvidenceWithoutReplayingMutation(int status, string advice, int seconds)
+    {
+        using var wire = new Wire { ReplyStatus = status, Advice = advice };
+        using var transport = Transport(wire);
+        var client = new ManagementClient(transport, new Clock());
+        var authority = new ManagementAuthority(client.Authority, new Tokens(), Organization);
+        using var request = ScopedAccessOperations.CreateGroup(Organization, "created", "created");
+        var receipt = client.CreateReceipt(request);
+        var grant = authority.IssueGrant(request.OperationId,
+            ScopedAccessOperations.GroupCreationTarget(Organization, "created", "created"));
+        var result = await client.ExecuteAsync(request, authority, grant, receipt);
+        var replay = await client.ExecuteAsync(request, authority, grant, receipt);
+        await Assert.That(result.Status).IsEqualTo(status == 429 ? SecretStatus.Throttled : SecretStatus.Unavailable);
+        await Assert.That(result.RetryAfter).IsEqualTo(seconds < 0 ? null : TimeSpan.FromSeconds(seconds));
+        await Assert.That(replay.Status).IsEqualTo(SecretStatus.Invalid);
+        await Assert.That(wire.CreatedGroups.Count).IsEqualTo(0);
+    }
+
+    [Test]
+    public async Task TokenFailureRetainsClosedReasonAndSchedulingAdvice()
+    {
+        using var wire = new Wire();
+        using var transport = Transport(wire);
+        var client = new ManagementClient(transport);
+        var tokens = new Tokens
+        {
+            Failure = SecretOutcome<InfisicalAccessToken>.Failure(
+            SecretStatus.Unavailable, TimeSpan.FromSeconds(7), SecretFailureReason.TransportFailure)
+        };
+        var authority = new ManagementAuthority(client.Authority, tokens, Organization);
+        using var request = ScopedAccessOperations.GetGroup(Organization, Group);
+        var result = await client.ExecuteAsync(request, authority,
+            authority.IssueGrant(request.OperationId, new(Organization, resourceId: Group)));
+        await Assert.That(result.Reason).IsEqualTo(SecretFailureReason.TransportFailure);
+        await Assert.That(result.RetryAfter).IsEqualTo(TimeSpan.FromSeconds(7));
+    }
+
     private static ManagementTransport Transport(Wire wire) => new(new("https://management.test"), new()
     {
         Transport = InfisicalTransportOptions.HostControlled(wire),
@@ -168,12 +214,14 @@ public sealed class ManagementBudgetTests
 
     private sealed class Tokens : IInfisicalTokenSource
     {
+        internal SecretOutcome<InfisicalAccessToken>? Failure { get; init; }
         internal bool Cooperative { get; init; }
         internal TaskCompletionSource? Entered { get; init; }
         internal TaskCompletionSource Release { get; init; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal SecretMaterial? Material { get; private set; }
         public async ValueTask<SecretOutcome<InfisicalAccessToken>> GetTokenAsync(CancellationToken cancellationToken)
         {
+            if (Failure is not null) return Failure;
             if (Entered is not null)
             {
                 Entered.SetResult();
@@ -186,6 +234,9 @@ public sealed class ManagementBudgetTests
 
     private sealed class Wire : HttpMessageHandler
     {
+        internal int ReplyStatus { get; init; } = 200;
+        internal string Advice { get; init; } = "";
+        private bool _adviceSent;
         internal bool Cooperative { get; init; }
         internal string Stage { get; init; } = "";
         internal TaskCompletionSource Entered { get; init; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -193,6 +244,14 @@ public sealed class ManagementBudgetTests
         internal List<string> CreatedGroups { get; } = [];
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
+            if (ReplyStatus != 200 && !_adviceSent)
+            {
+                _adviceSent = true;
+                var response = new HttpResponseMessage((HttpStatusCode)ReplyStatus);
+                if (Advice.Length != 0) response.Headers.TryAddWithoutValidation("Retry-After", Advice);
+                return response;
+            }
+            if (_adviceSent && request.Method == HttpMethod.Post) CreatedGroups.Add("created");
             if (Stage == "lost") CreatedGroups.Add("created");
             if (Stage is "send" or "lost")
             {

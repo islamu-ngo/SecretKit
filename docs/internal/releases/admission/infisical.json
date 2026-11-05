@@ -230,7 +230,7 @@
     },
     {
       "file": "src/SecretKit.Infisical.Management/Transport/ManagementClient.cs",
-      "sha256": "b920fea01226618af40f83502f83b2da56fdaab2ba93fb2acfe931100bd546f0"
+      "sha256": "4181032fe03f3762d1ae02116b089a9c0d403efd66f87853e4e3e82e44956d0f"
     },
     {
       "file": "src/SecretKit.Infisical.Management/Transport/ManagementContracts.cs",

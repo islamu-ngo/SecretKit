@@ -148,7 +148,7 @@ public sealed class ManagementClient
             if (!tokenOutcome.IsSuccess)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                return SecretOutcome<T>.Failure(tokenOutcome.Status, tokenOutcome.RetryAfter);
+                return SecretOutcome<T>.Failure(tokenOutcome.Status, tokenOutcome.RetryAfter, tokenOutcome.Reason);
             }
             using InfisicalAccessToken token = tokenOutcome.Value;
             cancellationToken.ThrowIfCancellationRequested();
@@ -195,6 +195,7 @@ public sealed class ManagementClient
                     HttpStatusCode.NotFound => SecretStatus.Absent,
                     HttpStatusCode.Conflict or HttpStatusCode.PreconditionFailed => SecretStatus.Conflict,
                     HttpStatusCode.TooManyRequests => SecretStatus.Throttled,
+                    HttpStatusCode.ServiceUnavailable => SecretStatus.Unavailable,
                     _ => SecretStatus.Unknown
                 };
                 if (status == SecretStatus.Conflict)
@@ -206,7 +207,7 @@ public sealed class ManagementClient
                     receipt?.Record(DispatchEvidence.Rejected);
                 }
                 cancellationToken.ThrowIfCancellationRequested();
-                return SecretOutcome<T>.Failure(status);
+                return SecretOutcome<T>.Failure(status, InfisicalOperationBudget.RetryAfter(response, _time));
             }
             if (response.Content.Headers.ContentLength > _transport.ResponseLimit)
             {
