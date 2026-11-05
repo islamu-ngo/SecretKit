@@ -93,6 +93,8 @@ public sealed class ArchitectureBoundaryTests
             _ => []
         };
         await Assert.That(friends.SequenceEqual(expected.Order(StringComparer.Ordinal), StringComparer.Ordinal)).IsTrue();
+        if (package == "SecretKit.Infisical.Management")
+            await Assert.That(RuntimeManagementDependencyTests.UnapprovedRuntimeReferences(metadata)).IsEmpty();
     }
 
     private static bool IsFriendAttribute(MetadataReader metadata, CustomAttribute attribute)
