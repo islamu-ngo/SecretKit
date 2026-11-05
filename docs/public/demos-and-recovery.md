@@ -155,8 +155,8 @@ Review host-created plaintext and telemetry separately from SDK omission.
 
 ## Reproduce controlled measurements
 
-The nonpackable [workload source](../../tests/PackageQualification/Infisical.Demos/Measurements.cs)
-is linked only into a generated standalone consumer by
+The nonpackable [workload source](../../tests/Benchmarks/SecretKit.Benchmarks/Measurements.cs)
+runs in the local benchmark executable and is also linked into a generated standalone consumer by
 [DemoQualityTests](../../tests/SecretKit.Demo.Tests/DemoQualityTests.cs).
 It does not enter the minimal console, worker or web graph, install a benchmark
 package, contact a provider, or reference SDK source. The isolated consumer
@@ -211,6 +211,38 @@ compare rows only with matching workload, runtime and archive identities.
 All measured time is **controlled in-process local overhead**. There is no HTTP
 transport, TLS, DNS, provider latency, downstream business latency or native
 performance claim in those rows.
+
+For a source-only offline observation, build and run
+`tests/Benchmarks/SecretKit.Benchmarks` in Release from the checkout. This is
+distinct from the exact-package procedure above. The six existing rows retain
+their workload. Preparation, refresh/export, lease batches and handover also
+record per-repetition `selectedReads`: respectively eight, eight, zero and eight.
+These count synthetic reader calls, not HTTP requests; cancellation/shutdown rows
+leave that field null. Warmup and initial admission are outside those counts.
+Ticks, process-wide allocation deltas, runtime, OS, RID, architecture, processor
+count and GC mode accompany each run. No universal latency or allocation limit
+is inferred, and these observations do not justify changing Azure client ownership.
+
+For equivalent direct-provider/SDK scenarios, retain the existing
+[consumer baseline](../../tools/SecretKit.ConsumerBaseline/Program.cs):
+its controlled bootstrap/assessment cases compare matched outcomes across direct
+Azure and SDK paths and record elapsed ticks and wire-request totals. It uses
+controlled transports, including a loopback Infisical fixture, not native provider
+qualification. It does not record allocations; use the lifecycle workload for
+local allocation observations without presenting the two workloads as an
+allocation comparison. The baseline's explicit `live-infisical` mode is a
+separate authorized provider operation, never part of this offline procedure.
+
+On November 5, 2026 the current source baseline built and ran successfully on
+.NET 10.0.10 / linux-x64. All 30 path/workflow/scenario cells matched their
+declared safe outputs, with five discarded warmups and 30 measured samples per
+cell. It recorded 1,376 Azure fixture requests and 688 Infisical loopback requests;
+fresh-read and pre-dispatch cancellation checks passed. The raw local record is
+`artifacts/enterprise-hardening-controlled-baseline-e2a0fc8c-e0f8-419e-889d-f882b9f402a7.json`.
+Those totals include setup, warmups and correctness probes; they are not per-call
+overhead or native performance evidence. The direct Azure and SecretKit paths
+have different local ownership/export mechanisms, as described in the
+[baseline protocol](../internal/adoption/PILOT_PROTOCOL.md).
 
 ### Observed local workload, 2026-10-24
 

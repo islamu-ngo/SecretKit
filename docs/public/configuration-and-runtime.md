@@ -167,6 +167,31 @@ failure and readiness budgets, including during long-running operations.
 
 ## Opt into plaintext IConfiguration separately
 
+For deliberate client reuse, see the runnable
+[bootstrap composition](../../samples/RuntimeConfiguration/BootstrapScenario.cs)
+and its [operating choices](../../samples/RuntimeConfiguration/README.md).
+It selects collection concurrency, selection/material bounds and timeout
+explicitly, then runs repeated application work through one accepted client
+lease without another provider read. A snapshot is reusable local storage,
+not a hidden provider cache or evidence that remote permissions remain valid.
+
+`SecretGenerationCoordinator<TClient>` accepts `collectionOptions` for both
+CheckAgain and Enable collections. Its explicit FailClosed policy removes the
+current client after a failed attempt; BoundedLastKnown retains only the accepted
+client until its original maximum age or earlier supplied expiry. Inspect
+`LastStatus` alongside `Freshness` and `UsableUntil`: an active stale generation
+does not make a denied read or failed application validation successful.
+`CheckAgainAsync` never activates the validated candidate or extends that deadline.
+An acquired lease checks the deadline before each execution; running work retains
+its ownership until completion and is not forcibly interrupted at expiry.
+
+Identity replacement requires a newly constructed owner and authority-bound
+references. Accept the replacement before routing new work, close old acquisition,
+then release old leases and await retirement. The example and
+[consumer characterization](../../tests/SecretKit.Consumer.Tests/ActivationRevisionTests.cs)
+show separate owners; local revision numbers from different owners cannot be
+compared as a global identity/version counter.
+
 For one-shot ownership, first await
 `PreparedSecretConfiguration.PrepareAsync(selections, options: options,
 cancellationToken: cancellationToken)`. On success, dispose the returned owner.
@@ -276,6 +301,12 @@ are shipped by the optional Configuration package. They support fresh
 `CheckAgainAsync` without activation, explicit `EnableAsync`, revision-checked
 handover, fail-closed or bounded-last-known policy and lease-based retirement.
 They do not supply a durable tenant model, persistence or fleet coordination.
+The optional final `collectionOptions` constructor argument accepts the same
+immutable `SecretCollectionOptions` as the loader. One selection governs mapping
+validation and every Enable/Check again attempt, including concurrency, payload
+and deadline limits. An over-budget candidate cannot activate. The short
+[configuration reload sample](../../samples/ConfigurationReload/Program.cs)
+demonstrates explicit limits and old/new generation leases.
 
 A provider write acknowledgement, a collected generation, an active application
 client and readiness evidence are different states. Keep administrative

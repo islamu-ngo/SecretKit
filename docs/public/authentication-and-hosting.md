@@ -385,6 +385,21 @@ required material before constructing/starting dependent services, as shown in
 
 ## Recovery is a new authorized handoff
 
+An existing runtime keeps its selected identity when host options change.
+Reconfiguration requires a deliberately constructed replacement runtime (or a
+distinct keyed registration), its own references and separately accepted
+application clients. Validate required delivery using that intended identity
+before directing new work to it. Options validation checks context, not effective
+provider permissions.
+
+The [offline composition](../../samples/RuntimeConfiguration/BootstrapScenario.cs)
+demonstrates this ownership sequence with synthetic readers: accept a new owner,
+stop new acquisition from the old one, finish and release its held lease, then
+await retirement. In a hosted application, also stop the old maintenance helper
+and dispose its runtime after dependent work drains. An accepted client generation
+can serve repeated application operations without secret reads; actual provider
+operations still use their explicitly selected token/session and can be denied.
+
 Expiry, lost in-memory tokens, unknown lifetime evidence, rejected renewal and
 uncertain effects require an explicit host decision. Retain safe dispatch/status
 evidence, stop/drain the old lifecycle, obtain newly authorized material for the

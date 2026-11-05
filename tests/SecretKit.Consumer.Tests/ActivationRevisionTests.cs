@@ -7,6 +7,45 @@ namespace SecretKit.Consumer.Tests;
 public sealed class ActivationRevisionTests
 {
     [Test]
+    public async Task DeliberateIdentityReplacementDrainsOldOwnerWithoutProviderReadsDuringWork()
+    {
+        var oldIdentity = new RuntimeFixture { Value = "old-identity" };
+        var newIdentity = new RuntimeFixture { Value = "new-identity" };
+        var oldOwner = oldIdentity.Create();
+        await using var replacement = newIdentity.Create();
+        await oldOwner.EnableAsync();
+        await using var held = oldOwner.Acquire()!;
+        try
+        {
+            await replacement.EnableAsync();
+            // Any accidental read during application work fails at the selected seam.
+            oldIdentity.Reader.BeforeRead = _ => throw new InvalidOperationException("Unexpected provider read.");
+            newIdentity.Reader.BeforeRead = _ => throw new InvalidOperationException("Unexpected provider read.");
+            await oldOwner.DisableAsync();
+            Task retirement = oldOwner.DisposeAsync().AsTask();
+            await Assert.That(retirement.IsCompleted).IsFalse();
+            await Assert.That(oldIdentity.Clients.Single().Disposed).IsFalse();
+            await using var current = replacement.Acquire()!;
+            for (int i = 0; i < 3; i++)
+            {
+                await Assert.That(await held.ExecuteAsync(static (client, token) => client.ExecuteAsync(token)))
+                    .IsEqualTo("old-identity");
+                await Assert.That(await current.ExecuteAsync(static (client, token) => client.ExecuteAsync(token)))
+                    .IsEqualTo("new-identity");
+            }
+            await held.DisposeAsync();
+            await retirement.WaitAsync(TimeSpan.FromSeconds(5));
+            await Assert.That(oldIdentity.Clients.Single().Disposed).IsTrue();
+            await Assert.That(replacement.Observe().Active).IsTrue();
+        }
+        finally
+        {
+            await held.DisposeAsync();
+            await oldOwner.DisposeAsync();
+        }
+    }
+
+    [Test]
     public async Task RetirementSelectsAsynchronousCleanupForAnAsyncApplicationClient()
     {
         var fixture = new RuntimeFixture { Value = "prepared" };

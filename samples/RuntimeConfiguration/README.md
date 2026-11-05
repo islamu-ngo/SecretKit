@@ -18,13 +18,24 @@ validates the optional candidate but does not enable it or replace its active
 client. Only explicit `EnableAsync` activates or hands over; `DisableAsync` invalidates
 older in-flight candidates.
 
-The composition workload is offline and serial: two required keys collected in
+The composition workload is offline: two required keys collected in
 two passes (four reads), plus one optional key checked while absent, checked while
 available, and explicitly enabled (three reads). The executable reports the seven
 selected reads and measured elapsed milliseconds, including local preparation,
 application validation, export and handover. These are controlled local costs,
-not provider latency, a startup SLA, or a rate-limit qualification. No evidence
-justifies adding parallel collection.
+not provider latency, a startup SLA, or a rate-limit qualification. Required
+collection explicitly permits concurrency two and caps two selections/1024 bytes.
+Optional collection uses concurrency one, one selection/1024 bytes and a ten-second
+cooperative timeout. Those bounds are workload choices, not universal defaults.
+
+Three application operations reuse the acquired optional client without reading
+the provider. Identity replacement then constructs a separate reader, references
+and coordinator, accepts that candidate, and routes new work through its lease.
+Its one additional selected read is reported separately. Disabling the original
+owner closes new acquisition; the held old lease finishes before release and
+asynchronous retirement. Neither changing a variable nor reloading configuration
+changes an existing owner's principal. This local example demonstrates ownership,
+not provider permission.
 
 Each logical operation pins one snapshot handle or client lease while a fresh
 generation is collected and accepted. The old operation retains its own material
@@ -32,6 +43,13 @@ or client; new acquisitions see the accepted replacement. A failed or cancelled
 required collection cannot publish a partial generation. The sample coordinator
 uses an explicit fail-closed or bounded-last-known policy and never extends a
 stale generation's original deadline.
+
+Inspect `LastStatus`, `Freshness` and `UsableUntil` after every explicit attempt.
+FailClosed stops new acquisitions after denial or failed application validation.
+BoundedLastKnown keeps only the previously accepted client until its original
+deadline or earlier known expiry. Neither policy silently accepts the failed
+candidate. A lease checks its deadline before each execution; an already running
+callback is not forcibly terminated. Snapshot reads alone do not enforce age.
 
 The sample's client/coordinator/lease lifetimes are asynchronous. Use
 `await using` for coordinators and acquired leases. The lease's `Revision` is

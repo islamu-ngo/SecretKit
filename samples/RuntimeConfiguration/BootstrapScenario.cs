@@ -34,17 +34,20 @@ public static class BootstrapScenario
         string password = authorityOnly["Service:Password"]!;
         Func<bool> applicationOwnedConsumer = () => username.Length > 0 && password.Length > 0;
 
-        await using var optional = new SecretGenerationCoordinator<IRuntimeIntegrationClient>(reader,
+        SecretGenerationCoordinator<IRuntimeIntegrationClient> CreateOptional(CompositionReader selected) => new(selected,
             new Dictionary<string, SecretReference>
             {
-                ["credential"] = new(reader.Authority, new CompositionAddress(true))
+                ["credential"] = new(selected.Authority, new CompositionAddress(true))
             },
             (candidate, _) =>
             {
                 using SecretRead read = candidate.Read("credential");
                 return ValueTask.FromResult(SecretOutcome<IRuntimeIntegrationClient>.Success(
                     new CompositionClient(read.Material.Reveal())));
-            }, SecretGenerationStalePolicy.FailClosed, TimeSpan.FromMinutes(1), TimeProvider.System);
+            }, SecretGenerationStalePolicy.FailClosed, TimeSpan.FromMinutes(1), TimeProvider.System,
+            collectionOptions: new(maximumConcurrency: 1, maximumSelections: 1,
+                maximumMaterialBytes: 1024, collectionTimeout: TimeSpan.FromSeconds(10)));
+        await using var optional = CreateOptional(reader);
         SecretGenerationObservation absent = await optional.CheckAgainAsync();
         if (absent.LastStatus != SecretStatus.Absent || !applicationOwnedConsumer())
             throw new InvalidOperationException("Optional absence affected required startup.");
@@ -54,7 +57,26 @@ public static class BootstrapScenario
             throw new InvalidOperationException("A capability check activated a consumer.");
         await optional.EnableAsync();
         await using SecretGenerationLease<IRuntimeIntegrationClient> active = optional.Acquire()!;
+        int beforeWork = reader.Reads;
+        for (int i = 0; i < 3; i++)
+            await active.ExecuteAsync(static (client, token) => client.ExecuteAsync(token));
+        if (reader.Reads != beforeWork)
+            throw new InvalidOperationException("Application work reread the provider.");
+
+        // Identity replacement creates a new authority, references and owner.
+        // Validate it before routing new work; the old lease owns its remaining work.
+        var replacementReader = new CompositionReader { OptionalAvailable = true };
+        await using var replacementOwner = CreateOptional(replacementReader);
+        if (!(await replacementOwner.EnableAsync()).Active)
+            throw new InvalidOperationException("Replacement identity was not accepted.");
+        await optional.DisableAsync();
+        if (optional.Acquire() is not null)
+            throw new InvalidOperationException("Retired identity admitted new work.");
         await active.ExecuteAsync(static (client, token) => client.ExecuteAsync(token));
+        await active.DisposeAsync();
+        await using SecretGenerationLease<IRuntimeIntegrationClient> replacementLease = replacementOwner.Acquire()!;
+        await replacementLease.ExecuteAsync(static (client, token) => client.ExecuteAsync(token));
+        Console.WriteLine($"IDENTITY_REPLACEMENT_SELECTED_READS_{replacementReader.Reads}_OLD_LEASE_RELEASED");
 
         reader.RequiredValue = "offline-next";
         using PreparedSecretConfiguration next =

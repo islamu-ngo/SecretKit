@@ -21,14 +21,14 @@ internal static class Measurements
     internal static async Task<string> RunAsync()
     {
         var rows = new List<object>();
+        var preparationReader = new Reader();
         await MeasureAsync("preparation", async () =>
         {
-            var reader = new Reader();
             using var prepared = (await PreparedSecretConfiguration.PrepareAsync(
-                Selections(reader), options: CollectionOptions())).Value;
+                Selections(preparationReader), options: CollectionOptions())).Value;
             using SecretRead read = prepared.Read("key0");
             Require(read.Material.Reveal().Length == 256);
-        });
+        }, () => preparationReader.Reads);
         var refreshReader = new Reader();
         using (var loader = Loader(refreshReader))
         {
@@ -42,20 +42,23 @@ internal static class Measurements
                 using var handle = loader.Acquire();
                 export.Replace(handle);
                 Require(provider.TryGet("Work:0", out string? value) && value?.Length == 256);
-            });
+            }, () => refreshReader.Reads);
         }
         var resources = new Resources();
-        await using (var coordinator = Coordinator(new Reader(), resources))
+        var workReader = new Reader();
+        await using (var coordinator = Coordinator(workReader, resources))
         {
             Require((await coordinator.EnableAsync()).Active);
             await MeasureAsync("request-lease-batch", async () =>
             {
+                int beforeWork = workReader.Reads;
                 for (int i = 0; i < LeasesPerBatch; i++)
                 {
                     await using var lease = coordinator.Acquire() ?? throw new InvalidOperationException();
                     Require(await lease.ExecuteAsync(static (client, token) => client.ExecuteAsync(token)) == "accepted");
                 }
-            });
+                Require(workReader.Reads == beforeWork);
+            }, () => workReader.Reads);
             await MeasureAsync("handover", async () =>
             {
                 await using var held = coordinator.Acquire() ?? throw new InvalidOperationException();
@@ -63,7 +66,7 @@ internal static class Measurements
                 Require((await coordinator.EnableAsync()).Active);
                 await using var next = coordinator.Acquire() ?? throw new InvalidOperationException();
                 Require(next.Revision > old && await held.ExecuteAsync(static (client, token) => client.ExecuteAsync(token)) == "accepted");
-            });
+            }, () => workReader.Reads);
         }
         await MeasureAsync("cancellation", async () => { Require(await CancelAsync()); });
         await MeasureAsync("shutdown", async () =>
@@ -79,6 +82,7 @@ internal static class Measurements
         return JsonSerializer.Serialize(new
         {
             kind = "controlled-local-overhead",
+            limits = "Synthetic in-process reader calls, not HTTP requests. No provider, TLS, DNS or downstream latency; process-wide allocations include unrelated activity. No performance threshold or gain claim.",
             runtime = RuntimeInformation.FrameworkDescription,
             os = RuntimeInformation.OSDescription,
             osVersion = Environment.OSVersion.VersionString,
@@ -103,20 +107,23 @@ internal static class Measurements
             preparation
         });
 
-        async Task MeasureAsync(string name, Func<Task> action)
+        async Task MeasureAsync(string name, Func<Task> action, Func<int>? reads = null)
         {
             for (int i = 0; i < Warmup; i++) await action();
             long[] ticks = new long[Repetitions];
             long[] allocated = new long[Repetitions];
+            int[]? selectedReads = reads is null ? null : new int[Repetitions];
             for (int i = 0; i < Repetitions; i++)
             {
                 long before = GC.GetTotalAllocatedBytes(precise: true);
+                int beforeReads = reads?.Invoke() ?? 0;
                 long start = Stopwatch.GetTimestamp();
                 await action();
                 ticks[i] = Stopwatch.GetTimestamp() - start;
                 allocated[i] = GC.GetTotalAllocatedBytes(precise: true) - before;
+                if (selectedReads is not null) selectedReads[i] = reads!() - beforeReads;
             }
-            rows.Add(new { name, ticks, processAllocatedBytes = allocated });
+            rows.Add(new { name, ticks, processAllocatedBytes = allocated, selectedReads });
         }
     }
 
@@ -259,6 +266,7 @@ internal static class Measurements
 
     private sealed class Reader : ISecretReader
     {
+        internal int Reads;
         private readonly string _value = new('x', 256);
         public SecretAuthority Authority { get; } = new();
         internal bool Block { get; set; }
@@ -269,6 +277,7 @@ internal static class Measurements
             CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            Interlocked.Increment(ref Reads);
             if (((Address)reference.Address).Absent)
                 return SecretOutcome<SecretRead>.Failure(SecretStatus.Absent);
             if (Block)

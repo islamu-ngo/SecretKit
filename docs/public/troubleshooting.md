@@ -78,6 +78,21 @@ cancelling reader I/O.
 
 ## Values appear mixed after reload
 
+Repeated work should acquire an accepted client generation or pin one snapshot,
+then reuse it for the logical operation. Neither acquisition nor a snapshot read
+contacts the provider. An explicit refresh/check/enable does; inspect its status
+even when a bounded last-known client is still active. Denial and failed
+application validation remain failures, and neither extends the accepted
+generation's original deadline. The lease rejects new executions at known expiry;
+plain snapshot handles require application-owned freshness checks.
+
+If an identity setting changes but work still uses the old identity, construct
+and validate a new owner with new authority-bound references, route new work to
+it, then stop old acquisition and drain/release old leases before disposal.
+Reloading settings does not mutate an existing owner. See the
+[runnable ownership example](../../samples/RuntimeConfiguration/README.md) and
+[stale-policy tests](../../tests/SecretKit.Consumer.Tests/StalePolicyTests.cs).
+
 Independent `IConfiguration` indexer reads can cross a reload. A reload signal
 does not make several application reads atomic or replace an existing database
 client.

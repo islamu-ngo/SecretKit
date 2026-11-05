@@ -9,6 +9,31 @@ public sealed class StalePolicyTests
     [Test]
     [Arguments(SecretGenerationStalePolicy.FailClosed)]
     [Arguments(SecretGenerationStalePolicy.BoundedLastKnown)]
+    public async Task FailedValidationKeepsStatusVisibleAndCannotExtendAcceptedDeadline(SecretGenerationStalePolicy policy)
+    {
+        var fixture = new RuntimeFixture { Value = "accepted" };
+        await using var coordinator = fixture.Create(policy);
+        SecretGenerationObservation initial = await coordinator.EnableAsync();
+        fixture.Time.Now += TimeSpan.FromMinutes(4);
+        fixture.ValidationFailure = SecretStatus.Invalid;
+
+        SecretGenerationObservation rejected = await coordinator.EnableAsync();
+
+        await Assert.That(rejected.LastStatus).IsEqualTo(SecretStatus.Invalid);
+        await Assert.That(rejected.Active).IsEqualTo(policy == SecretGenerationStalePolicy.BoundedLastKnown);
+        await Assert.That(fixture.Clients.Count).IsEqualTo(1);
+        if (policy == SecretGenerationStalePolicy.BoundedLastKnown)
+        {
+            await Assert.That(rejected.UsableUntil).IsEqualTo(initial.UsableUntil);
+            await Assert.That(rejected.Freshness).IsEqualTo(SecretGenerationFreshness.Stale);
+        }
+        fixture.Time.Now += TimeSpan.FromMinutes(1);
+        await Assert.That(coordinator.Acquire()).IsNull();
+    }
+
+    [Test]
+    [Arguments(SecretGenerationStalePolicy.FailClosed)]
+    [Arguments(SecretGenerationStalePolicy.BoundedLastKnown)]
     public async Task CancelledExplicitRefreshFollowsStalePolicyWithoutReplacingPinnedClient(SecretGenerationStalePolicy policy)
     {
         var fixture = new RuntimeFixture { Value = "test-pinned" };
