@@ -107,6 +107,7 @@ public sealed class SecretGenerationCoordinator<TClient> : IAsyncDisposable wher
     /// <summary>Stops new acquisition and retires the current client after existing pins are released.</summary>
     public async ValueTask<SecretGenerationObservation> DisableAsync()
     {
+        using var diagnostics = ConfigurationDiagnostics.Defer();
         SecretClientGeneration<TClient>? retired;
         SecretGenerationObservation observation;
         lock (_gate)
@@ -147,6 +148,8 @@ public sealed class SecretGenerationCoordinator<TClient> : IAsyncDisposable wher
 
     private async ValueTask<SecretGenerationObservation> CollectAsync(bool enable, CancellationToken cancellationToken)
     {
+        using var diagnostics = ConfigurationDiagnostics.Defer();
+        var started = ConfigurationDiagnostics.Capture(_time);
         long revision;
         var finished = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         lock (_gate)
@@ -162,6 +165,8 @@ public sealed class SecretGenerationCoordinator<TClient> : IAsyncDisposable wher
         TClient? client = null;
         SecretClientGeneration<TClient>? retired = null;
         SecretStatus status = SecretStatus.Unknown;
+        SecretFailureReason reason = SecretFailureReason.None;
+        var collectionObservation = new ConfigurationCollectionObservation();
         DateTimeOffset collected = default;
         DateTimeOffset deadline = default;
         try
@@ -169,8 +174,9 @@ public sealed class SecretGenerationCoordinator<TClient> : IAsyncDisposable wher
             lock (_gate)
                 if (_disposed || revision != _desiredRevision) return ObserveLocked();
             using var loader = new SecretSnapshotLoader(_selections, _time, _collectionOptions);
-            SecretOutcome<long> collection = await loader.RefreshAsync(cancellationToken).ConfigureAwait(false);
+            SecretOutcome<long> collection = await loader.RefreshObservedAsync(collectionObservation, cancellationToken).ConfigureAwait(false);
             status = collection.Status;
+            reason = collection.Reason;
             if (collection.IsSuccess)
             {
                 using SecretSnapshotHandle candidate = loader.Acquire();
@@ -184,6 +190,7 @@ public sealed class SecretGenerationCoordinator<TClient> : IAsyncDisposable wher
                 SecretOutcome<TClient> validation =
                     await _validate(candidate, cancellationToken).ConfigureAwait(false);
                 status = validation.Status;
+                reason = validation.Reason;
                 if (validation.IsSuccess) client = validation.Value;
                 cancellationToken.ThrowIfCancellationRequested();
                 if (_time.GetUtcNow() >= deadline) status = SecretStatus.Expired;
@@ -212,6 +219,10 @@ public sealed class SecretGenerationCoordinator<TClient> : IAsyncDisposable wher
         }
         catch (OperationCanceledException)
         {
+            status = SecretStatus.Unknown;
+            reason = SecretFailureReason.None;
+            collectionObservation.Termination = cancellationToken.IsCancellationRequested
+                ? ConfigurationTermination.CallerCanceled : ConfigurationTermination.DependencyCanceled;
             lock (_gate)
             {
                 if (!_disposed && revision == _desiredRevision)
@@ -225,6 +236,9 @@ public sealed class SecretGenerationCoordinator<TClient> : IAsyncDisposable wher
         }
         catch (Exception)
         {
+            status = SecretStatus.Unknown;
+            reason = SecretFailureReason.None;
+            collectionObservation.Termination = ConfigurationTermination.Faulted;
             lock (_gate)
             {
                 if (!_disposed && revision == _desiredRevision)
@@ -239,16 +253,52 @@ public sealed class SecretGenerationCoordinator<TClient> : IAsyncDisposable wher
         {
             try
             {
-                if (client is not null) await client.DisposeAsync().ConfigureAwait(false);
-            }
-            catch (Exception)
-            {
-                lock (_gate) { _retirementFailed = true; _lastStatus = SecretStatus.Unknown; }
+                if (client is not null)
+                {
+                    var retirement = ConfigurationDiagnostics.Capture(_time);
+                    bool failed = true;
+                    var termination = ConfigurationTermination.Faulted;
+                    try
+                    {
+                        await client.DisposeAsync().ConfigureAwait(false);
+                        failed = false;
+                        termination = ConfigurationTermination.Completed;
+                    }
+                    catch (Exception error)
+                    {
+                        termination = error is OperationCanceledException
+                            ? ConfigurationTermination.DependencyCanceled : ConfigurationTermination.Faulted;
+                        status = SecretStatus.Unknown;
+                        reason = SecretFailureReason.None;
+                        collectionObservation.Termination = cancellationToken.IsCancellationRequested
+                            ? ConfigurationTermination.CallerCanceled : termination;
+                        lock (_gate) { _retirementFailed = true; _lastStatus = SecretStatus.Unknown; }
+                    }
+                    finally
+                    {
+                        ConfigurationDiagnostics.Emit(ConfigurationOperation.Retirement,
+                            failed ? SecretStatus.Unknown : SecretStatus.Success, SecretFailureReason.None, termination,
+                            failed ? ConfigurationState.RetirementFailed : ConfigurationState.Retired,
+                            ConfigurationDiagnostics.Complete(retirement, _time));
+                    }
+                }
             }
             finally
             {
                 lock (_gate) _collections.Remove(finished.Task);
                 finished.TrySetResult();
+                ConfigurationState state;
+                lock (_gate)
+                    state = _disposed || revision != _desiredRevision ? ConfigurationState.Superseded :
+                        ObserveLocked().Freshness switch
+                        {
+                            SecretGenerationFreshness.Fresh => ConfigurationState.Fresh,
+                            SecretGenerationFreshness.Stale => ConfigurationState.Stale,
+                            SecretGenerationFreshness.DeadlineElapsed => ConfigurationState.DeadlineElapsed,
+                            _ => status == SecretStatus.Success ? ConfigurationState.Validated : ConfigurationState.Rejected
+                        };
+                ConfigurationDiagnostics.Emit(ConfigurationOperation.Publication, status, reason, collectionObservation.Termination,
+                    state, ConfigurationDiagnostics.Complete(started, _time));
             }
         }
         // Rejected-candidate cleanup can change health; do not return a pre-cleanup snapshot.
@@ -285,6 +335,7 @@ public sealed class SecretGenerationCoordinator<TClient> : IAsyncDisposable wher
     /// <exception cref="InvalidOperationException">A client could not be retired; details are suppressed.</exception>
     public async ValueTask DisposeAsync()
     {
+        using var diagnostics = ConfigurationDiagnostics.Defer();
         TaskCompletionSource completion;
         Task[] pending;
         SecretClientGeneration<TClient>? retired = null;

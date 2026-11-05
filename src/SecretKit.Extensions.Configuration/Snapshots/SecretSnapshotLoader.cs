@@ -71,12 +71,50 @@ public sealed class SecretSnapshotLoader : IDisposable
     /// <returns>The new local generation or the earliest input-order failure, with bounded detail.</returns>
     /// <exception cref="OperationCanceledException">The caller canceled collection or its admission wait.</exception>
     /// <exception cref="ObjectDisposedException">The loader was disposed before publication.</exception>
-    public async ValueTask<SecretOutcome<long>> RefreshAsync(CancellationToken cancellationToken = default)
+    public ValueTask<SecretOutcome<long>> RefreshAsync(CancellationToken cancellationToken = default) =>
+        RefreshObservedAsync(new ConfigurationCollectionObservation(), cancellationToken);
+
+    internal async ValueTask<SecretOutcome<long>> RefreshObservedAsync(ConfigurationCollectionObservation observation,
+        CancellationToken cancellationToken)
+    {
+        using var diagnostics = ConfigurationDiagnostics.Defer();
+        var started = ConfigurationDiagnostics.Capture(_time);
+        SecretStatus status = SecretStatus.Unknown;
+        SecretFailureReason reason = SecretFailureReason.None;
+        try
+        {
+            var result = await RefreshCoreAsync(observation, cancellationToken).ConfigureAwait(false);
+            status = result.Status;
+            reason = result.Reason;
+            return result;
+        }
+        catch (OperationCanceledException)
+        {
+            observation.Termination = cancellationToken.IsCancellationRequested
+                ? ConfigurationTermination.CallerCanceled : ConfigurationTermination.DependencyCanceled;
+            throw;
+        }
+        catch (Exception)
+        {
+            observation.Termination = ConfigurationTermination.Faulted;
+            throw;
+        }
+        finally
+        {
+            // The core has drained delivered/candidate storage and released admission.
+            var interval = ConfigurationDiagnostics.Complete(started, _time);
+            ConfigurationDiagnostics.Emit(ConfigurationOperation.Collection, status, reason, observation.Termination,
+                status == SecretStatus.Success ? ConfigurationState.Published : ConfigurationState.Rejected, interval);
+        }
+    }
+
+    private async ValueTask<SecretOutcome<long>> RefreshCoreAsync(ConfigurationCollectionObservation observation,
+        CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         await _collection.WaitAsync(cancellationToken).ConfigureAwait(false);
         var candidate = new Dictionary<string, SecretRead?>(StringComparer.Ordinal);
-        var slots = new Task<SecretOutcome<SecretRead>>?[_options.MaximumConcurrency];
+        var slots = new Task<(SecretOutcome<SecretRead> Outcome, ConfigurationTermination Termination)>?[_options.MaximumConcurrency];
         DateTimeOffset started = _time.GetUtcNow();
         using var deadline = new CancellationTokenSource(_options.CollectionTimeout, _time);
         using var collection = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
@@ -99,7 +137,8 @@ public sealed class SecretSnapshotLoader : IDisposable
             {
                 int slot = reduced % slots.Length;
                 SecretSelection selection = _selections[reduced];
-                SecretOutcome<SecretRead> outcome = await slots[slot]!.ConfigureAwait(false);
+                var delivery = await slots[slot]!.ConfigureAwait(false);
+                SecretOutcome<SecretRead> outcome = delivery.Outcome;
                 slots[slot] = null;
                 reduced++;
                 if (!outcome.IsSuccess)
@@ -111,6 +150,7 @@ public sealed class SecretSnapshotLoader : IDisposable
                     else if (failure is null)
                     {
                         failure = SecretOutcome<long>.Failure(outcome.Status, outcome.RetryAfter, outcome.Reason);
+                        observation.Termination = delivery.Termination;
                         Interlocked.Exchange(ref terminal, 1);
                     }
                 }
@@ -195,19 +235,21 @@ public sealed class SecretSnapshotLoader : IDisposable
         }
         finally
         {
-            foreach (Task<SecretOutcome<SecretRead>>? slot in slots)
+            foreach (var slot in slots)
             {
                 if (slot is null) continue;
-                SecretOutcome<SecretRead> outcome = await slot.ConfigureAwait(false);
+                var delivery = await slot.ConfigureAwait(false);
+                SecretOutcome<SecretRead> outcome = delivery.Outcome;
                 if (outcome.IsSuccess) outcome.Value.Dispose();
             }
             foreach (SecretRead? read in candidate.Values) read?.Dispose();
             _collection.Release();
         }
 
-        async Task<SecretOutcome<SecretRead>> ReadAsync(SecretSelection selection)
+        async Task<(SecretOutcome<SecretRead> Outcome, ConfigurationTermination Termination)> ReadAsync(SecretSelection selection)
         {
             SecretOutcome<SecretRead> outcome;
+            var termination = ConfigurationTermination.Completed;
             try
             {
                 outcome = await selection.Reader.ReadAsync(selection.Reference, collection.Token).ConfigureAwait(false);
@@ -215,9 +257,11 @@ public sealed class SecretSnapshotLoader : IDisposable
                     outcome = SecretOutcome<SecretRead>.Failure(SecretStatus.Invalid,
                         reason: SecretFailureReason.InvalidResponse);
             }
-            catch (Exception)
+            catch (Exception error)
             {
                 // Caller/deadline precedence is applied after all started work has settled.
+                termination = error is OperationCanceledException
+                    ? ConfigurationTermination.DependencyCanceled : ConfigurationTermination.Faulted;
                 outcome = SecretOutcome<SecretRead>.Failure(SecretStatus.Unavailable,
                     reason: SecretFailureReason.TransportFailure);
             }
@@ -245,7 +289,7 @@ public sealed class SecretSnapshotLoader : IDisposable
             if (!outcome.IsSuccess &&
                 !(outcome.Status == SecretStatus.Absent && selection.PresencePolicy == SecretPresencePolicy.Optional))
                 Interlocked.Exchange(ref terminal, 1);
-            return outcome;
+            return (outcome, termination);
         }
 
         SecretOutcome<long> Fail(SecretStatus status, TimeSpan? retryAfter = null,
@@ -254,6 +298,7 @@ public sealed class SecretSnapshotLoader : IDisposable
             cancellationToken.ThrowIfCancellationRequested();
             if (deadline.IsCancellationRequested)
             {
+                observation.Termination = ConfigurationTermination.DeadlineExceeded;
                 status = SecretStatus.Unavailable;
                 retryAfter = null;
                 reason = SecretFailureReason.DeadlineExceeded;

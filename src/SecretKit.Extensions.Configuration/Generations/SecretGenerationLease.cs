@@ -1,3 +1,5 @@
+using SecretKit.Core;
+
 namespace SecretKit.Extensions.Configuration;
 
 /// <summary>Pins an application client for operations through a bounded callback lifetime.</summary>
@@ -27,6 +29,8 @@ public sealed class SecretGenerationLease<TClient> : IAsyncDisposable where TCli
     public async ValueTask<TResult> ExecuteAsync<TResult>(
         Func<TClient, CancellationToken, ValueTask<TResult>> action, CancellationToken cancellationToken = default)
     {
+        // No use event: only defer retirement triggered by the operation pin.
+        using var diagnostics = ConfigurationDiagnostics.Defer();
         ArgumentNullException.ThrowIfNull(action);
         SecretClientGeneration<TClient> generation;
         lock (_gate)
@@ -48,6 +52,7 @@ public sealed class SecretGenerationLease<TClient> : IAsyncDisposable where TCli
     /// <summary>Releases this lease once; already running operations retain their own client pins.</summary>
     public async ValueTask DisposeAsync()
     {
+        using var diagnostics = ConfigurationDiagnostics.Defer();
         SecretClientGeneration<TClient>? generation;
         TaskCompletionSource completion;
         bool ownsRelease;
@@ -95,14 +100,29 @@ internal sealed class SecretClientGeneration<TClient>(
 
     private async ValueTask CompleteAsync()
     {
+        using var diagnostics = ConfigurationDiagnostics.Defer();
+        var started = ConfigurationDiagnostics.Capture(Time);
         bool failed = false;
+        var termination = ConfigurationTermination.Completed;
         try { await Client.DisposeAsync().ConfigureAwait(false); }
-        catch (Exception) { failed = true; }
+        catch (Exception error)
+        {
+            failed = true;
+            termination = error is OperationCanceledException
+                ? ConfigurationTermination.DependencyCanceled : ConfigurationTermination.Faulted;
+        }
         retired(this, failed);
         if (failed)
             _completion.TrySetException(new InvalidOperationException("Application client retirement failed."));
         else
             _completion.TrySetResult();
-        await _completion.Task.ConfigureAwait(false);
+        var interval = ConfigurationDiagnostics.Complete(started, Time);
+        try { await _completion.Task.ConfigureAwait(false); }
+        finally
+        {
+            ConfigurationDiagnostics.Emit(ConfigurationOperation.Retirement,
+                failed ? SecretStatus.Unknown : SecretStatus.Success, SecretFailureReason.None, termination,
+                failed ? ConfigurationState.RetirementFailed : ConfigurationState.Retired, interval);
+        }
     }
 }
