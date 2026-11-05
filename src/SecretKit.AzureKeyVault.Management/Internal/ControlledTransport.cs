@@ -49,6 +49,14 @@ internal sealed class ControlledTransport(HttpPipelineTransport inner, string ho
 
         await inner.ProcessAsync(message).ConfigureAwait(false);
         LastStatus = message.Response.Status;
+        if (CheckingStatus && LastStatus >= 400)
+        {
+            // Do not let the original ARM handle cache an observation failure as its
+            // terminal operation exception. A later explicit check uses this same handle.
+            var failure = Failure(new RequestFailedException(LastStatus, "Status observation failed."));
+            message.Response.Dispose();
+            throw new ObservationException(failure);
+        }
         if (LastStatus < 400 && (CheckingStatus
                 ? LastStatus is not (200 or 201 or 202 or 204)
                 : !statuses.Contains(LastStatus)))
@@ -275,6 +283,7 @@ internal sealed class ControlledTransport(HttpPipelineTransport inner, string ho
 
     internal static SecretStatus Failure(Exception exception) => exception switch
     {
+        ObservationException observation => observation.Status,
         RequestFailedException { InnerException: BoundaryException } => SecretStatus.Invalid,
         RequestFailedException { Status: 0 } => SecretStatus.Unavailable,
         BoundaryException or ArgumentException => SecretStatus.Invalid,
@@ -286,4 +295,9 @@ internal sealed class ControlledTransport(HttpPipelineTransport inner, string ho
         RequestFailedException { Status: >= 500 } or HttpRequestException => SecretStatus.Unavailable,
         _ => SecretStatus.Unknown
     };
+
+    private sealed class ObservationException(SecretStatus status) : IOException("Status observation failed.")
+    {
+        internal SecretStatus Status { get; } = status;
+    }
 }

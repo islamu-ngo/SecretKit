@@ -6,6 +6,45 @@ namespace SecretKit.AzureKeyVault.Management.Tests;
 public sealed class BoundaryBudgetTests
 {
     [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task LateStatusResponseCannotPublishAfterLocalCancellation(bool deadline)
+    {
+        const string url = "https://management.azure.com/subscriptions/11111111-1111-1111-1111-111111111111/providers/Microsoft.KeyVault/locations/eastus/operations/55555555-5555-5555-5555-555555555555?api-version=2026-02-01";
+        var time = new ManualTime();
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var backend = new WireBackend(async (request, _) =>
+        {
+            if (request.Method == HttpMethod.Post)
+            {
+                var response = WireBackend.Json(202, "");
+                response.Headers.TryAddWithoutValidation("Location", url);
+                response.Headers.TryAddWithoutValidation("Azure-AsyncOperation", url);
+                return response;
+            }
+            entered.TrySetResult();
+            await release.Task;
+            return WireBackend.Json(200, """{"status":"Succeeded"}""");
+        });
+        var client = new VaultAdministration(new Credential(), backend, timeProvider: time);
+        var scope = new DeletedVaultScope(ScopeAuthorityTests.Scope().ResourceGroup.Subscription, "eastus", "vault-canary");
+        var receipt = client.PrepareReceipt(scope, ManagementMutation.PurgeDeletedVault);
+        var started = await client.PurgeDeletedVaultAsync(scope, receipt);
+        using var cancellation = new CancellationTokenSource();
+        var check = started.Value.CheckStatusAsync(cancellation.Token).AsTask();
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        if (deadline) time.FireDeadline(); else cancellation.Cancel();
+        release.SetResult();
+        if (deadline)
+            await Assert.That(await check).IsEqualTo(SecretStatus.Unavailable);
+        else
+            await Assert.That(async () => await check).Throws<OperationCanceledException>();
+        await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.Pending);
+        await Assert.That(started.Value.RuntimeDeliveryProven).IsFalse();
+    }
+
+    [Test]
     public async Task CredentialFailureHasNoDispatchOrBackendEffect()
     {
         bool changed = false;

@@ -5,6 +5,98 @@ namespace SecretKit.AzureKeyVault.Management.Tests;
 
 public sealed class NativeLifecycleTests
 {
+    [Test]
+    public async Task CanceledQueuedCheckDoesNotAffectActiveOriginalObservation()
+    {
+        const string url = "https://management.azure.com/subscriptions/11111111-1111-1111-1111-111111111111/providers/Microsoft.KeyVault/locations/eastus/operations/55555555-5555-5555-5555-555555555555?api-version=2026-02-01";
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        bool terminal = false;
+        var backend = new WireBackend(async (request, _) =>
+        {
+            if (request.Method == HttpMethod.Post)
+            {
+                var response = WireBackend.Json(202, "");
+                response.Headers.TryAddWithoutValidation("Azure-AsyncOperation", url);
+                response.Headers.TryAddWithoutValidation("Location", url);
+                return response;
+            }
+            if (request.RequestUri!.AbsoluteUri != url) throw new InvalidOperationException("Foreign status target.");
+            entered.TrySetResult();
+            await release.Task;
+            return WireBackend.Json(200, terminal ? """{"status":"Succeeded"}""" : """{"status":"InProgress"}""");
+        });
+        var client = new VaultAdministration(new Credential(), backend);
+        var scope = Deleted();
+        var result = await client.PurgeDeletedVaultAsync(scope,
+            client.PrepareReceipt(scope, ManagementMutation.PurgeDeletedVault));
+        var active = result.Value.CheckStatusAsync().AsTask();
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        using var canceled = new CancellationTokenSource();
+        var queued = result.Value.CheckStatusAsync(canceled.Token).AsTask();
+        canceled.Cancel();
+        await Assert.That(async () => await queued).Throws<OperationCanceledException>();
+        release.SetResult();
+        await Assert.That(await active).IsEqualTo(SecretStatus.Pending);
+        terminal = true;
+        await Assert.That(await result.Value.CheckStatusAsync()).IsEqualTo(SecretStatus.Success);
+    }
+
+    [Test]
+    [Arguments(403)]
+    [Arguments(404)]
+    [Arguments(429)]
+    [Arguments(503)]
+    [Arguments(200)]
+    [Arguments(0)]
+    public async Task FailedObservationDoesNotPoisonOriginalPurgeHandle(int failure)
+    {
+        const string url = "https://management.azure.com/subscriptions/11111111-1111-1111-1111-111111111111/providers/Microsoft.KeyVault/locations/eastus/operations/55555555-5555-5555-5555-555555555555?api-version=2026-02-01";
+        int phase = 0;
+        int mutations = 0;
+        using var cancellation = new CancellationTokenSource();
+        var backend = new WireBackend((request, _) =>
+        {
+            if (request.Method == HttpMethod.Post)
+            {
+                mutations++;
+                var response = WireBackend.Json(202, "");
+                response.Headers.TryAddWithoutValidation("Azure-AsyncOperation", url);
+                response.Headers.TryAddWithoutValidation("Location", url);
+                return Task.FromResult(response);
+            }
+            if (request.RequestUri!.AbsoluteUri != url)
+                throw new InvalidOperationException("Replacement observation target.");
+            if (phase == 1 && failure == 0)
+            {
+                cancellation.Cancel();
+                throw new OperationCanceledException(cancellation.Token);
+            }
+            return Task.FromResult(phase switch
+            {
+                0 => WireBackend.Json(200, """{"status":"InProgress"}"""),
+                1 => WireBackend.Json(failure, failure == 200 ? "{" : """{"error":{"code":"Denied"}}"""),
+                _ => WireBackend.Json(200, """{"status":"Succeeded"}""")
+            });
+        });
+        var client = new VaultAdministration(new Credential(), backend);
+        var scope = Deleted();
+        var receipt = client.PrepareReceipt(scope, ManagementMutation.PurgeDeletedVault);
+        var result = await client.PurgeDeletedVaultAsync(scope, receipt);
+        var handle = result.Value;
+        await Assert.That(await handle.CheckStatusAsync()).IsEqualTo(SecretStatus.Pending);
+        phase = 1;
+        if (failure == 0)
+            await Assert.That(async () => await handle.CheckStatusAsync(cancellation.Token)).Throws<OperationCanceledException>();
+        else
+            await Assert.That(await handle.CheckStatusAsync()).IsNotEqualTo(SecretStatus.Success);
+        await Assert.That(handle.State).IsEqualTo(NativeProvisioningState.Pending);
+        phase = 2;
+        await Assert.That(await handle.CheckStatusAsync()).IsEqualTo(SecretStatus.Success);
+        await Assert.That(mutations).IsEqualTo(1);
+        await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.Pending);
+    }
+
     private static VaultScope Scope() => ScopeAuthorityTests.Scope();
     private static DeletedVaultScope Deleted() => new(Scope().ResourceGroup.Subscription, "eastus", "vault-canary");
     private static string DeletedId =>
@@ -15,6 +107,70 @@ public sealed class NativeLifecycleTests
     private static string ConnectionId => ScopeAuthorityTests.Id + "/privateEndpointConnections/connection-canary";
     private static string ConnectionJson(string state = "Approved") =>
         $$$$"""{"id":"{{{{ConnectionId}}}}","name":"connection-canary","type":"Microsoft.KeyVault/vaults/privateEndpointConnections","properties":{"privateLinkServiceConnectionState":{"status":"{{{{state}}}}"},"provisioningState":"Succeeded","privateEndpoint":{"id":"/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/group-canary/providers/Microsoft.Network/privateEndpoints/endpoint-canary"}}}""";
+
+    [Test]
+    public async Task InitiallyCompletedVaultRetainsValidatedValueWithoutStatusRead()
+    {
+        var backend = new WireBackend((request, _) =>
+        {
+            if (request.Method != HttpMethod.Put) throw new InvalidOperationException("Unexpected status read.");
+            return Task.FromResult(WireBackend.Json(200, ScopeAuthorityTests.VaultJson(ScopeAuthorityTests.Id)));
+        });
+        var client = new VaultAdministration(new Credential(), backend);
+        var scope = Scope();
+        var receipt = client.PrepareReceipt(scope, ManagementMutation.CreateOrUpdateVault);
+        var configuration = new VaultConfiguration("eastus",
+            Guid.Parse("22222222-2222-2222-2222-222222222222"), VaultSku.Standard, true, true, 7, false);
+        var result = await client.CreateOrUpdateVaultAsync(scope, configuration, receipt);
+        await Assert.That(result.Status).IsEqualTo(SecretStatus.Success);
+        await Assert.That(await result.Value.CheckStatusAsync()).IsEqualTo(SecretStatus.Success);
+        await Assert.That(result.Value.State).IsEqualTo(NativeProvisioningState.Succeeded);
+        await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.Pending);
+    }
+
+    [Test]
+    [Arguments(403)]
+    [Arguments(200)]
+    public async Task TerminalStatusWithInvalidFinalResourceCannotPublishSuccess(int finalStatus)
+    {
+        const string url = "https://management.azure.com/subscriptions/11111111-1111-1111-1111-111111111111/providers/Microsoft.KeyVault/locations/eastus/operations/55555555-5555-5555-5555-555555555555?api-version=2026-02-01";
+        int reads = 0;
+        bool validFinal = false;
+        var backend = new WireBackend((request, _) =>
+        {
+            if (request.Method == HttpMethod.Put)
+            {
+                var response = WireBackend.Json(201, ScopeAuthorityTests.VaultJson(ScopeAuthorityTests.Id, "Creating"));
+                response.Headers.TryAddWithoutValidation("Azure-AsyncOperation", url);
+                return Task.FromResult(response);
+            }
+            reads++;
+            return Task.FromResult(request.RequestUri!.AbsoluteUri == url
+                ? WireBackend.Json(200, """{"status":"Succeeded"}""")
+                : WireBackend.Json(validFinal ? 200 : finalStatus, validFinal
+                    ? ScopeAuthorityTests.VaultJson(ScopeAuthorityTests.Id)
+                    : finalStatus == 200
+                    ? ScopeAuthorityTests.VaultJson(ScopeAuthorityTests.Id.Replace("group-canary", "foreign-group"))
+                    : """{"error":{"code":"Denied"}}"""));
+        });
+        var client = new VaultAdministration(new Credential(), backend);
+        var scope = Scope();
+        var receipt = client.PrepareReceipt(scope, ManagementMutation.CreateOrUpdateVault);
+        var configuration = new VaultConfiguration("eastus",
+            Guid.Parse("22222222-2222-2222-2222-222222222222"), VaultSku.Standard, true, true, 7, false);
+        var result = await client.CreateOrUpdateVaultAsync(scope, configuration, receipt);
+        await Assert.That(await result.Value.CheckStatusAsync()).IsNotEqualTo(SecretStatus.Success);
+        await Assert.That(result.Value.State).IsEqualTo(NativeProvisioningState.Succeeded);
+        await Assert.That(reads).IsEqualTo(2);
+        await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.Pending);
+        if (finalStatus == 403)
+        {
+            validFinal = true;
+            reads = 0;
+            await Assert.That(await result.Value.CheckStatusAsync()).IsEqualTo(SecretStatus.Success);
+            await Assert.That(reads <= 2).IsTrue();
+        }
+    }
 
     [Test]
     public async Task DeletedGetAndInventoryRetainRetentionNotSecretMaterial()

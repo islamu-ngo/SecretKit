@@ -14,6 +14,7 @@ public sealed class ManagementOperation
     private readonly Func<bool>? _validateValue;
     private readonly TimeSpan _timeout;
     private readonly TimeProvider _time;
+    private bool _validatedSuccess;
 
     private ManagementOperation(Func<bool> hasCompleted, Func<CancellationToken, ValueTask<Azure.Response>> update,
         ControlledTransport transport,
@@ -26,6 +27,7 @@ public sealed class ManagementOperation
         _time = time;
         _validateValue = validateValue;
         State = hasCompleted() ? NativeProvisioningState.Succeeded : NativeProvisioningState.Pending;
+        _validatedSuccess = hasCompleted() && (validateValue is null || validateValue());
     }
 
     internal static ManagementOperation From(ArmOperation operation, ControlledTransport transport,
@@ -59,15 +61,21 @@ public sealed class ManagementOperation
         {
             await _gate.WaitAsync(linked.Token).ConfigureAwait(false);
             entered = true;
-            if (State != NativeProvisioningState.Pending)
+            if (_validatedSuccess || State is NativeProvisioningState.Failed or NativeProvisioningState.Canceled)
             {
-                return State == NativeProvisioningState.Succeeded ? SecretStatus.Success : SecretStatus.Unknown;
+                linked.Token.ThrowIfCancellationRequested();
+                return _validatedSuccess ? SecretStatus.Success : SecretStatus.Unknown;
             }
 
             _transport.CheckingStatus = true;
             _transport.StatusRequests = 0;
             _transport.LastOperationState = NativeProvisioningState.Unknown;
             await _update(linked.Token).ConfigureAwait(false);
+            if (_transport.LastOperationState != NativeProvisioningState.Unknown)
+            {
+                State = _transport.LastOperationState;
+            }
+            linked.Token.ThrowIfCancellationRequested();
             if (_transport.LastOperationState is NativeProvisioningState.Failed or NativeProvisioningState.Canceled)
             {
                 State = _transport.LastOperationState;
@@ -81,29 +89,30 @@ public sealed class ManagementOperation
 
             if (_validateValue is not null && !_validateValue())
             {
-                State = NativeProvisioningState.Unknown;
                 return SecretStatus.Unknown;
             }
 
+            linked.Token.ThrowIfCancellationRequested();
             State = NativeProvisioningState.Succeeded;
+            _validatedSuccess = true;
             return SecretStatus.Success;
         }
         catch (OperationCanceledException)
         {
+            if (entered && _transport.LastOperationState != NativeProvisioningState.Unknown)
+                State = _transport.LastOperationState;
             cancellationToken.ThrowIfCancellationRequested();
             return SecretStatus.Unavailable;
         }
         catch (Exception exception)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            var status = ControlledTransport.Failure(exception);
-            if (exception is Azure.RequestFailedException && status is not (SecretStatus.Throttled or SecretStatus.Unavailable))
+            if (entered && _transport.LastOperationState != NativeProvisioningState.Unknown)
             {
-                State = _transport.LastOperationState == NativeProvisioningState.Canceled
-                    ? NativeProvisioningState.Canceled : NativeProvisioningState.Failed;
+                State = _transport.LastOperationState;
             }
 
-            return status;
+            cancellationToken.ThrowIfCancellationRequested();
+            return deadline.IsCancellationRequested ? SecretStatus.Unavailable : ControlledTransport.Failure(exception);
         }
         finally
         {

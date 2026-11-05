@@ -18,11 +18,11 @@
     },
     {
       "file": "src/SecretKit.AzureKeyVault.Management/Internal/ControlledTransport.cs",
-      "sha256": "d0409fa38c1e88159ed386608ac11485c7644f614d7038eabdcf8f923c029193"
+      "sha256": "de63c951652884c9a916bdac84cc9f6d0b912af7f6675657cc0d8904cdbddf00"
     },
     {
       "file": "src/SecretKit.AzureKeyVault.Management/Internal/ManagementOperation.cs",
-      "sha256": "4b2c28b3f4c88a840a6b62abbf82628c85b5f1289822caef0b7b2795f0e3d474"
+      "sha256": "ef2a9d75b2192ab715c70af88e0c0b6b77a29e69e1e77363d4957dd0d7f4be20"
     },
     {
       "file": "src/SecretKit.AzureKeyVault.Management/Internal/OperationSupport.cs",
@@ -496,7 +496,7 @@
     },
     {
       "id": "a.management.AuditDiagnostics.QueryBatchAsync",
-      "member": "SecretKit.AzureKeyVault.Management.AuditDiagnostics.QueryBatchAsync(System.Collections.Generic.IReadOnlyList<SecretKit.AzureKeyVault.Management.AuditQuery>,SecretKit.AzureKeyVault.Management.AuditBatchProgress,System.TimeSpan,System.Threading.CancellationToken)",
+      "member": "SecretKit.AzureKeyVault.Management.AuditDiagnostics.QueryBatchAsync(System.Collections.Generic.IReadOnlyList\u003CSecretKit.AzureKeyVault.Management.AuditQuery\u003E,SecretKit.AzureKeyVault.Management.AuditBatchProgress,System.TimeSpan,System.Threading.CancellationToken)",
       "variants": [
         "query.resource",
         "query.workspace",
@@ -584,7 +584,7 @@
     },
     {
       "id": "a.management.VaultAdministration.ChangeAccessPoliciesAsync",
-      "member": "SecretKit.AzureKeyVault.Management.VaultAdministration.ChangeAccessPoliciesAsync(SecretKit.AzureKeyVault.Management.VaultScope,SecretKit.AzureKeyVault.Management.AccessPolicyChange,System.Collections.Generic.IReadOnlyList<SecretKit.AzureKeyVault.Management.SecretAccessPolicy>,SecretKit.AzureKeyVault.Management.ManagementReceipt,System.Threading.CancellationToken)",
+      "member": "SecretKit.AzureKeyVault.Management.VaultAdministration.ChangeAccessPoliciesAsync(SecretKit.AzureKeyVault.Management.VaultScope,SecretKit.AzureKeyVault.Management.AccessPolicyChange,System.Collections.Generic.IReadOnlyList\u003CSecretKit.AzureKeyVault.Management.SecretAccessPolicy\u003E,SecretKit.AzureKeyVault.Management.ManagementReceipt,System.Threading.CancellationToken)",
       "variants": [
         "change.Add",
         "change.Replace",
