@@ -78,11 +78,12 @@ public sealed class ManagementRequest<T> : IDisposable where T : notnull
         }
     }
 
-    internal byte[]? CopyBody()
+    internal byte[]? CopyBody(int maximum = int.MaxValue)
     {
         lock (_gate)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
+            if (_body?.Length > maximum) return [];
             return _body?.ToArray();
         }
     }

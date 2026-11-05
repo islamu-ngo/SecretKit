@@ -16,6 +16,8 @@ public sealed class ManagementTransport : IDisposable
     private readonly InfisicalTransportBinding _binding;
     private readonly ManagementRequestBuilder _requests;
     internal int ResponseLimit { get; }
+    internal int RequestLimit { get; }
+    internal TimeSpan OperationTimeout { get; }
 
     /// <summary>Creates a bounded transport for the selected origin and network policy; null selects safe defaults.</summary>
     public ManagementTransport(Uri origin, InfisicalNetworkOptions? network = null)
@@ -43,6 +45,8 @@ public sealed class ManagementTransport : IDisposable
             throw new ArgumentException("Invalid response byte budget.");
         }
         ResponseLimit = network.MaximumResponseBytes;
+        RequestLimit = network.MaximumRequestBytes;
+        OperationTimeout = network.OperationTimeout;
         _binding = new(origin, network, handler);
         _http = _binding.Client;
         _requests = new ManagementRequestBuilder(_binding.Requests);
@@ -108,6 +112,16 @@ public sealed class ManagementClient
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(authority);
+        return await InfisicalOperationBudget.RunAsync(_transport.OperationTimeout, _time,
+            cancellationToken, null,
+            token => ExecuteOnceAsync(request, authority, grant, receipt, token),
+            () => receipt?.Evidence ?? DispatchEvidence.NotDispatched).ConfigureAwait(false);
+    }
+
+    private async ValueTask<SecretOutcome<T>> ExecuteOnceAsync<T>(ManagementRequest<T> request,
+        ManagementAuthority authority, ManagementGrant? grant, ManagementReceipt? receipt,
+        CancellationToken cancellationToken) where T : notnull
+    {
         cancellationToken.ThrowIfCancellationRequested();
         if (grant is null || !grant.Matches(Authority, authority, request.OperationId, request.Target))
         {
@@ -119,13 +133,16 @@ public sealed class ManagementClient
             return SecretOutcome<T>.Failure(SecretStatus.Invalid);
         }
 
-        byte[]? body = request.CopyBody();
+        byte[]? body = request.CopyBody(_transport.RequestLimit);
+        if (body is { Length: 0 })
+            return SecretOutcome<T>.Failure(SecretStatus.Invalid, reason: SecretFailureReason.RequestTooLarge);
         byte[] responseBytes = new byte[_transport.ResponseLimit + 1];
         try
         {
             using var content = body is null ? null : new ByteArrayContent(body);
             if (content is not null) content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
             using HttpRequestMessage message = await _transport.BuildAsync(request, content, cancellationToken).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
             SecretOutcome<InfisicalAccessToken> tokenOutcome =
                 await authority.Tokens.GetTokenAsync(cancellationToken).ConfigureAwait(false);
             if (!tokenOutcome.IsSuccess)
