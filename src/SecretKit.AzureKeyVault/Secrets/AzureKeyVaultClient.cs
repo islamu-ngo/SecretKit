@@ -145,6 +145,21 @@ public sealed partial class AzureKeyVaultClient : ISecretReader, ISecretInventor
     public async ValueTask<SecretOutcome<AzureSetSecretResult>> SetSecretAsync(
         AzureSetSecretRequest request, MutationReceipt receipt, CancellationToken cancellationToken = default)
     {
+        using var observation = new AzureDiagnostics.Observation(AzureDiagnosticOperation.SetSecret, _time, cancellationToken, receipt);
+        try
+        {
+            return observation.Record(await SetSecretAsyncCore(request, receipt, cancellationToken).ConfigureAwait(false));
+        }
+        catch (OperationCanceledException)
+        {
+            observation.Cancel();
+            throw;
+        }
+    }
+
+    private async ValueTask<SecretOutcome<AzureSetSecretResult>> SetSecretAsyncCore(
+        AzureSetSecretRequest request, MutationReceipt receipt, CancellationToken cancellationToken = default)
+    {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(receipt);
         if (!request.Target.BelongsTo(Authority) ||
@@ -225,6 +240,21 @@ public sealed partial class AzureKeyVaultClient : ISecretReader, ISecretInventor
     public async ValueTask<SecretOutcome<SecretRead>> ReadAsync(
         SecretReference reference, CancellationToken cancellationToken = default)
     {
+        using var observation = new AzureDiagnostics.Observation(AzureDiagnosticOperation.Read, _time, cancellationToken);
+        try
+        {
+            return observation.Record(await ReadAsyncCore(reference, cancellationToken).ConfigureAwait(false));
+        }
+        catch (OperationCanceledException)
+        {
+            observation.Cancel();
+            throw;
+        }
+    }
+
+    private async ValueTask<SecretOutcome<SecretRead>> ReadAsyncCore(
+        SecretReference reference, CancellationToken cancellationToken = default)
+    {
         ArgumentNullException.ThrowIfNull(reference);
         cancellationToken.ThrowIfCancellationRequested();
         if (!reference.BelongsTo(Authority) || reference.Address is not AzureSecretAddress address)
@@ -275,6 +305,21 @@ public sealed partial class AzureKeyVaultClient : ISecretReader, ISecretInventor
     /// <exception cref="ArgumentNullException">The scope is null.</exception>
     /// <exception cref="OperationCanceledException">Cancellation was observed.</exception>
     public async ValueTask<SecretOutcome<SecretInventory>> InspectAsync(
+        SecretInventoryScope scope, CancellationToken cancellationToken = default)
+    {
+        using var observation = new AzureDiagnostics.Observation(AzureDiagnosticOperation.Inventory, _time, cancellationToken);
+        try
+        {
+            return observation.Record(await InspectAsyncCore(scope, cancellationToken).ConfigureAwait(false));
+        }
+        catch (OperationCanceledException)
+        {
+            observation.Cancel();
+            throw;
+        }
+    }
+
+    private async ValueTask<SecretOutcome<SecretInventory>> InspectAsyncCore(
         SecretInventoryScope scope, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(scope);

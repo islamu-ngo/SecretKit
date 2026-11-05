@@ -20,6 +20,21 @@ public sealed partial class AzureKeyVaultClient
     public async ValueTask<SecretOutcome<SecretRead>> GetSecretVersionAsync(
         SecretReference target, CancellationToken cancellationToken = default)
     {
+        using var observation = new AzureDiagnostics.Observation(AzureDiagnosticOperation.NativeRead, _time, cancellationToken);
+        try
+        {
+            return observation.Record(await GetSecretVersionAsyncCore(target, cancellationToken).ConfigureAwait(false));
+        }
+        catch (OperationCanceledException)
+        {
+            observation.Cancel();
+            throw;
+        }
+    }
+
+    private async ValueTask<SecretOutcome<SecretRead>> GetSecretVersionAsyncCore(
+        SecretReference target, CancellationToken cancellationToken = default)
+    {
         ArgumentNullException.ThrowIfNull(target);
         cancellationToken.ThrowIfCancellationRequested();
         if (!NativeTarget(target, out var address))
@@ -64,6 +79,21 @@ public sealed partial class AzureKeyVaultClient
     public async ValueTask<SecretOutcome<AzureNativeInventory>> GetSecretVersionsAsync(
         SecretReference target, AzureInventoryScope scope, CancellationToken cancellationToken = default)
     {
+        using var observation = new AzureDiagnostics.Observation(AzureDiagnosticOperation.NativeInventory, _time, cancellationToken);
+        try
+        {
+            return observation.Record(await GetSecretVersionsAsyncCore(target, scope, cancellationToken).ConfigureAwait(false));
+        }
+        catch (OperationCanceledException)
+        {
+            observation.Cancel();
+            throw;
+        }
+    }
+
+    private async ValueTask<SecretOutcome<AzureNativeInventory>> GetSecretVersionsAsyncCore(
+        SecretReference target, AzureInventoryScope scope, CancellationToken cancellationToken = default)
+    {
         ArgumentNullException.ThrowIfNull(target);
         ArgumentNullException.ThrowIfNull(scope);
         cancellationToken.ThrowIfCancellationRequested();
@@ -87,7 +117,22 @@ public sealed partial class AzureKeyVaultClient
     /// <returns>Validated resulting metadata, or a bounded failure without mutation replay.</returns>
     /// <exception cref="ArgumentNullException">The request or receipt is null.</exception>
     /// <exception cref="OperationCanceledException">Cancellation was observed; the attempt may already be consumed.</exception>
-    public ValueTask<SecretOutcome<AzureSecretMetadata>> UpdatePropertiesAsync(
+    public async ValueTask<SecretOutcome<AzureSecretMetadata>> UpdatePropertiesAsync(
+        AzureUpdatePropertiesRequest request, MutationReceipt receipt, CancellationToken cancellationToken = default)
+    {
+        using var observation = new AzureDiagnostics.Observation(AzureDiagnosticOperation.NativeMutation, _time, cancellationToken, receipt);
+        try
+        {
+            return observation.Record(await UpdatePropertiesAsyncCore(request, receipt, cancellationToken).ConfigureAwait(false));
+        }
+        catch (OperationCanceledException)
+        {
+            observation.Cancel();
+            throw;
+        }
+    }
+
+    private ValueTask<SecretOutcome<AzureSecretMetadata>> UpdatePropertiesAsyncCore(
         AzureUpdatePropertiesRequest request, MutationReceipt receipt, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -121,6 +166,21 @@ public sealed partial class AzureKeyVaultClient
     /// <exception cref="ArgumentNullException">The target is null.</exception>
     /// <exception cref="OperationCanceledException">Cancellation was observed.</exception>
     public async ValueTask<SecretOutcome<AzureSecretMetadata>> GetDeletedSecretAsync(
+        SecretReference target, CancellationToken cancellationToken = default)
+    {
+        using var observation = new AzureDiagnostics.Observation(AzureDiagnosticOperation.NativeRead, _time, cancellationToken);
+        try
+        {
+            return observation.Record(await GetDeletedSecretAsyncCore(target, cancellationToken).ConfigureAwait(false));
+        }
+        catch (OperationCanceledException)
+        {
+            observation.Cancel();
+            throw;
+        }
+    }
+
+    private async ValueTask<SecretOutcome<AzureSecretMetadata>> GetDeletedSecretAsyncCore(
         SecretReference target, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(target);
@@ -158,7 +218,22 @@ public sealed partial class AzureKeyVaultClient
     /// <returns>Deleted-secret observations with explicit completeness, or a bounded failure.</returns>
     /// <exception cref="ArgumentNullException">The scope is null.</exception>
     /// <exception cref="OperationCanceledException">Cancellation was observed.</exception>
-    public ValueTask<SecretOutcome<AzureNativeInventory>> GetDeletedSecretsAsync(
+    public async ValueTask<SecretOutcome<AzureNativeInventory>> GetDeletedSecretsAsync(
+        AzureInventoryScope scope, CancellationToken cancellationToken = default)
+    {
+        using var observation = new AzureDiagnostics.Observation(AzureDiagnosticOperation.NativeInventory, _time, cancellationToken);
+        try
+        {
+            return observation.Record(await GetDeletedSecretsAsyncCore(scope, cancellationToken).ConfigureAwait(false));
+        }
+        catch (OperationCanceledException)
+        {
+            observation.Cancel();
+            throw;
+        }
+    }
+
+    private ValueTask<SecretOutcome<AzureNativeInventory>> GetDeletedSecretsAsyncCore(
         AzureInventoryScope scope, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(scope);
@@ -178,7 +253,22 @@ public sealed partial class AzureKeyVaultClient
     /// <returns>An acknowledged start with a local status selector, or a bounded failure.</returns>
     /// <exception cref="ArgumentNullException">The target or receipt is null.</exception>
     /// <exception cref="OperationCanceledException">Cancellation was observed; inspect retained evidence.</exception>
-    public ValueTask<SecretOutcome<AzureLifecycleResult>> StartDeleteSecretAsync(
+    public async ValueTask<SecretOutcome<AzureLifecycleResult>> StartDeleteSecretAsync(
+        SecretReference target, MutationReceipt receipt, CancellationToken cancellationToken = default)
+    {
+        using var observation = new AzureDiagnostics.Observation(AzureDiagnosticOperation.NativeMutation, _time, cancellationToken, receipt);
+        try
+        {
+            return observation.Record(await StartDeleteSecretAsyncCore(target, receipt, cancellationToken).ConfigureAwait(false));
+        }
+        catch (OperationCanceledException)
+        {
+            observation.Cancel();
+            throw;
+        }
+    }
+
+    private ValueTask<SecretOutcome<AzureLifecycleResult>> StartDeleteSecretAsyncCore(
         SecretReference target, MutationReceipt receipt, CancellationToken cancellationToken = default) =>
         MutateNativeAsync(target, receipt, false, AzureSetSecretPrecondition.None, RequestMethod.Delete,
             address => $"/secrets/{address.Name}", async (client, address) =>
@@ -196,7 +286,22 @@ public sealed partial class AzureKeyVaultClient
     /// <returns>An acknowledged pending start, or a bounded failure.</returns>
     /// <exception cref="ArgumentNullException">The target or receipt is null.</exception>
     /// <exception cref="OperationCanceledException">Cancellation was observed; inspect retained evidence.</exception>
-    public ValueTask<SecretOutcome<AzureLifecycleResult>> StartRecoverDeletedSecretAsync(
+    public async ValueTask<SecretOutcome<AzureLifecycleResult>> StartRecoverDeletedSecretAsync(
+        SecretReference target, MutationReceipt receipt, CancellationToken cancellationToken = default)
+    {
+        using var observation = new AzureDiagnostics.Observation(AzureDiagnosticOperation.NativeMutation, _time, cancellationToken, receipt);
+        try
+        {
+            return observation.Record(await StartRecoverDeletedSecretAsyncCore(target, receipt, cancellationToken).ConfigureAwait(false));
+        }
+        catch (OperationCanceledException)
+        {
+            observation.Cancel();
+            throw;
+        }
+    }
+
+    private ValueTask<SecretOutcome<AzureLifecycleResult>> StartRecoverDeletedSecretAsyncCore(
         SecretReference target, MutationReceipt receipt, CancellationToken cancellationToken = default) =>
         MutateNativeAsync(target, receipt, false, AzureSetSecretPrecondition.None, RequestMethod.Post,
             address => $"/deletedsecrets/{address.Name}/recover", async (client, address) =>
@@ -218,6 +323,21 @@ public sealed partial class AzureKeyVaultClient
     /// <exception cref="ArgumentNullException">The operation is null.</exception>
     /// <exception cref="OperationCanceledException">Cancellation was observed.</exception>
     public async ValueTask<SecretOutcome<AzureLifecycleResult>> CheckLifecycleStatusAsync(
+        AzureLifecycleOperation operation, CancellationToken cancellationToken = default)
+    {
+        using var observation = new AzureDiagnostics.Observation(AzureDiagnosticOperation.LifecycleCheck, _time, cancellationToken);
+        try
+        {
+            return observation.Record(await CheckLifecycleStatusAsyncCore(operation, cancellationToken).ConfigureAwait(false));
+        }
+        catch (OperationCanceledException)
+        {
+            observation.Cancel();
+            throw;
+        }
+    }
+
+    private async ValueTask<SecretOutcome<AzureLifecycleResult>> CheckLifecycleStatusAsyncCore(
         AzureLifecycleOperation operation, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(operation);
@@ -269,7 +389,22 @@ public sealed partial class AzureKeyVaultClient
     /// <returns>The native acknowledgement, not proof of immediate global disappearance, or a bounded failure.</returns>
     /// <exception cref="ArgumentNullException">The target or receipt is null.</exception>
     /// <exception cref="OperationCanceledException">Cancellation was observed; inspect retained evidence.</exception>
-    public ValueTask<SecretOutcome<AzurePurgeResult>> PurgeDeletedSecretAsync(
+    public async ValueTask<SecretOutcome<AzurePurgeResult>> PurgeDeletedSecretAsync(
+        SecretReference target, MutationReceipt receipt, CancellationToken cancellationToken = default)
+    {
+        using var observation = new AzureDiagnostics.Observation(AzureDiagnosticOperation.NativeMutation, _time, cancellationToken, receipt);
+        try
+        {
+            return observation.Record(await PurgeDeletedSecretAsyncCore(target, receipt, cancellationToken).ConfigureAwait(false));
+        }
+        catch (OperationCanceledException)
+        {
+            observation.Cancel();
+            throw;
+        }
+    }
+
+    private ValueTask<SecretOutcome<AzurePurgeResult>> PurgeDeletedSecretAsyncCore(
         SecretReference target, MutationReceipt receipt, CancellationToken cancellationToken = default) =>
         MutateNativeAsync(target, receipt, false, AzureSetSecretPrecondition.None, RequestMethod.Delete,
             address => $"/deletedsecrets/{address.Name}", async (client, address) =>
@@ -289,6 +424,21 @@ public sealed partial class AzureKeyVaultClient
     /// <exception cref="ArgumentNullException">The target is null.</exception>
     /// <exception cref="OperationCanceledException">Cancellation was observed.</exception>
     public async ValueTask<SecretOutcome<AzureSecretBackup>> BackupSecretAsync(
+        SecretReference target, CancellationToken cancellationToken = default)
+    {
+        using var observation = new AzureDiagnostics.Observation(AzureDiagnosticOperation.Backup, _time, cancellationToken);
+        try
+        {
+            return observation.Record(await BackupSecretAsyncCore(target, cancellationToken).ConfigureAwait(false));
+        }
+        catch (OperationCanceledException)
+        {
+            observation.Cancel();
+            throw;
+        }
+    }
+
+    private async ValueTask<SecretOutcome<AzureSecretBackup>> BackupSecretAsyncCore(
         SecretReference target, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(target);
@@ -337,7 +487,22 @@ public sealed partial class AzureKeyVaultClient
     /// <returns>Validated restored metadata, or a bounded failure; an uncertain response does not authorize another restore.</returns>
     /// <exception cref="ArgumentNullException">The request or receipt is null.</exception>
     /// <exception cref="OperationCanceledException">Cancellation was observed; inspect retained evidence.</exception>
-    public ValueTask<SecretOutcome<AzureSecretMetadata>> RestoreSecretBackupAsync(
+    public async ValueTask<SecretOutcome<AzureSecretMetadata>> RestoreSecretBackupAsync(
+        AzureRestoreSecretRequest request, MutationReceipt receipt, CancellationToken cancellationToken = default)
+    {
+        using var observation = new AzureDiagnostics.Observation(AzureDiagnosticOperation.NativeMutation, _time, cancellationToken, receipt);
+        try
+        {
+            return observation.Record(await RestoreSecretBackupAsyncCore(request, receipt, cancellationToken).ConfigureAwait(false));
+        }
+        catch (OperationCanceledException)
+        {
+            observation.Cancel();
+            throw;
+        }
+    }
+
+    private ValueTask<SecretOutcome<AzureSecretMetadata>> RestoreSecretBackupAsyncCore(
         AzureRestoreSecretRequest request, MutationReceipt receipt, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
