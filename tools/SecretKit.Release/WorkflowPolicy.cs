@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 
 namespace SecretKit.Release;
@@ -19,6 +20,7 @@ public static class WorkflowPolicy
         Manifest.ExactSet(jobs.EnumerateObject().Select(p => p.Name),
             ["format", "offline", "install", "demos", "prerequisites", "native", "compatibility", "archive_evidence", "candidate"],
             "routine-jobs");
+        ValidateExecutableSteps(root, ["format", "offline", "install", "demos"]);
         foreach (JsonProperty job in jobs.EnumerateObject().Where(p => p.Name is "format" or "offline" or "install" or "demos"))
         {
             Guard.Require(!job.Value.GetRawText().Contains("secrets.", StringComparison.Ordinal) &&
@@ -55,29 +57,19 @@ public static class WorkflowPolicy
             "routine-inputs");
         Manifest.ExactSet(environment.GetProperty("SECRETKIT_TEST_HOSTS").GetString()!.Split(' ',
             StringSplitOptions.RemoveEmptyEntries), testHosts.ToArray(), "routine-test-inventory");
+        Manifest.ExactSet(testHosts, Verification.Hosts.Where(host => host.Lane == "ordinary").Select(host => host.Name),
+            "routine-lane-inventory");
         JsonElement[] steps = offline.GetProperty("steps").EnumerateArray().ToArray();
         string[] ids = steps.Select(s => s.TryGetProperty("id", out JsonElement id) ? id.GetString()! : "").ToArray();
         int restore = Array.IndexOf(ids, "restore");
         int build = Array.IndexOf(ids, "build");
         int pack = Array.IndexOf(ids, "pack");
         int tests = Array.IndexOf(ids, "tests");
-        int samples = Array.IndexOf(ids, "samples");
         int metadata = Array.IndexOf(ids, "metadata");
         int upload = Array.IndexOf(ids, "reports");
         Guard.Require(restore >= 0 && build > restore && pack > build && tests > pack &&
-            samples > tests && metadata > samples && upload > metadata, "routine-order");
-        Guard.Require(steps[restore].GetProperty("run").GetString()!.Contains("--locked-mode", StringComparison.Ordinal) &&
-            steps[build].GetProperty("run").GetString()!.Contains("--no-restore", StringComparison.Ordinal) &&
-            steps[pack].GetProperty("run").GetString()!.Contains("--no-build", StringComparison.Ordinal),
-            "routine-clean-build");
-        string script = steps[tests].GetProperty("run").GetString()!;
-        Guard.Require(script.Contains("--minimum-expected-tests 1", StringComparison.Ordinal) &&
-            script.Contains("--zero-tests-policy strict", StringComparison.Ordinal) &&
-            script.Contains("--report-trx", StringComparison.Ordinal) &&
-            script.Contains("status=1", StringComparison.Ordinal) &&
-            script.Contains("exit \"$status\"", StringComparison.Ordinal), "routine-test-gate");
-        Guard.Require(steps[samples].GetProperty("if").GetString() == "${{ !cancelled() && steps.build.outcome == 'success' }}" &&
-            steps[metadata].GetProperty("if").GetString() == "${{ always() }}" &&
+            metadata > tests && upload > metadata, "routine-order");
+        Guard.Require(steps[metadata].GetProperty("if").GetString() == "${{ always() }}" &&
             steps[metadata].GetProperty("env").GetProperty("PURPOSE").GetString() == "offline-verification" &&
             steps[upload].GetProperty("if").GetString() == "${{ always() }}" &&
             steps[upload].GetProperty("with").GetProperty("path").GetString() == "artifacts/verification" &&
@@ -95,13 +87,12 @@ public static class WorkflowPolicy
         JsonElement download = installationSteps.Single(p => p.TryGetProperty("uses", out JsonElement action) &&
             action.GetString()!.StartsWith("actions/download-artifact@", StringComparison.Ordinal));
         Guard.Require(download.GetProperty("with").GetProperty("name").GetString() ==
-            "offline-originals-${{ github.run_id }}-${{ github.run_attempt }}" &&
-            download.GetProperty("with").GetProperty("path").GetString() == "artifacts/packages",
+            "local-cohort-${{ github.run_id }}-${{ github.run_attempt }}" &&
+            download.GetProperty("with").GetProperty("path").GetString() == "artifacts/local-cohort",
             "install-original-artifact");
         Guard.Require(installationSteps.Single(p => p.TryGetProperty("id", out JsonElement id) &&
-                id.GetString() == "test").GetProperty("run").GetString()!.Contains("--minimum-expected-tests 27", StringComparison.Ordinal) &&
-            installationSteps.Where(p => p.TryGetProperty("run", out _)).All(p =>
-                !p.GetProperty("run").GetString()!.Contains("dotnet pack", StringComparison.Ordinal)),
+                id.GetString() == "test").GetProperty("run").GetString() is string installScript &&
+                Matches(installScript, "dotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll verification post-pack \"$PWD/artifacts/local-cohort\" \"$PWD/artifacts/verification/post-pack\""),
             "install-no-repack");
         ValidateDemos(jobs);
         ValidateProducer(bytes);
@@ -117,19 +108,23 @@ public static class WorkflowPolicy
         int tests = Array.FindIndex(producer, s => s.TryGetProperty("id", out JsonElement id) && id.GetString() == "demo_tests");
         Guard.Require(local >= 0 && prepare > local && upload > prepare && tests > upload,
             "demo-producer-order");
-        const string context = "\"$GITHUB_SHA\" \"$GITHUB_RUN_ID\" \"$GITHUB_RUN_ATTEMPT\" 10.0.403";
+        const string runner = "dotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll";
+        const string selected = "\"$PWD/artifacts/local-cohort\"";
         string preparation = producer[prepare].GetProperty("run").GetString()!;
         Guard.Require(!producer[prepare].TryGetProperty("if", out _) &&
             !producer[upload].TryGetProperty("if", out _) && !producer[tests].TryGetProperty("if", out _) &&
-            preparation.Contains("local-demo-prepare . artifacts/local-originals artifacts/verification/local/qualification artifacts/demo-inputs " + context, StringComparison.Ordinal) &&
-            preparation.Contains("local-demo-check . artifacts/demo-inputs " + context, StringComparison.Ordinal),
+            Matches(producer[local].GetProperty("run").GetString()!, runner + " verification prepare-local " + selected) &&
+            Matches(preparation, runner + " verification check " + selected),
             "demo-producer-binding");
         JsonElement artifact = producer[upload].GetProperty("with");
         Guard.Require(artifact.GetProperty("name").GetString() ==
-            "demo-inputs-${{ github.run_id }}-${{ github.run_attempt }}" &&
-            artifact.GetProperty("path").GetString() == "artifacts/demo-inputs" &&
+            "local-cohort-${{ github.run_id }}-${{ github.run_attempt }}" &&
             artifact.GetProperty("if-no-files-found").GetString() == "error" &&
             !artifact.TryGetProperty("overwrite", out _), "demo-original-artifact");
+        Manifest.ExactSet(artifact.GetProperty("path").GetString()!.Split('\n'),
+            new[] { "family", "symbols", "local", "local-symbols", "rebuild-family", "rebuild-symbols",
+                "rebuild-local", "rebuild-local-symbols", "qualification", "demos", VerificationCohort.RecordFile }
+                .Select(path => "artifacts/local-cohort/" + path), "cohort-artifact-coverage");
         JsonElement demos = jobs.GetProperty("demos");
         Manifest.ExactSet(demos.GetProperty("needs").EnumerateArray().Select(v => v.GetString()!),
             ["offline"], "demo-producer");
@@ -143,33 +138,21 @@ public static class WorkflowPolicy
             action.GetString()!.StartsWith("actions/download-artifact@", StringComparison.Ordinal));
         Guard.Require(download.GetProperty("with").GetProperty("name").GetString() ==
             artifact.GetProperty("name").GetString() &&
-            download.GetProperty("with").GetProperty("path").GetString() == "artifacts/demo-inputs" &&
+            download.GetProperty("with").GetProperty("path").GetString() == "artifacts/local-cohort" &&
             !download.GetProperty("with").TryGetProperty("run-id", out _) &&
             !download.GetProperty("with").TryGetProperty("repository", out _), "demo-same-originals");
         string check = Step(consumers, "check").GetProperty("run").GetString()!;
-        Guard.Require(check == "dotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll local-demo-check . artifacts/demo-inputs " + context &&
+        Guard.Require(Matches(check, runner + " verification check " + selected) &&
             Array.IndexOf(consumers, Step(consumers, "check")) < Array.IndexOf(consumers, Step(consumers, "test")) &&
-            consumers.Where(s => s.TryGetProperty("run", out _)).All(s =>
-                !s.GetProperty("run").GetString()!.Contains("dotnet pack", StringComparison.Ordinal) &&
-                !s.GetProperty("run").GetString()!.Contains("local-demo-prepare", StringComparison.Ordinal)) &&
             consumers.Where(s => s.TryGetProperty("id", out _)).All(s => !s.TryGetProperty("if", out _)),
             "demo-frozen-consumer");
-        foreach (JsonElement environment in new[] { demos.GetProperty("env"), producer[tests].GetProperty("env") })
-        {
-            Guard.Require(environment.GetProperty("SECRETKIT_DEMO_CANDIDATE_VERSION").GetString() == "0.1.0-local.20261024.1" &&
-                environment.GetProperty("SECRETKIT_DEMO_CANDIDATE_DIRECTORY").GetString() ==
-                    "${{ github.workspace }}/artifacts/demo-inputs/originals" &&
-                environment.GetProperty("SECRETKIT_DEMO_STAGED_LOCK_DIRECTORY").GetString() ==
-                    "${{ github.workspace }}/artifacts/demo-inputs" &&
-                environment.GetProperty("SECRETKIT_DEMO_SDK").GetString() == "10.0.403",
-                "demo-selectors");
-        }
+        Guard.Require(!demos.TryGetProperty("env", out _) && !producer[tests].TryGetProperty("env", out _),
+            "demo-cohort-selectors");
         foreach (JsonElement step in new[] { producer[tests], Step(consumers, "test") })
         {
             string script = step.GetProperty("run").GetString()!;
-            Guard.Require(script.Contains("SecretKit.Demo.Tests.dll --minimum-expected-tests 65 --zero-tests-policy strict", StringComparison.Ordinal) &&
-                !script.Contains("--treenode-filter", StringComparison.Ordinal) &&
-                !script.Contains("||", StringComparison.Ordinal), "demo-complete-discovery");
+            Guard.Require(Matches(script, runner + " verification post-pack " + selected +
+                " \"$PWD/artifacts/verification/post-pack\""), "demo-complete-discovery");
         }
         foreach (JsonElement job in new[] { offline, demos })
         {
@@ -194,6 +177,7 @@ public static class WorkflowPolicy
             "producer-root-permissions");
         Guard.Require(!root.TryGetProperty("env", out _), "producer-root-environment");
         JsonElement jobs = root.GetProperty("jobs");
+        ValidateExecutableSteps(root, ["prerequisites", "native", "compatibility", "archive_evidence", "candidate"]);
         const string guard = "${{ needs.offline.outputs.candidate == 'true' && github.event_name == 'push' && github.repository == 'islamu-ngo/SecretKit' && github.ref == 'refs/heads/main' && github.ref_protected }}";
         foreach (string name in new[] { "prerequisites", "native", "compatibility", "archive_evidence", "candidate" })
         {
@@ -217,7 +201,7 @@ public static class WorkflowPolicy
             string[] dependencies = name switch
             {
                 "native" or "compatibility" => ["offline", "prerequisites"],
-                "candidate" => ["format", "offline", "install", "prerequisites", "native", "compatibility", "archive_evidence"],
+                "candidate" => ["format", "offline", "install", "demos", "prerequisites", "native", "compatibility", "archive_evidence"],
                 _ => ["offline"]
             };
             Manifest.ExactSet(job.GetProperty("needs").EnumerateArray().Select(p => p.GetString()!),
@@ -231,12 +215,7 @@ public static class WorkflowPolicy
                 string raw = step.GetRawText();
                 Guard.Require(!raw.Contains("NUGET_API_KEY", StringComparison.Ordinal) &&
                     !raw.Contains("id-token", StringComparison.Ordinal) &&
-                    !raw.Contains("NuGet/login", StringComparison.Ordinal) &&
-                    !raw.Contains("dotnet pack", StringComparison.Ordinal) &&
-                    !raw.Contains("dotnet nuget push", StringComparison.Ordinal) &&
-                    !raw.Contains(" dispatch ", StringComparison.Ordinal) &&
-                    !raw.Contains(" initialize ", StringComparison.Ordinal) &&
-                    !raw.Contains("|| true", StringComparison.Ordinal), "producer-no-publication-or-repack");
+                    !raw.Contains("NuGet/login", StringComparison.Ordinal), "producer-no-publication-or-repack");
                 if (raw.Contains("secrets.", StringComparison.Ordinal))
                 {
                     string id = step.GetProperty("id").GetString()!;
@@ -282,7 +261,6 @@ public static class WorkflowPolicy
         JsonElement proposal = Step(offlineSteps, "proposal");
         Guard.Require(proposal.GetProperty("env").GetProperty("QUALIFYING_SOURCE").GetString() ==
             "${{ github.event_name == 'push' && github.repository == 'islamu-ngo/SecretKit' && github.ref == 'refs/heads/main' && github.ref_protected }}" &&
-            proposal.GetProperty("run").GetString()!.Contains("-f docs/internal/releases/candidate.json", StringComparison.Ordinal) &&
             offline.GetProperty("outputs").GetProperty("candidate").GetString() == "${{ steps.proposal.outputs.candidate }}" &&
             offline.GetProperty("outputs").GetProperty("version").GetString() == "${{ steps.proposal.outputs.version }}" &&
             Step(offlineSteps, "candidate_inputs").GetProperty("if").GetString() ==
@@ -293,8 +271,7 @@ public static class WorkflowPolicy
         Guard.Require(inputUpload.GetProperty("if").GetString() == "${{ steps.proposal.outputs.candidate == 'true' }}" &&
             inputUpload.GetProperty("with").GetProperty("retention-days").GetInt32() >= 91 &&
             inputUpload.GetProperty("with").GetProperty("name").GetString() ==
-                "candidate-inputs-${{ github.run_id }}-${{ github.run_attempt }}" &&
-            Step(offlineSteps, "pack").GetProperty("run").GetString()!.Contains("test ! -e", StringComparison.Ordinal),
+                "candidate-inputs-${{ github.run_id }}-${{ github.run_attempt }}",
             "producer-original-inputs");
         foreach (string name in new[] { "native", "compatibility" })
         {
@@ -313,18 +290,10 @@ public static class WorkflowPolicy
             .EnumerateArray().Select(k => k.GetString()!), GateSemantics.Platforms, "producer-native-platforms");
         Guard.Require(native.GetProperty("strategy").GetProperty("matrix").GetProperty("exclude").GetArrayLength() == 0,
             "producer-native-exclusions");
-        string harness = Step(native.GetProperty("steps").EnumerateArray().ToArray(), "harness").GetProperty("run").GetString()!;
-        Guard.Require(harness.Contains("for provider in Infisical AzureKeyVault", StringComparison.Ordinal) &&
-            harness.Contains("native-harness-unavailable", StringComparison.Ordinal) &&
-            harness.Contains("--minimum-expected-tests 1 --zero-tests-policy strict", StringComparison.Ordinal) &&
-            harness.Contains("candidate-measure inputs", StringComparison.Ordinal), "producer-native-harness");
         JsonElement compatibility = jobs.GetProperty("compatibility");
         Guard.Require(compatibility.GetProperty("name").GetString() == "compatibility-install-${{ matrix.platform }}" &&
             compatibility.GetProperty("env").GetProperty("SECRETKIT_PLATFORM_OBSERVATION").GetString() ==
-                "${{ github.workspace }}/observations/installation.json" &&
-            Step(compatibility.GetProperty("steps").EnumerateArray().ToArray(), "measured_install")
-                .GetProperty("run").GetString()!.Contains("--minimum-expected-tests 27 --zero-tests-policy strict",
-                    StringComparison.Ordinal), "producer-installed-observation");
+                "${{ github.workspace }}/observations/installation.json", "producer-installed-observation");
         JsonElement archives = jobs.GetProperty("archive_evidence");
         Guard.Require(archives.GetProperty("name").GetString() == "${{ matrix.kind }}-none" &&
             !archives.GetProperty("strategy").GetProperty("fail-fast").GetBoolean(), "producer-archive-job");
@@ -337,9 +306,7 @@ public static class WorkflowPolicy
                 action.GetString()!.StartsWith("actions/upload-artifact@", StringComparison.Ordinal));
             Guard.Require(upload.GetProperty("with").GetProperty("name").GetString() ==
                 "secretkit-report-${{ steps.job.outputs.id }}" &&
-                upload.GetProperty("with").GetProperty("path").GetString() == "report/report.json" &&
-                Step(steps, "job").GetProperty("run").GetString()!
-                    .Contains("/attempts/$GITHUB_RUN_ATTEMPT/jobs?per_page=100", StringComparison.Ordinal),
+                upload.GetProperty("with").GetProperty("path").GetString() == "report/report.json",
                 "producer-report-origin");
         }
         JsonElement[] assembly = jobs.GetProperty("candidate").GetProperty("steps").EnumerateArray().ToArray();
@@ -347,17 +314,468 @@ public static class WorkflowPolicy
         int content = Array.FindIndex(assembly, s => s.TryGetProperty("id", out JsonElement id) && id.GetString() == "content");
         int uploadIndex = Array.FindIndex(assembly, s => s.TryGetProperty("id", out JsonElement id) && id.GetString() == "candidate_upload");
         Guard.Require(collect >= 0 && content > collect && uploadIndex > content &&
-            Step(assembly, "content").GetProperty("run").GetString() ==
-                "dotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll candidate-assemble inputs independent preparation candidate\ndotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll candidate-check candidate independent" &&
+            Matches(Step(assembly, "content").GetProperty("run").GetString()!,
+                "dotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll candidate-assemble inputs independent preparation candidate\ndotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll candidate-check candidate independent") &&
             Step(assembly, "candidate_upload").GetProperty("with").GetProperty("path").GetString() == "candidate",
             "producer-preupload-check");
-        string collector = Step(assembly, "collect").GetProperty("run").GetString()!;
-        Guard.Require(collector.Contains("sha256sum --check --status", StringComparison.Ordinal) &&
-            collector.Contains("/attempts/$GITHUB_RUN_ATTEMPT", StringComparison.Ordinal) &&
-            collector.Contains("extract-report archives", StringComparison.Ordinal) &&
-            collector.Contains("?ref=$GITHUB_SHA", StringComparison.Ordinal) &&
-            !collector.Contains("artifact-metadata.json", StringComparison.Ordinal), "producer-independent-collection");
     }
+
+    private static void ValidateExecutableSteps(JsonElement root, string[] selectedJobs)
+    {
+        Guard.Require(!root.TryGetProperty("defaults", out _), "workflow-default-override");
+        JsonElement jobs = root.GetProperty("jobs");
+        foreach (string name in selectedJobs)
+        {
+            Guard.Require(jobs.TryGetProperty(name, out JsonElement job), "workflow-required-job");
+            Guard.Require(!job.TryGetProperty("container", out _) && !job.TryGetProperty("services", out _) &&
+                !job.TryGetProperty("uses", out _), "workflow-execution-override");
+            if (job.TryGetProperty("defaults", out JsonElement defaults))
+            {
+                Manifest.ExactSet(defaults.EnumerateObject().Select(property => property.Name), ["run"], "workflow-defaults");
+                JsonElement run = defaults.GetProperty("run");
+                Manifest.ExactSet(run.EnumerateObject().Select(property => property.Name), ["shell"], "workflow-defaults");
+                Guard.Require(run.GetProperty("shell").GetString() == "bash", "workflow-shell");
+            }
+            CheckEnvironment(job, name);
+            if (job.TryGetProperty("strategy", out JsonElement strategy))
+            {
+                Manifest.ExactSet(strategy.EnumerateObject().Select(property => property.Name),
+                    ["fail-fast", "matrix"], "workflow-strategy");
+                string[] dimensions = name switch
+                {
+                    "native" => ["kind", "include", "platform", "exclude"],
+                    "archive_evidence" => ["kind"],
+                    _ => ["include"]
+                };
+                Manifest.ExactSet(strategy.GetProperty("matrix").EnumerateObject().Select(property => property.Name),
+                    dimensions, "workflow-matrix");
+            }
+            JsonElement[] steps = job.GetProperty("steps").EnumerateArray().ToArray();
+            string[] ids = steps.Where(step => step.TryGetProperty("id", out _))
+                .Select(step => step.GetProperty("id").GetString()!).ToArray();
+            Guard.Require(ids.Distinct(StringComparer.Ordinal).Count() == ids.Length, "workflow-step-id");
+            var order = new List<string>();
+            foreach (JsonElement step in steps)
+            {
+                Guard.Require(!step.TryGetProperty("shell", out _) &&
+                    !step.TryGetProperty("working-directory", out _) &&
+                    !step.TryGetProperty("continue-on-error", out _), "workflow-step-override");
+                string id = step.TryGetProperty("id", out JsonElement identity) ? identity.GetString()! :
+                    step.TryGetProperty("uses", out JsonElement selectedAction) &&
+                        selectedAction.GetString()!.StartsWith("actions/checkout@", StringComparison.Ordinal) ? "checkout" : "";
+                CheckEnvironment(step, name + "/" + id);
+                if (step.TryGetProperty("run", out JsonElement command))
+                {
+                    Guard.Require(!step.TryGetProperty("uses", out _) && step.TryGetProperty("id", out _),
+                        "workflow-executable-step");
+                    Guard.Require(Commands.TryGetValue(name + "/" + id, out string? expected) &&
+                        Matches(command.GetString()!, expected), "workflow-executable-contract");
+                    bool conditional = name == "offline" && id is "candidate_inputs" or "metadata";
+                    Guard.Require(conditional == step.TryGetProperty("if", out _), "workflow-step-condition");
+                    order.Add("run/" + id);
+                    continue;
+                }
+                Guard.Require(step.TryGetProperty("uses", out JsonElement action), "workflow-step-kind");
+                string kind = action.GetString()!.Split('@')[0];
+                JsonElement configuration = step.GetProperty("with");
+                string[] keys = kind switch
+                {
+                    "actions/checkout" => ["ref", "persist-credentials"],
+                    "actions/setup-dotnet" => ["global-json-file"],
+                    "actions/download-artifact" => ["name", "path"],
+                    "actions/upload-artifact" => ["name", "path", "if-no-files-found", "retention-days"],
+                    _ => throw new ReleaseException("workflow-action")
+                };
+                Manifest.ExactSet(configuration.EnumerateObject().Select(property => property.Name), keys,
+                    "workflow-action-inputs");
+                if (kind == "actions/setup-dotnet")
+                    Guard.Require(configuration.GetProperty("global-json-file").GetString() == "global.json",
+                        "workflow-sdk-source");
+                string role = kind switch
+                {
+                    "actions/checkout" => "checkout",
+                    "actions/setup-dotnet" => "sdk",
+                    "actions/download-artifact" => "download/" + configuration.GetProperty("path").GetString(),
+                    _ => "upload/" + configuration.GetProperty("name").GetString()
+                };
+                bool maySkip = kind == "actions/upload-artifact" &&
+                    (name is "offline" or "install" or "demos") &&
+                    configuration.GetProperty("name").GetString() !=
+                        "local-cohort-${{ github.run_id }}-${{ github.run_attempt }}" &&
+                    configuration.GetProperty("name").GetString() !=
+                        "offline-originals-${{ github.run_id }}-${{ github.run_attempt }}";
+                Guard.Require(maySkip == step.TryGetProperty("if", out _), "workflow-action-condition");
+                if (maySkip)
+                {
+                    string condition = configuration.GetProperty("path").GetString() == "artifacts/candidate-inputs"
+                        ? "${{ steps.proposal.outputs.candidate == 'true' }}" : "${{ always() }}";
+                    Guard.Require(step.GetProperty("if").GetString() == condition, "workflow-action-condition");
+                }
+                order.Add(role);
+            }
+            Guard.Require(order.SequenceEqual(StepOrder[name]), "workflow-step-order");
+        }
+    }
+
+    private static void CheckEnvironment(JsonElement owner, string selection)
+    {
+        Environments.TryGetValue(selection, out IReadOnlyDictionary<string, string>? expected);
+        if (!owner.TryGetProperty("env", out JsonElement environment))
+        {
+            Guard.Require(expected is null, "workflow-environment");
+            return;
+        }
+        Guard.Require(expected is not null, "workflow-environment");
+        Manifest.ExactSet(environment.EnumerateObject().Select(property => property.Name), expected!.Keys,
+            "workflow-environment");
+        foreach ((string key, string value) in expected)
+            Guard.Require(environment.GetProperty(key).GetString() == value, "workflow-environment-binding");
+    }
+
+    private static bool Matches(string actual, string expected) =>
+        Tokens(actual).SequenceEqual(Tokens(expected), StringComparer.Ordinal);
+
+    // This compares a closed contract; it does not interpret or execute shell.
+    // Quoted bytes, substitutions, operators and command boundaries remain exact.
+    private static string[] Tokens(string script)
+    {
+        var tokens = new List<string>();
+        var token = new StringBuilder();
+        char quote = '\0';
+        for (int index = 0; index < script.Length; index++)
+        {
+            char current = script[index];
+            if (current == '\\' && quote != '\'' && index + 1 < script.Length)
+            {
+                char next = script[index + 1];
+                if (next == '\n') { index++; continue; }
+                if (next == '\r' && index + 2 < script.Length && script[index + 2] == '\n')
+                {
+                    index += 2;
+                    continue;
+                }
+                token.Append(current).Append(next);
+                index++;
+                continue;
+            }
+            if (quote != '\0')
+            {
+                token.Append(current);
+                if (current == quote) quote = '\0';
+                continue;
+            }
+            if (current is '\'' or '"')
+            {
+                quote = current;
+                token.Append(current);
+                continue;
+            }
+            if (current == '#' && token.Length == 0)
+            {
+                while (index < script.Length && script[index] != '\n') index++;
+                current = '\n';
+            }
+            if (char.IsWhiteSpace(current))
+            {
+                Flush();
+                if (current == '\n' && tokens.Count > 0 && tokens[^1] != "\n") tokens.Add("\n");
+                continue;
+            }
+            if (";&|<>(){}".Contains(current, StringComparison.Ordinal))
+            {
+                Flush();
+                tokens.Add(current.ToString());
+                continue;
+            }
+            token.Append(current);
+        }
+        Guard.Require(quote == '\0', "workflow-command-quotes");
+        Flush();
+        if (tokens.Count > 0 && tokens[^1] == "\n") tokens.RemoveAt(tokens.Count - 1);
+        return tokens.ToArray();
+
+        void Flush()
+        {
+            if (token.Length == 0) return;
+            tokens.Add(token.ToString());
+            token.Clear();
+        }
+    }
+
+    // Closed executable contracts. Values are shell tokens, not substring hints:
+    // indentation, blank lines and comments cannot add or remove an executable step.
+    private static readonly IReadOnlyDictionary<string, string> Commands = new Dictionary<string, string>(StringComparer.Ordinal)
+    {
+        ["format/format"] = """
+            dotnet restore SecretKit.slnx --locked-mode
+            dotnet format SecretKit.slnx --verify-no-changes --no-restore --verbosity quiet
+            """,
+        ["offline/proposal"] = """
+            candidate=false
+            if [[ "$QUALIFYING_SOURCE" == true && -f docs/internal/releases/candidate.json ]]; then
+              candidate=true
+              SECRETKIT_CANDIDATE_VERSION=$(jq -er '.version | select(test("^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[a-z][a-z0-9-]*(\\.(0|[1-9][0-9]*|[a-z][a-z0-9-]*))*)?$"))' docs/internal/releases/candidate.json)
+            fi
+            printf 'candidate=%s\nversion=%s\n' "$candidate" "$SECRETKIT_CANDIDATE_VERSION" >> "$GITHUB_OUTPUT"
+            printf 'SECRETKIT_CANDIDATE_VERSION=%s\n' "$SECRETKIT_CANDIDATE_VERSION" >> "$GITHUB_ENV"
+            """,
+        ["offline/restore"] = """
+            dotnet restore SecretKit.slnx --locked-mode
+            """,
+        ["offline/build"] = """
+            dotnet build SecretKit.slnx --configuration Release --no-restore -p:Version="$SECRETKIT_CANDIDATE_VERSION"
+            """,
+        ["offline/offline_conformance_guards"] = """
+            dotnet restore SecretKit.Conformance.slnx --locked-mode
+            dotnet build SecretKit.Conformance.slnx --configuration Release --no-restore -p:Version="$SECRETKIT_CANDIDATE_VERSION"
+            dotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll verification offline-conformance
+            """,
+        ["offline/pack"] = """
+            test ! -e "$SECRETKIT_CANDIDATE_DIRECTORY"
+            dotnet pack SecretKit.slnx --configuration Release --no-build -p:Version="$SECRETKIT_CANDIDATE_VERSION" --output "$SECRETKIT_CANDIDATE_DIRECTORY"
+            """,
+        ["offline/tests"] = """
+            dotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll verification ordinary
+            """,
+        ["offline/candidate_inputs"] = """
+            dotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll candidate-prepare . "$SECRETKIT_CANDIDATE_DIRECTORY" artifacts/candidate-inputs
+            """,
+        ["offline/local_directory"] = """
+            mkdir -p artifacts/verification/local
+            """,
+        ["offline/local_install"] = """
+            dotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll verification prepare-local "$PWD/artifacts/local-cohort"
+            """,
+        ["offline/demo_inputs"] = """
+            dotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll verification check "$PWD/artifacts/local-cohort"
+            """,
+        ["offline/dependency_audit"] = """
+            dotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll dependency-audit SecretKit.slnx "$PWD/artifacts/verification/advisories/source"
+            dotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll dependency-audit SecretKit.Conformance.slnx "$PWD/artifacts/verification/advisories/conformance"
+            """,
+        ["offline/dependency_audit_installed"] = """
+            dotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll dependency-audit-installed-set "$PWD/artifacts/local-cohort" "$PWD/artifacts/verification/post-pack" "$PWD/artifacts/verification/advisories/installed"
+            """,
+        ["install/dependency_audit_installed"] = """
+            dotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll dependency-audit-installed-set "$PWD/artifacts/local-cohort" "$PWD/artifacts/verification/post-pack" "$PWD/artifacts/verification/advisories/installed"
+            """,
+        ["demos/dependency_audit_installed"] = """
+            dotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll dependency-audit-installed-set "$PWD/artifacts/local-cohort" "$PWD/artifacts/verification/post-pack" "$PWD/artifacts/verification/advisories/installed"
+            """,
+        ["offline/demo_tests"] = """
+            dotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll verification post-pack "$PWD/artifacts/local-cohort" "$PWD/artifacts/verification/post-pack"
+            """,
+        ["offline/metadata"] = """
+            mkdir -p artifacts/verification
+            printf 'purpose=%s\nsource=%s\nversion=%s\nrestore=%s\nbuild=%s\npack=%s\ntests=%s\nsamples=%s\n' "$PURPOSE" "$SOURCE" "$SECRETKIT_CANDIDATE_VERSION" "$RESTORE_RESULT" "$BUILD_RESULT" "$PACK_RESULT" "$TEST_RESULT" "$SAMPLE_RESULT" > artifacts/verification/checks.txt
+            dotnet --version > artifacts/verification/sdk.txt
+            for archive in "$SECRETKIT_CANDIDATE_DIRECTORY"/*.nupkg; do
+              [[ -f "$archive" ]] || continue
+              sha256sum "$archive" >> artifacts/verification/packages.sha256
+            done
+            """,
+        ["install/restore"] = """
+            dotnet restore SecretKit.slnx --locked-mode
+            """,
+        ["install/build"] = """
+            dotnet build SecretKit.slnx --configuration Release --no-restore
+            """,
+        ["install/test"] = """
+            dotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll verification post-pack "$PWD/artifacts/local-cohort" "$PWD/artifacts/verification/post-pack"
+            """,
+        ["demos/build"] = """
+            dotnet restore SecretKit.slnx --locked-mode
+            dotnet build SecretKit.slnx --configuration Release --no-restore
+            """,
+        ["demos/check"] = """
+            dotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll verification check "$PWD/artifacts/local-cohort"
+            """,
+        ["demos/test"] = """
+            dotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll verification post-pack "$PWD/artifacts/local-cohort" "$PWD/artifacts/verification/post-pack"
+            """,
+        ["prerequisites/bootstrap"] = """
+            dotnet restore tools/SecretKit.Release/SecretKit.Release.csproj --locked-mode
+            dotnet build tools/SecretKit.Release/SecretKit.Release.csproj --configuration Release --no-restore
+            """,
+        ["prerequisites/preparation"] = """
+            dotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll candidate-preparation inputs preparation
+            """,
+        ["native/job"] = """
+            gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT/jobs?per_page=100" > jobs.json
+            id=$(jq -er --arg name "$REPORT_JOB_NAME" '[.[].jobs[] | select(.name == $name and .status == "in_progress")] | if length == 1 then .[0].id else error("ambiguous-report-job") end' jobs.json)
+            printf 'id=%s\n' "$id" >> "$GITHUB_OUTPUT"
+            printf 'SECRETKIT_REPORT_JOB_ID=%s\n' "$id" >> "$GITHUB_ENV"
+            """,
+        ["native/harness"] = """
+            test -n "$SECRETKIT_NATIVE_SETTINGS"
+            test -f tests/fixtures/SecretKit.TestHarness/NativeObservationReport.cs || { printf 'native-harness-unavailable\n' >&2; exit 1; }
+            for provider in Infisical AzureKeyVault; do
+              project="tests/SecretKit.$provider.Conformance.Tests/SecretKit.$provider.Conformance.Tests.csproj"
+              test -f "$project" || { printf 'native-host-unavailable\n' >&2; exit 1; }
+              dotnet restore "$project" --locked-mode
+              dotnet build "$project" --configuration Release --no-restore
+            done
+            dotnet restore tools/SecretKit.Release/SecretKit.Release.csproj --locked-mode
+            dotnet build tools/SecretKit.Release/SecretKit.Release.csproj --configuration Release --no-restore
+            mkdir -p observations
+            for provider in Infisical AzureKeyVault; do
+              export SECRETKIT_NATIVE_REPORT="$GITHUB_WORKSPACE/observations/$provider.json"
+              dotnet "tests/SecretKit.$provider.Conformance.Tests/bin/Release/net10.0/SecretKit.$provider.Conformance.Tests.dll" --minimum-expected-tests 1 --zero-tests-policy strict
+            done
+            dotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll candidate-measure inputs "$SECRETKIT_NATIVE_KIND" "$SECRETKIT_NATIVE_PLATFORM" observations report
+            """,
+        ["compatibility/job"] = """
+            gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT/jobs?per_page=100" > jobs.json
+            id=$(jq -er --arg name "$REPORT_JOB_NAME" '[.[].jobs[] | select(.name == $name and .status == "in_progress")] | if length == 1 then .[0].id else error("ambiguous-report-job") end' jobs.json)
+            printf 'id=%s\n' "$id" >> "$GITHUB_OUTPUT"
+            printf 'SECRETKIT_REPORT_JOB_ID=%s\n' "$id" >> "$GITHUB_ENV"
+            """,
+        ["compatibility/measured_install"] = """
+            dotnet restore tests/SecretKit.Package.Tests/SecretKit.Package.Tests.csproj --locked-mode
+            dotnet build tests/SecretKit.Package.Tests/SecretKit.Package.Tests.csproj --configuration Release --no-restore
+            dotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll verification public-install
+            dotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll candidate-measure inputs compatibility-install "${{ matrix.platform }}" observations report
+            """,
+        ["archive_evidence/job"] = """
+            gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT/jobs?per_page=100" > jobs.json
+            id=$(jq -er --arg name "$REPORT_JOB_NAME" '[.[].jobs[] | select(.name == $name and .status == "in_progress")] | if length == 1 then .[0].id else error("ambiguous-report-job") end' jobs.json)
+            printf 'id=%s\n' "$id" >> "$GITHUB_OUTPUT"
+            printf 'SECRETKIT_REPORT_JOB_ID=%s\n' "$id" >> "$GITHUB_ENV"
+            """,
+        ["archive_evidence/measure"] = """
+            dotnet restore tools/SecretKit.Release/SecretKit.Release.csproj --locked-mode
+            dotnet build tools/SecretKit.Release/SecretKit.Release.csproj --configuration Release --no-restore
+            dotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll candidate-measure inputs "${{ matrix.kind }}" none . report
+            """,
+        ["candidate/runner"] = """
+            dotnet restore tools/SecretKit.Release/SecretKit.Release.csproj --locked-mode
+            dotnet build tools/SecretKit.Release/SecretKit.Release.csproj --configuration Release --no-restore
+            """,
+        ["candidate/collect"] = """
+            test -n "$SECRETKIT_REVIEWED_EVIDENCE_INDEX"
+            [[ "$SECRETKIT_REVIEWED_EVIDENCE_SHA256" =~ ^[0-9a-f]{64}$ ]]
+            mkdir independent archives
+            printf '%s' "$SECRETKIT_REVIEWED_EVIDENCE_INDEX" > independent/evidence-index.json
+            printf '%s  independent/evidence-index.json\n' "$SECRETKIT_REVIEWED_EVIDENCE_SHA256" | sha256sum --check --status
+            jq -e --arg source "$GITHUB_SHA" --argjson run "$GITHUB_RUN_ID" --argjson attempt "$GITHUB_RUN_ATTEMPT" '.sourceCommit == $source and .runId == $run and .runAttempt == $attempt and (.reports | length == 8) and (.attestations | length == 4)' independent/evidence-index.json > /dev/null
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT" > independent/run-metadata.json
+            for file in infisical.json azure-key-vault.json; do
+              gh api -H 'Accept: application/vnd.github.raw+json' "repos/$GITHUB_REPOSITORY/contents/docs/internal/releases/admission/$file?ref=$GITHUB_SHA" > "independent/$file"
+            done
+            gh api -H 'Accept: application/vnd.github.raw+json' "repos/$GITHUB_REPOSITORY/contents/THIRD-PARTY-NOTICES.md?ref=$GITHUB_SHA" > independent/THIRD-PARTY-NOTICES.md
+            jq -er '.reports[] | [.jobId, .artifactId, .artifactDigest] | @tsv' independent/evidence-index.json > origins.tsv
+            while IFS=$'\t' read -r job artifact digest; do
+              [[ "$job" =~ ^[1-9][0-9]*$ && "$artifact" =~ ^[1-9][0-9]*$ && "$digest" =~ ^[0-9a-f]{64}$ ]]
+              gh api "repos/$GITHUB_REPOSITORY/actions/jobs/$job" > "independent/$job-job.json"
+              gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact" > "independent/$artifact-artifact.json"
+              gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact/zip" > "archives/$artifact.zip"
+              dotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll extract-report archives "$artifact" "$digest" independent
+            done < origins.tsv
+            """,
+        ["candidate/content"] = """
+            dotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll candidate-assemble inputs independent preparation candidate
+            dotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll candidate-check candidate independent
+            """,
+    };
+
+    private static readonly IReadOnlyDictionary<string, string[]> StepOrder = new Dictionary<string, string[]>(StringComparer.Ordinal)
+    {
+        ["format"] = ["checkout", "sdk", "run/format"],
+        ["offline"] = ["checkout", "sdk", "run/proposal", "run/restore", "run/build", "run/offline_conformance_guards", "run/dependency_audit", "run/pack", "upload/offline-originals-${{ github.run_id }}-${{ github.run_attempt }}", "run/tests", "run/candidate_inputs", "upload/candidate-inputs-${{ github.run_id }}-${{ github.run_attempt }}", "run/local_directory", "run/local_install", "run/demo_inputs", "upload/local-cohort-${{ github.run_id }}-${{ github.run_attempt }}", "run/demo_tests", "run/dependency_audit_installed", "run/metadata", "upload/offline-verification-${{ github.run_id }}-${{ github.run_attempt }}"],
+        ["install"] = ["checkout", "sdk", "download/artifacts/local-cohort", "run/restore", "run/build", "run/test", "run/dependency_audit_installed", "upload/offline-install-${{ matrix.platform }}-${{ github.run_id }}-${{ github.run_attempt }}"],
+        ["demos"] = ["checkout", "sdk", "download/artifacts/local-cohort", "run/build", "run/check", "run/test", "run/dependency_audit_installed", "upload/demo-observations-${{ matrix.platform }}-${{ github.run_id }}-${{ github.run_attempt }}"],
+        ["prerequisites"] = ["checkout", "sdk", "download/inputs", "run/bootstrap", "run/preparation", "upload/candidate-preparation-${{ github.run_id }}-${{ github.run_attempt }}"],
+        ["native"] = ["checkout", "sdk", "download/inputs", "download/preparation", "run/job", "run/harness", "upload/secretkit-report-${{ steps.job.outputs.id }}"],
+        ["compatibility"] = ["checkout", "sdk", "download/inputs", "run/job", "run/measured_install", "upload/secretkit-report-${{ steps.job.outputs.id }}"],
+        ["archive_evidence"] = ["checkout", "sdk", "download/inputs", "run/job", "run/measure", "upload/secretkit-report-${{ steps.job.outputs.id }}"],
+        ["candidate"] = ["checkout", "sdk", "download/inputs", "download/preparation", "run/runner", "run/collect", "run/content", "upload/candidate-independent-evidence-${{ github.run_id }}-${{ github.run_attempt }}", "upload/secretkit-candidate-${{ github.run_id }}-${{ github.run_attempt }}"],
+    };
+
+    private static readonly IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> Environments =
+        new Dictionary<string, IReadOnlyDictionary<string, string>>(StringComparer.Ordinal)
+        {
+            ["offline"] = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["SECRETKIT_CANDIDATE_VERSION"] = "0.1.0-preview.1",
+                ["SECRETKIT_CANDIDATE_DIRECTORY"] = "${{ github.workspace }}/artifacts/packages",
+                ["SECRETKIT_TEST_HOSTS"] = "SecretKit.Core.Tests SecretKit.Infisical.Tests SecretKit.AzureKeyVault.Tests SecretKit.Consumer.Tests SecretKit.Assessment.Tests SecretKit.Configuration.Tests SecretKit.Hosting.Tests SecretKit.Infisical.Management.Tests SecretKit.AzureKeyVault.Management.Tests SecretKit.Release.Tests SecretKit.ProviderContract.Tests",
+            },
+            ["offline/checkout"] = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["GIT_CONFIG_COUNT"] = "1",
+                ["GIT_CONFIG_KEY_0"] = "core.autocrlf",
+                ["GIT_CONFIG_VALUE_0"] = "false",
+            },
+            ["offline/proposal"] = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["QUALIFYING_SOURCE"] = "${{ github.event_name == 'push' && github.repository == 'islamu-ngo/SecretKit' && github.ref == 'refs/heads/main' && github.ref_protected }}",
+            },
+            ["offline/metadata"] = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["PURPOSE"] = "offline-verification",
+                ["SOURCE"] = "${{ github.sha }}",
+                ["RESTORE_RESULT"] = "${{ steps.restore.outcome }}",
+                ["BUILD_RESULT"] = "${{ steps.build.outcome }}",
+                ["PACK_RESULT"] = "${{ steps.pack.outcome }}",
+                ["TEST_RESULT"] = "${{ steps.tests.outcome }}",
+                ["SAMPLE_RESULT"] = "${{ steps.tests.outcome }}",
+            },
+            ["install/checkout"] = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["GIT_CONFIG_COUNT"] = "1",
+                ["GIT_CONFIG_KEY_0"] = "core.autocrlf",
+                ["GIT_CONFIG_VALUE_0"] = "false",
+            },
+            ["demos/checkout"] = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["GIT_CONFIG_COUNT"] = "1",
+                ["GIT_CONFIG_KEY_0"] = "core.autocrlf",
+                ["GIT_CONFIG_VALUE_0"] = "false",
+            },
+            ["prerequisites/preparation"] = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["SECRETKIT_REVIEWED_PREPARATION"] = "${{ secrets.SECRETKIT_REVIEWED_PREPARATION }}",
+            },
+            ["native"] = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["SECRETKIT_CANDIDATE_VERSION"] = "${{ needs.offline.outputs.version }}",
+                ["SECRETKIT_CANDIDATE_DIRECTORY"] = "${{ github.workspace }}/inputs",
+                ["SECRETKIT_NATIVE_INPUTS"] = "${{ github.workspace }}/inputs/candidate-inputs.json",
+                ["SECRETKIT_NATIVE_KIND"] = "${{ matrix.kind }}",
+                ["SECRETKIT_NATIVE_PLATFORM"] = "${{ matrix.platform }}",
+            },
+            ["native/job"] = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["GH_TOKEN"] = "${{ github.token }}",
+                ["REPORT_JOB_NAME"] = "${{ matrix.kind }}-${{ matrix.platform }}",
+            },
+            ["native/harness"] = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["SECRETKIT_NATIVE_SETTINGS"] = "${{ secrets.SECRETKIT_NATIVE_SETTINGS }}",
+            },
+            ["compatibility"] = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["SECRETKIT_CANDIDATE_VERSION"] = "${{ needs.offline.outputs.version }}",
+                ["SECRETKIT_CANDIDATE_DIRECTORY"] = "${{ github.workspace }}/inputs",
+                ["SECRETKIT_PLATFORM_OBSERVATION"] = "${{ github.workspace }}/observations/installation.json",
+            },
+            ["compatibility/job"] = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["GH_TOKEN"] = "${{ github.token }}",
+                ["REPORT_JOB_NAME"] = "compatibility-install-${{ matrix.platform }}",
+            },
+            ["archive_evidence/job"] = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["GH_TOKEN"] = "${{ github.token }}",
+                ["REPORT_JOB_NAME"] = "${{ matrix.kind }}-none",
+            },
+            ["candidate/collect"] = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["GH_TOKEN"] = "${{ github.token }}",
+                ["SECRETKIT_REVIEWED_EVIDENCE_INDEX"] = "${{ secrets.SECRETKIT_REVIEWED_EVIDENCE_INDEX }}",
+                ["SECRETKIT_REVIEWED_EVIDENCE_SHA256"] = "${{ secrets.SECRETKIT_REVIEWED_EVIDENCE_SHA256 }}",
+            },
+        };
 
     private static JsonElement Step(JsonElement[] steps, string id) =>
         steps.Single(s => s.TryGetProperty("id", out JsonElement value) && value.GetString() == id);

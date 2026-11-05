@@ -7,6 +7,28 @@ namespace SecretKit.Release.Tests;
 
 public sealed class WorkflowTests
 {
+    [Test]
+    [Arguments("offline", "dependency_audit", false)]
+    [Arguments("offline", "dependency_audit", true)]
+    [Arguments("offline", "dependency_audit_installed", false)]
+    [Arguments("offline", "dependency_audit_installed", true)]
+    [Arguments("install", "dependency_audit_installed", false)]
+    [Arguments("install", "dependency_audit_installed", true)]
+    [Arguments("demos", "dependency_audit_installed", false)]
+    [Arguments("demos", "dependency_audit_installed", true)]
+    public async Task ConnectedAuditCannotBeRemovedOrDemoted(string job, string id, bool demote)
+    {
+        JsonObject root = JsonNode.Parse(File.ReadAllBytes(
+            Path.Combine(RepositoryRoot(), ".github", "workflows", "verify.yml")))!.AsObject();
+        JsonArray steps = root["jobs"]![job]!["steps"]!.AsArray();
+        JsonNode selected = steps.Single(step => step!["id"]?.GetValue<string>() == id)!;
+        if (demote) selected["run"] += "\ntrue # ignore unavailable advisory data";
+        else steps.Remove(selected);
+
+        await Assert.That(() => WorkflowPolicy.ValidateRoutine(JsonSerializer.SerializeToUtf8Bytes(root), OfflineHosts()))
+            .Throws<ReleaseException>();
+    }
+
     private static string RepositoryRoot()
     {
         DirectoryInfo? directory = new(AppContext.BaseDirectory);
@@ -23,7 +45,8 @@ public sealed class WorkflowTests
             .Where(p => p.StartsWith("tests/", StringComparison.Ordinal) &&
                 !p.StartsWith("tests/fixtures/", StringComparison.Ordinal) &&
                 !p.StartsWith("tests/Benchmarks/", StringComparison.Ordinal) &&
-                p != "tests/SecretKit.Demo.Tests/SecretKit.Demo.Tests.csproj")
+                p != "tests/SecretKit.Demo.Tests/SecretKit.Demo.Tests.csproj" &&
+                p != "tests/SecretKit.Package.Tests/SecretKit.Package.Tests.csproj")
             .Select(Path.GetFileNameWithoutExtension).Select(p => p!).ToArray();
     }
 
@@ -32,6 +55,90 @@ public sealed class WorkflowTests
     {
         byte[] bytes = await File.ReadAllBytesAsync(Path.Combine(RepositoryRoot(), ".github", "workflows", "verify.yml"));
         WorkflowPolicy.ValidateRoutine(bytes, OfflineHosts());
+    }
+
+    [Test]
+    [Arguments("indentation")]
+    [Arguments("continuation")]
+    [Arguments("comment")]
+    public void BenignJsonAndCommandWhitespaceRetainsWorkflowAdmission(string change)
+    {
+        JsonObject root = JsonNode.Parse(File.ReadAllBytes(
+            Path.Combine(RepositoryRoot(), ".github", "workflows", "verify.yml")))!.AsObject();
+        foreach (JsonNode? job in root["jobs"]!.AsObject().Select(pair => pair.Value))
+            foreach (JsonNode? step in job!["steps"]!.AsArray())
+                if (step!["run"] is JsonValue command)
+                    step["run"] = change switch
+                    {
+                        "continuation" => command.GetValue<string>().Replace("verification ",
+                            "verification \\\n  ", StringComparison.Ordinal),
+                        "comment" => "# Reviewed workflow annotation\n" + command.GetValue<string>(),
+                        _ => "\n  " + command.GetValue<string>().Replace("\n", "\n  ", StringComparison.Ordinal) + "\n\n"
+                    };
+
+        WorkflowPolicy.ValidateRoutine(JsonSerializer.SerializeToUtf8Bytes(root,
+            new JsonSerializerOptions { WriteIndented = false }), OfflineHosts());
+    }
+
+    [Test]
+    [Arguments("format", "", "append")]
+    [Arguments("offline", "restore", "append")]
+    [Arguments("offline", "offline_conformance_guards", "append")]
+    [Arguments("offline", "tests", "append")]
+    [Arguments("offline", "tests", "comment")]
+    [Arguments("offline", "local_install", "ignore")]
+    [Arguments("install", "test", "append")]
+    [Arguments("demos", "test", "append")]
+    public async Task ExecutableStepsCannotHideExtraCommandsOrIgnoredFailure(string job, string id, string fault)
+    {
+        JsonNode root = JsonNode.Parse(File.ReadAllBytes(
+            Path.Combine(RepositoryRoot(), ".github", "workflows", "verify.yml")))!;
+        JsonNode step = root["jobs"]![job]!["steps"]!.AsArray().First(item =>
+            item!["run"] is not null && (id.Length == 0 || item["id"]?.GetValue<string>() == id))!;
+        string command = step["run"]!.GetValue<string>();
+        step["run"] = fault switch
+        {
+            "comment" => "# " + command,
+            "ignore" => command + " || exit 0",
+            _ => command + "\nprintf extra-executable-command"
+        };
+
+        await Assert.That(() => WorkflowPolicy.ValidateRoutine(JsonSerializer.SerializeToUtf8Bytes(root), OfflineHosts()))
+            .Throws<ReleaseException>();
+    }
+
+    [Test]
+    [Arguments("extra-step")]
+    [Arguments("shell-override")]
+    [Arguments("working-directory")]
+    [Arguments("startup-script")]
+    [Arguments("excluded-windows")]
+    [Arguments("cross-run")]
+    public async Task StructuralOverridesCannotBypassRequiredVerification(string fault)
+    {
+        JsonNode root = JsonNode.Parse(File.ReadAllBytes(
+            Path.Combine(RepositoryRoot(), ".github", "workflows", "verify.yml")))!;
+        JsonNode install = root["jobs"]!["install"]!;
+        JsonNode test = install["steps"]!.AsArray().Single(item => item!["id"]?.GetValue<string>() == "test")!;
+        switch (fault)
+        {
+            case "extra-step": install["steps"]!.AsArray().Add(new JsonObject { ["run"] = "echo extra" }); break;
+            case "shell-override": test["shell"] = "bash --noprofile --norc -c 'exit 0' {0}"; break;
+            case "working-directory": test["working-directory"] = "unreviewed"; break;
+            case "startup-script": test["env"] = new JsonObject { ["BASH_ENV"] = "unreviewed.sh" }; break;
+            case "excluded-windows":
+                install["strategy"]!["matrix"]!["exclude"] = new JsonArray(
+                    new JsonObject { ["platform"] = "windows-x64-net10.0" });
+                break;
+            case "cross-run":
+                install["steps"]!.AsArray().Single(item =>
+                    item!["uses"]?.GetValue<string>().StartsWith("actions/download-artifact@", StringComparison.Ordinal) == true)!
+                    ["with"]!["run-id"] = "7";
+                break;
+        }
+
+        await Assert.That(() => WorkflowPolicy.ValidateRoutine(JsonSerializer.SerializeToUtf8Bytes(root), OfflineHosts()))
+            .Throws<ReleaseException>();
     }
 
     [Test]
@@ -56,7 +163,7 @@ public sealed class WorkflowTests
             case "omitted-host": offline["env"]!["SECRETKIT_TEST_HOSTS"] = "SecretKit.Core.Tests"; break;
             case "zero-discovery":
                 Step("tests")["run"] = Step("tests")["run"]!.GetValue<string>()
-                    .Replace("--minimum-expected-tests 1", "", StringComparison.Ordinal);
+                    .Replace("verification ordinary", "verification", StringComparison.Ordinal);
                 break;
             case "unsafe-authority": root["permissions"]!["id-token"] = "write"; break;
             case "wrong-order":

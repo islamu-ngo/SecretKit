@@ -18,6 +18,72 @@ public sealed class ProducerWorkflowTests
         WorkflowPolicy.ValidateProducer(File.ReadAllBytes(Workflow()));
 
     [Test]
+    [Arguments("prerequisites", "preparation")]
+    [Arguments("native", "job")]
+    [Arguments("native", "harness")]
+    [Arguments("compatibility", "measured_install")]
+    [Arguments("archive_evidence", "job")]
+    [Arguments("candidate", "runner")]
+    [Arguments("candidate", "collect")]
+    public async Task ProtectedStepsRejectAdditionalExecutableCommands(string job, string step)
+    {
+        JsonNode root = JsonNode.Parse(File.ReadAllBytes(Workflow()))!;
+        Step(root["jobs"]![job]!, step)["run"] += "\nprintf extra-executable-command";
+
+        await Assert.That(() => WorkflowPolicy.ValidateProducer(JsonSerializer.SerializeToUtf8Bytes(root)))
+            .Throws<ReleaseException>();
+    }
+
+    [Test]
+    [Arguments(true)]
+    [Arguments(false)]
+    public async Task RequiredWindowsDemoOutcomeControlsActualCandidateAssembly(bool windowsPassed)
+    {
+        JsonNode workflow = JsonNode.Parse(File.ReadAllBytes(Workflow()))!;
+        using var bundle = new TestBundle();
+        DateTimeOffset now = TestBundle.RunStart.AddMinutes(11);
+        bundle.WriteRun("in_progress", null);
+        File.Delete(Path.Combine(bundle.OracleRoot, "artifact-metadata.json"));
+        bundle.Write("candidate-inputs.json", new CandidateInputs(1, "candidate-inputs-not-approved", 1,
+            bundle.Data with { Gates = [] }));
+        File.Copy(Path.Combine(bundle.OracleRoot, "THIRD-PARTY-NOTICES.md"),
+            Path.Combine(bundle.Root, "THIRD-PARTY-NOTICES.md"));
+        ReportOrigin origin = bundle.Index.Reports.First(report => report.Kind == "native-operations");
+        MachineReport report = Manifest.Parse<MachineReport>(
+            File.ReadAllBytes(Path.Combine(bundle.OracleRoot, origin.Report.File)));
+        string preparation = Path.Combine(bundle.Root, "preparation");
+        string candidate = Path.Combine(bundle.Root, "candidate");
+        Directory.CreateDirectory(preparation);
+        File.WriteAllBytes(Path.Combine(preparation, "preparation.json"), JsonSerializer.SerializeToUtf8Bytes(
+            new CandidatePreparation(1, TestBundle.Commit, 12, 1, bundle.Data.Scope.Sha256, "setup-owner", "reviewer",
+                TestBundle.RunStart.AddMinutes(6), now.AddDays(120), report.Prerequisites, bundle.Index.Attestations),
+            Manifest.JsonOptions));
+        foreach (ReportOrigin item in bundle.Index.Reports)
+        {
+            string artifact = Path.Combine(bundle.OracleRoot, $"{item.ArtifactId}-artifact.json");
+            JsonNode metadata = JsonNode.Parse(File.ReadAllBytes(artifact))!;
+            metadata["expires_at"] = now.AddDays(120);
+            File.WriteAllText(artifact, metadata.ToJsonString());
+        }
+        // Offline fixture of GitHub's required-job semantics, not a CI observation:
+        // the Linux demo passed, but one failed Windows matrix child fails demos.
+        var outcomes = workflow["jobs"]!.AsObject().ToDictionary(pair => pair.Key, _ => true);
+        outcomes["demos"] = new[] { true, windowsPassed }.All(success => success);
+        bool admitted = workflow["jobs"]!["candidate"]!["needs"]!.AsArray()
+            .All(dependency => outcomes[dependency!.GetValue<string>()]);
+
+        if (admitted)
+            Candidate.Assemble(bundle.Root, bundle.OracleRoot, preparation, candidate, now);
+
+        await Assert.That(File.Exists(Path.Combine(candidate, "manifest.json"))).IsEqualTo(windowsPassed);
+        if (windowsPassed)
+        {
+            Manifest.CheckCandidate(candidate, new IndependentEvidence(bundle.OracleRoot));
+            await Assert.That(Directory.GetFiles(candidate, "*.nupkg").Length).IsEqualTo(7);
+        }
+    }
+
+    [Test]
     public async Task NativeHarnessFileGuardsResolveInTheCheckout()
     {
         string workflow = Workflow();
