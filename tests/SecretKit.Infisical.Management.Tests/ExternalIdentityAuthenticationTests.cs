@@ -210,9 +210,9 @@ public sealed class ExternalIdentityAuthenticationTests
         {
             await Assert.That(result.Id).IsEqualTo(ConfigurationId);
             await Assert.That(result.IdentityId).IsEqualTo(IdentityId);
-            await Assert.That(result.AccessTokenTTL).IsEqualTo(0.5d);
-            await Assert.That(result.AccessTokenMaxTTL).IsEqualTo(1.5d);
-            await Assert.That(result.AccessTokenNumUsesLimit).IsEqualTo(0d);
+            await Assert.That(result.AccessTokenTTL?.GetDecimal()).IsEqualTo(0.5m);
+            await Assert.That(result.AccessTokenMaxTTL?.GetDecimal()).IsEqualTo(1.5m);
+            await Assert.That(result.AccessTokenNumUsesLimit?.GetDecimal()).IsEqualTo(0m);
             await Assert.That(result.HasUnestablishedTrustedIpProjection).IsTrue();
             await Assert.That(JsonSerializer.Serialize(result, result.GetType())).IsEqualTo("{}");
             await Assert.That(result.ToString()!.Contains("canary", StringComparison.Ordinal)).IsFalse();
@@ -222,23 +222,23 @@ public sealed class ExternalIdentityAuthenticationTests
         await Assert.That(lr.SearchBase).IsEqualTo("");
         await Assert.That(lr.SearchFilter).IsEqualTo("");
         await Assert.That(lr.TemplateId.Value).IsEqualTo(TemplateId);
-        await Assert.That(lr.AccessTokenPeriod).IsEqualTo(1.25d);
+        await Assert.That(lr.AccessTokenPeriod?.GetDecimal()).IsEqualTo(1.25m);
         await Assert.That(lr.LockoutEnabled).IsFalse();
-        await Assert.That(lr.LockoutThreshold).IsEqualTo(1.5d);
-        await Assert.That(lr.LockoutDurationSeconds).IsEqualTo(30.5d);
-        await Assert.That(lr.LockoutCounterResetSeconds).IsEqualTo(5.5d);
+        await Assert.That(lr.LockoutThreshold?.GetDecimal()).IsEqualTo(1.5m);
+        await Assert.That(lr.LockoutDurationSeconds?.GetDecimal()).IsEqualTo(30.5m);
+        await Assert.That(lr.LockoutCounterResetSeconds?.GetDecimal()).IsEqualTo(5.5m);
         await Assert.That(lr.BindDN).IsEqualTo(method == "GET" ? "" : null);
         await Assert.That(lr.LdapCaCertificate is not null).IsEqualTo(method == "GET");
         await Assert.That(or.TenancyOcid).IsEqualTo("");
         await Assert.That(or.Type).IsEqualTo("native-canary");
         await Assert.That(or.AllowedUsernames.IsNull).IsTrue();
-        await Assert.That(or.AccessTokenPeriod).IsEqualTo(1.25d);
+        await Assert.That(or.AccessTokenPeriod?.GetDecimal()).IsEqualTo(1.25m);
         await Assert.That(sr.TrustDomain).IsEqualTo("");
         await Assert.That(sr.AllowedSpiffeIds).IsEqualTo("");
         await Assert.That(sr.AllowedAudiences).IsEqualTo("");
         await Assert.That(sr.TrustBundleDistribution.Profile).IsEqualTo("https_web_bundle");
         await Assert.That(sr.TrustBundleDistribution.EndpointUrl).IsEqualTo("");
-        await Assert.That(sr.TrustBundleDistribution.RefreshHintSeconds).IsEqualTo(0.5d);
+        await Assert.That(sr.TrustBundleDistribution.RefreshHintSeconds?.GetDecimal()).IsEqualTo(0.5m);
         await Assert.That(sr.TrustBundleDistribution.CachedBundleLastRefreshedAt.IsNull).IsTrue();
         using var ca = sr.TrustBundleDistribution.CaCert!.Copy();
         sr.Dispose();
@@ -423,7 +423,7 @@ public sealed class ExternalIdentityAuthenticationTests
     {
         using var clear = ExternalIdentityAuthenticationOperations.ClearLdapAuthLockouts("org", IdentityId);
         using var deleted = JsonDocument.Parse("""{"deleted":1.5}""");
-        await Assert.That(clear.Parse(deleted.RootElement).Deleted).IsEqualTo(1.5);
+        await Assert.That(clear.Parse(deleted.RootElement).Deleted.GetDecimal()).IsEqualTo(1.5m);
         using var refresh = ExternalIdentityAuthenticationOperations.RefreshSpiffeBundle("org", IdentityId);
         using var document = JsonDocument.Parse(Response("spiffe").Replace(
             """{"profile":"https_web_bundle","endpointUrl":"","caCert":"ca-canary","refreshHintSeconds":0.5,"cachedBundleLastRefreshedAt":null}""",

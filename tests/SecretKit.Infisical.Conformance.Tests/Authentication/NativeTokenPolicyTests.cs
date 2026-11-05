@@ -24,10 +24,10 @@ public sealed class NativeTokenPolicyTests
             using var update = IdentityAuthenticationOperations.UpdateUniversalAuth(organization, identity, policy);
             var configuration = await Apply(update,
                 IdentityAuthenticationOperations.UniversalAuthConfigurationTarget(organization, identity, policy, true));
-            await Assert.That(configuration.AccessTokenTTL).IsEqualTo(10);
-            await Assert.That(configuration.AccessTokenMaxTTL).IsEqualTo(20);
-            await Assert.That(configuration.AccessTokenPeriod).IsEqualTo(periodic ? 60 : 0);
-            await Assert.That(configuration.AccessTokenNumUsesLimit).IsEqualTo(0);
+            await Assert.That(configuration.AccessTokenTTL?.GetInt64()).IsEqualTo(10L);
+            await Assert.That(configuration.AccessTokenMaxTTL?.GetInt64()).IsEqualTo(20L);
+            await Assert.That(configuration.AccessTokenPeriod?.GetInt64()).IsEqualTo(periodic ? 60L : 0L);
+            await Assert.That(configuration.AccessTokenNumUsesLimit?.GetInt64()).IsEqualTo(0L);
             using var create = IdentityAuthenticationOperations.CreateUniversalClientSecret(organization, identity,
                 ttl: 600, numUsesLimit: 1);
             using var secret = await Apply(create,

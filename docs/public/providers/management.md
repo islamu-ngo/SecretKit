@@ -59,6 +59,31 @@ explicitly null fields. Check the `ProjectField<T>` presence/null flags before
 accessing its value. Returned fields do not establish effective network policy,
 issuer acceptance or permission.
 
+Authentication numeric responses use `ManagementNumber`. Optional fields use
+`ManagementNumber?`: omission is absent, explicit JSON null is rejected, and zero
+is a present number. Required issuance lifetimes and lockout counts still reject
+omission. SPIFFE HTTPS bundle refresh hints remain required; static bundles have
+no refresh hint. Universal/Token Auth numbers retain their nonnegative rule;
+workload, cloud and external response numbers retain signed acceptance. Request
+types and their validation bounds are unchanged.
+
+`Export()` explicitly returns the exact original JSON token, including its
+fractional digits and exponent spelling. The token is detached from the response
+document and bounded by the selected response byte budget. `GetInt64()` succeeds
+only for integral values in the signed 64-bit range. `GetDecimal()` succeeds only
+for exactly representable decimals: overflow, nonzero underflow and precision
+rounding throw `OverflowException`. `TryGetInt64` and `TryGetDecimal` return false
+for those failures without changing the retained token. Very large exponents are
+inspected without expanding powers of ten.
+
+The default `ManagementNumber` has `IsInitialized == false`; it is not zero.
+Its try-access methods return false, and checked access or export throws
+`InvalidOperationException`. Default formatting and JSON serialization disclose
+no numeric token. There are no implicit numeric conversions or approximate
+equality operators. Use explicit checked access before arithmetic or comparison;
+explicit exports are ordinary managed strings that cannot be securely erased.
+These parser guarantees do not establish native authentication qualification.
+
 Permission summaries expose protected condition snapshots. Explicit
 `Conditions.Value.Export()` returns ordinary JSON; default serialization and
 formatting do not disclose its contents. These snapshots preserve provider data

@@ -58,12 +58,12 @@ internal static class IdentityAuthenticationEffects
     private static bool Matches(IdentityAuthContext c, IdentityAuthenticationConfiguration config,
         TokenAuthConfigurationInput policy, bool update)
     {
-        double Expected(string name, long? value, long before) => value ??
-            (update ? before : double.Parse(c.Required(name), System.Globalization.CultureInfo.InvariantCulture));
+        decimal Expected(string name, long? value, long before) => value ??
+            (update ? before : decimal.Parse(c.Required(name), System.Globalization.CultureInfo.InvariantCulture));
         return config.IdentityId == c.IdentityId &&
-            config.AccessTokenTTL == Expected("defaultTokenTTL", policy.AccessTokenTTL, 300) &&
-            config.AccessTokenMaxTTL == Expected("defaultTokenMaxTTL", policy.AccessTokenMaxTTL, 1200) &&
-            config.AccessTokenNumUsesLimit == Expected("defaultTokenUses", policy.AccessTokenNumUsesLimit, 1000);
+            config.AccessTokenTTL?.GetDecimal() == Expected("defaultTokenTTL", policy.AccessTokenTTL, 300) &&
+            config.AccessTokenMaxTTL?.GetDecimal() == Expected("defaultTokenMaxTTL", policy.AccessTokenMaxTTL, 1200) &&
+            config.AccessTokenNumUsesLimit?.GetDecimal() == Expected("defaultTokenUses", policy.AccessTokenNumUsesLimit, 1000);
     }
 
     private static async ValueTask ConfigurationAsync(IdentityAuthContext c, CancellationToken token)
@@ -88,15 +88,15 @@ internal static class IdentityAuthenticationEffects
             if (universal)
             {
                 UniversalAuthConfigurationInput input = changed ? changedUniversal : initialUniversal;
-                matches &= value.AccessTokenPeriod == (input.AccessTokenPeriod ?? (update ? 0 :
-                    double.Parse(c.Required("defaultTokenPeriod"), System.Globalization.CultureInfo.InvariantCulture))) &&
+                decimal Expected(string setting, double? supplied, decimal baseline) => supplied is { } number
+                    ? decimal.Parse(number.ToString("R", System.Globalization.CultureInfo.InvariantCulture),
+                        System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture)
+                    : update ? baseline : decimal.Parse(c.Required(setting), System.Globalization.CultureInfo.InvariantCulture);
+                matches &= value.AccessTokenPeriod?.GetDecimal() == Expected("defaultTokenPeriod", input.AccessTokenPeriod, 0) &&
                     value.LockoutEnabled == (input.LockoutEnabled ?? false) &&
-                    value.LockoutThreshold == (input.LockoutThreshold ?? (update ? 5 :
-                        double.Parse(c.Required("defaultLockoutThreshold"), System.Globalization.CultureInfo.InvariantCulture))) &&
-                    value.LockoutDurationSeconds == (input.LockoutDurationSeconds ?? (update ? 86400 :
-                        double.Parse(c.Required("defaultLockoutDurationSeconds"), System.Globalization.CultureInfo.InvariantCulture))) &&
-                    value.LockoutCounterResetSeconds == (input.LockoutCounterResetSeconds ?? (update ? 3600 :
-                        double.Parse(c.Required("defaultLockoutCounterResetSeconds"), System.Globalization.CultureInfo.InvariantCulture)));
+                    value.LockoutThreshold?.GetDecimal() == Expected("defaultLockoutThreshold", input.LockoutThreshold, 5) &&
+                    value.LockoutDurationSeconds?.GetDecimal() == Expected("defaultLockoutDurationSeconds", input.LockoutDurationSeconds, 86400) &&
+                    value.LockoutCounterResetSeconds?.GetDecimal() == Expected("defaultLockoutCounterResetSeconds", input.LockoutCounterResetSeconds, 3600);
             }
             return matches;
         }
@@ -116,8 +116,8 @@ internal static class IdentityAuthenticationEffects
                     if (!present) return result.Status == SecretStatus.Denied;
                     if (!result.IsSuccess || issued is null || configuration is null ||
                         !c.TokenMatchesPolicy(issued.Metadata, configuration) ||
-                        issued.ExpiresIn != configuration.AccessTokenTTL ||
-                        issued.AccessTokenMaxTTL != configuration.AccessTokenMaxTTL ||
+                        issued.ExpiresIn.GetDecimal() != configuration.AccessTokenTTL?.GetDecimal() ||
+                        issued.AccessTokenMaxTTL.GetDecimal() != configuration.AccessTokenMaxTTL?.GetDecimal() ||
                         !await c.UseTokenAsync(issued.AccessToken, true, ct)) return false;
                     await c.NeedAsync(() => IdentityAuthenticationOperations.RevokeToken(org, issued.Metadata.Id), NativeIdentityRole.Setup, ct);
                     return await c.UseTokenAsync(issued.AccessToken, false, ct);
@@ -176,8 +176,10 @@ internal static class IdentityAuthenticationEffects
         if (enabled)
         {
             if (configuration is null || !outcome.IsSuccess || receipt.Evidence != DispatchEvidence.Applied ||
-                login!.ExpiresIn.TotalSeconds != (configuration.AccessTokenPeriod > 0 ? configuration.AccessTokenPeriod : configuration.AccessTokenTTL) ||
-                login.AccessTokenMaxTtl.TotalSeconds != (configuration.AccessTokenPeriod > 0 ? 0 : configuration.AccessTokenMaxTTL) ||
+                (decimal)login!.ExpiresIn.Ticks / TimeSpan.TicksPerSecond !=
+                    (configuration.AccessTokenPeriod?.GetDecimal() > 0 ? configuration.AccessTokenPeriod?.GetDecimal() : configuration.AccessTokenTTL?.GetDecimal()) ||
+                (decimal)login.AccessTokenMaxTtl.Ticks / TimeSpan.TicksPerSecond !=
+                    (configuration.AccessTokenPeriod?.GetDecimal() > 0 ? 0 : configuration.AccessTokenMaxTTL?.GetDecimal()) ||
                 !await c.UseTokenAsync(login.Token.Material, true, token)) return false;
         }
         else if (outcome.Status != SecretStatus.Denied || receipt.Evidence != DispatchEvidence.Rejected) return false;
@@ -198,8 +200,8 @@ internal static class IdentityAuthenticationEffects
             NativeIdentityRole.Setup, token);
         IdentityAuthenticationConfiguration configuration = await c.NeedAsync(
             () => IdentityAuthenticationOperations.GetTokenAuth(org, id), NativeIdentityRole.Observer, token);
-        c.Probe.Contract(configuration.AccessTokenTTL == 600 && configuration.AccessTokenMaxTTL == 1800 &&
-            configuration.AccessTokenNumUsesLimit == 2000, NativeFailure.MissingPrerequisite);
+        c.Probe.Contract(configuration.AccessTokenTTL?.GetDecimal() == 600 && configuration.AccessTokenMaxTTL?.GetDecimal() == 1800 &&
+            configuration.AccessTokenNumUsesLimit?.GetDecimal() == 2000, NativeFailure.MissingPrerequisite);
         TokenAuthTokenCreation? seeded = create ? null : await c.NeedAsync(
             () => IdentityAuthenticationOperations.CreateToken(org, id, "before"), NativeIdentityRole.Setup, token);
         SecretMaterial? issuedMaterial = null;
@@ -209,7 +211,8 @@ internal static class IdentityAuthenticationEffects
         try
         {
             if (seeded is not null) c.Probe.Contract(c.TokenMatchesPolicy(seeded.Metadata, configuration) &&
-                seeded.ExpiresIn == configuration.AccessTokenTTL && seeded.AccessTokenMaxTTL == configuration.AccessTokenMaxTTL &&
+                seeded.ExpiresIn.GetDecimal() == configuration.AccessTokenTTL?.GetDecimal() &&
+                seeded.AccessTokenMaxTTL.GetDecimal() == configuration.AccessTokenMaxTTL?.GetDecimal() &&
                 await c.UseTokenAsync(seeded.AccessToken, true, token), NativeFailure.MissingPrerequisite);
             async ValueTask<bool> Observe(bool applied, CancellationToken ct)
             {
@@ -235,8 +238,8 @@ internal static class IdentityAuthenticationEffects
                     tokenId = value.Metadata.Id;
                     issuedMaterial = value.AccessToken.Copy();
                     return value.Metadata.IdentityId == id && value.Metadata.AuthMethod == "token-auth" &&
-                        c.TokenMatchesPolicy(value.Metadata, configuration) && value.ExpiresIn == configuration.AccessTokenTTL &&
-                        value.AccessTokenMaxTTL == configuration.AccessTokenMaxTTL;
+                        c.TokenMatchesPolicy(value.Metadata, configuration) && value.ExpiresIn.GetDecimal() == configuration.AccessTokenTTL?.GetDecimal() &&
+                        value.AccessTokenMaxTTL.GetDecimal() == configuration.AccessTokenMaxTTL?.GetDecimal();
                 }, Observe, token);
             else if (revoke)
                 await c.CaseAsync(() => IdentityAuthenticationOperations.RevokeToken(org, tokenId!), _ => true, Observe, token);
@@ -274,8 +277,8 @@ internal static class IdentityAuthenticationEffects
             {
                 IdentityAuthenticationConfiguration observed = await c.NeedAsync(
                     () => IdentityAuthenticationOperations.GetUniversalAuth(org, id), NativeIdentityRole.Observer, ct);
-                return observed.AccessTokenTTL == 600 && observed.AccessTokenMaxTTL == 1800 &&
-                    observed.AccessTokenNumUsesLimit == 2000 && observed.AccessTokenPeriod == 0 &&
+                return observed.AccessTokenTTL?.GetDecimal() == 600 && observed.AccessTokenMaxTTL?.GetDecimal() == 1800 &&
+                    observed.AccessTokenNumUsesLimit?.GetDecimal() == 2000 && observed.AccessTokenPeriod?.GetDecimal() == 0 &&
                     await UniversalLoginAsync(c, configuration.ClientId!, secret, enabled, observed, ct);
             }
             if (seeded is not null) c.Probe.Contract(await Login(seeded.ClientSecret, true, token), NativeFailure.MissingPrerequisite);
@@ -288,7 +291,8 @@ internal static class IdentityAuthenticationEffects
                 UniversalAuthClientSecret row = page.Items.Single();
                 if (row.Id != credentialId || row.IdentityUAId != configuration.Id || row.IsClientSecretRevoked != (revoke && applied) ||
                     create && (description is not null && row.Description != description ||
-                        uses is not null && row.ClientSecretNumUsesLimit != uses || ttl is not null && row.ClientSecretTTL != ttl)) return false;
+                        uses is not null && row.ClientSecretNumUsesLimit?.GetDecimal() != (decimal)uses ||
+                        ttl is not null && row.ClientSecretTTL?.GetDecimal() != (decimal)ttl)) return false;
                 SecretOutcome<UniversalAuthClientSecret> exact = await c.ExecuteAsync(
                     () => IdentityAuthenticationOperations.GetUniversalClientSecret(org, id, row.Id), NativeIdentityRole.Observer, ct);
                 if (!exact.IsSuccess || exact.Value.IdentityUAId != configuration.Id ||
@@ -335,7 +339,7 @@ internal static class IdentityAuthenticationEffects
         c.Probe.Contract(induced.Status == SecretStatus.Denied && baseline.ActiveLockoutAuthMethods.IsPresent &&
             baseline.ActiveLockoutAuthMethods.Value.Contains("universal-auth", StringComparer.Ordinal), NativeFailure.MissingPrerequisite);
         await c.CaseAsync(() => IdentityAuthenticationOperations.ClearUniversalAuthLockouts(org, id),
-            result => result.Deleted > 0, async (applied, ct) =>
+            result => result.Deleted?.GetDecimal() > 0, async (applied, ct) =>
             {
                 IdentitySummary observed = await c.NeedAsync(() => IdentityOperations.GetOrganizationIdentity(org, id),
                     NativeIdentityRole.Observer, ct);

@@ -437,24 +437,24 @@ internal sealed class IdentityAuthContext : IAsyncDisposable
         return allowed && read.Material.Reveal() == canary!.Reveal();
     }
 
-    internal sealed record IssuedPolicy(double Ttl, double MaximumTtl, double UsesLimit);
+    internal sealed record IssuedPolicy(decimal Ttl, decimal MaximumTtl, decimal UsesLimit);
 
     private static IssuedPolicy CapturePolicy<T>(T value) where T : notnull
     {
         if (value is not WorkloadAuthConfiguration configuration || configuration.AccessTokenTTL is null ||
             configuration.AccessTokenMaxTTL is null || configuration.AccessTokenNumUsesLimit is null)
             throw new NativeCaseFailureException("observer-unavailable");
-        return new(configuration.AccessTokenTTL.Value, configuration.AccessTokenMaxTTL.Value,
-            configuration.AccessTokenNumUsesLimit.Value);
+        return new(configuration.AccessTokenTTL.Value.GetDecimal(), configuration.AccessTokenMaxTTL.Value.GetDecimal(),
+            configuration.AccessTokenNumUsesLimit.Value.GetDecimal());
     }
 
     private static bool SameTokenState(TokenAuthToken a, TokenAuthToken b) =>
         a.Id == b.Id && a.IdentityId == b.IdentityId && a.AuthMethod == b.AuthMethod &&
         a.Name.Equals(b.Name) && a.SubOrganizationId.Equals(b.SubOrganizationId) &&
         a.IdentityUAClientSecretId.Equals(b.IdentityUAClientSecretId) &&
-        a.AccessTokenTTL == b.AccessTokenTTL && a.AccessTokenMaxTTL == b.AccessTokenMaxTTL &&
-        a.AccessTokenNumUses == b.AccessTokenNumUses && a.AccessTokenNumUsesLimit == b.AccessTokenNumUsesLimit &&
-        a.AccessTokenPeriod == b.AccessTokenPeriod && a.IsAccessTokenRevoked == b.IsAccessTokenRevoked &&
+        a.AccessTokenTTL?.GetDecimal() == b.AccessTokenTTL?.GetDecimal() && a.AccessTokenMaxTTL?.GetDecimal() == b.AccessTokenMaxTTL?.GetDecimal() &&
+        a.AccessTokenNumUses?.GetDecimal() == b.AccessTokenNumUses?.GetDecimal() && a.AccessTokenNumUsesLimit?.GetDecimal() == b.AccessTokenNumUsesLimit?.GetDecimal() &&
+        a.AccessTokenPeriod?.GetDecimal() == b.AccessTokenPeriod?.GetDecimal() && a.IsAccessTokenRevoked == b.IsAccessTokenRevoked &&
         a.CreatedAt == b.CreatedAt && a.UpdatedAt == b.UpdatedAt &&
         a.AccessTokenLastUsedAt.Equals(b.AccessTokenLastUsedAt) &&
         a.AccessTokenLastRenewedAt.Equals(b.AccessTokenLastRenewedAt);
@@ -510,9 +510,10 @@ internal sealed class IdentityAuthContext : IAsyncDisposable
             TokenAuthToken[] issued = after.Items.Where(t => before.Items.All(b => b.Id != t.Id)).ToArray();
             if (allowed && (issued.Length != 1 || issued[0].IdentityId != IdentityId ||
                 issued[0].AuthMethod != strategy + "-auth" || issued[0].IsAccessTokenRevoked != false)) return false;
-            if (allowed && (policy is null || issued[0].AccessTokenTTL != policy.Ttl ||
-                issued[0].AccessTokenMaxTTL != policy.MaximumTtl || issued[0].AccessTokenNumUsesLimit != policy.UsesLimit ||
-                login!.ExpiresIn.TotalSeconds != policy.Ttl || login.AccessTokenMaxTtl.TotalSeconds != policy.MaximumTtl)) return false;
+            if (allowed && (policy is null || issued[0].AccessTokenTTL?.GetDecimal() != policy.Ttl ||
+                issued[0].AccessTokenMaxTTL?.GetDecimal() != policy.MaximumTtl || issued[0].AccessTokenNumUsesLimit?.GetDecimal() != policy.UsesLimit ||
+                (decimal)login!.ExpiresIn.Ticks / TimeSpan.TicksPerSecond != policy.Ttl ||
+                (decimal)login.AccessTokenMaxTtl.Ticks / TimeSpan.TicksPerSecond != policy.MaximumTtl)) return false;
         }
         return true;
     }
@@ -614,21 +615,21 @@ internal sealed class IdentityAuthContext : IAsyncDisposable
 
     public bool PolicyMatches(WorkloadAuthConfiguration config, WorkloadAuthTokenPolicy input)
     {
-        double Expected(string name, long? selected, long initial) => selected ?? (Operation.StartsWith("Update",
-            StringComparison.Ordinal) ? initial : double.Parse(Setting(name), System.Globalization.CultureInfo.InvariantCulture));
-        return config.IdentityId == IdentityId && config.AccessTokenTTL == Expected("defaultTTL", input.AccessTokenTTL, 300) &&
-            config.AccessTokenMaxTTL == Expected("defaultMaxTTL", input.AccessTokenMaxTTL, 1200) &&
-            config.AccessTokenNumUsesLimit == Expected("defaultUses", input.AccessTokenNumUsesLimit, 1000);
+        decimal Expected(string name, long? selected, long initial) => selected ?? (Operation.StartsWith("Update",
+            StringComparison.Ordinal) ? initial : decimal.Parse(Setting(name), System.Globalization.CultureInfo.InvariantCulture));
+        return config.IdentityId == IdentityId && config.AccessTokenTTL?.GetDecimal() == Expected("defaultTTL", input.AccessTokenTTL, 300) &&
+            config.AccessTokenMaxTTL?.GetDecimal() == Expected("defaultMaxTTL", input.AccessTokenMaxTTL, 1200) &&
+            config.AccessTokenNumUsesLimit?.GetDecimal() == Expected("defaultUses", input.AccessTokenNumUsesLimit, 1000);
     }
 
     public bool TokenMatchesPolicy(TokenAuthToken issued, IdentityAuthenticationConfiguration configuration) =>
         issued.IdentityId == IdentityId && configuration.IdentityId == IdentityId &&
         configuration.AccessTokenTTL is not null && configuration.AccessTokenMaxTTL is not null &&
         configuration.AccessTokenNumUsesLimit is not null &&
-        issued.AccessTokenTTL == configuration.AccessTokenTTL &&
-        issued.AccessTokenMaxTTL == configuration.AccessTokenMaxTTL &&
-        issued.AccessTokenNumUsesLimit == configuration.AccessTokenNumUsesLimit &&
-        issued.AccessTokenPeriod == configuration.AccessTokenPeriod;
+        issued.AccessTokenTTL?.GetDecimal() == configuration.AccessTokenTTL?.GetDecimal() &&
+        issued.AccessTokenMaxTTL?.GetDecimal() == configuration.AccessTokenMaxTTL?.GetDecimal() &&
+        issued.AccessTokenNumUsesLimit?.GetDecimal() == configuration.AccessTokenNumUsesLimit?.GetDecimal() &&
+        issued.AccessTokenPeriod?.GetDecimal() == configuration.AccessTokenPeriod?.GetDecimal();
 
     public async ValueTask ConfigurationAsync<T>(Func<ManagementRequest<T>> attach, Func<ManagementRequest<T>> get,
         Func<ManagementRequest<T>> update, Func<ManagementRequest<T>> delete,

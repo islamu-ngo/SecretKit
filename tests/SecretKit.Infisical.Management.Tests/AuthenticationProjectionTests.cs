@@ -35,6 +35,154 @@ public sealed class AuthenticationProjectionTests
     [Arguments("oci")]
     [Arguments("spiffe")]
     [Arguments("tls-cert")]
+    public async Task ReturnedNumbersPreserveEachFamilyFieldContract(string strategy)
+    {
+        switch (strategy)
+        {
+            case "universal":
+            case "token":
+                using (var request = strategy == "universal"
+                    ? IdentityAuthenticationOperations.GetUniversalAuth("org", IdentityId)
+                    : IdentityAuthenticationOperations.GetTokenAuth("org", IdentityId))
+                {
+                    List<(string, Func<IdentityAuthenticationConfiguration, ManagementNumber?>)> fields =
+                    [
+                        ("accessTokenTTL", value => value.AccessTokenTTL),
+                        ("accessTokenMaxTTL", value => value.AccessTokenMaxTTL),
+                        ("accessTokenNumUsesLimit", value => value.AccessTokenNumUsesLimit),
+                        ("accessTokenPeriod", value => value.AccessTokenPeriod)
+                    ];
+                    if (strategy == "universal")
+                        fields.AddRange([
+                            ("lockoutThreshold", value => value.LockoutThreshold),
+                            ("lockoutDurationSeconds", value => value.LockoutDurationSeconds),
+                            ("lockoutCounterResetSeconds", value => value.LockoutCounterResetSeconds)]);
+                    else
+                    {
+                        var token = await Read(request, Response(strategy, null));
+                        await Assert.That(token.LockoutThreshold).IsNull();
+                        await Assert.That(token.LockoutDurationSeconds).IsNull();
+                        await Assert.That(token.LockoutCounterResetSeconds).IsNull();
+                    }
+                    await CheckNumbers(request, strategy, false, fields);
+                }
+                break;
+            case "jwt":
+                await CheckWorkloadNumbers(WorkloadIdentityAuthenticationOperations.GetJwtAuth("org", IdentityId),
+                    strategy, ("accessTokenPeriod", value => value.AccessTokenPeriod));
+                break;
+            case "oidc":
+                await CheckWorkloadNumbers(WorkloadIdentityAuthenticationOperations.GetOidcAuth("org", IdentityId), strategy);
+                break;
+            case "kubernetes":
+                await CheckWorkloadNumbers(WorkloadIdentityAuthenticationOperations.GetKubernetesAuth("org", IdentityId), strategy);
+                break;
+            case "aws":
+                await CheckWorkloadNumbers(CloudIdentityAuthenticationOperations.GetAwsAuth("org", IdentityId),
+                    strategy, ("accessTokenPeriod", value => value.AccessTokenPeriod));
+                break;
+            case "azure":
+                await CheckWorkloadNumbers(CloudIdentityAuthenticationOperations.GetAzureAuth("org", IdentityId),
+                    strategy, ("accessTokenPeriod", value => value.AccessTokenPeriod));
+                break;
+            case "gcp":
+                await CheckWorkloadNumbers(CloudIdentityAuthenticationOperations.GetGcpAuth("org", IdentityId),
+                    strategy, ("accessTokenPeriod", value => value.AccessTokenPeriod));
+                break;
+            case "alicloud":
+                await CheckWorkloadNumbers(CloudIdentityAuthenticationOperations.GetAliCloudAuth("org", IdentityId), strategy);
+                break;
+            case "ldap":
+                await CheckWorkloadNumbers(ExternalIdentityAuthenticationOperations.GetLdapAuth("org", IdentityId),
+                    strategy, ("accessTokenPeriod", value => value.AccessTokenPeriod),
+                    ("lockoutThreshold", value => value.LockoutThreshold),
+                    ("lockoutDurationSeconds", value => value.LockoutDurationSeconds),
+                    ("lockoutCounterResetSeconds", value => value.LockoutCounterResetSeconds));
+                break;
+            case "oci":
+                await CheckWorkloadNumbers(ExternalIdentityAuthenticationOperations.GetOciAuth("org", IdentityId),
+                    strategy, ("accessTokenPeriod", value => value.AccessTokenPeriod));
+                break;
+            case "spiffe":
+                await CheckWorkloadNumbers(ExternalIdentityAuthenticationOperations.GetSpiffeAuth("org", IdentityId), strategy);
+                break;
+            case "tls-cert":
+                await CheckWorkloadNumbers(ExternalIdentityAuthenticationOperations.GetTlsCertAuth("org", IdentityId), strategy);
+                break;
+        }
+    }
+
+    private static async Task CheckWorkloadNumbers<T>(ManagementRequest<T> request, string strategy,
+        params (string Name, Func<T, ManagementNumber?> Read)[] additional) where T : WorkloadAuthConfiguration
+    {
+        using (request)
+        {
+            List<(string, Func<T, ManagementNumber?>)> fields =
+            [
+                ("accessTokenTTL", value => value.AccessTokenTTL),
+                ("accessTokenMaxTTL", value => value.AccessTokenMaxTTL),
+                ("accessTokenNumUsesLimit", value => value.AccessTokenNumUsesLimit)
+            ];
+            fields.AddRange(additional);
+            await CheckNumbers(request, strategy, true, fields);
+        }
+    }
+
+    private static async Task CheckNumbers<T>(ManagementRequest<T> request, string strategy, bool signed,
+        IEnumerable<(string Name, Func<T, ManagementNumber?> Read)> fields) where T : notnull
+    {
+        foreach (var field in fields)
+        {
+            foreach (string? node in new string?[]
+            {
+                null, "0", "-0", "9007199254740993", "1.2300e+4",
+                "0.123456789012345678901234567890123456789", "1e999999999999999999999999",
+                "-0.25", "-1e999999999999999999999999", "-1e-999999999999999999999999",
+                "null", "\"1\"", "false", "[]", "{}"
+            })
+            {
+                string response = Response(strategy, null);
+                if (node is not null)
+                    response = response.Insert(response.IndexOf("\"createdAt\"", StringComparison.Ordinal),
+                        "\"" + field.Name + "\":" + node + ",");
+                using var transport = Transport(response);
+                var client = new ManagementClient(transport);
+                var authority = new ManagementAuthority(client.Authority, new Tokens(), "org");
+                var result = await client.ExecuteAsync(request, authority,
+                    authority.IssueGrant(request.OperationId, new("org", resourceId: IdentityId)));
+                bool rejected = node is "null" or "\"1\"" or "false" or "[]" or "{}" ||
+                    !signed && node is not null && node.StartsWith('-') && node != "-0";
+                await Assert.That(result.Status).IsEqualTo(rejected ? SecretStatus.Unknown : SecretStatus.Success);
+                if (rejected) continue;
+                using (result.Value as IDisposable)
+                {
+                    ManagementNumber? number = field.Read(result.Value);
+                    await Assert.That(number.HasValue).IsEqualTo(node is not null);
+                    if (number is { } present)
+                    {
+                        await Assert.That(present.Export()).IsEqualTo(node);
+                        await Assert.That(JsonSerializer.Serialize(present)).IsEqualTo("{}");
+                        await Assert.That(present.ToString()).IsEqualTo("[ManagementNumber]");
+                    }
+                }
+            }
+        }
+    }
+
+    [Test]
+    [Arguments("universal")]
+    [Arguments("token")]
+    [Arguments("jwt")]
+    [Arguments("oidc")]
+    [Arguments("kubernetes")]
+    [Arguments("aws")]
+    [Arguments("azure")]
+    [Arguments("gcp")]
+    [Arguments("alicloud")]
+    [Arguments("ldap")]
+    [Arguments("oci")]
+    [Arguments("spiffe")]
+    [Arguments("tls-cert")]
     public async Task ReturnedJsonSurvivesParserAndClientDocumentDisposalWithoutShapeInference(string strategy)
     {
         foreach (string? node in Nodes)

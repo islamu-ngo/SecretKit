@@ -175,7 +175,7 @@ public sealed class AwsAuthConfiguration : WorkloadAuthConfiguration
     /// <summary>Gets the returned STS endpoint.</summary>
     [JsonIgnore] public string StsEndpoint { get; }
     /// <summary>Gets the returned token period in seconds, or null when absent.</summary>
-    [JsonIgnore] public double? AccessTokenPeriod { get; }
+    [JsonIgnore] public ManagementNumber? AccessTokenPeriod { get; }
 }
 
 /// <summary>Returned Azure authentication settings, not proof that the identity can authenticate.</summary>
@@ -195,7 +195,7 @@ public sealed class AzureAuthConfiguration : WorkloadAuthConfiguration
     /// <summary>Gets the returned allowed service-principal identifiers.</summary>
     [JsonIgnore] public string AllowedServicePrincipalIds { get; }
     /// <summary>Gets the returned token period in seconds, or null when absent.</summary>
-    [JsonIgnore] public double? AccessTokenPeriod { get; }
+    [JsonIgnore] public ManagementNumber? AccessTokenPeriod { get; }
 }
 
 /// <summary>Returned GCP authentication settings without request-derived defaults.</summary>
@@ -218,7 +218,7 @@ public sealed class GcpAuthConfiguration : WorkloadAuthConfiguration
     /// <summary>Gets allowed-zone presence, preserving explicit null and omission.</summary>
     [JsonIgnore] public ProjectField<string> AllowedZones { get; }
     /// <summary>Gets the returned token period in seconds, or null when absent.</summary>
-    [JsonIgnore] public double? AccessTokenPeriod { get; }
+    [JsonIgnore] public ManagementNumber? AccessTokenPeriod { get; }
 }
 
 /// <summary>Returned AliCloud authentication settings, not an effective authorization decision.</summary>

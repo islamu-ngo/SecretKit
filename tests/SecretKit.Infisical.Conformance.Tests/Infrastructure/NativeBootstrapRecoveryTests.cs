@@ -58,8 +58,8 @@ public sealed class NativeBootstrapRecoveryTests
                     new(organization, resourceId: identity, secondaryId: secret.Metadata.Id)),
                 cancellationToken: cancellationToken);
             Require(metadata.Status);
-            await Assert.That(metadata.Value.ClientSecretNumUses).IsEqualTo(1);
-            await Assert.That(metadata.Value.ClientSecretNumUsesLimit).IsEqualTo(1);
+            await Assert.That(metadata.Value.ClientSecretNumUses?.GetInt64()).IsEqualTo(1L);
+            await Assert.That(metadata.Value.ClientSecretNumUsesLimit?.GetInt64()).IsEqualTo(1L);
             consumedId = secret.Metadata.Id;
             if (generation == 0)
             {

@@ -280,8 +280,8 @@ internal sealed class LocalNativeProof : IAsyncDisposable
         var observedConfiguration = await Read(inspectConfiguration, token);
         NativeWorkflow.Require(configuration.Id == observedConfiguration.Id &&
             configuration.ClientId == observedConfiguration.ClientId &&
-            observedConfiguration.AccessTokenTTL == ttl && observedConfiguration.AccessTokenMaxTTL == maximum &&
-            observedConfiguration.AccessTokenPeriod == period && observedConfiguration.AccessTokenNumUsesLimit == uses);
+            observedConfiguration.AccessTokenTTL?.GetDecimal() == ttl && observedConfiguration.AccessTokenMaxTTL?.GetDecimal() == maximum &&
+            observedConfiguration.AccessTokenPeriod?.GetDecimal() == period && observedConfiguration.AccessTokenNumUsesLimit?.GetDecimal() == uses);
         var actor = new TrialActor(identity.Id, observedConfiguration.Id, observedConfiguration.ClientId!, purpose,
             ttl, maximum, period, uses, bootstrapUses);
         await Bootstrap(actor, bootstrapUses, token);
@@ -306,8 +306,8 @@ internal sealed class LocalNativeProof : IAsyncDisposable
         using var inspect = IdentityAuthenticationOperations.GetUniversalClientSecret(org, actor.Identity, actor.SecretId);
         var observed = await Read(inspect, token);
         NativeWorkflow.Require(secret.Metadata.IdentityUAId == actor.ConfigurationId &&
-            observed.IdentityUAId == actor.ConfigurationId && observed.ClientSecretNumUsesLimit == uses &&
-            observed.ClientSecretNumUses == 0 && observed.ClientSecretTTL == 600 && observed.IsClientSecretRevoked == false);
+            observed.IdentityUAId == actor.ConfigurationId && observed.ClientSecretNumUsesLimit?.GetDecimal() == uses &&
+            observed.ClientSecretNumUses?.GetDecimal() == 0 && observed.ClientSecretTTL?.GetDecimal() == 600 && observed.IsClientSecretRevoked == false);
     }
 
     private async Task<LocalTrialExchange> Login(TrialActor actor, CancellationToken token)

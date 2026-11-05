@@ -33,15 +33,15 @@ public sealed class NativeAuthenticationTests
             record("token", issued.Metadata.Id);
             await Assert.That(issued.Metadata.IdentityId == identity).IsTrue();
             await Assert.That(issued.Metadata.AuthMethod).IsEqualTo("token-auth");
-            await Assert.That(issued.ExpiresIn).IsEqualTo(600);
-            await Assert.That(issued.AccessTokenMaxTTL).IsEqualTo(1200);
+            await Assert.That(issued.ExpiresIn.GetInt64()).IsEqualTo(600L);
+            await Assert.That(issued.AccessTokenMaxTTL.GetInt64()).IsEqualTo(1200L);
             await using var session = new InfisicalPeriodicTokenSession(origin, issued.AccessToken,
                 new InfisicalTokenLifetimeEvidence
                 {
                     OriginalIssuedAt = issued.Metadata.CreatedAt,
-                    ExpiresAt = issued.Metadata.CreatedAt.AddSeconds(issued.ExpiresIn),
+                    ExpiresAt = issued.Metadata.CreatedAt.AddTicks(checked(issued.ExpiresIn.GetInt64() * TimeSpan.TicksPerSecond)),
                     Lifetime = InfisicalTokenLifetime.Finite,
-                    ReportedMaximumTtl = TimeSpan.FromSeconds(issued.AccessTokenMaxTTL)
+                    ReportedMaximumTtl = TimeSpan.FromTicks(checked(issued.AccessTokenMaxTTL.GetInt64() * TimeSpan.TicksPerSecond))
                 }, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10), network);
             await Assert.That(session.State).IsEqualTo(InfisicalTokenSessionState.Ready);
             await using var reader = new InfisicalClient(origin, session, network);

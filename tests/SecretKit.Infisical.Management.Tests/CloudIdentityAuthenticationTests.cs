@@ -135,16 +135,16 @@ public sealed class CloudIdentityAuthenticationTests
         await Assert.That(awsResult.AllowedAccountIds).IsEqualTo("");
         await Assert.That(awsResult.AllowedPrincipalArns).IsEqualTo("returned-principals");
         await Assert.That(awsResult.StsEndpoint).IsEqualTo("");
-        await Assert.That(awsResult.AccessTokenPeriod).IsEqualTo(1.25d);
+        await Assert.That(awsResult.AccessTokenPeriod?.GetDecimal()).IsEqualTo(1.25m);
         await Assert.That(azureResult.TenantId).IsEqualTo("");
         await Assert.That(azureResult.Resource).IsEqualTo("returned-resource");
         await Assert.That(azureResult.AllowedServicePrincipalIds).IsEqualTo("");
-        await Assert.That(azureResult.AccessTokenPeriod).IsEqualTo(1.25d);
+        await Assert.That(azureResult.AccessTokenPeriod?.GetDecimal()).IsEqualTo(1.25m);
         await Assert.That(gcpResult.Type).IsEqualTo("returned-gcp"); // No response enum is declared.
         await Assert.That(gcpResult.AllowedProjects.IsNull).IsTrue();
         await Assert.That(gcpResult.AllowedServiceAccounts.Value).IsEqualTo("");
         await Assert.That(gcpResult.AllowedZones.IsPresent).IsFalse();
-        await Assert.That(gcpResult.AccessTokenPeriod).IsEqualTo(1.25d);
+        await Assert.That(gcpResult.AccessTokenPeriod?.GetDecimal()).IsEqualTo(1.25m);
         await Assert.That(aliResult.Type).IsEqualTo("returned-ali");
         await Assert.That(aliResult.AllowedArns).IsEqualTo("");
         foreach (var result in new WorkloadAuthConfiguration[] { awsResult, azureResult, gcpResult, aliResult })
@@ -153,9 +153,9 @@ public sealed class CloudIdentityAuthenticationTests
             await Assert.That(result.IdentityId).IsEqualTo(IdentityId);
             await Assert.That(result.CreatedAt).IsEqualTo(DateTimeOffset.Parse("2026-10-10T00:00:00Z"));
             await Assert.That(result.UpdatedAt).IsEqualTo(DateTimeOffset.Parse("2026-10-11T00:00:00Z"));
-            await Assert.That(result.AccessTokenTTL).IsEqualTo(0.5d);
-            await Assert.That(result.AccessTokenMaxTTL).IsEqualTo(1.5d);
-            await Assert.That(result.AccessTokenNumUsesLimit).IsEqualTo(0d);
+            await Assert.That(result.AccessTokenTTL?.GetDecimal()).IsEqualTo(0.5m);
+            await Assert.That(result.AccessTokenMaxTTL?.GetDecimal()).IsEqualTo(1.5m);
+            await Assert.That(result.AccessTokenNumUsesLimit?.GetDecimal()).IsEqualTo(0m);
             await Assert.That(result.HasUnestablishedTrustedIpProjection).IsTrue();
             await Assert.That(JsonSerializer.Serialize(result, result.GetType())).IsEqualTo("{}");
             await Assert.That(result.ToString()!.Contains("returned", StringComparison.Ordinal)).IsFalse();
@@ -424,7 +424,7 @@ public sealed class CloudIdentityAuthenticationTests
         {
             using var absent = JsonDocument.Parse(Response(strategy).Replace(",\"accessTokenPeriod\":1.25", "", StringComparison.Ordinal));
             var result = Parse(strategy, absent.RootElement);
-            double? period = result switch
+            ManagementNumber? period = result switch
             {
                 AwsAuthConfiguration aws => aws.AccessTokenPeriod,
                 AzureAuthConfiguration azure => azure.AccessTokenPeriod,

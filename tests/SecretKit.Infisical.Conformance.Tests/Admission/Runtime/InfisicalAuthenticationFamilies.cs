@@ -188,9 +188,9 @@ internal sealed class AuthenticationFixture : IAsyncDisposable
         await ReadSecretAsync(consumer, input.DeniedKey, SecretStatus.Denied, token);
         ManagementPage<TokenAuthToken> rows = await TokensAsync(token);
         probe.Contract(rows.Items.Count == 1 && rows.Items[0].IdentityId == input.IdentityId &&
-            rows.Items[0].AuthMethod == method && rows.Items[0].AccessTokenTTL == input.ExpectedTtl &&
-            rows.Items[0].AccessTokenMaxTTL == input.ExpectedMaximumTtl &&
-            rows.Items[0].AccessTokenPeriod == input.ExpectedPeriod &&
+            rows.Items[0].AuthMethod == method && rows.Items[0].AccessTokenTTL?.GetDecimal() == Expected(input.ExpectedTtl) &&
+            rows.Items[0].AccessTokenMaxTTL?.GetDecimal() == Expected(input.ExpectedMaximumTtl) &&
+            rows.Items[0].AccessTokenPeriod?.GetDecimal() == Expected(input.ExpectedPeriod) &&
             rows.Items[0].IsAccessTokenRevoked == false, NativeFailure.EffectMismatch);
         // Independently fetched lifetime metadata is NOT server expiry enforcement.
         // No exact expiry/event observer exists in the selected SDK contract. Never
@@ -212,15 +212,19 @@ internal sealed class AuthenticationFixture : IAsyncDisposable
         TokenAuthToken[] matches = rows.Items.Where(t => t.Id == binding.TokenMetadataId).ToArray();
         bool metadata = matches.Length == 1 && matches[0].IdentityId == input.IdentityId &&
             matches[0].AuthMethod == binding.Arm.Attempt.AuthenticationMethod &&
-            matches[0].AccessTokenTTL == input.ExpectedTtl &&
-            matches[0].AccessTokenMaxTTL == input.ExpectedMaximumTtl &&
-            matches[0].AccessTokenPeriod == input.ExpectedPeriod &&
-            matches[0].AccessTokenNumUsesLimit == input.ExpectedMaximumUses &&
-            matches[0].AccessTokenNumUses is { } uses && double.IsFinite(uses) && uses >= 0 &&
-            (input.ExpectedMaximumUses == 0 || uses < input.ExpectedMaximumUses) &&
+            matches[0].AccessTokenTTL?.GetDecimal() == Expected(input.ExpectedTtl) &&
+            matches[0].AccessTokenMaxTTL?.GetDecimal() == Expected(input.ExpectedMaximumTtl) &&
+            matches[0].AccessTokenPeriod?.GetDecimal() == Expected(input.ExpectedPeriod) &&
+            matches[0].AccessTokenNumUsesLimit?.GetDecimal() == Expected(input.ExpectedMaximumUses) &&
+            matches[0].AccessTokenNumUses is { } number && number.TryGetDecimal(out decimal uses) && uses >= 0 &&
+            (input.ExpectedMaximumUses == 0 || uses < Expected(input.ExpectedMaximumUses)) &&
             matches[0].IsAccessTokenRevoked == false;
         return allowed && denied && unchanged && metadata;
     }
+
+    private static decimal Expected(double number) =>
+        decimal.Parse(number.ToString("R", System.Globalization.CultureInfo.InvariantCulture),
+            System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture);
 
     internal async ValueTask ObserveRejectedAsync(CancellationToken token)
     {

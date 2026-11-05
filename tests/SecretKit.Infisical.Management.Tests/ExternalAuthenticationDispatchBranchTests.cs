@@ -310,7 +310,7 @@ public sealed class ExternalAuthenticationDispatchBranchTests
             await Assert.That(result.Value.Id).IsEqualTo(ConfigurationId);
             await Assert.That(result.Value.IdentityId).IsEqualTo(IdentityId);
             await Assert.That(result.Value.HasUnestablishedTrustedIpProjection).IsTrue();
-            await Assert.That(result.Value.AccessTokenTTL).IsEqualTo(0.5);
+            await Assert.That(result.Value.AccessTokenTTL?.GetDecimal()).IsEqualTo(0.5m);
             await Assert.That(JsonSerializer.Serialize(result.Value, result.Value.GetType())).IsEqualTo("{}");
             if (result.Value is SpiffeAuthConfiguration spiffe)
             {

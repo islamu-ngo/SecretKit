@@ -174,10 +174,10 @@ public sealed class WorkloadIdentityAuthenticationTests
             await Assert.That(result.IdentityId).IsEqualTo(IdentityId);
         }
         await Assert.That(jwtResult.ConfigurationType).IsEqualTo("static"); // Request uses jwks.
-        await Assert.That(jwtResult.AccessTokenTTL).IsEqualTo(0.5d);
-        await Assert.That(jwtResult.AccessTokenMaxTTL).IsEqualTo(1.5d);
-        await Assert.That(jwtResult.AccessTokenNumUsesLimit).IsEqualTo(0d);
-        await Assert.That(jwtResult.AccessTokenPeriod).IsEqualTo(1.25d);
+        await Assert.That(jwtResult.AccessTokenTTL?.GetDecimal()).IsEqualTo(0.5m);
+        await Assert.That(jwtResult.AccessTokenMaxTTL?.GetDecimal()).IsEqualTo(1.5m);
+        await Assert.That(jwtResult.AccessTokenNumUsesLimit?.GetDecimal()).IsEqualTo(0m);
+        await Assert.That(jwtResult.AccessTokenPeriod?.GetDecimal()).IsEqualTo(1.25m);
         await Assert.That(jwtResult.BoundIssuer).IsEqualTo("");
         await Assert.That(jwtResult.BoundAudiences).IsEqualTo("");
         await Assert.That(jwtResult.BoundSubject).IsEqualTo("");

@@ -414,15 +414,15 @@ public sealed class LdapAuthConfiguration : WorkloadAuthConfiguration, IDisposab
     /// <summary>Gets template presence, retaining explicit null and omission.</summary>
     [JsonIgnore] public ProjectField<string> TemplateId { get; }
     /// <summary>Gets reported token period seconds, or null when absent.</summary>
-    [JsonIgnore] public double? AccessTokenPeriod { get; }
+    [JsonIgnore] public ManagementNumber? AccessTokenPeriod { get; }
     /// <summary>Gets reported lockout switch, or null when absent.</summary>
     [JsonIgnore] public bool? LockoutEnabled { get; }
     /// <summary>Gets reported failed-attempt threshold, or null when absent.</summary>
-    [JsonIgnore] public double? LockoutThreshold { get; }
+    [JsonIgnore] public ManagementNumber? LockoutThreshold { get; }
     /// <summary>Gets reported lockout duration seconds, or null when absent.</summary>
-    [JsonIgnore] public double? LockoutDurationSeconds { get; }
+    [JsonIgnore] public ManagementNumber? LockoutDurationSeconds { get; }
     /// <summary>Gets reported counter reset seconds, or null when absent.</summary>
-    [JsonIgnore] public double? LockoutCounterResetSeconds { get; }
+    [JsonIgnore] public ManagementNumber? LockoutCounterResetSeconds { get; }
     /// <summary>Gets detached allowed-fields JSON, preserving omission and null without interpreting directory predicates.</summary>
     /// <remarks>Value explicitly exposes a GC-owned JSON snapshot, not evidence of directory matching or effective access.</remarks>
     [JsonIgnore] public ProjectField<JsonElement> AllowedFields { get; }
@@ -453,7 +453,7 @@ public sealed class OciAuthConfiguration : WorkloadAuthConfiguration
     /// <summary>Gets username-constraint presence, preserving explicit null.</summary>
     [JsonIgnore] public ProjectField<string> AllowedUsernames { get; }
     /// <summary>Gets reported token period seconds, or null when absent.</summary>
-    [JsonIgnore] public double? AccessTokenPeriod { get; }
+    [JsonIgnore] public ManagementNumber? AccessTokenPeriod { get; }
 }
 
 /// <summary>Protected known bundle fields; unknown profile values fail closed.</summary>
@@ -488,7 +488,7 @@ public sealed class SpiffeTrustBundleConfiguration : IDisposable
     /// <summary>Gets owned distribution CA material, or null for a static bundle.</summary>
     [JsonIgnore] public SecretMaterial? CaCert { get; }
     /// <summary>Gets returned refresh hint seconds, or null for a static bundle.</summary>
-    [JsonIgnore] public double? RefreshHintSeconds { get; }
+    [JsonIgnore] public ManagementNumber? RefreshHintSeconds { get; }
     /// <summary>Gets cached-refresh timestamp presence, preserving explicit null and omission.</summary>
     [JsonIgnore] public ProjectField<DateTimeOffset> CachedBundleLastRefreshedAt { get; }
     /// <summary>Disposes owned bundle and CA material; exported plaintext strings remain outside this lifetime.</summary>
@@ -581,7 +581,7 @@ public sealed class LdapAuthLockoutResult
     internal LdapAuthLockoutResult(JsonElement value) => Deleted = WorkloadAuthJson.Number(value, "deleted")
         ?? throw new ManagementContractException(SecretStatus.Unknown);
     /// <summary>Gets the provider-reported deleted lockout count.</summary>
-    [JsonIgnore] public double Deleted { get; }
+    [JsonIgnore] public ManagementNumber Deleted { get; }
     /// <summary>Returns a marker without identity or directory details.</summary>
     public override string ToString() => "[LdapAuthLockoutResult]";
 }

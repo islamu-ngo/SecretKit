@@ -50,8 +50,8 @@ public sealed class IdentityAuthenticationTests
             "infisical." + method.Method.ToLowerInvariant() + ".v1.auth." + (universal ? "universal" : "token") +
             ".auth.identities.by.identityId", approved), receipt);
         await Assert.That(result.Status).IsEqualTo(SecretStatus.Success);
-        await Assert.That(result.Value.AccessTokenPeriod).IsEqualTo(120d);
-        await Assert.That(result.Value.AccessTokenMaxTTL).IsEqualTo(20d);
+        await Assert.That(result.Value.AccessTokenPeriod?.GetDecimal()).IsEqualTo(120m);
+        await Assert.That(result.Value.AccessTokenMaxTTL?.GetDecimal()).IsEqualTo(20m);
         await Assert.That(JsonSerializer.Serialize(result.Value)).IsEqualTo("{}");
         await Assert.That(wire.Observed).IsTrue();
         if (receipt is not null) await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.Applied);
@@ -100,8 +100,8 @@ public sealed class IdentityAuthenticationTests
                     using var copy = creation.ClientSecret.Copy();
                     creation.Dispose();
                     await Assert.That(copy.Reveal()).IsEqualTo("issued-secret-canary");
-                    await Assert.That(creation.Metadata.ClientSecretTTL).IsEqualTo(0d);
-                    await Assert.That(creation.Metadata.ClientSecretNumUsesLimit).IsEqualTo(2d);
+                    await Assert.That(creation.Metadata.ClientSecretTTL?.GetDecimal()).IsEqualTo(0m);
+                    await Assert.That(creation.Metadata.ClientSecretNumUsesLimit?.GetDecimal()).IsEqualTo(2m);
                     await Assert.That(JsonSerializer.Serialize(creation)).IsEqualTo("{}");
                     await Assert.That(wire.Body).IsEqualTo("""{"description":"","numUsesLimit":2.5,"ttl":0}""");
                 }
@@ -129,7 +129,7 @@ public sealed class IdentityAuthenticationTests
                 using (var request = IdentityAuthenticationOperations.ClearUniversalAuthLockouts("org", IdentityId))
                 {
                     var result = await Execute(client, authority, request, new("org", resourceId: IdentityId));
-                    await Assert.That(result.Value.Deleted).IsEqualTo(2d);
+                    await Assert.That(result.Value.Deleted?.GetDecimal()).IsEqualTo(2m);
                 }
                 break;
             case "token-create":
@@ -141,8 +141,8 @@ public sealed class IdentityAuthenticationTests
                     using var copy = creation.AccessToken.Copy();
                     creation.Dispose();
                     await Assert.That(copy.Reveal()).IsEqualTo("issued-token-canary");
-                    await Assert.That(creation.ExpiresIn).IsEqualTo(120d);
-                    await Assert.That(creation.AccessTokenMaxTTL).IsEqualTo(30d);
+                    await Assert.That(creation.ExpiresIn.GetDecimal()).IsEqualTo(120m);
+                    await Assert.That(creation.AccessTokenMaxTTL.GetDecimal()).IsEqualTo(30m);
                     await Assert.That(creation.Metadata.Name.IsPresent).IsTrue();
                     await Assert.That(creation.Metadata.Name.IsNull).IsTrue();
                     await Assert.That(JsonSerializer.Serialize(creation)).IsEqualTo("{}");
@@ -337,8 +337,8 @@ public sealed class IdentityAuthenticationTests
             IdentityAuthenticationOperations.TokenCreateTarget("org", TokenIdentity));
         using var created = result.Value;
         await Assert.That(wire.Body).IsEqualTo("{}");
-        await Assert.That(created.ExpiresIn).IsEqualTo(0d);
-        await Assert.That(created.AccessTokenMaxTTL).IsEqualTo(0d);
+        await Assert.That(created.ExpiresIn.GetDecimal()).IsEqualTo(0m);
+        await Assert.That(created.AccessTokenMaxTTL.GetDecimal()).IsEqualTo(0m);
         // Administration reports zero, without constructing an unlimited runtime lifetime.
     }
 

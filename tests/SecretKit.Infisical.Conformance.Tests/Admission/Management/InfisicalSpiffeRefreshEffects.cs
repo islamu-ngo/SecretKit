@@ -85,11 +85,11 @@ internal static class InfisicalSpiffeRefreshEffects
 
     private static bool Matches(SpiffeAuthConfiguration config, string identity, SpiffeRefreshInput input) =>
         config.IdentityId == identity && config.TrustDomain == input.TrustDomain && config.AllowedSpiffeIds == input.SpiffeId &&
-        config.AllowedAudiences == input.Audience && config.AccessTokenTTL == 600 && config.AccessTokenMaxTTL == 1800 &&
-        config.AccessTokenNumUsesLimit == 2000 && config.TrustBundleDistribution.Profile == "https_web_bundle" &&
+        config.AllowedAudiences == input.Audience && config.AccessTokenTTL?.GetDecimal() == 600 && config.AccessTokenMaxTTL?.GetDecimal() == 1800 &&
+        config.AccessTokenNumUsesLimit?.GetDecimal() == 2000 && config.TrustBundleDistribution.Profile == "https_web_bundle" &&
         config.TrustBundleDistribution.EndpointUrl == input.BundleEndpoint &&
         config.TrustBundleDistribution.CaCert?.Reveal() == input.CaCertificate &&
-        config.TrustBundleDistribution.RefreshHintSeconds == 3600;
+        config.TrustBundleDistribution.RefreshHintSeconds?.GetDecimal() == 3600;
 
     private static async ValueTask ProofsAsync(IdentityAuthContext c, IInfisicalSpiffeRefreshSource source,
         SpiffeRefreshBinding binding, SpiffeRefreshArm? arm, SpiffeRefreshInput input, bool refreshed, CancellationToken token)

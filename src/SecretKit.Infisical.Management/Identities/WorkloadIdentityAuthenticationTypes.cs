@@ -318,11 +318,11 @@ public abstract class WorkloadAuthConfiguration
     /// <summary>Gets the returned configuration update time.</summary>
     [JsonIgnore] public DateTimeOffset UpdatedAt { get; }
     /// <summary>Gets reported TTL seconds, or null when absent.</summary>
-    [JsonIgnore] public double? AccessTokenTTL { get; }
+    [JsonIgnore] public ManagementNumber? AccessTokenTTL { get; }
     /// <summary>Gets reported maximum TTL seconds, or null when absent.</summary>
-    [JsonIgnore] public double? AccessTokenMaxTTL { get; }
+    [JsonIgnore] public ManagementNumber? AccessTokenMaxTTL { get; }
     /// <summary>Gets reported token-use limit, or null when absent.</summary>
-    [JsonIgnore] public double? AccessTokenNumUsesLimit { get; }
+    [JsonIgnore] public ManagementNumber? AccessTokenNumUsesLimit { get; }
     /// <summary>Gets detached returned JSON, preserving omission and null without interpreting trusted-IP policy.</summary>
     /// <remarks>Value explicitly exposes a GC-owned JSON snapshot; it is not clearable secret storage or authorization proof.</remarks>
     [JsonIgnore] public ProjectField<JsonElement> AccessTokenTrustedIps { get; }
@@ -366,7 +366,7 @@ public sealed class JwtAuthConfiguration : WorkloadAuthConfiguration
     /// <summary>Gets the returned subject constraint.</summary>
     [JsonIgnore] public string BoundSubject { get; }
     /// <summary>Gets reported token period seconds, or null when absent.</summary>
-    [JsonIgnore] public double? AccessTokenPeriod { get; }
+    [JsonIgnore] public ManagementNumber? AccessTokenPeriod { get; }
     /// <summary>Gets detached bound-claims JSON, preserving omission and null without input-schema or matching assumptions.</summary>
     /// <remarks>Value explicitly exposes a GC-owned JSON snapshot, not evidence that an issuer proof is accepted.</remarks>
     [JsonIgnore] public ProjectField<JsonElement> BoundClaims { get; }
@@ -534,12 +534,10 @@ internal static class WorkloadAuthJson
         foreach (var pair in values) writer.WriteString(pair.Key, pair.Value);
         writer.WriteEndObject();
     }
-    internal static double? Number(JsonElement value, string field)
+    internal static ManagementNumber? Number(JsonElement value, string field)
     {
         if (!value.TryGetProperty(field, out var child)) return null;
-        if (child.ValueKind != JsonValueKind.Number || !child.TryGetDouble(out double number) || !double.IsFinite(number))
-            throw new ManagementContractException(SecretStatus.Unknown);
-        return number;
+        return new ManagementNumber(child);
     }
     internal static string? OptionalResponse(JsonElement value, string field)
     {

@@ -561,7 +561,7 @@ public sealed class InfisicalAuthenticationFamilyTests
                 var row = rows.Value.Items.Single(r => r.Id == binding.TokenMetadataId);
                 await Assert.That(row.AuthMethod).IsEqualTo(method + "-auth");
                 await Assert.That(row.IdentityId).IsEqualTo(Identity);
-                await Assert.That(row.AccessTokenNumUsesLimit).IsEqualTo(0);
+                await Assert.That(row.AccessTokenNumUsesLimit?.GetDecimal()).IsEqualTo(0m);
                 // Deliberately expired local hint: material-only source must strip it.
                 using var hinted = new InfisicalAccessToken(issued.Material.Copy(), DateTimeOffset.UnixEpoch);
                 await using var locallyExpired = new InfisicalClient(backend.Origin,

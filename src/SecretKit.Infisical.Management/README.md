@@ -87,6 +87,15 @@ separate plaintext boundaries.
 
 ## Protected returned fields
 
+Authentication response numbers use `ManagementNumber` or nullable
+`ManagementNumber?`. `Export()` deliberately returns the exact detached JSON
+number token. `GetInt64` and `GetDecimal`, and their Try counterparts, reject
+fractional, range, precision or nonzero-underflow loss rather than rounding.
+Failed conversion leaves the raw token available for explicit export. The
+default value is uninitialized, ordinary formatting is redacted and JSON
+serialization emits `{}`. Missing, null, required and sign rules remain specific
+to each response field; request-side numeric inputs and bounds are unchanged.
+
 Authentication results preserve unconstrained returned trusted-IP, bound-claim,
 OIDC claim-mapping and LDAP allowed-field JSON through `ProjectField<JsonElement>`.
 Check `IsPresent` and `IsNull` before explicitly accessing `Value`. These detached

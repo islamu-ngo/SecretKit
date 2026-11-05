@@ -101,7 +101,7 @@ internal static class ExternalIdentityAuthenticationEffects
                     () => ExternalIdentityAuthenticationOperations.AttachLdapAuth(org, id, initial), NativeIdentityRole.Setup, token);
                 await c.InduceLockoutAsync("ldap", token);
                 await c.CaseAsync(() => ExternalIdentityAuthenticationOperations.ClearLdapAuthLockouts(org, id),
-                    result => result.Deleted > 0, async (applied, ct) =>
+                    result => result.Deleted.GetDecimal() > 0, async (applied, ct) =>
                     {
                         IdentitySummary observed = await c.NeedAsync(() => IdentityOperations.GetOrganizationIdentity(org, id),
                             NativeIdentityRole.Observer, ct);
@@ -114,16 +114,18 @@ internal static class ExternalIdentityAuthenticationEffects
             bool Fields(LdapAuthConfiguration config, bool changed)
             {
                 LdapAuthSettings input = changed ? update.Settings : initial.Settings;
-                double Expected(string field, double? supplied, double before) => supplied ??
-                    (c.Operation.StartsWith("Update", StringComparison.Ordinal) ? before :
-                        double.Parse(c.Setting("default-" + field), System.Globalization.CultureInfo.InvariantCulture));
+                decimal Expected(string field, double? supplied, decimal before) => supplied is { } number
+                    ? decimal.Parse(number.ToString("R", System.Globalization.CultureInfo.InvariantCulture),
+                        System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture)
+                    : c.Operation.StartsWith("Update", StringComparison.Ordinal) ? before :
+                        decimal.Parse(c.Setting("default-" + field), System.Globalization.CultureInfo.InvariantCulture);
                 return Policy(config, changed) && config.SearchFilter == c.ExpectedText("searchFilter", input.SearchFilter) &&
                     (!template ? config.Url == c.Setting("url") && config.SearchBase == c.Setting("searchBase") :
                         config.TemplateId.IsPresent && !config.TemplateId.IsNull && config.TemplateId.Value == c.Setting("templateId")) &&
                     config.LockoutEnabled == (input.LockoutEnabled ?? false) &&
-                    config.LockoutThreshold == Expected("lockoutThreshold", input.LockoutThreshold, 5) &&
-                    config.LockoutDurationSeconds == Expected("lockoutDurationSeconds", input.LockoutDurationSeconds, 86400) &&
-                    config.LockoutCounterResetSeconds == Expected("lockoutCounterResetSeconds", input.LockoutCounterResetSeconds, 3600);
+                    config.LockoutThreshold?.GetDecimal() == Expected("lockoutThreshold", input.LockoutThreshold, 5) &&
+                    config.LockoutDurationSeconds?.GetDecimal() == Expected("lockoutDurationSeconds", input.LockoutDurationSeconds, 86400) &&
+                    config.LockoutCounterResetSeconds?.GetDecimal() == Expected("lockoutCounterResetSeconds", input.LockoutCounterResetSeconds, 3600);
             }
             await c.ConfigurationAsync(
                 () => ExternalIdentityAuthenticationOperations.AttachLdapAuth(org, id, initial),
@@ -175,8 +177,8 @@ internal static class ExternalIdentityAuthenticationEffects
                     ((before ? initialHttps : https) ? returned.Profile == "https_web_bundle" && returned.EndpointUrl == c.Setting("endpointUrl") &&
                         returned.CaCert?.Reveal() == (v == "bundle.caCert.omitted" ? c.Setting("default-caCert") :
                             (before ? initialCa : ca).Reveal()) &&
-                        returned.RefreshHintSeconds == (v == "refreshHintSeconds.omitted" ?
-                            double.Parse(c.Setting("default-refreshHintSeconds"), System.Globalization.CultureInfo.InvariantCulture) :
+                        returned.RefreshHintSeconds?.GetDecimal() == (v == "refreshHintSeconds.omitted" ?
+                            decimal.Parse(c.Setting("default-refreshHintSeconds"), System.Globalization.CultureInfo.InvariantCulture) :
                                 before ? initialRefresh : 60) :
                         returned.Profile == "static" && returned.Bundle?.Reveal() == (before ? initialBundle : bundle).Reveal());
             }

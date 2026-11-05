@@ -157,21 +157,21 @@ public sealed class IdentityAuthenticationConfiguration
     /// <summary>Gets the returned configuration update time with its offset.</summary>
     [JsonIgnore] public DateTimeOffset UpdatedAt { get; }
     /// <summary>Gets returned token TTL seconds, or null when absent.</summary>
-    [JsonIgnore] public double? AccessTokenTTL { get; }
+    [JsonIgnore] public ManagementNumber? AccessTokenTTL { get; }
     /// <summary>Gets returned maximum TTL seconds, or null when absent; does not infer a session deadline.</summary>
-    [JsonIgnore] public double? AccessTokenMaxTTL { get; }
+    [JsonIgnore] public ManagementNumber? AccessTokenMaxTTL { get; }
     /// <summary>Gets the returned use limit, or null when absent.</summary>
-    [JsonIgnore] public double? AccessTokenNumUsesLimit { get; }
+    [JsonIgnore] public ManagementNumber? AccessTokenNumUsesLimit { get; }
     /// <summary>Gets returned token period seconds, or null when absent.</summary>
-    [JsonIgnore] public double? AccessTokenPeriod { get; }
+    [JsonIgnore] public ManagementNumber? AccessTokenPeriod { get; }
     /// <summary>Gets the returned lockout switch, or null for absence or a non-Universal configuration.</summary>
     [JsonIgnore] public bool? LockoutEnabled { get; }
     /// <summary>Gets the returned lockout threshold, or null when not projected.</summary>
-    [JsonIgnore] public double? LockoutThreshold { get; }
+    [JsonIgnore] public ManagementNumber? LockoutThreshold { get; }
     /// <summary>Gets returned lockout duration seconds, or null when not projected.</summary>
-    [JsonIgnore] public double? LockoutDurationSeconds { get; }
+    [JsonIgnore] public ManagementNumber? LockoutDurationSeconds { get; }
     /// <summary>Gets returned counter reset seconds, or null when not projected.</summary>
-    [JsonIgnore] public double? LockoutCounterResetSeconds { get; }
+    [JsonIgnore] public ManagementNumber? LockoutCounterResetSeconds { get; }
     /// <summary>Gets detached returned JSON, preserving omission and null without interpreting trusted-IP policy.</summary>
     /// <remarks>Value explicitly exposes a GC-owned JSON snapshot; it is not clearable secret storage or authorization proof.</remarks>
     [JsonIgnore] public ProjectField<JsonElement> AccessTokenTrustedIps { get; }
@@ -218,11 +218,11 @@ public sealed class UniversalAuthClientSecret
     /// <summary>Gets the returned client-secret update time.</summary>
     [JsonIgnore] public DateTimeOffset UpdatedAt { get; }
     /// <summary>Gets reported use count, or null when absent.</summary>
-    [JsonIgnore] public double? ClientSecretNumUses { get; }
+    [JsonIgnore] public ManagementNumber? ClientSecretNumUses { get; }
     /// <summary>Gets reported use limit, or null when absent.</summary>
-    [JsonIgnore] public double? ClientSecretNumUsesLimit { get; }
+    [JsonIgnore] public ManagementNumber? ClientSecretNumUsesLimit { get; }
     /// <summary>Gets reported client-secret TTL seconds, or null when absent.</summary>
-    [JsonIgnore] public double? ClientSecretTTL { get; }
+    [JsonIgnore] public ManagementNumber? ClientSecretTTL { get; }
     /// <summary>Gets reported revocation state, or null when absent; absence is not false.</summary>
     [JsonIgnore] public bool? IsClientSecretRevoked { get; }
     /// <summary>Returns a marker without client-secret metadata.</summary>
@@ -294,15 +294,15 @@ public sealed class TokenAuthToken
     /// <summary>Gets Universal Auth client-secret identifier presence when supplied.</summary>
     [JsonIgnore] public ProjectField<string> IdentityUAClientSecretId { get; }
     /// <summary>Gets reported TTL seconds, or null when absent.</summary>
-    [JsonIgnore] public double? AccessTokenTTL { get; }
+    [JsonIgnore] public ManagementNumber? AccessTokenTTL { get; }
     /// <summary>Gets reported maximum TTL seconds, or null when absent; not an inferred finite lifetime.</summary>
-    [JsonIgnore] public double? AccessTokenMaxTTL { get; }
+    [JsonIgnore] public ManagementNumber? AccessTokenMaxTTL { get; }
     /// <summary>Gets reported use count, or null when absent.</summary>
-    [JsonIgnore] public double? AccessTokenNumUses { get; }
+    [JsonIgnore] public ManagementNumber? AccessTokenNumUses { get; }
     /// <summary>Gets reported token-use limit, or null when absent.</summary>
-    [JsonIgnore] public double? AccessTokenNumUsesLimit { get; }
+    [JsonIgnore] public ManagementNumber? AccessTokenNumUsesLimit { get; }
     /// <summary>Gets reported token period seconds, or null when absent.</summary>
-    [JsonIgnore] public double? AccessTokenPeriod { get; }
+    [JsonIgnore] public ManagementNumber? AccessTokenPeriod { get; }
     /// <summary>Gets reported revocation state, or null when absent.</summary>
     [JsonIgnore] public bool? IsAccessTokenRevoked { get; }
     /// <summary>Gets the returned token creation time.</summary>
@@ -335,9 +335,9 @@ public sealed class TokenAuthTokenCreation : IDisposable
     /// <summary>Gets owned bearer material; reveal is a deliberate plaintext export.</summary>
     [JsonIgnore] public SecretMaterial AccessToken { get; }
     /// <summary>Gets native reported expiry seconds without manufacturing a local session deadline.</summary>
-    [JsonIgnore] public double ExpiresIn { get; }
+    [JsonIgnore] public ManagementNumber ExpiresIn { get; }
     /// <summary>Gets native reported maximum TTL seconds, retaining native zero semantics.</summary>
-    [JsonIgnore] public double AccessTokenMaxTTL { get; }
+    [JsonIgnore] public ManagementNumber AccessTokenMaxTTL { get; }
     /// <summary>Disposes owned bearer material; does not revoke the provider token or erase exported strings.</summary>
     public void Dispose() => AccessToken.Dispose();
     /// <summary>Returns a marker without bearer material.</summary>
@@ -354,7 +354,7 @@ public sealed class IdentityAuthenticationAcknowledgement
         else Message = ManagementJson.Required(root, "message");
     }
     /// <summary>Gets the native deleted-lockout count, or null for token revocation acknowledgements.</summary>
-    [JsonIgnore] public double? Deleted { get; }
+    [JsonIgnore] public ManagementNumber? Deleted { get; }
     /// <summary>Gets the native revocation message, or null for lockout-clear acknowledgements.</summary>
     [JsonIgnore] public string? Message { get; }
     /// <summary>Returns a marker without the acknowledgement message.</summary>
@@ -399,14 +399,12 @@ internal static class AuthenticationJson
     {
         if (value is { } number) writer.WriteNumber(field, number);
     }
-    internal static double? OptionalNumber(JsonElement value, string field)
+    internal static ManagementNumber? OptionalNumber(JsonElement value, string field)
     {
         if (!value.TryGetProperty(field, out var child)) return null;
-        if (!child.TryGetDouble(out double result) || !double.IsFinite(result) || result < 0)
-            throw new ManagementContractException(SecretStatus.Unknown);
-        return result;
+        return new ManagementNumber(child, nonnegative: true);
     }
-    internal static double RequiredNumber(JsonElement value, string field) =>
+    internal static ManagementNumber RequiredNumber(JsonElement value, string field) =>
         OptionalNumber(value, field) ?? throw new ManagementContractException(SecretStatus.Unknown);
     internal static bool? OptionalBoolean(JsonElement value, string field) =>
         value.TryGetProperty(field, out _) ? ManagementJson.Boolean(value, field) : null;

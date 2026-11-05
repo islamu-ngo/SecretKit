@@ -86,7 +86,7 @@
     },
     {
       "file": "src/SecretKit.Infisical.Management/Identities/CloudIdentityAuthenticationTypes.cs",
-      "sha256": "77591f3ecaef79e24590c898194c6b9480dd73765819fb1ade846df7a51046db"
+      "sha256": "9ed20d5e4ebeb56476cf06e3b221b77d0965d9833f1ea91ca3fd9933f69d4273"
     },
     {
       "file": "src/SecretKit.Infisical.Management/Identities/ExternalIdentityAuthentication.cs",
@@ -98,7 +98,7 @@
     },
     {
       "file": "src/SecretKit.Infisical.Management/Identities/ExternalIdentityAuthenticationTypes.cs",
-      "sha256": "8dec1a1cb0d778c9b2a1f9530839ccf21ae1c832d9e2e1413011b115c52daf37"
+      "sha256": "b5f56a64e2aaf310b71bd8d5871c69d9e77ec2e034093515b47483727daf5e1c"
     },
     {
       "file": "src/SecretKit.Infisical.Management/Identities/Identities.cs",
@@ -110,7 +110,7 @@
     },
     {
       "file": "src/SecretKit.Infisical.Management/Identities/IdentityAuthenticationTypes.cs",
-      "sha256": "dbfb7941ce039598ce5656ab25304f63d9c55b2daf0a5d1b9e077feabd6a21f0"
+      "sha256": "fa4356d1aea2eaa7eec2609b525f34dd0d18c0bba6fb28f6036122e08e5f67cf"
     },
     {
       "file": "src/SecretKit.Infisical.Management/Identities/IdentityMetadataVariants.cs",
@@ -158,7 +158,7 @@
     },
     {
       "file": "src/SecretKit.Infisical.Management/Identities/WorkloadIdentityAuthenticationTypes.cs",
-      "sha256": "8a50c911584d6a99dd89295317f970a8000a69e488e74080f38898f13f93b2d8"
+      "sha256": "e0675c233b4d1c5b2be4240cf8ffdf9a20121d892f8f5e8457d9e7a1f7179436"
     },
     {
       "file": "src/SecretKit.Infisical.Management/Projects/ProjectConnections.cs",
@@ -239,6 +239,10 @@
     {
       "file": "src/SecretKit.Infisical.Management/Transport/ManagementDiagnostics.cs",
       "sha256": "cc8b29846ee7474e1d6888eed0fbc069d6d15782e61d0945fa686ab5d61a5cb0"
+    },
+    {
+      "file": "src/SecretKit.Infisical.Management/Transport/ManagementNumber.cs",
+      "sha256": "828fd00cdd0b5943024fa87bedb534dee657d33006b6a2a783a4d1327ed45934"
     },
     {
       "file": "src/SecretKit.Infisical.Management/Transport/ManagementRequestBuilder.cs",
