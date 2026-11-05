@@ -11,6 +11,211 @@ namespace SecretKit.Infisical.Conformance.Tests;
 public sealed class LocalNativeProofTests
 {
     [Test]
+    public async Task EnterpriseCausalOwnerAdmitsItsActualEffectsWithoutPromotingTheControlledFixture()
+    {
+        await using var fixture = await EnterpriseFixture.Run();
+        var proof = fixture.Owner.EnterpriseProof;
+        var observation = fixture.Owner.AdmitEnterprise(proof, proof.Expectation);
+
+        await Assert.That(observation.Kind).IsEqualTo("controlled-owner-observation");
+        await Assert.That(observation.NativeQualified).IsFalse();
+        await Assert.That(observation.Evidence.ScenarioIds).IsEquivalentTo(["S24"]);
+        await Assert.That(observation.Evidence.Binding.RunId).IsEqualTo(fixture.Owner.RunId);
+        await Assert.That(fixture.Backend.OwnedResourcesRemain).IsFalse();
+        await Assert.That(() => fixture.Sandbox.RequireNativeInspection()).Throws<InvalidOperationException>();
+    }
+
+    [Test]
+    [Arguments("owner")]
+    [Arguments("counterfeit")]
+    [Arguments("scenario")]
+    [Arguments("provider")]
+    [Arguments("kind")]
+    [Arguments("run")]
+    [Arguments("profile-bytes")]
+    [Arguments("source")]
+    [Arguments("source-content")]
+    [Arguments("cohort")]
+    [Arguments("archive")]
+    [Arguments("network")]
+    [Arguments("deployment")]
+    [Arguments("principal")]
+    [Arguments("policy")]
+    [Arguments("effects")]
+    [Arguments("authorization")]
+    [Arguments("sdk")]
+    [Arguments("runtime")]
+    [Arguments("platform")]
+    [Arguments("old-report")]
+    public async Task EnterpriseOwnerRejectsSubstitutedCustodyOrSelection(string fault)
+    {
+        await using var fixture = await EnterpriseFixture.Run();
+        var proof = fixture.Owner.EnterpriseProof;
+        var expected = proof.Expectation;
+        var original = expected.Binding;
+        string other = SecretKit.Release.Manifest.Hash("different-evidence"u8.ToArray());
+        expected = fault switch
+        {
+            "scenario" => expected with { ScenarioIds = ["S05"] },
+            "provider" => expected with { Provider = "AzureKeyVault" },
+            "kind" => expected with { Kind = "source-offline" },
+            "run" => expected with { Binding = original with { RunId = Guid.NewGuid().ToString("N") } },
+            "profile-bytes" => expected with { Binding = original with { ProfileSha256 = other } },
+            "source" => expected with { Binding = original with { SourceRevision = new string('f', 40) } },
+            "source-content" => expected with { Binding = original with { SourceContentSha256 = other } },
+            "cohort" => expected with { Binding = original with { CohortSha256 = other } },
+            "archive" => expected with
+            {
+                Binding = original with
+                {
+                    Archives = original.Archives!.Select((archive, index) =>
+                        index == 0 ? archive with { Sha256 = other } : archive).ToArray()
+                }
+            },
+            "network" => expected with { Binding = original with { TransportSha256 = other } },
+            "deployment" => expected with { Binding = original with { DeploymentSha256 = other } },
+            "principal" => expected with { Binding = original with { PrincipalSha256 = other } },
+            "policy" => expected with { Binding = original with { PolicySha256 = other } },
+            "effects" => expected with { Binding = original with { EffectSha256 = null } },
+            "authorization" => expected with { Binding = original with { AuthorizationSha256 = other } },
+            "sdk" => expected with { Binding = original with { Sdk = "10.0.998" } },
+            "runtime" => expected with { Binding = original with { Runtime = "10.0.998" } },
+            "platform" => expected with { Binding = original with { Platform = "foreign-platform" } },
+            _ => expected
+        };
+        if (fault == "old-report")
+        {
+            await using var previous = await EnterpriseFixture.Run();
+            expected = expected with
+            {
+                Binding = original with { EvidenceSha256 = previous.Owner.EnterpriseProof.Expectation.Binding.EvidenceSha256 }
+            };
+        }
+        if (fault == "counterfeit") proof = new(expected);
+        await using var foreign = new LocalNativeProof(fixture.Sandbox, Selection(fixture.Server.Origin),
+            LocalProfileAdmissionTests.Binding, timeProvider: fixture.Clock);
+        var selectedOwner = fault == "owner" ? foreign : fixture.Owner;
+
+        await Assert.That(() => selectedOwner.AdmitEnterprise(proof, expected)).Throws<InvalidOperationException>();
+        var retained = fixture.Owner.EnterpriseProof;
+        await Assert.That(fixture.Owner.AdmitEnterprise(retained, retained.Expectation).Kind)
+            .IsEqualTo("controlled-owner-observation");
+    }
+
+    [Test]
+    public async Task EnterpriseOwnerRequiresItsActualCleanupBeforeAdmission()
+    {
+        await using var fixture = await EnterpriseFixture.Run(completeCleanup: false);
+        var proof = fixture.Owner.EnterpriseProof;
+
+        await Assert.That(() => fixture.Owner.AdmitEnterprise(proof, proof.Expectation))
+            .Throws<InvalidOperationException>();
+    }
+
+    [Test]
+    [Arguments("create")]
+    [Arguments("update")]
+    [Arguments("incomplete")]
+    [Arguments("policy")]
+    public async Task EnterpriseSelectionCannotIssueAProofWithoutRequiredCausalEvidence(string fault)
+    {
+        var clock = new ProofTime();
+        var backend = new CausalBackend(clock) { PermitForeignRuntime = fault == "policy" };
+        await using var server = new ProofServer(backend.Handle);
+        using var sandbox = Sandbox(server.Origin);
+        await using var owner = new LocalNativeProof(sandbox, Selection(server.Origin),
+            LocalProfileAdmissionTests.Binding, timeProvider: clock);
+        owner.SelectEnterprise(EnterpriseSelection());
+        var input = owner.AdmitProduced(await owner.ProduceAsync(default));
+        var report = NativeWorkflow.EmptyReport(input);
+        owner.BeginChild();
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        await NativeWorkflow.ExecuteAsync(input, report, deadline.Token, () => Task.CompletedTask,
+            owner.ExchangeAsync, owner.AcknowledgeRenewalAsync, clock, clock.Probe);
+        if (fault == "create") report.CreateEffect = DispatchEvidence.NotDispatched;
+        if (fault == "update") report.UpdateEffect = DispatchEvidence.NotDispatched;
+        if (fault == "incomplete") report.ExecutionCompleted = false;
+
+        owner.ObserveChildReport(report);
+        await Assert.That(() => owner.EnterpriseProof).Throws<InvalidOperationException>();
+    }
+
+    [Test]
+    public async Task EnterpriseOwnerCannotAcceptAPrintedOrRecreatedProof()
+    {
+        await using var fixture = await EnterpriseFixture.Run();
+        var proof = fixture.Owner.EnterpriseProof;
+        var printed = JsonSerializer.Serialize(proof);
+        var recreated = new EnterpriseHardeningNativeProof(proof.Expectation);
+
+        await Assert.That(printed).IsEqualTo("{}");
+        await Assert.That(() => fixture.Owner.AdmitEnterprise(recreated, proof.Expectation))
+            .Throws<InvalidOperationException>();
+    }
+
+    [Test]
+    [Arguments("profile")]
+    [Arguments("scenario")]
+    public async Task EnterpriseOwnerRejectsAnUnmappedProfileOrScenarioBeforeIssuance(string fault)
+    {
+        await using var server = new ProofServer();
+        using var sandbox = Sandbox(server.Origin);
+        await using var owner = new LocalNativeProof(sandbox, Selection(server.Origin), LocalProfileAdmissionTests.Binding);
+        var selected = fault == "profile"
+            ? EnterpriseSelection() with { Profile = "runtime-hardening" }
+            : EnterpriseSelection() with { Scenario = "S06" };
+
+        await Assert.That(() => owner.SelectEnterprise(selected)).Throws<InvalidOperationException>();
+    }
+
+    private static EnterpriseHardeningNativeSelection EnterpriseSelection() => new(
+        "enterprise-hardening", "S24", SecretKit.Release.Manifest.Hash("controlled-enterprise-profile"u8.ToArray()),
+        new string('a', 40), SecretKit.Release.Manifest.Hash("controlled-cohort"u8.ToArray()),
+        "10.0.999", Environment.Version.ToString(), System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier);
+
+    private sealed class EnterpriseFixture : IAsyncDisposable
+    {
+        internal readonly ProofTime Clock = new();
+        internal readonly CausalBackend Backend;
+        internal readonly ProofServer Server;
+        internal readonly OwnedSandbox Sandbox;
+        internal readonly LocalNativeProof Owner;
+        private EnterpriseFixture()
+        {
+            Backend = new(Clock);
+            Server = new(Backend.Handle);
+            Sandbox = LocalNativeProofTests.Sandbox(Server.Origin);
+            Owner = new(Sandbox, Selection(Server.Origin), LocalProfileAdmissionTests.Binding, timeProvider: Clock);
+        }
+        internal static async Task<EnterpriseFixture> Run(bool completeCleanup = true)
+        {
+            var fixture = new EnterpriseFixture();
+            try
+            {
+                fixture.Owner.SelectEnterprise(EnterpriseSelection());
+                var input = fixture.Owner.AdmitProduced(await fixture.Owner.ProduceAsync(default));
+                var report = NativeWorkflow.EmptyReport(input);
+                fixture.Owner.BeginChild();
+                using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+                await NativeWorkflow.ExecuteAsync(input, report, deadline.Token, () => Task.CompletedTask,
+                    fixture.Owner.ExchangeAsync, fixture.Owner.AcknowledgeRenewalAsync, fixture.Clock, fixture.Clock.Probe);
+                fixture.Owner.ObserveChildReport(report);
+                await LocalProfileConformance.ReconcileCleanupAsync(report, () => fixture.Owner.RemoveSecretAsync(
+                    input.Settings.ProjectId, input.Settings.Environment, input.Settings.Folder, input.Settings.WriteKey,
+                    deadline.Token), () => Task.CompletedTask);
+                if (completeCleanup) report.ProducerCleanup = await fixture.Owner.CleanupAsync(deadline.Token);
+                return fixture;
+            }
+            catch { await fixture.DisposeAsync(); throw; }
+        }
+        public async ValueTask DisposeAsync()
+        {
+            try { await Owner.DisposeAsync(); }
+            finally { Sandbox.Dispose(); await Server.DisposeAsync(); }
+        }
+    }
+
+    [Test]
     public async Task UncertainForeignMembershipProtectsBothOwnedParentsDuringCleanup()
     {
         var clock = new ProofTime();

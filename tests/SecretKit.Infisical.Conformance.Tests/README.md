@@ -22,6 +22,18 @@ Tests and supporting fixtures are grouped by capability, including
 The source-linked [Admission](Admission/) components retain their independent
 installed-consumer role. Namespaces and test filters are unchanged by this layout.
 
+The [enterprise profile](../../docs/internal/compatibility/enterprise-hardening-profile.md)
+adds an owner-local S24 join to the existing causal installed producer. With
+separately authorized native inputs, explicitly select
+`SECRETKIT_ENTERPRISE_HARDENING_COHORT` as the absolute prepared cohort path.
+The existing `InstalledOwnedLocalProfileHasEveryNativeObservation` parent still
+requires its complete historical report and successful cleanup. Only its real
+installed launch and verified sandbox can enroll a native certificate.
+Controlled `LocalNativeProofTests` exercise the causal chain but remain
+non-native; the standalone JSON content checker cannot import that authority.
+This scoped loopback HTTP result does not qualify other enterprise scenarios
+or TLS/private-CA profiles.
+
 The test-only process runner subscribes to exit before launch, retains the
 process until its actual exit, bounds captured evidence and discards stderr.
 It clears ambient environment variables and injects only caller-selected values

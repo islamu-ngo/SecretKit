@@ -5,6 +5,15 @@ bound native-family execution. Passing controlled tests does not qualify an
 Azure deployment. The source-linked installed consumer reuses the Admission
 components against selected original SecretKit packages.
 
+Positive [enterprise-profile admission](../../docs/internal/compatibility/enterprise-hardening-profile.md)
+is not implemented for Azure. Original-operation certificates establish their
+registered operation and resource custody; supplied tokens, credential/transport
+object identities and declared expiry do not establish native principal,
+effective policy, network or installed-cohort provenance. A concrete producer
+must join those facts to the same original invocation before positive admission.
+Missing G2 execution authority is a separate gate. Existing operation evidence
+and cleanup rules remain applicable.
+
 The [conformance solution](../../SecretKit.Conformance.slnx) builds both provider
 test hosts and their source dependencies. Installed-package consumers and
 candidate-dependent demos remain a separate stage requiring exact prepared

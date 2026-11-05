@@ -8,7 +8,7 @@ using SecretKit.TestFixtures;
 
 namespace SecretKit.Infisical.Conformance.Tests;
 
-internal static class LocalProfileConformance
+internal static partial class LocalProfileConformance
 {
     internal static LocalNativeInput Admit(byte[] bytes, LocalNativeBinding frozen)
     {
@@ -69,10 +69,17 @@ internal static class LocalProfileConformance
         return installation;
     }
 
-    internal static Task<LocalNativeReport> RunFromEnvironmentAsync() => RunSelectedAsync(causal: false);
-    internal static Task<LocalNativeReport> RunCausalFromEnvironmentAsync() => RunSelectedAsync(causal: true);
+    internal static async Task<LocalNativeReport> RunFromEnvironmentAsync() =>
+        (await RunSelectedAsync(causal: false)).Report;
+    internal static async Task<LocalNativeReport> RunCausalFromEnvironmentAsync() =>
+        (await RunSelectedAsync(causal: true, enterprise:
+            Environment.GetEnvironmentVariable("SECRETKIT_ENTERPRISE_HARDENING_COHORT") is { Length: > 0 })).Report;
+    internal static async Task<EnterpriseHardeningNativeObservation> RunEnterpriseFromEnvironmentAsync() =>
+        (await RunSelectedAsync(causal: true, enterprise: true)).Enterprise ??
+            throw new InvalidOperationException("enterprise-native-observation-unavailable");
 
-    private static async Task<LocalNativeReport> RunSelectedAsync(bool causal)
+    private static async Task<(LocalNativeReport Report, EnterpriseHardeningNativeObservation? Enterprise)>
+        RunSelectedAsync(bool causal, bool enterprise = false)
     {
         // These are live-only inputs. The separately filterable offline class never enters here.
         NativeWorkflow.Require(Required("SECRETKIT_LOCAL_NATIVE_AUTHORITY") == "owned-local-native-execution" &&
@@ -82,6 +89,7 @@ internal static class LocalProfileConformance
         string records = RequiredPath("SECRETKIT_LOCAL_RECORD");
         string inputPath = RequiredPath("SECRETKIT_LOCAL_NATIVE_INPUT");
         string reportPath = RequiredPath("SECRETKIT_LOCAL_NATIVE_REPORT");
+        string? enterpriseCohort = enterprise ? RequiredPath("SECRETKIT_ENTERPRISE_HARDENING_COHORT") : null;
         NativeWorkflow.Require(!File.Exists(reportPath) && !Directory.Exists(reportPath));
         LocalNativeBinding binding = Freeze(root, originals, records);
         byte[] bytes = ReadProtectedInput(inputPath);
@@ -93,7 +101,14 @@ internal static class LocalProfileConformance
             await WriteAsync(reportPath, initial, FileMode.CreateNew);
             using var deadline = new CancellationTokenSource(TimeSpan.FromMinutes(5));
             if (!causal)
-                return await RunSuppliedAsync(root, originals, records, reportPath, bytes, input, initial, deadline.Token);
+                return (await RunSuppliedAsync(root, originals, records, reportPath, bytes, input, initial, deadline.Token), null);
+            EnterpriseHardeningNativeSelection? enterpriseSelection = null;
+            if (enterprise)
+            {
+                var sdk = await OwnedProcess.RunAsync("dotnet", ["--version"], root, cancellationToken: deadline.Token);
+                NativeWorkflow.Require(sdk.ExitCode == 0);
+                enterpriseSelection = SelectEnterpriseCohort(root, enterpriseCohort!, binding, sdk.Output.Trim());
+            }
             LocalNativeSettings settings = input.Settings;
             NativeWorkflow.Require(settings.AllowLoopbackDevelopmentHttp);
             using var setup = SecretMaterial.FromText(settings.Setup.Token);
@@ -104,6 +119,7 @@ internal static class LocalProfileConformance
             NativeWorkflow.Require(SameBinding(binding, Freeze(root, originals, records)));
             await using var proof = new LocalNativeProof(sandbox, settings, binding,
                 Path.Combine(output, "producer-ledger.jsonl"));
+            if (enterpriseSelection is not null) proof.SelectEnterprise(enterpriseSelection);
             string childReport = Path.Combine(output, "native-report.json");
             LocalNativeReport report = initial with { ProofRun = proof.RunId };
             byte[]? producedBytes = null;
@@ -145,7 +161,15 @@ internal static class LocalProfileConformance
                     if (producedBytes is not null) Array.Clear(producedBytes);
                 }
             }
-            return report;
+            EnterpriseHardeningNativeObservation? enterpriseObservation = null;
+            if (enterpriseSelection is not null)
+            {
+                NativeWorkflow.Require(enterpriseSelection ==
+                    SelectEnterpriseCohort(root, enterpriseCohort!, binding, enterpriseSelection.Sdk));
+                enterpriseObservation = RegisterEnterpriseExecution(proof, enterpriseSelection, binding, report);
+                NativeWorkflow.Require(enterpriseObservation.NativeQualified);
+            }
+            return (report, enterpriseObservation);
 
             async Task Recreate()
             {

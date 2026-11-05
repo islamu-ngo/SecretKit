@@ -5,7 +5,7 @@ using SecretKit.Core;
 namespace SecretKit.Infisical.Conformance.Tests;
 
 /// <summary>Test-only ownership boundary; it never provisions or retries a resource.</summary>
-internal sealed class OwnedSandbox : IDisposable
+internal sealed partial class OwnedSandbox : IDisposable
 {
     internal const string AppDigest = "sha256:c063089e4525b033fe6ab9e6858c3afb395ad38d363dcbfa6cbb6122a99a4eea";
     private readonly SecretMaterial _setupToken;
@@ -45,6 +45,7 @@ internal sealed class OwnedSandbox : IDisposable
         if (pod.ExitCode != 0 || image.ExitCode != 0 || ports.ExitCode != 0)
             throw new InvalidOperationException("The pinned sandbox image or loopback ingress did not match.");
         ObserveInspection(pod.Output, image.Output, ports.Output);
+        RecordNativeInspection(pod.Output, image.Output, ports.Output);
     }
 
     internal void ObserveInspection(string podLabels, string digest, string ingress)

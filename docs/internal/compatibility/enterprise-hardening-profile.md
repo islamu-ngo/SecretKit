@@ -1,7 +1,7 @@
 # Enterprise hardening evidence profile
 
 > **Audience:** Qualification maintainers, operators and evidence reviewers
-> **Status:** Supplemental declaration and content checks; native qualification remains open
+> **Status:** Supplemental declaration, content checks and scoped Infisical owner admission; native qualification remains open
 > **Owner:** SecretKit qualification maintainers
 > **Last verified:** 2026-11-05, local contract/schema inspection; no provider execution
 > **Source anchors:** [profile](enterprise-hardening-profile.json), [schema](enterprise-hardening-profile.schema.json), [ADR-005](../adr/ADR-005-enterprise-hardening-contracts.md)
@@ -129,6 +129,32 @@ Zero means `enterprise-content-consistent-not-qualified`; it grants no native,
 platform or publication qualification. This reader cannot import native authority
 from a report. An older runtime profile accepting its own report does not supply
 the required enterprise principal/policy/effect custody.
+
+The existing owned Infisical producer has a separate in-process admission path
+for **enterprise S24 only**. It retains causal identity/configuration readback,
+allowed and denied policy challenges, the installed child's applied effects,
+the exact report and completed cleanup. Its private certificate belongs to that
+owner and run; a reconstructed object or matching digest cannot replace it.
+Actual sandbox inspection and the real installed producer's private enrollment
+are additionally required for `native-owner-observation`. Controlled fixtures
+return `controlled-owner-observation` and remain non-native.
+
+The selected deployment is the existing pinned IPv4 loopback HTTP sandbox,
+including its actual host-controlled transport and default proxy behavior.
+It does not qualify HTTPS, private CAs, another deployment or other scenarios.
+All historical case and trial denominators remain unchanged. The producer
+rechecks source, original archives, complete cohort and profile bytes after
+execution. See [owner admission](../../../tests/SecretKit.Infisical.Conformance.Tests/Hardening/EnterpriseHardeningNativeProof.cs)
+and [producer](../../../tests/SecretKit.Infisical.Conformance.Tests/Qualification/LocalProfileConformance.cs).
+
+After separately obtaining the existing owned-local native authority and
+protected inputs, set `SECRETKIT_ENTERPRISE_HARDENING_COHORT` to the absolute
+prepared cohort directory and select only
+`/*/*/LocalProfileConformanceTests/InstalledOwnedLocalProfileHasEveryNativeObservation`.
+That existing native parent retains its 21 cases, six supplemental trials and
+cleanup requirements. Missing authority remains a failure; no native execution
+is established by this documentation or by the controlled fixtures. The typed
+owner result is not portable report authority.
 
 Azure positive enterprise admission remains an implementation/design gap in
 addition to missing G2 execution inputs. Existing original-operation registries

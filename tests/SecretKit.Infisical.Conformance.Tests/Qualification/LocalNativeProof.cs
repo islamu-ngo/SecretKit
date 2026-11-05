@@ -8,7 +8,7 @@ namespace SecretKit.Infisical.Conformance.Tests;
 
 // The host and selected setup operator are explicit trust roots. There is no
 // arbitrary-token identity lookup, JWT decoding, public token hash or attestation.
-internal sealed class LocalNativeProof : IAsyncDisposable
+internal sealed partial class LocalNativeProof : IAsyncDisposable
 {
     private readonly OwnedSandbox sandbox;
     private readonly ManagementTransport transport;
@@ -290,6 +290,7 @@ internal sealed class LocalNativeProof : IAsyncDisposable
         actor.Issued = login.Issued!;
         NativeWorkflow.Require(actor.Issued.ExpiresIn == (period > 0 ? period : ttl) &&
             actor.Issued.MaximumTtl == (period > 0 ? 0 : maximum));
+        RecordEnterpriseActor(actor, role, project, otherProject);
         return actor;
     }
 
@@ -488,13 +489,15 @@ internal sealed class LocalNativeProof : IAsyncDisposable
             Ledger.Effect(childUpdate, report.UpdateEffect, acknowledged: true);
         if (childApproval >= 0 && (report.ApprovalEffect != DispatchEvidence.NotDispatched || report.ExecutionCompleted))
             Ledger.Effect(childApproval, report.ApprovalEffect, acknowledged: true);
+        CaptureEnterpriseReport(report);
     }
 
     internal Task<LocalProducerCleanup> CleanupAsync(CancellationToken token) =>
-        Ledger.CleanupAsync((key, ct) => removals[key](ct), token);
+        enterpriseCleanup = Ledger.CleanupAsync((key, ct) => removals[key](ct), token);
 
     public async ValueTask DisposeAsync()
     {
+        enterpriseClosed = true;
         {
             using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
             await CleanupAsync(deadline.Token);
