@@ -14,7 +14,11 @@
     },
     {
       "file": "src/SecretKit.AzureKeyVault.Management/Audit/AuditDiagnostics.cs",
-      "sha256": "ad8a53f85b775ce00619c5c6d66fe68bb40547820971e31502e637908be992b0"
+      "sha256": "d5cc6cd5bfbc828ffc15f6db83752ee16bc0d00986d048bfc627cccec842f229"
+    },
+    {
+      "file": "src/SecretKit.AzureKeyVault.Management/Internal/AzureManagementDiagnostics.cs",
+      "sha256": "3036fade707d6c39d9c92cf1e343faeea01433d4a75152b1f2007932cbec4884"
     },
     {
       "file": "src/SecretKit.AzureKeyVault.Management/Internal/ControlledTransport.cs",
@@ -22,7 +26,7 @@
     },
     {
       "file": "src/SecretKit.AzureKeyVault.Management/Internal/ManagementOperation.cs",
-      "sha256": "ef2a9d75b2192ab715c70af88e0c0b6b77a29e69e1e77363d4957dd0d7f4be20"
+      "sha256": "53af702c2e9c437263bb76a9836b24761bfa6b00fb596278947f02bf3551e59f"
     },
     {
       "file": "src/SecretKit.AzureKeyVault.Management/Internal/OperationSupport.cs",
@@ -42,7 +46,7 @@
     },
     {
       "file": "src/SecretKit.AzureKeyVault.Management/Vaults/VaultAdministration.cs",
-      "sha256": "e9e13297ff721ab95373260917a707e2380940c989e50d594242dce9da2e6f89"
+      "sha256": "e1d9b24999a296b3fa6057e2ebd0ff7e5adb9105b1285647629f774932eb5bf0"
     },
     {
       "file": "src/SecretKit.AzureKeyVault/Internal/AzureDiagnostics.cs",

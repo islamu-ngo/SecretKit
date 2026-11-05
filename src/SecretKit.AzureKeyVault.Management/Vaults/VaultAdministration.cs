@@ -113,6 +113,7 @@ public sealed partial class VaultAdministration
         CancellationToken cancellationToken, int[]? statuses = null, string revision = Revision,
         RequestMethod? method = null) where T : notnull
     {
+        using var observation = new AzureManagementDiagnostics.Observation(AzureDiagnosticOperation.AdministrativeRead, _time, cancellationToken);
         using var deadline = new CancellationTokenSource(_timeout, _time);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
         cancellationToken.ThrowIfCancellationRequested();
@@ -124,26 +125,28 @@ public sealed partial class VaultAdministration
             cancellationToken.ThrowIfCancellationRequested();
             if (transport.LastStatus == 204)
             {
-                return SecretOutcome<T>.Failure(SecretStatus.Absent);
+                return observation.Record(SecretOutcome<T>.Failure(SecretStatus.Absent));
             }
 
-            return SecretOutcome<T>.Success(value);
+            return observation.Record(SecretOutcome<T>.Success(value));
         }
         catch (OperationCanceledException)
         {
+            observation.Cancel(deadline.IsCancellationRequested);
             if (value is NotificationFullUrl fullUrl) fullUrl.Dispose();
             cancellationToken.ThrowIfCancellationRequested();
-            return SecretOutcome<T>.Failure(SecretStatus.Unavailable);
+            return observation.Record(SecretOutcome<T>.Failure(SecretStatus.Unavailable));
         }
         catch (Exception exception)
         {
+            if (deadline.IsCancellationRequested) observation.Cancel(true);
             cancellationToken.ThrowIfCancellationRequested();
             if (transport.LastStatus == 204)
             {
-                return SecretOutcome<T>.Failure(SecretStatus.Absent);
+                return observation.Record(SecretOutcome<T>.Failure(SecretStatus.Absent));
             }
 
-            return SecretOutcome<T>.Failure(ControlledTransport.Failure(exception));
+            return observation.Record(SecretOutcome<T>.Failure(ControlledTransport.Failure(exception)));
         }
     }
 
@@ -188,6 +191,7 @@ public sealed partial class VaultAdministration
     public async ValueTask<SecretOutcome<VaultNameAvailability>> CheckNameAvailabilityAsync(
         SubscriptionScope subscription, string vaultName, CancellationToken cancellationToken = default)
     {
+        using var observation = new AzureManagementDiagnostics.Observation(AzureDiagnosticOperation.NameAvailability, _time, cancellationToken);
         ArgumentNullException.ThrowIfNull(subscription);
         VaultScope.ValidateName(vaultName);
         using var deadline = new CancellationTokenSource(_timeout, _time);
@@ -200,17 +204,19 @@ public sealed partial class VaultAdministration
             var response = await client.GetSubscriptionResource(new ResourceIdentifier(subscription.ResourceId))
                 .CheckKeyVaultNameAvailabilityAsync(new KeyVaultNameAvailabilityContent(vaultName), linked.Token)
                 .ConfigureAwait(false);
-            return SecretOutcome<VaultNameAvailability>.Success(new(response.Value.NameAvailable));
+            return observation.Record(SecretOutcome<VaultNameAvailability>.Success(new(response.Value.NameAvailable)));
         }
         catch (OperationCanceledException)
         {
+            observation.Cancel(deadline.IsCancellationRequested);
             cancellationToken.ThrowIfCancellationRequested();
-            return SecretOutcome<VaultNameAvailability>.Failure(SecretStatus.Unavailable);
+            return observation.Record(SecretOutcome<VaultNameAvailability>.Failure(SecretStatus.Unavailable));
         }
         catch (Exception exception)
         {
+            if (deadline.IsCancellationRequested) observation.Cancel(true);
             cancellationToken.ThrowIfCancellationRequested();
-            return SecretOutcome<VaultNameAvailability>.Failure(ControlledTransport.Failure(exception));
+            return observation.Record(SecretOutcome<VaultNameAvailability>.Failure(ControlledTransport.Failure(exception)));
         }
     }
 
@@ -383,11 +389,12 @@ public sealed partial class VaultAdministration
         Func<ArmClient, ControlledTransport, CancellationToken, Task<T>> dispatch,
         CancellationToken cancellationToken, string revision = Revision) where T : notnull
     {
+        using var observation = new AzureManagementDiagnostics.Observation(AzureDiagnosticOperation.AdministrativeMutation, _time, cancellationToken, receipt);
         ArgumentNullException.ThrowIfNull(receipt);
         if (!ReferenceEquals(receipt.Authority, _authority) || !ReferenceEquals(receipt.Scope, scope) ||
             receipt.Operation != operation || Interlocked.Exchange(ref receipt.Used, 1) != 0)
         {
-            return SecretOutcome<T>.Failure(SecretStatus.Invalid);
+            return observation.Record(SecretOutcome<T>.Failure(SecretStatus.Invalid));
         }
 
         cancellationToken.ThrowIfCancellationRequested();
@@ -399,7 +406,7 @@ public sealed partial class VaultAdministration
             var value = await dispatch(client, transport, linked.Token).ConfigureAwait(false);
             if (receipt.Evidence != DispatchEvidence.PossiblyDispatched)
             {
-                return SecretOutcome<T>.Failure(SecretStatus.Unknown);
+                return observation.Record(SecretOutcome<T>.Failure(SecretStatus.Unknown));
             }
 
             if (value is VaultObservation
@@ -408,7 +415,7 @@ public sealed partial class VaultAdministration
                         NativeProvisioningState.Canceled
                 })
             {
-                return SecretOutcome<T>.Failure(SecretStatus.Unknown);
+                return observation.Record(SecretOutcome<T>.Failure(SecretStatus.Unknown));
             }
 
             var evidence = value is ManagementOperation { State: NativeProvisioningState.Pending } ||
@@ -416,16 +423,18 @@ public sealed partial class VaultAdministration
                 ? DispatchEvidence.Pending : DispatchEvidence.Applied;
             receipt.Record(evidence);
             cancellationToken.ThrowIfCancellationRequested();
-            return SecretOutcome<T>.Success(value);
+            return observation.Record(SecretOutcome<T>.Success(value));
         }
         catch (OperationCanceledException)
         {
+            observation.Cancel(deadline.IsCancellationRequested);
             cancellationToken.ThrowIfCancellationRequested();
-            return SecretOutcome<T>.Failure(receipt.Evidence == DispatchEvidence.PossiblyDispatched
-                ? SecretStatus.Unknown : SecretStatus.Unavailable);
+            return observation.Record(SecretOutcome<T>.Failure(receipt.Evidence == DispatchEvidence.PossiblyDispatched
+                ? SecretStatus.Unknown : SecretStatus.Unavailable));
         }
         catch (Exception exception)
         {
+            if (deadline.IsCancellationRequested) observation.Cancel(true);
             cancellationToken.ThrowIfCancellationRequested();
             if (receipt.Evidence == DispatchEvidence.PossiblyDispatched)
             {
@@ -436,11 +445,11 @@ public sealed partial class VaultAdministration
                 }
                 else
                 {
-                    return SecretOutcome<T>.Failure(SecretStatus.Unknown);
+                    return observation.Record(SecretOutcome<T>.Failure(SecretStatus.Unknown));
                 }
             }
 
-            return SecretOutcome<T>.Failure(ControlledTransport.Failure(exception));
+            return observation.Record(SecretOutcome<T>.Failure(ControlledTransport.Failure(exception)));
         }
     }
 
@@ -632,6 +641,7 @@ public sealed partial class VaultAdministration
         CancellationToken cancellationToken, string revision = Revision, RequestMethod? method = null)
         where TResource : notnull where T : notnull
     {
+        using var observation = new AzureManagementDiagnostics.Observation(AzureDiagnosticOperation.AdministrativeInventory, _time, cancellationToken);
         ArgumentNullException.ThrowIfNull(limits);
         using var deadline = new CancellationTokenSource(limits.Timeout, _time);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
@@ -664,35 +674,37 @@ public sealed partial class VaultAdministration
                     page.Values.Count <= remaining;
                 if (page.ContinuationToken is null && transport.HasContinuation)
                 {
-                    return new(items, false, SecretStatus.Unsupported);
+                    return observation.Record(new ManagementInventory<T>(items, false, SecretStatus.Unsupported));
                 }
 
                 if (complete || pages >= limits.MaximumPages || items.Count >= limits.MaximumItems)
                 {
-                    return new(items, complete, SecretStatus.Success);
+                    return observation.Record(new ManagementInventory<T>(items, complete, SecretStatus.Success));
                 }
             }
 
-            return transport.HasContinuation ? new(items, false, SecretStatus.Unsupported) :
-                new(items, true, SecretStatus.Success);
+            return observation.Record(transport.HasContinuation ? new ManagementInventory<T>(items, false, SecretStatus.Unsupported) :
+                new ManagementInventory<T>(items, true, SecretStatus.Success));
         }
         catch (OperationCanceledException)
         {
+            observation.Cancel(deadline.IsCancellationRequested);
             if (cancellationToken.IsCancellationRequested)
             {
                 foreach (var attribute in items.OfType<NotificationDeliveryAttribute>()) attribute.Dispose();
             }
             cancellationToken.ThrowIfCancellationRequested();
-            return new(items, false, SecretStatus.Unavailable);
+            return observation.Record(new ManagementInventory<T>(items, false, SecretStatus.Unavailable));
         }
         catch (Exception exception)
         {
+            if (deadline.IsCancellationRequested) observation.Cancel(true);
             if (cancellationToken.IsCancellationRequested)
             {
                 foreach (var attribute in items.OfType<NotificationDeliveryAttribute>()) attribute.Dispose();
             }
             cancellationToken.ThrowIfCancellationRequested();
-            return new(items, false, ControlledTransport.Failure(exception));
+            return observation.Record(new ManagementInventory<T>(items, false, ControlledTransport.Failure(exception)));
         }
     }
 

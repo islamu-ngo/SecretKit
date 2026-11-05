@@ -259,6 +259,13 @@ public sealed class AuditDiagnostics
     /// <exception cref="OperationCanceledException">Caller cancellation was observed.</exception>
     public async ValueTask<AuditQueryResult> QueryAsync(AuditQuery query, CancellationToken cancellationToken = default)
     {
+        using var observation = new AzureManagementDiagnostics.Observation(AzureDiagnosticOperation.Audit, _time, cancellationToken);
+        return observation.Record(await QueryCoreAsync(query, observation, cancellationToken).ConfigureAwait(false));
+    }
+
+    private async ValueTask<AuditQueryResult> QueryCoreAsync(AuditQuery query,
+        AzureManagementDiagnostics.Observation? observation, CancellationToken cancellationToken)
+    {
         ArgumentNullException.ThrowIfNull(query);
         cancellationToken.ThrowIfCancellationRequested();
         using var deadline = new CancellationTokenSource(query.Timeout, _time);
@@ -346,11 +353,13 @@ public sealed class AuditDiagnostics
         }
         catch (OperationCanceledException)
         {
+            observation?.Cancel(deadline.IsCancellationRequested);
             cancellationToken.ThrowIfCancellationRequested();
             return new(SecretStatus.Unavailable, [], false, AuditError.Deadline);
         }
         catch (Exception exception)
         {
+            if (deadline.IsCancellationRequested) observation?.Cancel(true);
             cancellationToken.ThrowIfCancellationRequested();
             return new(ControlledTransport.Failure(exception), [], false, AuditError.QueryFailure);
         }
@@ -368,6 +377,7 @@ public sealed class AuditDiagnostics
     public async ValueTask QueryBatchAsync(IReadOnlyList<AuditQuery> queries, AuditBatchProgress progress,
         TimeSpan timeout, CancellationToken cancellationToken = default)
     {
+        using var observation = new AzureManagementDiagnostics.Observation(AzureDiagnosticOperation.AuditBatch, _time, cancellationToken);
         ArgumentNullException.ThrowIfNull(queries);
         ArgumentNullException.ThrowIfNull(progress);
         var selected = queries.ToArray();
@@ -391,13 +401,16 @@ public sealed class AuditDiagnostics
 
             try
             {
-                progress.Record(index, await QueryAsync(selected[index], linked.Token).ConfigureAwait(false));
+                progress.Record(index, await QueryCoreAsync(selected[index], null, linked.Token).ConfigureAwait(false));
             }
             catch (OperationCanceledException)
             {
+                observation.Cancel(deadline.IsCancellationRequested);
                 cancellationToken.ThrowIfCancellationRequested();
                 progress.Record(index, new AuditQueryResult(SecretStatus.Unavailable, [], false, AuditError.Deadline));
             }
         }
+        if (deadline.IsCancellationRequested) observation.Cancel(true);
+        observation.Record(deadline.IsCancellationRequested ? SecretStatus.Unavailable : SecretStatus.Success);
     }
 }

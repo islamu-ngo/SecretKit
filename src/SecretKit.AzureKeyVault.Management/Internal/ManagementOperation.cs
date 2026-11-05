@@ -54,6 +54,7 @@ public sealed class ManagementOperation
     /// <exception cref="OperationCanceledException">Caller cancellation was observed.</exception>
     public async ValueTask<SecretStatus> CheckStatusAsync(CancellationToken cancellationToken = default)
     {
+        using var observation = new AzureManagementDiagnostics.Observation(AzureDiagnosticOperation.StatusCheck, _time, cancellationToken);
         using var deadline = new CancellationTokenSource(_timeout, _time);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
         bool entered = false;
@@ -64,7 +65,7 @@ public sealed class ManagementOperation
             if (_validatedSuccess || State is NativeProvisioningState.Failed or NativeProvisioningState.Canceled)
             {
                 linked.Token.ThrowIfCancellationRequested();
-                return _validatedSuccess ? SecretStatus.Success : SecretStatus.Unknown;
+                return observation.Record(_validatedSuccess ? SecretStatus.Success : SecretStatus.Unknown);
             }
 
             _transport.CheckingStatus = true;
@@ -79,40 +80,42 @@ public sealed class ManagementOperation
             if (_transport.LastOperationState is NativeProvisioningState.Failed or NativeProvisioningState.Canceled)
             {
                 State = _transport.LastOperationState;
-                return SecretStatus.Unknown;
+                return observation.Record(SecretStatus.Unknown);
             }
 
             if (!_hasCompleted())
             {
-                return SecretStatus.Pending;
+                return observation.Record(SecretStatus.Pending);
             }
 
             if (_validateValue is not null && !_validateValue())
             {
-                return SecretStatus.Unknown;
+                return observation.Record(SecretStatus.Unknown);
             }
 
             linked.Token.ThrowIfCancellationRequested();
             State = NativeProvisioningState.Succeeded;
             _validatedSuccess = true;
-            return SecretStatus.Success;
+            return observation.Record(SecretStatus.Success);
         }
         catch (OperationCanceledException)
         {
+            observation.Cancel(deadline.IsCancellationRequested);
             if (entered && _transport.LastOperationState != NativeProvisioningState.Unknown)
                 State = _transport.LastOperationState;
             cancellationToken.ThrowIfCancellationRequested();
-            return SecretStatus.Unavailable;
+            return observation.Record(SecretStatus.Unavailable);
         }
         catch (Exception exception)
         {
+            if (deadline.IsCancellationRequested) observation.Cancel(true);
             if (entered && _transport.LastOperationState != NativeProvisioningState.Unknown)
             {
                 State = _transport.LastOperationState;
             }
 
             cancellationToken.ThrowIfCancellationRequested();
-            return deadline.IsCancellationRequested ? SecretStatus.Unavailable : ControlledTransport.Failure(exception);
+            return observation.Record(deadline.IsCancellationRequested ? SecretStatus.Unavailable : ControlledTransport.Failure(exception));
         }
         finally
         {
