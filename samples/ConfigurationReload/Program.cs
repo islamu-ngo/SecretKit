@@ -15,7 +15,9 @@ await using var clients = new SecretGenerationCoordinator<DemoClient>(reader, re
     {
         using SecretRead read = snapshot.Read("credential");
         return ValueTask.FromResult(SecretOutcome<DemoClient>.Success(new(read.Material.Copy())));
-    }, SecretGenerationStalePolicy.FailClosed, TimeSpan.FromMinutes(5), TimeProvider.System);
+    }, SecretGenerationStalePolicy.FailClosed, TimeSpan.FromMinutes(5), TimeProvider.System,
+    new SecretCollectionOptions(maximumConcurrency: 2, maximumSelections: 16,
+        maximumMaterialBytes: 64 * 1024, collectionTimeout: TimeSpan.FromSeconds(10)));
 if (!(await clients.EnableAsync()).Active) throw new InvalidOperationException("Initial activation failed.");
 await using var previous = clients.Acquire() ?? throw new InvalidOperationException("No active generation.");
 using var replacement = SecretMaterial.FromText("offline-generation-two");

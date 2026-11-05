@@ -52,6 +52,7 @@ public sealed class SecretGenerationCoordinator<TClient> : IAsyncDisposable wher
     private readonly TimeProvider _time;
     private readonly TimeSpan _maxAge;
     private readonly SecretGenerationStalePolicy _policy;
+    private readonly SecretCollectionOptions _collectionOptions;
     private SecretClientGeneration<TClient>? _current;
     private long _desiredRevision;
     private long _observedRevision;
@@ -70,11 +71,13 @@ public sealed class SecretGenerationCoordinator<TClient> : IAsyncDisposable wher
     /// <param name="stalePolicy">Treatment of the accepted generation when a new attempt fails.</param>
     /// <param name="maximumAge">Positive maximum lifetime, bounded further by secret expiry.</param>
     /// <param name="clock">Clock used for collection and operation admission.</param>
+    /// <param name="collectionOptions">Immutable collection bounds; null selects the documented defaults.</param>
     public SecretGenerationCoordinator(ISecretReader intendedReader,
         IReadOnlyDictionary<string, SecretReference> requiredKeys,
         Func<SecretSnapshotHandle, CancellationToken,
             ValueTask<SecretOutcome<TClient>>> validate,
-        SecretGenerationStalePolicy stalePolicy, TimeSpan maximumAge, TimeProvider clock)
+        SecretGenerationStalePolicy stalePolicy, TimeSpan maximumAge, TimeProvider clock,
+        SecretCollectionOptions? collectionOptions = null)
     {
         ArgumentNullException.ThrowIfNull(intendedReader);
         ArgumentNullException.ThrowIfNull(requiredKeys);
@@ -82,10 +85,11 @@ public sealed class SecretGenerationCoordinator<TClient> : IAsyncDisposable wher
         ArgumentNullException.ThrowIfNull(clock);
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(maximumAge, TimeSpan.Zero);
         if (!Enum.IsDefined(stalePolicy)) throw new ArgumentOutOfRangeException(nameof(stalePolicy));
+        _collectionOptions = collectionOptions ?? new();
         _selections = requiredKeys.Select(pair =>
             new SecretSelection(pair.Key, intendedReader, pair.Value)).ToArray();
         // Validate the complete mapping before any read or application construction.
-        using var mappingCheck = new SecretSnapshotLoader(_selections, clock);
+        using var mappingCheck = new SecretSnapshotLoader(_selections, clock, _collectionOptions);
         _validate = validate;
         _policy = stalePolicy;
         _maxAge = maximumAge;
@@ -164,7 +168,7 @@ public sealed class SecretGenerationCoordinator<TClient> : IAsyncDisposable wher
         {
             lock (_gate)
                 if (_disposed || revision != _desiredRevision) return ObserveLocked();
-            using var loader = new SecretSnapshotLoader(_selections, _time);
+            using var loader = new SecretSnapshotLoader(_selections, _time, _collectionOptions);
             SecretOutcome<long> collection = await loader.RefreshAsync(cancellationToken).ConfigureAwait(false);
             status = collection.Status;
             if (collection.IsSuccess)

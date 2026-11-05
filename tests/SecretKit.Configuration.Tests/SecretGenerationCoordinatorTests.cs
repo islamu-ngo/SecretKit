@@ -121,6 +121,85 @@ public sealed class SecretGenerationCoordinatorTests
         }
     }
 
+    [Test]
+    public async Task SelectedMappingLimitRejectsConstructionBeforeReading()
+    {
+        var reader = new Reader();
+        await Assert.That(() => Controlled(reader, new(maximumSelections: 1), TimeProvider.System))
+            .Throws<ArgumentException>();
+        await Assert.That(reader.Reads).IsEqualTo(0);
+    }
+
+    [Test]
+    public async Task SelectedConcurrencyAdmitsTwoReadsBeforeEitherCompletes()
+    {
+        var both = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        int entered = 0;
+        var reader = new Reader
+        {
+            BeforeRead = async _ =>
+            {
+                if (Interlocked.Increment(ref entered) == 2) both.SetResult();
+                await release.Task;
+            }
+        };
+        await using var coordinator = Controlled(reader, new(maximumConcurrency: 2), TimeProvider.System);
+        var pending = coordinator.EnableAsync().AsTask();
+        try
+        {
+            await both.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await Assert.That(pending.IsCompleted).IsFalse();
+        }
+        finally { release.TrySetResult(); }
+        await Assert.That((await pending.WaitAsync(TimeSpan.FromSeconds(10))).Active).IsTrue();
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task SelectedPayloadLimitPreventsCandidateActivation(bool checkOnly)
+    {
+        var reader = new Reader { Text = new string('x', 2000) };
+        await using var coordinator = Controlled(reader, new(maximumMaterialBytes: 1024), TimeProvider.System);
+        var result = await (checkOnly ? coordinator.CheckAgainAsync() : coordinator.EnableAsync());
+        await Assert.That(result.LastStatus).IsEqualTo(SecretStatus.Invalid);
+        await Assert.That(coordinator.Acquire()).IsNull();
+        await Assert.That(() => reader.LastMaterial!.Reveal()).Throws<ObjectDisposedException>();
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task SelectedDeadlineRejectsLateReaderForEitherCollectionEntrypoint(bool checkOnly)
+    {
+        var time = new CollectionTime();
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var reader = new Reader
+        {
+            BeforeRead = async _ => { entered.TrySetResult(); await release.Task; }
+        };
+        await using var coordinator = Controlled(reader, new(collectionTimeout: TimeSpan.FromSeconds(2)), time);
+        var pending = (checkOnly ? coordinator.CheckAgainAsync() : coordinator.EnableAsync()).AsTask();
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        time.Advance(TimeSpan.FromSeconds(3));
+        release.SetResult();
+        var result = await pending.WaitAsync(TimeSpan.FromSeconds(10));
+        await Assert.That(result.LastStatus).IsEqualTo(SecretStatus.Unavailable);
+        await Assert.That(coordinator.Acquire()).IsNull();
+        await Assert.That(() => reader.LastMaterial!.Reveal()).Throws<ObjectDisposedException>();
+    }
+
+    private static SecretGenerationCoordinator<Client> Controlled(Reader reader,
+        SecretCollectionOptions options, TimeProvider time) => new(reader,
+            new Dictionary<string, SecretReference>
+            {
+                ["first"] = new(reader.Authority, new Address()),
+                ["second"] = new(reader.Authority, new Address())
+            }, static (_, _) => ValueTask.FromResult(SecretOutcome<Client>.Success(new Client())),
+            SecretGenerationStalePolicy.FailClosed, TimeSpan.FromHours(1), time, options);
+
     private static SecretGenerationCoordinator<Client> Create(
         Func<SecretSnapshotHandle, CancellationToken, ValueTask<SecretOutcome<Client>>> validate)
     {
@@ -146,14 +225,22 @@ public sealed class SecretGenerationCoordinatorTests
     private sealed class Address : SecretAddress;
     private sealed class Reader : ISecretReader
     {
+        private int _reads;
+        internal int Reads => Volatile.Read(ref _reads);
+        internal string Text { get; init; } = "synthetic-value";
+        internal SecretMaterial? LastMaterial { get; private set; }
+        internal Func<CancellationToken, Task>? BeforeRead { get; init; }
         public SecretAuthority Authority { get; } = new();
-        public ValueTask<SecretOutcome<SecretRead>> ReadAsync(SecretReference reference,
+        public async ValueTask<SecretOutcome<SecretRead>> ReadAsync(SecretReference reference,
             CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            return ValueTask.FromResult(SecretOutcome<SecretRead>.Success(new(
-                SecretMaterial.FromText("synthetic-value"),
-                new SecretObservation(reference, null, DateTimeOffset.UtcNow, SecretValidity.Valid))));
+            Interlocked.Increment(ref _reads);
+            if (BeforeRead is not null) await BeforeRead(cancellationToken);
+            var material = SecretMaterial.FromText(Text);
+            LastMaterial = material;
+            return SecretOutcome<SecretRead>.Success(new(material,
+                new SecretObservation(reference, null, DateTimeOffset.UtcNow, SecretValidity.Valid)));
         }
     }
 }
