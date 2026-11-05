@@ -13,6 +13,13 @@ public static class Program
             if (args is ["verification", "ordinary" or "offline-conformance" or "public-install"])
                 return await Verification.RunAsync(Directory.GetCurrentDirectory(), args[1]);
 
+            if (args is ["admission-refresh-sources", string admissionSource, string admissionInventory])
+            {
+                AdmissionSourceRefresh.Refresh(admissionSource, admissionInventory);
+                Console.WriteLine("admission-sources-refreshed-policy-unchanged");
+                return 0;
+            }
+
             if (args is ["local-demo-prepare", string demoSource, string demoOriginals,
                 string demoQualification, string demoOutput, string demoCommit, string demoRun,
                 string demoAttempt, string demoSdk])
