@@ -78,43 +78,90 @@ public sealed class InfisicalAuthenticationMaintenance : IHostedService, IHealth
     /// <exception cref="ObjectDisposedException">The helper has stopped and cannot be restarted.</exception>
     public Task StartAsync(CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        TaskCompletionSource? worker = null;
-        lock (_gate)
+        var started = HostingDiagnosticStart.Capture(_session.TimeProvider);
+        var completed = new HostingCompletion(SecretStatus.Unknown, SecretFailureReason.None,
+            HostingTermination.Faulted, HostingLifecycleState.Unknown);
+        try
         {
-            ObjectDisposedException.ThrowIf(_stopped, this);
-            if (_worker is null)
+            cancellationToken.ThrowIfCancellationRequested();
+            TaskCompletionSource? worker = null;
+            lock (_gate)
             {
-                worker = new(TaskCreationOptions.RunContinuationsAsynchronously);
-                _worker = worker.Task;
+                completed = completed with { State = _stopped ? HostingLifecycleState.Stopped : HostingLifecycleState.Started };
+                ObjectDisposedException.ThrowIf(_stopped, this);
+                if (_worker is null)
+                {
+                    worker = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                    _worker = worker.Task;
+                }
             }
+            if (worker is not null) _ = RunMaintenanceAsync(worker);
+            completed = completed with { Outcome = SecretStatus.Success, Termination = HostingTermination.Completed };
+            return Task.CompletedTask;
         }
-        if (worker is not null) _ = RunMaintenanceAsync(worker);
-        return Task.CompletedTask;
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            lock (_gate)
+                completed = completed with
+                {
+                    Termination = HostingTermination.CallerCanceled,
+                    State = _stopped ? HostingLifecycleState.Stopped :
+                        _worker is null ? HostingLifecycleState.NotStarted : HostingLifecycleState.Started
+                };
+            throw;
+        }
+        finally
+        {
+            HostingDiagnostics.Emit(HostingOperation.MaintenanceStart, completed, started?.Complete(_session.TimeProvider));
+        }
     }
 
     private async Task RunMaintenanceAsync(TaskCompletionSource completion)
     {
+        var started = HostingDiagnosticStart.Capture(_session.TimeProvider);
+        var completed = new HostingCompletion(SecretStatus.Unknown, SecretFailureReason.None,
+            HostingTermination.Faulted, HostingLifecycleState.Unknown);
+        bool faulted = false;
         try
         {
-            await MaintainAsync().ConfigureAwait(false);
-            completion.TrySetResult();
+            completed = await MaintainAsync().ConfigureAwait(false);
         }
-        catch (Exception)
-        {
+        catch (Exception) { faulted = true; }
+        // Cancellation notification can complete this await inline. Leave its
+        // stack before signaling the tracked worker or invoking host listeners.
+        await Task.CompletedTask.ConfigureAwait(ConfigureAwaitOptions.ForceYielding);
+        var interval = started?.Complete(_session.TimeProvider);
+        if (faulted)
             completion.TrySetException(new InvalidOperationException("Authentication maintenance failed."));
+        else
+            completion.TrySetResult();
+        Task? stopping;
+        lock (_gate) stopping = _stopTask;
+        if (stopping is not null)
+        {
+            // Worker ownership is already released. Let the existing stop owner
+            // fix its interval before this worker's listeners can run.
+            try { await stopping.ConfigureAwait(false); }
+            catch (Exception) { } // Its latched failure remains on the stop task.
         }
+        HostingDiagnostics.Emit(HostingOperation.Maintenance, completed, interval);
     }
 
-    private async Task MaintainAsync()
+    private async Task<HostingCompletion> MaintainAsync()
     {
         try
         {
             while (!_stop.IsCancellationRequested)
             {
-                if (_session.State is InfisicalTokenSessionState.Expired or
-                    InfisicalTokenSessionState.RecoveryRequired or InfisicalTokenSessionState.Stopped)
-                    return;
+                InfisicalTokenSessionState state = _session.State;
+                if (state == InfisicalTokenSessionState.Expired)
+                    return new(SecretStatus.Expired, SecretFailureReason.None,
+                        HostingTermination.Completed, HostingLifecycleState.Expired);
+                if (state == InfisicalTokenSessionState.RecoveryRequired)
+                    return new(SecretStatus.RecoveryRequired, SecretFailureReason.None,
+                        HostingTermination.Completed, HostingLifecycleState.RecoveryRequired);
+                if (state == InfisicalTokenSessionState.Stopped)
+                    break;
                 TimeSpan delay = _session.RenewalDueAt - _session.TimeProvider.GetUtcNow();
                 if (delay > TimeSpan.Zero)
                 {
@@ -125,11 +172,15 @@ public sealed class InfisicalAuthenticationMaintenance : IHostedService, IHealth
                     continue;
                 }
                 SecretStatus outcome = await _session.RenewAsync(_stop.Token).ConfigureAwait(false);
-                if (outcome != SecretStatus.Success) return;
+                if (outcome != SecretStatus.Success)
+                    return new(outcome, SecretFailureReason.None,
+                        HostingTermination.Completed, HostingLifecycleState.RecoveryRequired);
             }
         }
         catch (OperationCanceledException) when (_stop.IsCancellationRequested) { }
         catch (ObjectDisposedException) when (_session.State == InfisicalTokenSessionState.Stopped) { }
+        return new(SecretStatus.Unknown, SecretFailureReason.None,
+            HostingTermination.ShutdownCanceled, HostingLifecycleState.Stopped);
     }
 
     /// <summary>Stops scheduling and the selected session generation using one latched shutdown attempt.</summary>
@@ -141,6 +192,7 @@ public sealed class InfisicalAuthenticationMaintenance : IHostedService, IHealth
     /// <exception cref="OperationCanceledException">This caller canceled its wait.</exception>
     public Task StopAsync(CancellationToken cancellationToken)
     {
+        var started = HostingDiagnosticStart.Capture(_session.TimeProvider);
         TaskCompletionSource? completion = null;
         Task? worker = null;
         Task stop;
@@ -155,11 +207,23 @@ public sealed class InfisicalAuthenticationMaintenance : IHostedService, IHealth
             }
             stop = _stopTask;
         }
-        if (completion is not null) _ = StopCoreAsync(worker, completion);
-        return stop.WaitAsync(cancellationToken);
+        if (completion is not null) _ = StopCoreAsync(worker, completion, started);
+        return cancellationToken.CanBeCanceled ? WaitForStopAsync(stop, started, cancellationToken) : stop;
     }
 
-    private async Task StopCoreAsync(Task? worker, TaskCompletionSource completion)
+    private async Task WaitForStopAsync(Task stop, HostingDiagnosticStart? started, CancellationToken cancellationToken)
+    {
+        try { await stop.WaitAsync(cancellationToken).ConfigureAwait(false); }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            HostingDiagnostics.Emit(HostingOperation.MaintenanceStop,
+                new(SecretStatus.Unknown, SecretFailureReason.None, HostingTermination.CallerCanceled, HostingLifecycleState.Stopped),
+                started?.Complete(_session.TimeProvider));
+            throw;
+        }
+    }
+
+    private async Task StopCoreAsync(Task? worker, TaskCompletionSource completion, HostingDiagnosticStart? started)
     {
         var cleanup = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         Task<bool> bounded = cleanup.Task.WaitAsync(_shutdownTimeout, _session.TimeProvider);
@@ -182,17 +246,30 @@ public sealed class InfisicalAuthenticationMaintenance : IHostedService, IHealth
                 cleanup.TrySetResult(succeeded);
             }
         });
+        var completed = new HostingCompletion(SecretStatus.Unknown, SecretFailureReason.None,
+            HostingTermination.Faulted, HostingLifecycleState.Stopped);
+        Exception? failure = null;
         try
         {
             if (await bounded.ConfigureAwait(false))
-                completion.TrySetResult();
+                completed = completed with { Outcome = SecretStatus.Success, Termination = HostingTermination.Completed };
             else
-                completion.TrySetException(new InvalidOperationException("Authentication maintenance shutdown failed."));
+                failure = new InvalidOperationException("Authentication maintenance shutdown failed.");
         }
         catch (TimeoutException)
         {
-            completion.TrySetException(new TimeoutException("Authentication maintenance shutdown timed out."));
+            completed = completed with
+            {
+                Outcome = SecretStatus.Unavailable,
+                Reason = SecretFailureReason.DeadlineExceeded,
+                Termination = HostingTermination.DeadlineExceeded
+            };
+            failure = new TimeoutException("Authentication maintenance shutdown timed out.");
         }
+        var interval = started?.Complete(_session.TimeProvider);
+        if (failure is null) completion.TrySetResult();
+        else completion.TrySetException(failure);
+        HostingDiagnostics.Emit(HostingOperation.MaintenanceStop, completed, interval);
     }
 
     /// <summary>Maps Ready to healthy, due/renewing to degraded and every other state to unhealthy.</summary>
