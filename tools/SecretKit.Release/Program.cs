@@ -20,6 +20,11 @@ public static class Program
                 return 0;
             }
 
+            if (args is ["dependency-audit", string auditTarget, string auditOutput])
+                return await DependencyAudit.RunAsync(Directory.GetCurrentDirectory(), auditTarget, auditOutput);
+            if (args is ["dependency-audit-installed", string assetsPath, string installedOutput])
+                return await DependencyAudit.RunInstalledAsync(Directory.GetCurrentDirectory(), assetsPath, installedOutput);
+
             if (args is ["local-demo-prepare", string demoSource, string demoOriginals,
                 string demoQualification, string demoOutput, string demoCommit, string demoRun,
                 string demoAttempt, string demoSdk])
