@@ -453,6 +453,69 @@ public sealed class RotationOutcomeTests
         await Assert.That(() => tokens.LastCopy!.Reveal()).Throws<ObjectDisposedException>();
     }
 
+    [Test]
+    [Arguments("owned")]
+    [Arguments("handler")]
+    [Arguments("client")]
+    public async Task DisposedClientRejectsEveryEntrypointBeforeCredentialsAndPreservesBorrowedResources(string transport)
+    {
+        using var wire = new RotationWire();
+        using var http = new HttpClient(wire, disposeHandler: false);
+        bool acquired = false;
+        using var tokens = new Tokens { Forbidden = true, OnAcquire = () => acquired = true };
+        var authority = new SecretAuthority();
+        var network = transport switch
+        {
+            "owned" => new InfisicalNetworkOptions(),
+            "handler" => new() { Transport = InfisicalTransportOptions.HostControlled(wire) },
+            _ => new() { Transport = InfisicalTransportOptions.HostControlled(http) }
+        };
+        using var client = new InfisicalRotationClient(new("https://rotation.example"), authority,
+            new(authority, tokens, "private-project"), network);
+        var target = Target(client);
+        client.Dispose();
+        client.Dispose();
+        await Assert.That(async () => await client.ListAsync(new(authority,
+            new InfisicalRotationScope("private-project")))).Throws<ObjectDisposedException>();
+        await Assert.That(async () => await client.GetAsync(target)).Throws<ObjectDisposedException>();
+        var rotate = new InfisicalRotationReceipt(target, InfisicalRotationAction.RotateSecrets);
+        await Assert.That(async () => await client.RotateSecretsAsync(target, rotate)).Throws<ObjectDisposedException>();
+        var automatic = new InfisicalRotationReceipt(target, InfisicalRotationAction.EnableAutomaticRotation);
+        await Assert.That(async () => await client.SetAutomaticRotationAsync(target, true, automatic))
+            .Throws<ObjectDisposedException>();
+        await Assert.That(acquired).IsFalse();
+        await Assert.That(rotate.Dispatch).IsEqualTo(InfisicalRotationDispatch.NotDispatched);
+        await Assert.That(automatic.Dispatch).IsEqualTo(InfisicalRotationDispatch.NotDispatched);
+        if (transport != "owned")
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get,
+                "https://rotation.example/api/v2/secret-rotations?projectId=private-project");
+            request.Headers.Authorization = new("Bearer", "private-token");
+            using var response = await http.SendAsync(request);
+            await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.OK);
+        }
+    }
+
+    [Test]
+    public async Task AdmittedRotationCanSettleAfterDisposalWhileLaterAdmissionIsClosed()
+    {
+        using var wire = new RotationWire { HoldResponse = true };
+        using var http = new HttpClient(wire);
+        using var tokens = new Tokens();
+        using var client = Client(http, tokens);
+        var target = Target(client);
+        var receipt = new InfisicalRotationReceipt(target, InfisicalRotationAction.RotateSecrets);
+        var pending = client.RotateSecretsAsync(target, receipt).AsTask();
+        await wire.Committed.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        client.Dispose();
+        wire.Release.SetResult();
+        var result = await pending.WaitAsync(TimeSpan.FromSeconds(10));
+        await Assert.That(result.IsSuccess).IsTrue();
+        await Assert.That(receipt.Effect).IsEqualTo(InfisicalRotationEffect.AcceptedPending);
+        await Assert.That(wire.Rotations).IsEqualTo(1);
+        await Assert.That(async () => await client.GetAsync(target)).Throws<ObjectDisposedException>();
+    }
+
     private static InfisicalRotationClient Client(HttpClient http, Tokens tokens, int responseLimit = 4096,
         string? environment = null, string? path = null)
     {

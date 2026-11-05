@@ -390,7 +390,7 @@
     },
     {
       "file": "src/SecretKit.Infisical/Rotation/InfisicalRotationClient.cs",
-      "sha256": "8404b0e498bc5e9d1ff07fd924eec4e0998e13cf3a66d13ccb9552f580449e32"
+      "sha256": "bfc209b93659f550b728ce79f351972eaae9f5f9c66f03e3f0a2b4cabd6401c4"
     },
     {
       "file": "src/SecretKit.Infisical/Rotation/InfisicalRotationModels.cs",

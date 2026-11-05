@@ -20,6 +20,7 @@ public sealed class InfisicalRotationClient : IDisposable
     private readonly int _maximumResponseBytes;
     private readonly TimeSpan _operationTimeout;
     private readonly TimeProvider _time;
+    private int _disposed;
 
     /// <summary>Creates a fixed-origin rotation client bound to explicit local and administrative authority, without I/O.</summary>
     public InfisicalRotationClient(Uri trustedOrigin,
@@ -48,14 +49,19 @@ public sealed class InfisicalRotationClient : IDisposable
     /// <summary>The exact local authority required by rotation references; not a server permission grant.</summary>
     public SecretAuthority Authority { get; }
 
-    /// <summary>Disposes SDK-owned transport resources, never the host's client or handler.</summary>
-    public void Dispose() => _binding.Dispose();
+    /// <summary>Closes new operation admission before disposing SDK-owned transport resources, never the host's client or handler.</summary>
+    /// <remarks>Previously admitted work may settle under its existing budget; disposal does not promise to drain it.</remarks>
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) == 0) _binding.Dispose();
+    }
 
     /// <summary>Observes bounded native rotation metadata for an explicitly authorized project scope.</summary>
     /// <remarks>Completeness reflects local response coverage; no pagination or operation completion is invented.</remarks>
     public async ValueTask<SecretOutcome<InfisicalNativeList<InfisicalRotationProgress>>> ListAsync(
         SecretReference scope, int maximumItems = 128, CancellationToken cancellationToken = default)
     {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         return await InfisicalOperationBudget.RunAsync(_operationTimeout, _time, cancellationToken,
             InfisicalOperation.Rotation, ExecuteAsync).ConfigureAwait(false);
 
@@ -126,6 +132,7 @@ public sealed class InfisicalRotationClient : IDisposable
         InfisicalRotationAction? action, InfisicalRotationReceipt? receipt,
         InfisicalRotationPrecondition precondition, CancellationToken cancellationToken)
     {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         return await InfisicalOperationBudget.RunAsync(_operationTimeout, _time, cancellationToken,
             InfisicalOperation.Rotation, ExecuteAsync, () => receipt?.Dispatch switch { InfisicalRotationDispatch.ResponseUnknown => DispatchEvidence.PossiblyDispatched, InfisicalRotationDispatch.ResponseObserved => DispatchEvidence.Applied, InfisicalRotationDispatch.Rejected => DispatchEvidence.Rejected, _ => DispatchEvidence.NotDispatched }).ConfigureAwait(false);
 
