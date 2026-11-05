@@ -117,7 +117,7 @@ public sealed class GateEvidenceTests
         File.WriteAllText(Path.Combine(offline, "checks.txt"),
             $"purpose=offline-verification\nsource={TestBundle.Commit}\nversion={TestBundle.Version}\n" +
             "restore=success\nbuild=success\npack=success\ntests=success\nsamples=success\n");
-        File.WriteAllText(Path.Combine(offline, "sdk.txt"), "10.0.302\n");
+        File.WriteAllText(Path.Combine(offline, "sdk.txt"), "10.0.403\n");
         File.WriteAllLines(Path.Combine(offline, "packages.sha256"),
             bundle.Data.Packages.Select(p => $"{p.Sha256}  {p.File}"));
         // Even independently successful canonical verify.yml metadata cannot

@@ -117,7 +117,7 @@ public static class WorkflowPolicy
         int tests = Array.FindIndex(producer, s => s.TryGetProperty("id", out JsonElement id) && id.GetString() == "demo_tests");
         Guard.Require(local >= 0 && prepare > local && upload > prepare && tests > upload,
             "demo-producer-order");
-        const string context = "\"$GITHUB_SHA\" \"$GITHUB_RUN_ID\" \"$GITHUB_RUN_ATTEMPT\" 10.0.302";
+        const string context = "\"$GITHUB_SHA\" \"$GITHUB_RUN_ID\" \"$GITHUB_RUN_ATTEMPT\" 10.0.403";
         string preparation = producer[prepare].GetProperty("run").GetString()!;
         Guard.Require(!producer[prepare].TryGetProperty("if", out _) &&
             !producer[upload].TryGetProperty("if", out _) && !producer[tests].TryGetProperty("if", out _) &&
@@ -161,7 +161,7 @@ public static class WorkflowPolicy
                     "${{ github.workspace }}/artifacts/demo-inputs/originals" &&
                 environment.GetProperty("SECRETKIT_DEMO_STAGED_LOCK_DIRECTORY").GetString() ==
                     "${{ github.workspace }}/artifacts/demo-inputs" &&
-                environment.GetProperty("SECRETKIT_DEMO_SDK").GetString() == "10.0.302",
+                environment.GetProperty("SECRETKIT_DEMO_SDK").GetString() == "10.0.403",
                 "demo-selectors");
         }
         foreach (JsonElement step in new[] { producer[tests], Step(consumers, "test") })

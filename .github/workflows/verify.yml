@@ -16,7 +16,7 @@
         },
         {
           "uses": "actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9",
-          "with": { "dotnet-version": "10.0.302" }
+          "with": { "dotnet-version": "10.0.403" }
         },
         {
           "run": "dotnet restore SecretKit.slnx --locked-mode\ndotnet format SecretKit.slnx --verify-no-changes --no-restore --verbosity quiet"
@@ -44,7 +44,7 @@
         },
         {
           "uses": "actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9",
-          "with": { "dotnet-version": "10.0.302" }
+          "with": { "dotnet-version": "10.0.403" }
         },
         {
           "id": "proposal",
@@ -128,7 +128,7 @@
         },
         {
           "id": "demo_inputs",
-          "run": "dotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll local-demo-prepare . artifacts/local-originals artifacts/verification/local/qualification artifacts/demo-inputs \"$GITHUB_SHA\" \"$GITHUB_RUN_ID\" \"$GITHUB_RUN_ATTEMPT\" 10.0.302\ndotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll local-demo-check . artifacts/demo-inputs \"$GITHUB_SHA\" \"$GITHUB_RUN_ID\" \"$GITHUB_RUN_ATTEMPT\" 10.0.302"
+          "run": "dotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll local-demo-prepare . artifacts/local-originals artifacts/verification/local/qualification artifacts/demo-inputs \"$GITHUB_SHA\" \"$GITHUB_RUN_ID\" \"$GITHUB_RUN_ATTEMPT\" 10.0.403\ndotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll local-demo-check . artifacts/demo-inputs \"$GITHUB_SHA\" \"$GITHUB_RUN_ID\" \"$GITHUB_RUN_ATTEMPT\" 10.0.403"
         },
         {
           "id": "demo_bundle",
@@ -146,7 +146,7 @@
             "SECRETKIT_DEMO_CANDIDATE_VERSION": "0.1.0-local.20261024.1",
             "SECRETKIT_DEMO_CANDIDATE_DIRECTORY": "${{ github.workspace }}/artifacts/demo-inputs/originals",
             "SECRETKIT_DEMO_STAGED_LOCK_DIRECTORY": "${{ github.workspace }}/artifacts/demo-inputs",
-            "SECRETKIT_DEMO_SDK": "10.0.302",
+            "SECRETKIT_DEMO_SDK": "10.0.403",
             "SECRETKIT_DEMO_INSTALL_REPORTS": "${{ github.workspace }}/artifacts/verification/local/demos"
           },
           "run": "dotnet tests/SecretKit.Demo.Tests/bin/Release/net10.0/SecretKit.Demo.Tests.dll --minimum-expected-tests 65 --zero-tests-policy strict --maximum-parallel-tests 2 --report-trx --results-directory artifacts/verification/local/demo-tests"
@@ -206,7 +206,7 @@
         },
         {
           "uses": "actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9",
-          "with": { "dotnet-version": "10.0.302" }
+          "with": { "dotnet-version": "10.0.403" }
         },
         {
           "uses": "actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333",
@@ -255,7 +255,7 @@
         "SECRETKIT_DEMO_CANDIDATE_VERSION": "0.1.0-local.20261024.1",
         "SECRETKIT_DEMO_CANDIDATE_DIRECTORY": "${{ github.workspace }}/artifacts/demo-inputs/originals",
         "SECRETKIT_DEMO_STAGED_LOCK_DIRECTORY": "${{ github.workspace }}/artifacts/demo-inputs",
-        "SECRETKIT_DEMO_SDK": "10.0.302",
+        "SECRETKIT_DEMO_SDK": "10.0.403",
         "SECRETKIT_DEMO_INSTALL_REPORTS": "${{ github.workspace }}/artifacts/verification/demos/${{ matrix.platform }}/installations"
       },
       "steps": [
@@ -266,7 +266,7 @@
         },
         {
           "uses": "actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9",
-          "with": { "dotnet-version": "10.0.302" }
+          "with": { "dotnet-version": "10.0.403" }
         },
         {
           "uses": "actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333",
@@ -281,11 +281,11 @@
         },
         {
           "id": "check",
-          "run": "dotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll local-demo-check . artifacts/demo-inputs \"$GITHUB_SHA\" \"$GITHUB_RUN_ID\" \"$GITHUB_RUN_ATTEMPT\" 10.0.302"
+          "run": "dotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll local-demo-check . artifacts/demo-inputs \"$GITHUB_SHA\" \"$GITHUB_RUN_ID\" \"$GITHUB_RUN_ATTEMPT\" 10.0.403"
         },
         {
           "id": "test",
-          "run": "dotnet tests/SecretKit.Demo.Tests/bin/Release/net10.0/SecretKit.Demo.Tests.dll --minimum-expected-tests 65 --zero-tests-policy strict --maximum-parallel-tests 2 --report-trx --results-directory \"artifacts/verification/demos/${{ matrix.platform }}/tests\"\ndotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll local-demo-check . artifacts/demo-inputs \"$GITHUB_SHA\" \"$GITHUB_RUN_ID\" \"$GITHUB_RUN_ATTEMPT\" 10.0.302"
+          "run": "dotnet tests/SecretKit.Demo.Tests/bin/Release/net10.0/SecretKit.Demo.Tests.dll --minimum-expected-tests 65 --zero-tests-policy strict --maximum-parallel-tests 2 --report-trx --results-directory \"artifacts/verification/demos/${{ matrix.platform }}/tests\"\ndotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll local-demo-check . artifacts/demo-inputs \"$GITHUB_SHA\" \"$GITHUB_RUN_ID\" \"$GITHUB_RUN_ATTEMPT\" 10.0.403"
         },
         {
           "if": "${{ always() }}",
@@ -313,7 +313,7 @@
         },
         {
           "uses": "actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9",
-          "with": { "dotnet-version": "10.0.302" }
+          "with": { "dotnet-version": "10.0.403" }
         },
         {
           "uses": "actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333",
@@ -373,7 +373,7 @@
         },
         {
           "uses": "actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9",
-          "with": { "dotnet-version": "10.0.302" }
+          "with": { "dotnet-version": "10.0.403" }
         },
         {
           "uses": "actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333",
@@ -431,7 +431,7 @@
         },
         {
           "uses": "actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9",
-          "with": { "dotnet-version": "10.0.302" }
+          "with": { "dotnet-version": "10.0.403" }
         },
         {
           "uses": "actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333",
@@ -473,7 +473,7 @@
         },
         {
           "uses": "actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9",
-          "with": { "dotnet-version": "10.0.302" }
+          "with": { "dotnet-version": "10.0.403" }
         },
         {
           "uses": "actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333",
@@ -513,7 +513,7 @@
         },
         {
           "uses": "actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9",
-          "with": { "dotnet-version": "10.0.302" }
+          "with": { "dotnet-version": "10.0.403" }
         },
         {
           "uses": "actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333",

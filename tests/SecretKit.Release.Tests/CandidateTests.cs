@@ -105,7 +105,7 @@ public sealed class CandidateTests
     {
         using var fixture = new ProducerFixture();
         var observed = new PlatformObservation(1, "installed-platform-observation", TestBundle.Version,
-            TestBundle.Commit, "linux", "x64", "net10.0", "10.0.0", "10.0.302",
+            TestBundle.Commit, "linux", "x64", "net10.0", "10.0.0", "10.0.403",
             0, 0, true, "candidate-only", fixture.Bundle.Data.Packages, TestBundle.RunStart,
             TestBundle.RunStart.AddMinutes(1));
         fixture.WriteObservation("installation.json", observed);

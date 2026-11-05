@@ -3524,7 +3524,7 @@ package the production tool additionally runs bounded `dotnet nuget verify
 --all --certificate-fingerprint ... --configfile ...`, with an isolated NuGet.org
 repository trust definition, approved certificate and owner. No publishing key
 or GitHub token is inherited by that process. Its output is drained, not logged.
-Its temporary SDK selection pins 10.0.302 without roll-forward, independently of
+Its temporary SDK selection pins 10.0.403 without roll-forward, independently of
 other SDKs installed on the runner.
 Actual cryptography, timestamp/chain/revocation behavior and trust-store support
 are delegated to the installed official SDK. NuGet's trust/revocation policy

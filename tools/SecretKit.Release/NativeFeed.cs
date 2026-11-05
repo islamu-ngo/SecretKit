@@ -84,7 +84,7 @@ public sealed class NativeFeed(string certificateSha256, string owner, string? a
             string configPath = Path.Combine(directory, "NuGet.Config");
             await File.WriteAllBytesAsync(packagePath, package, cancellationToken);
             await File.WriteAllTextAsync(Path.Combine(directory, "global.json"),
-                """{"sdk":{"version":"10.0.302","rollForward":"disable"}}""", cancellationToken);
+                """{"sdk":{"version":"10.0.403","rollForward":"disable"}}""", cancellationToken);
             new XDocument(new XElement("configuration",
                 new XElement("packageSources", new XElement("clear")),
                 new XElement("config", new XElement("add",

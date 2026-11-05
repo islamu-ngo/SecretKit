@@ -89,7 +89,7 @@
         {
           "uses": "actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9",
           "with": {
-            "dotnet-version": "10.0.302"
+            "dotnet-version": "10.0.403"
           }
         },
         {
@@ -171,7 +171,7 @@
         {
           "uses": "actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9",
           "with": {
-            "dotnet-version": "10.0.302"
+            "dotnet-version": "10.0.403"
           }
         },
         {
@@ -337,7 +337,7 @@
         {
           "uses": "actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9",
           "with": {
-            "dotnet-version": "10.0.302"
+            "dotnet-version": "10.0.403"
           }
         },
         {

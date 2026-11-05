@@ -19,7 +19,7 @@ public static class PlatformEvidence
         Guard.Require(platform is "linux-x64-net10.0" or "windows-x64-net10.0" &&
             scope.Platforms.Contains(platform, StringComparer.Ordinal) &&
             Version.TryParse(observation.RuntimeVersion, out Version? runtime) && runtime.Major == 10 &&
-            observation.SdkVersion == "10.0.302", "platform-observation-platform");
+            observation.SdkVersion == "10.0.403", "platform-observation-platform");
         Guard.Require(observation.ProcessExitCode == 0 && observation.ProjectReferences == 0 &&
             observation.IsolatedCache && observation.PackageSource == "candidate-only",
             "platform-observation-install");

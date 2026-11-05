@@ -9,7 +9,7 @@ public sealed class PlatformEvidenceTests
         [], "complete-live", []);
     private static PlatformObservation Observation(string operatingSystem = "linux") =>
         new(1, "installed-platform-observation", Scope().Version, Scope().SourceCommit,
-            operatingSystem, "x64", "net10.0", "10.0.10", "10.0.302", 0, 0, true, "candidate-only",
+            operatingSystem, "x64", "net10.0", "10.0.10", "10.0.403", 0, 0, true, "candidate-only",
             Manifest.PackageIds.Select(id => new PackageRecord(id, $"{id}.{Scope().Version}.nupkg",
                 new string('b', 64))).ToArray(), DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch.AddSeconds(1));
 
