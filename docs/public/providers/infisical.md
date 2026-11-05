@@ -180,7 +180,8 @@ safe or explicit host-controlled contract as reads and authentication.
 nested inputs of one definition. Responses independently allow at most 1024
 properties per object or elements per nested array, depth 32, property names of
 1024 characters and string values of 65536 characters; duplicate properties are
-rejected. `network.MaximumResponseBytes` bounds both response and request bytes.
+rejected. `network.MaximumResponseBytes` bounds responses independently of
+`network.MaximumRequestBytes`, which bounds encoded request bodies.
 Typed create/update profiles retain their own input validation.
 
 Typed [definition profiles](../../../src/SecretKit.Infisical/Dynamic/Profiles/)
@@ -208,6 +209,10 @@ network: null)` with a matching `InfisicalNativeAuthority`. It defaults to safe
 networking; `network.MaximumResponseBytes` selects the byte budget and
 `network.Transport` selects any explicit host-controlled pipeline. Construction
 performs no I/O. Dispose the rotation client to release its SDK-owned resources.
+Disposal closes new admission first: later list, get, trigger and enablement
+calls throw `ObjectDisposedException` before credential acquisition. An operation
+admitted earlier may settle under its original budget; disposal does not drain
+it or undo its effects. Borrowed clients and handlers remain host-owned.
 `InfisicalRotationAddress` selects project, environment, path, native profile
 and rotation UUID. The profile enum routes existing operations; it does not
 provide configuration schemas for every profile.
@@ -223,6 +228,17 @@ Evidence: [RotationOutcomeTests](../../../tests/SecretKit.Infisical.Tests/Rotati
 
 ## Transport and remaining gaps
 
+Response acceptance is operation-specific. Required fields, types, scope and
+structural bounds remain enforced; authentication admits bounded additive
+fields but rejects duplicate members and malformed known fields. Rejection after
+dispatch does not prove that a mutation had no effect. See
+[authentication envelope tests](../../../tests/SecretKit.Infisical.Tests/AuthenticationEnvelopeTests.cs)
+and [revision tests](../../../tests/SecretKit.Infisical.Tests/InfisicalRevisionTests.cs).
+Hosting freezes the selected runtime at resolution. Options reload cannot
+replace its identity; admit a new runtime deliberately, use fresh authority-bound
+references and retire old work under host policy. See
+[the identity contract](../../internal/adr/ADR-005-enterprise-hardening-contracts.md#identity-and-composition).
+
 All native entrypoints default to `SafeDefault`: normal HTTPS validation,
 no redirects/cookies/propagation, no ambient proxy or SDK replay. Select private
 issuers with `SafeWithPrivateTrust(roots)` and an explicit proxy with
@@ -230,10 +246,20 @@ issuers with `SafeWithPrivateTrust(roots)` and an explicit proxy with
 hostname/chain checks with the normal handler no-revocation-lookup default.
 `HostControlled(clientOrHandler)` is deliberately arbitrary networking, not an
 SDK-enforced TLS or no-retry guarantee. Keep host configuration stable; do not
-combine it with SDK proxy settings. `MaximumResponseBytes` permits 1 KiB..16 MiB; caller
-cancellation supplies the operation deadline through token acquisition, send and
-body reading. There is no implicit read timeout/retry. Host DNS, proxy and
-instrumentation remain host responsibilities.
+combine it with SDK proxy settings. `MaximumRequestBytes` and
+`MaximumResponseBytes` independently permit 1 KiB..16 MiB. `OperationTimeout`
+defaults to 30 seconds and accepts a positive duration up to one minute.
+One cooperative budget covers credentials, request construction, send, body
+reading and publication, using monotonic elapsed time. Caller cancellation takes
+precedence. Arbitrary host callbacks must cooperate; the SDK retains cleanup
+ownership until they settle. A deadline never authorizes replay or proves a
+mutation did not happen. Host DNS, proxy and instrumentation remain host
+responsibilities.
+
+Source: [network options](../../../src/SecretKit.Infisical/Transport/InfisicalNetworkOptions.cs).
+Authored [operation budget tests](../../../tests/SecretKit.Infisical.Tests/OperationBudgetTests.cs)
+cover independent limits, streaming deadlines, late credentials and publication
+without erasing known receipts. These tests were inspected, not rerun here.
 
 [Contract availability](../../../src/SecretKit.Infisical/Internal/InfisicalContractAvailability.cs)
 explicitly reports approval administration, access requests, point-in-time

@@ -126,6 +126,15 @@ Azure uses its selected official SDK dependencies. This workstream preserves
 those existing transport choices rather than reopening SDK selection or adding
 a second Infisical stack.
 
+Native runtime callers select an explicit `InfisicalNativeOperation` carrying
+Method, Kind, HardDelete, Recursive and optional LastSecretModified
+(`DateTimeOffset?`). They no longer reconstruct routes or reparse query values
+to infer the operation. Fixed wire interfaces still build requests, and the
+runtime origin/method guard remains. Management retains its separate full
+method/origin/path/query guard before credential acquisition; typed runtime
+routing does not replace that independent destination check or expand the
+compiled Management-to-Runtime seam.
+
 `InfisicalTransportBinding` owns the internal fixed-origin, private-trust,
 request-only builder and borrowed-resource policy shared by runtime and
 management. The single shipped-package friendship from Infisical to
@@ -134,6 +143,43 @@ raw send surface. Test friendships are separate. CLR friendship exposes all
 internals, so additional member usage requires review; it is not a member-level
 security boundary. Public adapter tests cover TLS policy and host ownership.
 
+`RuntimeManagementDependencyTests` enforces the reviewed Management-to-Runtime
+seam using compiled ECMA-335 metadata. `ArchitectureBoundaryTests` applies that
+same gate to the actual Management DLL inside the selected original package;
+its existing assembly-dependency and friendship checks remain independent.
+The focused scanner also checks the current Release Management output without
+loading or executing either product assembly. Rebuild that output before using
+the result as current-source evidence.
+
+The allowlist names 15 Runtime types and 34 exact member signatures:
+
+| Approved group | Types / members | Purpose |
+| --- | --- | --- |
+| Public token, network and rotation selection | 6 / 15 | `IInfisicalTokenSource.GetTokenAsync`; token material/expiry access; network construction, byte/time limits and the existing loopback/response-limit/proxy initialization; read-only native project/environment/folder and rotation ID/profile selectors. |
+| Internal transport binding | 1 / 5 | `InfisicalTransportBinding` construction, `ValidateOrigin`, `Client`, `Requests` and `Dispose` preserve fixed-origin request construction and borrowed-resource ownership. |
+| Internal budget | 2 / 2 | The `InfisicalOperation` type is present in the nullable budget selector; only `InfisicalOperationBudget.RunAsync<T>` and `RetryAfter` may be referenced. No other budget member is implicitly admitted. |
+| Internal diagnostic capture/deferral/observation | 6 / 12 | `InfisicalDiagnostics.Capture`, `Complete` and `Defer`; interval start/duration/parent getters; completion status/reason/dispatch/termination getters; observation construction and its completion getter. Start and termination types carry only the closed capture/result contract. |
+
+The diagnostic seam lets Management retain its own emitter while sharing the
+existing budget's completion and release ordering. It does not admit the
+Runtime diagnostic emitter, arbitrary lifecycle clients, setters on observation
+state, or unrestricted access to all members of an approved type.
+
+The canonical member signatures live in the test allowlist. They include
+declaring assembly/type, member name, signature header (including static versus
+instance), generic arity, required parameter count, parameter and return types,
+and required/optional modifiers. Field references are scanned separately; no
+Runtime field is approved. Nested and constructed-generic owners resolve to
+their declaring assembly. Independently encoded in-memory PE images exercise
+unknown types/methods/fields, a changed overload, nested/generic owners, an
+approved diagnostic member and a same-named type from another assembly.
+No source-text inventory or new production friendship implements this gate.
+
+Checkpoint archives are historical evidence when their source predates a seam
+change. Passing the current compiled-output gate does not qualify those archives,
+and an older signature is not added as a compatibility exception. The final
+fresh-cohort package lane must rerun the archive and friendship checks.
+
 Historical Event self-hosted/FFI observations do not establish failure of every
 vendor SDK deployment. Local readiness instead qualifies the existing managed
 transport's current origin, cancellation, limits, ownership and diagnostics
@@ -141,6 +187,27 @@ controls against the selected deployment. Private CA/proxy and DNS behavior are
 explicit test inputs, not reasons for TLS bypass or global networking changes.
 
 The decision would avoid parallel SDK and REST stacks for the same operation merely to preserve Event behavior. If different admitted families needed different transports, their boundary and common security behavior would be explicit and verified. No dependency or generated client would be admitted without compatible approved provenance. No expressive vendor schema/source would be ingested as a design blueprint.
+
+## Enterprise Hardening And Support Boundaries
+
+[ADR-005](adr/ADR-005-enterprise-hardening-contracts.md) records strict,
+operation-specific response acceptance, explicit identity replacement,
+independent request/response byte limits and a cooperative end-to-end operation
+budget. Accepted HTTP status alone does not establish valid material, identity
+or applied effects; bounded additive authentication fields remain distinct from
+malformed or contradictory known fields.
+
+Hosting freezes the selected Infisical runtime at resolution. Identity
+replacement requires explicit admission of a new runtime, fresh authority-bound
+references, host-directed handover and retirement of accepted old work before
+disposing owned resources. Options reload does not replace a principal. Hosting
+depends on Core and Infisical independently of Configuration.
+
+The current deployment posture is JIT on `net10.0`.
+[Integration quality follow-ups](INTEGRATION_QUALITY_FOLLOW_UPS.md) retain the
+named-consumer and qualification gates for sovereign management, trimming,
+Native AOT and a second actual Hosting contract. Controlled test evidence does
+not establish native qualification or production readiness.
 
 ## Configuration Is An Export Boundary
 

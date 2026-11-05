@@ -40,6 +40,24 @@ historical where it conflicts with that boundary.
 
 ## Admission Policy Is Not A Populated Registry
 
+After building the affected provider projects in Release, refresh their owned
+handwritten source inventory from the repository root:
+
+```sh
+dotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll admission-refresh-sources . docs/internal/releases/admission/infisical.json
+dotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll admission-refresh-sources . docs/internal/releases/admission/azure-key-vault.json
+```
+
+The command compares the existing operation inventory with both provider
+assemblies' compiled public remote members before writing. Missing or linked
+sources and foreign inventory paths fail. It independently discovers handwritten
+sources, excluding `bin` and `obj`, and updates only source paths and digests.
+Operation identities, variants, required cases, prerequisites and exclusions
+remain unchanged. A new remote member requires a separately reviewed admission
+change; stale assemblies cannot establish coverage of an unbuilt source change.
+Run the independent `AdmissionTests` after refresh. This operation establishes
+local source consistency, without granting native qualification.
+
 Admission requires a supported published public contract, compatible provenance, explicit authority/effects, testable semantics, a named maintenance owner and a current product use case. Private/undocumented contracts, adjacent products and unapproved previews remain excluded. The earlier public-API-complete first-release default is superseded by the accepted product scope, not a requirement to restore the catalog.
 
 A populated per-operation registry would be a separate required artifact before credible estimates or completion claims. Neither this prose nor R4's cohort inventory is that registry. Each row would require:
@@ -109,6 +127,92 @@ A proposed conformance kit would provide reusable deterministic contract cases p
 Prerelease pilots could establish value before complete breadth. Their artifacts and claims would be labeled prerelease and incomplete, never marketed as the final complete release. Any full-release claim must satisfy the explicitly selected current scope and its declared depth/evidence, not every row of a historical research catalog.
 
 ## Dependency, Provenance And Licensing
+
+### Connected dependency advisory gate
+
+Root policy explicitly enables `NuGetAudit`, selects `NuGetAuditMode=all` and
+`NuGetAuditLevel=low`, and names nuget.org under `NuGet.Config` `auditSources`.
+Warnings remain errors. This is independent of intentional offline package
+consistency restores: their existing `NuGetAudit=false` does not establish
+connected advisory clearance.
+
+From the repository root, use the fixed Release command with a fresh output
+directory for each selected graph:
+
+```sh
+dotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll dependency-audit SecretKit.slnx artifacts/audit-source-main
+dotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll dependency-audit SecretKit.Conformance.slnx artifacts/audit-source-conformance
+```
+
+Solution targets perform a connected locked restore with explicit audit settings,
+then native resolved-package and vulnerable-package JSON reporting, both including
+transitive packages. The pinned SDK is retained; no dependency is upgraded.
+Installed audits select the actual isolated `project.assets.json`, not a
+project's default `obj` directory. `dependency-audit-installed <assets> <fresh-output>`
+retains the original project, intermediate path, package cache, mode and resolved
+candidate version, then reports with `--no-restore`. It does not rewrite
+installation evidence or restore from another feed/cache. Required assets and
+enabled lockfiles must exist. Installation and connected source-restore results
+remain separate gates.
+
+The source callable contract is `DependencyAudit.RunAsync(source, target, output)`;
+installed callers use `RunInstalledAsync(source, assets, output)`.
+It returns zero only for the recorded selected graph after both native execution
+and report policy pass. The parent verifier must require both source solutions
+and every exact installed graph selected by its installation owners. One
+successful target is not aggregate clearance. Preserve failure exits; never
+translate an audit failure into package qualification success.
+
+The complete local post-pack runner records every successful real consumer
+restore under the selected observation directory's `graphs/`, with exclusive
+creation and exact project/assets/lock hashes. Synthetic verifier fixtures are
+not native graph records. Use an explicit fresh observation directory:
+
+```sh
+dotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll verification post-pack "$PWD/artifacts/local-cohort" "$PWD/artifacts/verification/post-pack"
+dotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll dependency-audit-installed-set "$PWD/artifacts/local-cohort" "$PWD/artifacts/verification/post-pack" "$PWD/artifacts/verification/advisories/installed"
+```
+
+Successful installation verifiers write separate exclusive graph and installation
+receipts. After all post-pack lanes pass, the runner finalizes
+`installed-graphs.json`, binding the complete receipt/graph set to cohort and
+platform. Removing a graph, its receipt, or both cannot silently narrow selection.
+
+The set command reopens all selected graph bytes and the complete hardening/
+platform observations against the original cohort, audits every recorded graph,
+and writes `installed-set.json` plus native reports. Source and installed audits
+are mandatory executable steps in the producer graph; missing data or failure
+blocks the owning job and candidate assembly.
+
+Native CLI zero alone is insufficient. The validator checks native v1 report
+shape, source identity, exact project coverage, framework/package/version binding
+to the full resolved report, and known severity. Missing, malformed, duplicate,
+unavailable, filtered or inconsistent evidence fails. Any reported advisory,
+including low severity, blocks clearance. Native child failure, nonempty native
+stderr and a changed source or graph also block clearance.
+
+The initially empty
+[`dependency-advisory-exceptions.json`](dependency-advisory-exceptions.json)
+contains schema version 1 and an `exceptions` array. Each entry requires exact
+`project`, `framework`, `package`, `version`, `advisory`, plus nonempty `owner`,
+`rationale`, `evidence`, and an `expiresAt` timestamp strictly in the future and
+ending in `Z`. Project paths resolve against the source root. Wildcards,
+duplicates, expired, unowned, unused and mismatched entries fail. Package IDs
+compare case-insensitively; versions and advisory URLs match exactly. One advisory
+shared by another package or project receives no inherited acceptance.
+
+These entries record reviewed risk only. Even a valid matching entry does not
+clear a vulnerable report or a failed native child. No `NuGetAuditSuppress`,
+`NoWarn`, warning demotion or suppression bridge is generated. A release waiver
+would require a separate explicit policy decision.
+
+Each output preserves native stdout/stderr and exits, selected arguments,
+actual SDK, UTC observation time, audit-source identity, source-content snapshot,
+registry digest, and before/after project/assets/lock digests. `audit.json`
+records the decision. Outputs use exclusive creation and are never overwritten.
+The observation applies only to those graph bytes and time. Auditing historical
+installed graphs does not qualify later source changes or the final cohort;
+the final installation owners must supply and audit their new exact graphs.
 
 Core would remain dependency-free; optional package installation would avoid forcing unnecessary providers or administrative SDKs. Reuse would prefer suitable supported SDKs after exact direct/transitive version, license, notice, vulnerability and security-control review. Managed Infisical REST would need the coverage/FFI justification described in [architecture](SDK_ARCHITECTURE.md), not an assumption inherited from Event.
 

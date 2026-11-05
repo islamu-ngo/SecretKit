@@ -29,6 +29,13 @@ accepts public, US government and China vault hostname forms; that syntax
 acceptance is not sovereign-cloud qualification. Private networking retains the
 normal vault DNS name and TLS validation.
 
+Accepted suffixes are `.vault.azure.net`, `.vault.usgovcloudapi.net` and
+`.vault.azure.cn`. The data-plane SDK retains challenge-resource verification;
+it does not reuse the ARM or Logs audience. Management and monitoring have their
+own fixed [public-cloud selections](management.md#public-cloud-selection).
+Current deployment posture is JIT/net10.0, with no sovereign, trimming or Native
+AOT qualification implied by hostname acceptance.
+
 The supplied `TokenCredential` and optional transport stay host-owned.
 SDK retries, logging, content logging and distributed tracing are disabled.
 Challenge-resource verification remains enabled. The host must secure any
@@ -111,13 +118,16 @@ expiresOn: null, contentType: null, tags: null, precondition: None)` copies tags
 at construction. Null fields are omitted, not cleared. An **empty dictionary**
 explicitly clears tags; a selected request policy emits `{}` because the pinned
 SDK otherwise omits it. Metadata input has a 64 KiB local envelope budget and at
-most 128 tags. This is current source behavior even where an older source README
-describes empty tags as unsupported.
+most 128 tags.
 
 Evidence:
 [NativeLifecycleTests](../../../tests/SecretKit.AzureKeyVault.Tests/NativeLifecycleTests.cs),
 especially `EmptyTagsAreExplicitlyClearedWithoutWritingMaterial` and
-`EmptyTagClearDenialAndLostResponseCannotReplay`. These are controlled
+`EmptyTagClearDenialAndLostResponseCannotReplay`, plus
+`EmptyTagClearCancellationKeepsTheObservedUncertainEffect`. The
+[selected policy](../../../src/SecretKit.AzureKeyVault/Secrets/AzureKeyVaultClient.cs)
+emits the empty object; `SdkOmitsEmptyTagsEvenAfterExplicitClear` characterizes
+the pinned SDK's omission. These are controlled
 observations, not live tag-clearing certification.
 
 ## Lifecycle, receipts and uncertainty

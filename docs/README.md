@@ -32,6 +32,9 @@ explains validated client generations and leases. Onboarding samples live under
   [package-only demos](public/demos-and-recovery.md).
 - **Check a claim:** [current preview](public/current-preview.md) and
   [provider support](public/provider-support.md).
+  The [supplemental enterprise hardening profile](internal/compatibility/enterprise-hardening-profile.md)
+  separates declared requirements from exact source, installed, native and
+  platform evidence without changing historical qualification denominators.
 - **Navigate with an AI agent:** [task-to-source map](public/ai-agents.md).
 
 ## Contribute to the SDK

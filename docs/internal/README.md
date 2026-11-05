@@ -63,6 +63,7 @@ Breaking development changes are permitted without compatibility aliases.
 
 | Evidence location | What it establishes and what it does not |
 | --- | --- |
+| [Enterprise hardening profile](compatibility/enterprise-hardening-profile.md), [declaration](compatibility/enterprise-hardening-profile.json), [schema](compatibility/enterprise-hardening-profile.schema.json) | Separate S01-S28 requirements and G1-G5 triggers; source/archive/platform/authority binding contract, not executed admission or native qualification |
 | [Local-profile ledger](compatibility/infisical-local-profile.md) | Harness admission, exact source/profile/archive binding, separate functional/full native denominators and unavailable binding proofs; not a blanket native pass |
 | [Dynamic lifecycle evidence](compatibility/dynamic-lifecycle-evidence.md) | Profile/credential/lease observations and remaining downstream-effect gates |
 | [Rotation progress evidence](compatibility/rotation-progress-evidence.md) | Rotation contracts and observed versus unverified effects |

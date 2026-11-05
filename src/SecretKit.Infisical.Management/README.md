@@ -77,6 +77,20 @@ explicit proxies belong to safe mode. See
 Dispose `ManagementTransport` after accepted execution finishes; borrowed clients
 and handlers remain usable and their configuration is unchanged.
 
+`OperationTimeout` selects one cooperative credential-to-publication budget,
+measured with monotonic elapsed time. Caller cancellation still takes precedence.
+The SDK waits for owned work to settle and disposes late unpublished material;
+it cannot forcibly stop a host callback that ignores cancellation. A deadline
+does not establish that a mutation failed or was never dispatched.
+`MaximumRequestBytes` rejects oversized encoded bodies before credential
+acquisition, independently of `MaximumResponseBytes`. Both execution limits admit
+1 KiB through 16 MiB. Request factories have a separate 64 KiB serialization
+capacity; raising the execution limit does not increase that capacity.
+Eligible 429/503 responses retain valid delta or HTTP-date `Retry-After` advice,
+clamped between zero and 24 hours. Token-source failure reasons and advice also
+survive execution. Advice is scheduling metadata: consumed mutation receipts
+remain consumed and the SDK never resends the operation.
+
 The host owns the token source. Internal handwritten
 Refit bindings construct fixed requests; the controlled client owns dispatch,
 cancellation and bounded raw response parsing. There is no arbitrary HTTP/JSON
@@ -84,6 +98,32 @@ executor, vendor-generated schema client, fallback principal or hidden cache.
 Copied sensitive inputs/results are disposable and excluded from ordinary
 formatting/serialization. Explicit strings and host instrumentation remain
 separate plaintext boundaries.
+
+## Completed operation diagnostics
+
+Opt-in BCL listeners observe ActivitySource and Meter
+`SecretKit.Infisical.Management`, activity `infisical.management.operation`,
+counter `infisical.management.operations` and histogram
+`infisical.management.duration` (seconds). Tags are limited to the admitted
+operation category, outcome, reason, dispatch and termination. They contain no
+request target, token, payload or operation-instance identifier.
+
+Start and opaque parent trace/span IDs/flags are captured before execution;
+baggage and tracestate are not copied. The completed interval ends after owned
+cleanup and before any listener, including deferred nested runtime observations.
+Span and histogram share monotonic elapsed time with a 100 ns minimum for
+zero/subtick work. Termination distinguishes completed, caller/shutdown/dependency
+cancellation, deadline and fault. It does not grant receipt replay authority.
+Earlier HTTP spans cannot become children of a completion span.
+
+Failure of optional diagnostic clock capture/completion omits that record; it
+cannot replace results, cancellation or cleanup. Operational clocks retain
+their own failure semantics.
+
+Throwing and reentrant callbacks preserve results, receipts and ambient activity.
+No exporter or worker is installed. Arbitrary host callbacks cannot be forcibly
+stopped; host-authored activity fields and independent networking instrumentation
+remain outside the SDK-authored field guarantee.
 
 ## Protected returned fields
 

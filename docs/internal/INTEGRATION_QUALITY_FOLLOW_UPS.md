@@ -6,6 +6,7 @@ No entry grants remote execution or publication.
 
 | Follow-up | Owner | Trigger | Required evidence |
 | --- | --- | --- | --- |
+| Sovereign Azure management and monitoring | Azure provider maintainers | A named supported consumer requires a specific sovereign deployment | Explicit endpoint/audience/API revision selection, authorized cloud identities and policy, exact archives and native effects; runtime hostname syntax is insufficient |
 | Provider-specific hosting package extraction | SDK maintainers | A second provider needs a real hosting contract | Two implemented contracts, package graph and migration proposal; not an empty abstraction |
 | Trimming and Native AOT qualification | Runtime qualification maintainers | A supported consumer requires those deployment modes | Exact selected archives, runtime/platform, analyzer and installed execution results; ordinary JIT success is insufficient |
 | Remote source debugging | Package maintainers | Commit-bound published source is authorized and available | Actual SourceLink URL resolution and matching document checksums for selected assemblies/PDBs |
@@ -18,3 +19,9 @@ The [current preview](../public/current-preview.md) and
 The [local readiness contract](INFISICAL_LOCAL_READINESS.md) owns local-profile
 qualification. Keep blocked provider-engineering contracts and their original
 denominators; do not translate absence of native authority into an offline pass.
+
+[ADR-005](adr/ADR-005-enterprise-hardening-contracts.md) binds these expansion
+triggers to the current JIT/net10.0 and Infisical-specific Hosting posture.
+None authorizes a speculative cloud plug-in, extra target framework or empty
+provider-neutral abstraction. Strict parsing and controlled timeout/tag evidence
+do not close any native, production, platform or publication gate.

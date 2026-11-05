@@ -15,12 +15,21 @@ receipts before dispatch. Runtime lifecycle remains native:
 ## Infisical administration
 
 All types in this section are in `SecretKit.Infisical.Management`.
-`ManagementTransport(origin, maximumResponseBytes: 1024 * 1024, proxy: null,
-allowLoopbackDevelopmentHttp: false)` owns a fixed-origin HTTP wrapper.
+`ManagementTransport(Uri origin, InfisicalNetworkOptions? network = null)`
+selects the shared fixed-origin safe or explicit host-controlled binding.
 The host disposes the transport; `ManagementClient(transport, timeProvider: null)`
-does not dispose it. HTTPS is required except explicit loopback development HTTP.
-Body construction is bounded to 64 KiB; transport response budgets permit
-1 KiB..16 MiB. Pass a cancellation deadline; there is no implicit HTTP timeout.
+does not dispose it. Safe mode requires HTTPS except explicit loopback
+development HTTP. An explicit host-controlled pipeline accepts fixed HTTP(S)
+origins under the host's chosen transport policy.
+Factory body construction is bounded to 64 KiB. Execution independently selects
+`MaximumRequestBytes` and `MaximumResponseBytes`, each defaulting to 1 MiB and
+permitting 1 KiB..16 MiB; the execution limit cannot enlarge factory capacity.
+`OperationTimeout` defaults to 30 seconds, positive and at most one minute,
+covering credentials through publication with a monotonic cooperative budget.
+Caller cancellation takes precedence; arbitrary host callbacks must cooperate.
+Deadline expiry does not prove no effect or authorize replay. See
+[implementation](../../../src/SecretKit.Infisical.Management/Transport/ManagementClient.cs)
+and [network options](../../../src/SecretKit.Infisical/Transport/InfisicalNetworkOptions.cs).
 
 Named static factories construct disposable `ManagementRequest<T>` objects;
 there is no public arbitrary HTTP/JSON executor.
@@ -222,11 +231,27 @@ role definition and notification operations use their dedicated scopes.
 | [RBAC](../../../src/SecretKit.AzureKeyVault.Management/Access/RoleAdministration.cs) | `CreateRoleAssignmentAsync`, `GetRoleAssignmentAsync`, `DeleteRoleAssignmentAsync`, `ListRoleAssignmentsAsync`, `GetRoleDefinitionAsync`, `ListRoleDefinitionsAsync` | Vault-scoped writes, explicit same-subscription definition and principal; selected ancestor metadata is read-only. No custom-role writes or effective-permission proof. |
 | [Notifications](../../../src/SecretKit.AzureKeyVault.Management/Notifications/NotificationAdministration.cs) | `CreateOrUpdateNotificationAsync`, `UpdateNotificationAsync`, `DeleteNotificationAsync`, `GetNotificationAsync`, `ListNotificationsAsync`, `GetNotificationFullUrlAsync`, `GetNotificationDeliveryAttributesAsync` | Named vault-scoped Event Grid subscriptions; HTTPS webhook, three secret event kinds, at most ten static/dynamic delivery headers. No arbitrary destination catalog or delivery proof. |
 
+### Public-cloud selection
+
 Only public-cloud administration/monitoring endpoints are selected:
 `management.azure.com` (Key Vault `2026-02-01`, Authorization `2022-04-01`,
 Event Grid `2025-02-15`) and `api.loganalytics.io` (Logs v1).
 This differs from runtime vault hostname acceptance. No arbitrary ARM resource
 ID, endpoint, SDK model, JSON executor or directory administration is exposed.
+
+ARM selects both endpoint and audience `https://management.azure.com`.
+Logs selects endpoint `https://api.loganalytics.io` and
+`LogsQueryAudience.AzurePublicCloud`, independently of administrative authority.
+The [ARM client configuration](../../../src/SecretKit.AzureKeyVault.Management/Vaults/VaultAdministration.cs)
+and [Logs client configuration](../../../src/SecretKit.AzureKeyVault.Management/Audit/AuditDiagnostics.cs)
+are the source authority; [scope tests](../../../tests/SecretKit.AzureKeyVault.Management.Tests/ScopeAuthorityTests.cs)
+and [audit tests](../../../tests/SecretKit.AzureKeyVault.Management.Tests/AuditPartialResultTests.cs)
+are controlled evidence, not sovereign or native qualification.
+A named consumer's specific sovereign cloud requirement must bind endpoints,
+audiences, API subsets, authorized identities and native effects before support
+expansion. See [open gates](../../internal/INTEGRATION_QUALITY_FOLLOW_UPS.md).
+
+### Explicit operation observation
 
 Call `PrepareReceipt(scope, ManagementMutation.<operation>)` before each mutation.
 Use that exact scope instance and client; Azure's management receipt is unrelated

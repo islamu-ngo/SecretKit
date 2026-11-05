@@ -29,9 +29,9 @@ The native additions are:
 - `UpdatePropertiesAsync`: `AzureUpdatePropertiesRequest` patches an exact
   version's enabled, not-before, expiry, content type and tags, without writing
   its value. Null attributes are omitted, not a request to clear them. Tags are
-  copied at request construction. The pinned official SDK omits an empty tag
-  map rather than sending a clearing patch, so mandatory empty-map replacement
-  returns `Unsupported` before dispatch. No create-only or compare-and-swap
+  copied at request construction. An empty tag map explicitly clears tags through
+  a selected request policy that emits the empty object omitted by the SDK.
+  No create-only or compare-and-swap
   condition is supported.
 - `StartDeleteSecretAsync` and `StartRecoverDeletedSecretAsync`: all-version
   operations requiring an unversioned target and a caller-held `MutationReceipt`.
@@ -100,6 +100,35 @@ budget still applies. Page/item limits and cancellation are independent.
 Names, versions, vault coordinates, tags and artifacts are excluded from
 ordinary JSON/formatting/error outputs. Explicit property access and export
 are deliberate disclosure; exports and host instrumentation are host-owned.
+
+## Operation diagnostics
+
+The BCL `ActivitySource` and `Meter` are named `SecretKit.AzureKeyVault`.
+Completed spans use `azure.operation`; `azure.operations` counts operations and
+`azure.duration` records seconds. Their only tags are `operation`, `outcome`,
+`reason`, `dispatch` and `termination`, all drawn from closed SDK categories.
+Operations are Read, Inventory, SetSecret, NativeRead, NativeInventory,
+NativeMutation, LifecycleCheck and Backup.
+
+Entry captures UTC, a monotonic timestamp and only caller trace/span IDs and
+flags, without initializing instruments. Completion freezes elapsed time before
+listeners run. Both span and histogram use a minimum of one TimeSpan tick
+(100 ns) for zero/subtick intervals; operational cancellation is unchanged.
+These completed spans are not parents of earlier HTTP work. Baggage, tracestate,
+coordinates, identities, values, bodies and exception prose are not copied.
+
+Failure of optional diagnostic clock capture/completion omits that record; it
+cannot replace results, cancellation or cleanup. Operational clocks retain
+their own failure semantics.
+
+Termination is Completed (including unsuccessful ordinary results),
+CallerCanceled, ShutdownCanceled, DeadlineExceeded, DependencyCanceled or Faulted.
+This package owns no shutdown/deadline token, so it does not infer those causes
+from caller-supplied cancellation. Listeners run after operation cleanup; throwing
+or reentrant callbacks cannot replace results or receipts. Reentrant emission
+may be suppressed while the requested operation still executes. Ambient
+`Activity.Current` is restored and metrics are attempted independently of
+activity callbacks. Host instrumentation and host-added tags remain host-owned.
 
 ## Native restore scope and evidence
 

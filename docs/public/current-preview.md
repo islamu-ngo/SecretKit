@@ -21,6 +21,18 @@ compatibility.** Package presence does not mean complete provider support.
 
 ## Recent source verification
 
+The November 5 documentation inspection records the implemented
+[enterprise hardening contracts](../internal/adr/ADR-005-enterprise-hardening-contracts.md):
+operation-specific strict response acceptance, explicit identity replacement,
+independent Infisical request/response limits and a default cooperative deadline.
+Azure empty-tag clearing has controlled wire/readback and uncertainty tests.
+These contracts have source and controlled verification; native qualification
+remains separate. The [supplemental enterprise profile](../internal/compatibility/enterprise-hardening-profile.md)
+has scoped owner-local Infisical S24 admission; Azure positive admission still
+needs its native provenance producer connection. Current deployment posture is JIT/net10.0; Hosting depends on
+Infisical and not Configuration. Sovereign management, trimming/AOT and a second
+hosting contract require the named [demand and evidence gates](../internal/INTEGRATION_QUALITY_FOLLOW_UPS.md).
+
 The November 1 integration-quality increment adds strict UTF-8 ownership, closed
 failure reasons, native operation budgets, explicit runtime/DI ownership, optional
 absence, bounded collection and prepared configuration. Focused offline suites

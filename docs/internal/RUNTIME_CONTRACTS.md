@@ -8,6 +8,31 @@
 
 This proposal defines observable ownership and failure behavior without claiming a remote transaction, replay guarantee or process-wide plaintext protection.
 
+## Implemented enterprise hardening
+
+[ADR-005](adr/ADR-005-enterprise-hardening-contracts.md) records current
+operation-specific response acceptance, deliberate identity replacement, budget
+evidence and support expansion gates. The prospective wording below remains
+design context; it must not override the implemented source-backed subsets.
+Strict acceptance validates required evidence, types and scope; authentication
+permits bounded additive fields while rejecting duplicate members. It is not a
+universal unknown-field rejection rule.
+
+Hosting freezes a selected Infisical runtime at resolution; options reload
+cannot change its principal. Replacement requires an explicitly admitted new
+runtime and fresh authority-bound references, host-directed handover and
+retirement of old accepted work. Hosting actually depends on Core and Infisical,
+independently of Configuration. JIT/net10.0 is the current deployment posture;
+sovereign management, trimming/AOT and a second hosting contract remain gated.
+
+Infisical request/response byte selections are independent (1 MiB defaults,
+1 KiB..16 MiB each). Its 30-second default operation budget is positive and at
+most one minute, including credentials through publication. Management factory
+construction remains capped at 64 KiB independently of execution selection.
+Azure null tags omit metadata changes; an empty dictionary explicitly clears
+tags, with controlled readback and no-replay tests rather than live certification.
+Exact source/test anchors and the limits of those observations are in ADR-005.
+
 The [local readiness contract](INFISICAL_LOCAL_READINESS.md) distinguishes
 common read/version behavior from qualified native identity/revision.
 `InfisicalClient.ReadNativeAsync` now provides independently owned raw,
@@ -127,6 +152,13 @@ Cancellation would propagate `OperationCanceledException` (OCE), not become abse
 A local correlation ID would not be a provider idempotency key or remote query handle. Only actual provider-issued handles and documented supported observations could enable reconciliation. A subsequent value/version read might not uniquely identify which concurrent caller wrote it; ambiguity would remain unknown. No blind replay, read-then-write CAS, invented idempotency or cross-provider transaction would be offered.
 
 Azure Set Secret could create a new version on each accepted call. Side-effecting transport retries would therefore be zero. A lost response would preserve uncertainty and require an explicitly authorized subsequent action based on supported evidence, not automatic submission of the same request.
+
+The Azure adapters share only equivalent HTTP/transport failure classification
+through Azure-owned linked source. Status zero and HTTP transport failures are
+Unavailable; provider-local coordinate and response-budget failures are Invalid,
+including their SDK-wrapped forms. Caller cancellation propagates at the adapter
+boundary. Mutation receipt uncertainty takes precedence over ordinary read
+classification; the shared classifier neither changes receipts nor replays work.
 
 ## Imports And Destination Approval Effects
 

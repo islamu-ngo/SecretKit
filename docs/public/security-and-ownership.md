@@ -166,6 +166,43 @@ Preserve those distinctions in readiness checks and operator interfaces.
 After an uncertain mutation, use its native reconciliation path under explicit
 authority; never substitute an administrator or replay the write silently.
 
+## Hosting observation ownership
+
+The optional `SecretKit.Extensions.Hosting` activity source and meter describe
+explicit admission, maintenance start, tracked worker completion and stop.
+Registration, resolution and health queries remain inert. The `Maintenance`
+interval includes scheduled waits; it is not provider request latency.
+`Authenticated` is local authentication evidence, never downstream readiness.
+
+Only closed operation, outcome, reason, termination and local lifecycle-state
+labels accompany the numeric measurements. Keys, principals, URLs, request/result
+values, exception text and generation identifiers are excluded. The Hosting
+schema makes no provider-dispatch claim. Provider outcomes hidden by a public
+native API are not inferred from lifecycle state.
+
+Completed intervals retain only opaque parent trace/span IDs and sampling flags,
+without copied baggage or tracestate. End time and duration are fixed before
+listeners; activity and histogram share a 100 ns minimum representation for
+zero/subtick work. That floor does not change operational clocks, deadlines or
+token lifetime policy. Earlier provider/HTTP spans are not children of the
+later-created Hosting span.
+
+The tracked worker and stop completion are released before their corresponding
+callbacks. A canceled stop waiter does not cancel owned cleanup, and eventual
+cleanup cannot overwrite a latched shutdown timeout. Observer failures preserve
+these outcomes and borrowed-resource ownership, but arbitrary callbacks cannot
+be forcibly stopped. Host-authored activity fields and independent telemetry
+remain outside the SDK-authored field guarantee. See the
+[Hosting package guide](../../src/SecretKit.Extensions.Hosting/README.md#completed-lifecycle-diagnostics)
+for exact source, instrument and category names.
+
+Reentrancy guarantees cover the emitting operation's ownership. A synchronous
+provider listener still runs inside its enclosing caller: for example, a
+Configuration collection may be awaiting that provider read. Do not synchronously
+join disposal of that enclosing coordinator from the provider callback. Join it
+from the host's post-completion path instead. Package independence does not
+install a shared observer queue or defer callbacks beyond arbitrary outer owners.
+
 ## Deployment evaluation
 
 Before relying on an integration, establish the selected package bytes and

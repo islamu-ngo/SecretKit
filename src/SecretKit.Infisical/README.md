@@ -199,6 +199,11 @@ release only its created wrappers. `InfisicalRotationClient` is now disposable
 because it can own a safe transport. Typed authority, response budgets and
 receipts remain enforced in both modes. The old public injection overloads are
 removed rather than retained as aliases.
+Rotation disposal atomically closes new admission before releasing owned
+transport resources. All four operation entrypoints subsequently throw
+`ObjectDisposedException` before credential acquisition. Already admitted work
+retains its existing budget and receipt evidence and may settle; disposal does
+not promise to drain or preempt it.
 
 `OperationTimeout` defaults to 30 seconds and accepts positive durations up to
 one minute. It covers credential acquisition, request construction, send, parse
@@ -226,9 +231,19 @@ selected clock. Advice schedules no work and grants no mutation replay authority
 
 Opt-in BCL listeners can observe the `SecretKit.Infisical` ActivitySource and
 Meter (`infisical.operations`, `infisical.duration`). SDK tags are limited to
-`operation`, `outcome`, `reason` and `dispatch`, all closed categories. Emission
-follows classification and owned cleanup, outside state locks. Throwing listeners
-cannot change outcomes or receipts. No exporters, logging configuration, queues
+`operation`, `outcome`, `reason`, `dispatch` and `termination`, all closed categories.
+Termination distinguishes completed, caller/shutdown/dependency cancellation,
+deadline and fault. Capture retains only opaque parent trace/span IDs and flags,
+without baggage or tracestate. Completed spans use the captured start and monotonic
+elapsed time; the histogram records the same duration in seconds. Both use a
+100 ns minimum for zero/subtick work, without changing operational deadlines.
+Failure of optional diagnostic clock capture/completion omits that record; it
+cannot replace results, cancellation or cleanup. Operational clocks retain
+their own failure semantics.
+Emission follows classification and owned cleanup, outside state locks. The
+interval ends before listener work, and completion spans cannot parent earlier
+HTTP spans. Throwing or reentrant listeners cannot change outcomes or receipts;
+the ambient activity is restored. No exporters, logging configuration, queues
 or arbitrary diagnostic payloads are installed. A nonreturning host listener can
 block its invoking thread; this is not a hard return-time or global redaction
 guarantee for host-controlled networking.
@@ -249,8 +264,8 @@ Input material is copied before token/network awaits and remains caller-owned.
 JSON/parser/plaintext managed strings can survive until GC; buffer disposal cannot
 erase them or host-owned diagnostics.
 
-Request and response byte budgets both use `MaximumResponseBytes` (1 KiB to
-16 MiB). Lists accept 1 to 1,000 retained items and report truncation through
+Request and response byte budgets independently use `MaximumRequestBytes` and
+`MaximumResponseBytes` (1 KiB to 16 MiB each). Lists accept 1 to 1,000 retained items and report truncation through
 `IsComplete`. Imported groups are additionally capped at 1,000. Folder/secret
 bulk inputs are capped at 128 with duplicate-correlation rejection. Lists are not
 transactional snapshots. Mutations are never retried or replayed; cancellation

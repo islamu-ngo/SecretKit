@@ -35,6 +35,13 @@ reference mapping, a candidate validator, stale policy, maximum age and clock.
 The validator borrows its `SecretSnapshotHandle` only for the call, and must construct
 an independent client before returning `SecretOutcome<TClient>.Success(client)`.
 
+Pass immutable `SecretCollectionOptions` as the coordinator's final
+`collectionOptions` argument to select concurrency, selection count, encoded
+payload size and collection timeout. The same selection validates constructor
+mappings and governs every Enable/Check again collection. Null selects the
+loader defaults: one concurrent read, 1000 selections, 16 MiB and one minute.
+The supported bounds are described under [bounded collection](#bounded-collection).
+
 `EnableAsync` collects and validates a candidate. `Acquire` returns a
 `SecretGenerationLease<TClient>` when the current generation is usable, or `null`.
 Run work through `lease.ExecuteAsync((client, token) => ...)`; the callback borrows the
@@ -62,6 +69,63 @@ boundaries and observed offline evidence.
 This optional package references Core and Microsoft.Extensions.Configuration.
 Core remains BCL-only. It installs no automatic worker or hosting lifecycle.
 Supplied readers and transports remain caller-owned.
+
+## Optional completed-operation diagnostics
+
+The BCL `ActivitySource` and `Meter` are both named
+`SecretKit.Extensions.Configuration`. They are initialized lazily when completed
+records can be exported outside collection and client ownership. No exporter,
+scheduler, provider reference or Hosting dependency is installed.
+
+The activity name is `configuration.operation`. The `configuration.operations`
+counter records one per completed record; `configuration.duration` records its
+duration in seconds. Both instruments and activities use only these closed tags:
+
+| Tag | Values and meaning |
+| --- | --- |
+| `operation` | `Collection`, `Publication`, `Retirement` |
+| `outcome` | The local `SecretStatus` |
+| `reason` | The local `SecretFailureReason` |
+| `termination` | `Completed`, `CallerCanceled`, `DeadlineExceeded`, `DependencyCanceled`, `Faulted` |
+| `state` | `Published`, `Rejected`, `Validated`, `Superseded`, `Fresh`, `Stale`, `DeadlineElapsed`, `Retired`, `RetirementFailed` |
+
+Collection measures `RefreshAsync`, including admission waits and candidate
+cleanup. Publication measures an admitted coordinator collection/validation
+attempt, including rejected-client cleanup; check-only validation can report
+`Validated` without activating anything. State describes the local decision at
+completion, not future availability. Retirement measures actual application
+client disposal and local retirement bookkeeping after the last pin, including
+disposal of a validated client that was not published. It does not measure the
+generation's lifetime. Material reads, acquisition and lease execution emit no
+use events; releasing an operation pin may cause a retirement record.
+
+UTC start and monotonic elapsed time are captured before export. Span and
+histogram use the same fixed duration, with a one-TimeSpan-tick (100 ns) floor for
+zero or subtick intervals. Callbacks do not contribute to that interval. Export
+omits a record if its diagnostic clock fails; it never invents timing or bypasses
+owned client cleanup and completion settlement. Export
+occurs after completion, so these activities are not in-flight parents of reader
+or validator work. Only opaque W3C parent trace/span identifiers and trace flags
+are retained; parent objects, baggage and tracestate are not copied.
+
+Records are deferred through enclosing Configuration operations until collection
+storage/admission and outer lease or coordinator disposal completions are
+released. Activity and metric callback failures are isolated independently,
+ambient `Activity.Current` is restored, and listener reentry does not recursively
+emit diagnostics. Arbitrary host listeners can still delay the returning call;
+there is no bounded listener completion guarantee.
+
+Caller cancellation retains its public propagation and precedence over an actual
+collection deadline. Otherwise, dependency cancellation is attributed only when
+that reader failure wins input-order reduction. An unselected later failure
+cannot change the aggregate diagnostic. A selected reader cancellation still
+returns the existing `Unavailable`/`TransportFailure` outcome. Local diagnostics
+never certify opaque reader/provider side effects or downstream readiness.
+
+SDK tags contain no consumer keys, values, content lengths, exception text,
+application client type names, generation identifiers or revisions. Host-added
+fields and instrumentation remain the host's responsibility. Offline diagnostic
+tests do not establish native provider or installed-package qualification.
 
 ## Logical multi-key operations
 

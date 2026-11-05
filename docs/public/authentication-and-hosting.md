@@ -230,6 +230,15 @@ network guarantees inside it. Both modes keep a fixed origin without userinfo,
 path beyond `/`, query or fragment. Borrowed clients/handlers remain unmodified
 and host-owned; the old public injection overloads are removed.
 
+Default and keyed Hosting registrations use the provider's pure
+`InfisicalRuntimeOptions.ValidateForBootstrap` context checks. Explicit loopback
+development HTTP and deliberate host-controlled HTTP follow the same admission
+rules as direct runtime construction. Ordinary safe HTTP, decorated origins and
+host-controlled transport combined with an SDK proxy reject before credential
+acquisition. `ValidateForTokenHandoff` checks supplied-token context separately
+without requiring a bootstrap client identity. Lifetime evidence and the
+provider's effective authorization remain separate requirements.
+
 ## Establish lifetime before renewal
 
 `InfisicalTokenLifetimeEvidence` is a host assertion for the selected token and

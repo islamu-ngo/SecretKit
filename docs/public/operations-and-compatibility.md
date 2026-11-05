@@ -70,13 +70,21 @@ Deployment proxy/private-CA/DNS acceptance is separate from controlled tests.
 ## Deadlines, payloads and incomplete collections
 
 Pass cancellation with an application-chosen deadline to provider operations.
-Infisical common reads have no implicit timeout; cancellation covers credential
-acquisition, send and response-body consumption. Azure management operations
+Infisical operations default to a 30-second cooperative `OperationTimeout`,
+positive and at most one minute. One monotonic budget covers credential
+acquisition, serialization, send, response-body consumption and publication.
+Request and response byte limits are independent, each defaulting to 1 MiB.
+Caller cancellation takes precedence; arbitrary host callbacks must cooperate,
+and timeout does not establish no remote effect or completed cleanup.
+See [network options](../../src/SecretKit.Infisical/Transport/InfisicalNetworkOptions.cs)
+and [budget tests](../../tests/SecretKit.Infisical.Tests/OperationBudgetTests.cs).
+Azure management operations
 default to 30 seconds and permit at most two minutes. Query-specific bounds are
 documented in the [audit guide](providers/management.md#azure-audit).
 
 Provider wire budgets generally permit 1 KiB..16 MiB, but input families have
-additional limits: Infisical management bodies are 64 KiB, native bulk inputs
+additional limits: Infisical management factory bodies have a separate 64 KiB
+construction ceiling as well as the selected execution request limit; native bulk inputs
 are capped at 128 rows, and Azure backup imports have a 16 MiB storage ceiling
 plus the client's smaller wire budget including serialization overhead.
 Do not treat one family's item limit as a global setting.
@@ -121,6 +129,14 @@ and [management grant tests](../../tests/SecretKit.Infisical.Management.Tests/Ma
 
 ## Authentication lifetime, restart and shutdown
 
+Hosting freezes a resolved Infisical runtime; options reload never changes its
+principal. Admit a replacement runtime deliberately, bind new references to its
+authority, direct new work to it and retire old accepted work under host policy.
+Revision equality is not transferable authority. The actual Hosting package
+depends on Core and Infisical, independently of Configuration; a second actual
+provider lifecycle requirement is the trigger to consider extraction.
+See [identity and composition](../internal/adr/ADR-005-enterprise-hardening-contracts.md#identity-and-composition).
+
 The native `InfisicalPeriodicTokenSession` copies supplied material and retains
 original lifetime bounds. The optional `InfisicalAuthenticationMaintenance`
 helper runs only through explicit `StartAsync` or explicit hosted-service
@@ -154,6 +170,22 @@ instrumentation before export. Sources:
 and [security policy](../../SECURITY.md).
 
 ## Compatibility and qualification
+
+Use the separate [enterprise hardening profile](../internal/compatibility/enterprise-hardening-profile.md)
+to distinguish supplemental requirements from observed results. Bind each claim
+to exact source/profile bytes, archives where installed, actual SDK/runtime/
+platform and run evidence; native claims additionally require admitted
+deployment, principals, policy, transport, authority and independent effects.
+The declaration grants no qualification. Its G1-G5 entries retain native,
+platform, demand and advisory owners/triggers; historical local S01-S16,
+17/21-case and integration-quality denominators are unchanged.
+
+Current deployment posture is JIT/net10.0. A named consumer requiring trimming
+or Native AOT must supply exact-archive analyzer and installed execution evidence.
+A named sovereign management deployment must establish its endpoint, audience,
+API and native authority/effect bindings. Neither need creates a speculative
+plug-in or support promise. Owners and triggers remain in
+[the follow-up ledger](../internal/INTEGRATION_QUALITY_FOLLOW_UPS.md).
 
 | Evidence | Establishes | Does not establish |
 | --- | --- | --- |

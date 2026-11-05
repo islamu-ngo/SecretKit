@@ -75,6 +75,11 @@ handle. A 201 with `provisioningState=Succeeded` still starts pending in this SD
 only an explicit bounded `CheckStatusAsync` advances the handle. DELETE 200/204
 are terminal native responses; 202 remains pending. Receipts retain historical
 start evidence, not runtime delivery or effective-permission proof.
+Status observation failures do not terminalize the original operation. A later
+explicit check uses the same SDK handle, with at most two reads per admitted
+check. Native terminal evidence remains distinct from validated final-resource
+success; a terminal state alone does not prove runtime delivery. Cancellation
+of a check neither cancels the remote operation nor rewrites its receipt.
 Notification status headers admit only the exact selected resource path, origin
 and revision. Other Event Grid operation-status URL shapes remain unsupported,
 retaining possible-dispatch uncertainty rather than following arbitrary ARM URLs.
@@ -153,6 +158,42 @@ sequentially and keep stable input indexes in caller-held `AuditBatchProgress`.
 Individual failures remain results and do not prevent later queries. Caller
 cancellation propagates; already completed indexes remain available and unfinished
 indexes remain null. No worker, sleep, hidden retry or native deprecated batch.
+
+## Operation diagnostics
+
+The BCL `ActivitySource` and `Meter` are named
+`SecretKit.AzureKeyVault.Management`. Completed spans use
+`azure.management.operation`; `azure.management.operations` counts operations
+and `azure.management.duration` records seconds. Only `operation`, `outcome`,
+`reason`, `dispatch` and `termination` are emitted. Operation categories are
+AdministrativeRead, AdministrativeInventory, AdministrativeMutation,
+NameAvailability, Audit, AuditBatch and StatusCheck. Role, notification and vault
+operations use the same administrative owners.
+
+Entry captures UTC, monotonic time and only caller trace/span IDs and flags,
+without instrument initialization. Completion freezes elapsed time before any
+listener. Span and histogram share a one-TimeSpan-tick (100 ns) minimum for
+zero/subtick intervals; operational deadlines remain unchanged. Completed spans
+are not parents of earlier HTTP work. No coordinates, identities, KQL, bodies,
+values, exception prose, baggage or tracestate are copied.
+
+Failure of optional diagnostic clock capture/completion omits that record; it
+cannot replace results, cancellation or cleanup. Operational clocks retain
+their own failure semantics.
+
+Termination is Completed (including unsuccessful ordinary results),
+CallerCanceled, ShutdownCanceled, DeadlineExceeded, DependencyCanceled or Faulted.
+There is no owned shutdown token, so supplied caller cancellation is not labeled
+shutdown. Original-handle status listeners run after semaphore/transport release.
+A successful status observation is not proof of native completion or delivery.
+Audit batches emit once after retained progress is published, including per-query
+failures; constituent queries do not emit before that publication.
+
+Throwing listeners cannot replace results, receipts or retained evidence.
+Reentrant emission may be suppressed while the requested native operation still
+executes. Ambient `Activity.Current` is restored and metrics are attempted
+independently of activity callbacks. Host instrumentation and host-added tags
+remain host-owned.
 
 ## Offline verification
 

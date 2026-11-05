@@ -21,12 +21,55 @@ Schema 1 and hash-only records are rejected. Current-admission schema 1 is a
 different document contract, not legacy release schema 1. No publication is
 authorized.
 
-The BCL-only .NET 10 tool in `tools/SecretKit.Release` publishes only the seven
-exact IDs below, at one approved normalized version. It does not build packages,
+The publication commands of the BCL-only .NET 10 tool in `tools/SecretKit.Release`
+publish only the seven exact IDs below, at one approved normalized version. They do not build packages,
 infer credentials, register publishers, claim live conformance, overwrite a
 version, or retry a mutation. `publish.yml` is manual and independent of ordinary
 verification. Routine `verify.yml` output is offline diagnosis, not release
 evidence; the qualifying protected candidate producer remains a separate gate.
+
+## Required workflow execution gates
+
+The candidate job requires successful `format`, `offline`, `install`, `demos`,
+`prerequisites`, `native`, `compatibility`, and `archive_evidence` jobs before its
+assembly and upload steps can execute. Install, demos and compatibility retain
+both Linux x64 and Windows x64 on .NET 10. Native evidence retains both kinds on
+both platforms. Matrix exclusions, ignored failures, conditional bypasses and
+cross-run artifact substitutions are rejected. A failed Windows demo therefore
+blocks candidate assembly even when Linux and all native evidence jobs passed.
+
+`WorkflowPolicy` validates the parsed workflow structure, pinned actions,
+permissions, source/environment bindings, exact executable-step order and
+artifact identity. Each executable step has a closed command contract:
+whitespace, line continuations and comments do not change token admission, while
+additional statements, commented-out required commands, shell/startup-script
+overrides and consumer repacking fail. The policy does not execute or generally
+interpret shell programs. Bootstrap and GitHub evidence collection retain their
+explicit reviewed commands; test orchestration uses fixed Release entrypoints.
+
+From the repository root, the supported verification operations are:
+
+```sh
+dotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll verification ordinary
+dotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll verification offline-conformance
+dotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll verification prepare-local /absolute/fresh-cohort
+dotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll verification check /absolute/cohort
+dotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll verification post-pack /absolute/cohort
+dotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll verification public-install
+```
+
+`public-install` requires explicit `SECRETKIT_CANDIDATE_DIRECTORY`,
+`SECRETKIT_CANDIDATE_VERSION`, and `SECRETKIT_PLATFORM_OBSERVATION` selectors.
+It verifies the public candidate input record and selects package installation,
+selection, platform and architecture tests with strict positive discovery.
+It never implies four-package local qualification. Local `post-pack` continues
+to execute the complete Package host, including all local and integration-quality
+tests, plus Demo and the artifact-dependent Release classes. Both operations
+preserve original archives and write independent host-local observations.
+
+The failed-Windows-demo assembly fixture is offline evidence of the declared
+dependency contract and actual local assembly behavior. A real successful
+GitHub run on both platforms remains a separate qualification gate.
 
 ## Family and evidence contract
 

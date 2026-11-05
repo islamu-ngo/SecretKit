@@ -108,11 +108,33 @@ dotnet test --project tests/SecretKit.Core.Tests/SecretKit.Core.Tests.csproj --c
 
 Replace the project with the affected suite. Tests use TUnit and Microsoft.Testing.Platform, not the VSTest runner. Focused checks do not replace the repository's required SDK exit checks.
 
+After the bootstrap restore/build, the Release tool owns fixed verification lanes:
+
+```bash
+dotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll verification ordinary
+dotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll verification prepare-local "$PWD/artifacts/local-cohort-unique"
+dotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll verification post-pack "$PWD/artifacts/local-cohort-unique"
+```
+
+Every main-solution test host has an explicit owner. Ordinary includes all
+source-only hosts; Package, Demo, and the Release archive/installed-observation
+classes run in post-pack with verified cohort-derived selectors. Other Release
+classes are discovered from compiled test metadata. Coverage is independently
+compared with solution project metadata.
+Missing executables, failed children and zero discovery fail the lane, while
+independent hosts still run. Preparation rejects existing output directories and
+retains original archives, symbols, independent rebuilds and staged demo locks.
+See [local packages](docs/public/local-packages.md) for immutable producer and
+host-local observation ownership.
+
 `SecretKit.Conformance.slnx` builds the two source-built conformance hosts and
 their source/tool/host-fixture dependencies. Restore it with `--locked-mode`,
 then build with `-c Release --no-restore`. Select documented offline filters
 explicitly; live child stages remain controlled by their authorized parent
 scenarios. Candidate-dependent demos and installed-package consumers are a
 separate post-pack stage described in [local packages](docs/public/local-packages.md).
+After that conformance build, `verification offline-conformance` runs only the
+five named safe process/sandbox/delivery/webhook selections, with strict positive
+discovery and their documented floors. It never executes a whole live host.
 
 Documentation changes use relative-link, formatting, and path/command validation. No product build is needed when product behavior is unchanged.

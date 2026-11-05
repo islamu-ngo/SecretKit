@@ -123,8 +123,17 @@ and `SafeWithPrivateTrust(roots)` retain normal hostname/chain checks. Select
 `HostControlled(clientOrHandler)` to deliberately retain arbitrary host
 HTTP(S)/TLS/routing/retry/instrumentation policy, without SDK network enforcement
 inside it. Borrowed resources are unchanged and host-owned. Safe HTTP requires
-explicit loopback-only development opt-in. There are no logger callbacks, arbitrary HTTP commands,
+explicit loopback-only development opt-in. There are no arbitrary HTTP commands,
 automatic credential creation or hidden identity chains.
+
+Hosting applies the provider's pure `InfisicalRuntimeOptions.ValidateForBootstrap`
+checks before startup: origin, explicit transport selection, identity, context and
+budgets follow the same rules as direct runtime construction. The opted-in loopback
+and host-controlled HTTP choices above therefore work in default and keyed
+registrations. Ordinary safe HTTP and host-controlled transport combined with an
+SDK proxy remain invalid. Validation acquires no credentials and performs no I/O.
+Supplied-token runtime handoff uses the separate `ValidateForTokenHandoff` context
+checks; neither check establishes provider authority or token lifetime evidence.
 
 Renewal sends `POST /api/v1/auth/token/renew` with an `accessToken` JSON body.
 It requires `accessToken`, `tokenType: Bearer`, numeric `expiresIn` and numeric
@@ -183,6 +192,58 @@ logging. The application's Generic Host dependency stays app-only.
 Controlled scheduled-renewal/response-loss/stop tests and injected-time tests
 are offline evidence; supplied lifetime metadata remains explicitly host-asserted,
 not genuine issuance or live longevity qualification.
+
+## Completed lifecycle diagnostics
+
+The optional BCL `ActivitySource` and `Meter` are both named
+`SecretKit.Extensions.Hosting`. Registration, resolution and health queries
+produce no Hosting activity or measurement and start no worker. Instrument
+creation is lazy, after an explicitly requested operation has completed.
+
+`hosting.operation` activities, the `hosting.operations` counter and the
+`hosting.duration` histogram (seconds) use only these dimensions:
+
+- `operation`: `Admission`, `AdmissionStop`, `MaintenanceStart`, `Maintenance`,
+  or `MaintenanceStop`.
+- `outcome` and `reason`: closed `SecretStatus` and `SecretFailureReason` names.
+- `termination`: `Completed`, `CallerCanceled`, `ShutdownCanceled`,
+  `DeadlineExceeded`, `DependencyCanceled`, or `Faulted`.
+- `state`: `Unknown`, `NotStarted`, `Started`, `Authenticated`,
+  `RecoveryRequired`, `Expired`, or `Stopped`.
+
+`Completed` describes ordinary settlement, including a rejected admission; it
+does not mean success. State describes the local lifecycle observation, not
+downstream readiness. No service key, identity, coordinate, material, payload,
+exception text, generation identifier or provider-dispatch claim is emitted.
+Maintenance retains the public renewal result without inventing a reason hidden
+by that native API. Per-renewal timing and dispatch evidence remain native
+provider observations.
+
+`Maintenance` measures the tracked worker's lifetime, including scheduled waits,
+and exports when that worker settles. It is not a per-renewal latency metric.
+The worker releases its completion before listeners can synchronously join
+stop. When shutdown is already underway, the worker waits for the existing
+bounded stop result before exporting; that wait holds no worker ownership.
+`MaintenanceStop` describes the single owned shutdown. An independently canceled
+stop waiter also emits its own `CallerCanceled` observation without canceling
+cleanup or replacing the original stop result.
+
+Admission uses system UTC and monotonic time because the deferred runtime does
+not expose its clock before authentication. Maintenance uses the selected
+session's clock. Each interval captures its caller's opaque trace/span IDs and
+sampling flags at entry, and fixes its end and duration before its listeners.
+Both activity and histogram use the same duration, with Activity's minimum
+representation of one `TimeSpan` tick (100 ns) for zero/subtick intervals.
+This diagnostic floor does not alter deadlines or lifetime policy.
+
+These are completion-time exports: earlier HTTP/provider activities are not
+children of a later-created Hosting activity. Copied context contains no baggage
+or tracestate, and ambient activity is restored after export. Sampling, activity
+and measurement failures cannot replace lifecycle outcomes or take ownership of
+borrowed material or transports. Diagnostic clock failures can omit observations.
+Arbitrary listeners can still block their invoking thread; there is no listener
+return-time guarantee. Host-added fields and independent host instrumentation
+remain the host's responsibility.
 
 Focused local verification (from the repository root):
 

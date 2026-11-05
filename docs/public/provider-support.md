@@ -30,6 +30,14 @@ Configuration and Hosting are independently optional; Hosting depends on
 Infisical, not Configuration. The immediate local profile selects four packages,
 not a replacement seven-package release policy.
 
+The current deployment posture is JIT on `net10.0`, not qualified trimming or
+Native AOT. Hosting's concrete Core/Infisical dependencies and expansion triggers
+are recorded in [ADR-005](../internal/adr/ADR-005-enterprise-hardening-contracts.md).
+A second actual provider hosting requirement, a named AOT consumer, or a named
+sovereign management deployment triggers a separately evidenced proposal.
+See the [exact public-cloud selections](providers/management.md#public-cloud-selection);
+endpoint declaration and implemented acceptance do not establish live support.
+
 ## Infisical retained native families
 
 All rows have controlled offline test coverage; live evidence is narrower and
@@ -79,8 +87,10 @@ status checks, deleted-secret metadata, purge, backup and restore.
 
 Consumption rejects disabled/not-yet-valid/expired material; native exact-version
 inspection has a different validity contract. Empty tag dictionaries explicitly
-clear tags; null omits them (see the dated controlled readback evidence in the
-[checkpoint ledger](../internal/compatibility/development-checkpoints.md)).
+clear tags; null omits them. The selected wire policy and controlled readback,
+denial, lost-response and cancellation evidence are linked in the
+[Azure guide](providers/azure-key-vault.md#metadata-omission-and-empty-tags);
+they do not establish live Azure behavior.
 SetSecret has no mandatory create-only, version-match or version-targeted support.
 Lifecycle acknowledgement does not prove immediate disappearance or readiness.
 Azure live data-plane, lifecycle and administration remain unverified. Public,
@@ -88,6 +98,15 @@ US Government and China runtime origin syntax is not sovereign-cloud conformance
 management is public-cloud only.
 
 ## How to interpret evidence
+
+The [enterprise hardening profile](../internal/compatibility/enterprise-hardening-profile.md)
+declares a separate S01-S28 namespace, evidence kinds and G1-G5 owners/triggers.
+Its [machine declaration](../internal/compatibility/enterprise-hardening-profile.json)
+is not a qualification report. Source/offline, controlled installed, artifact,
+native, platform, connected advisory and publication authority remain separately
+bound. Controlled/offline evidence cannot claim `nativeQualified`; schema
+validity and declared hashes do not establish native effects. Existing local
+S01-S16, 17/21-case and integration-quality denominators remain unchanged.
 
 The [shared provider suite](../../tests/SecretKit.ProviderContract.Tests/) uses
 actual adapters with controlled responses for authority isolation, ownership,
