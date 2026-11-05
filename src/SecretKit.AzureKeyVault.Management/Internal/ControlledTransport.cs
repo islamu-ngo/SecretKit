@@ -285,15 +285,8 @@ internal sealed class ControlledTransport(HttpPipelineTransport inner, string ho
     {
         ObservationException observation => observation.Status,
         RequestFailedException { InnerException: BoundaryException } => SecretStatus.Invalid,
-        RequestFailedException { Status: 0 } => SecretStatus.Unavailable,
         BoundaryException or ArgumentException => SecretStatus.Invalid,
-        RequestFailedException { Status: 401 or 403 } => SecretStatus.Denied,
-        RequestFailedException { Status: 404 } => SecretStatus.Absent,
-        RequestFailedException { Status: 409 } => SecretStatus.Conflict,
-        RequestFailedException { Status: 429 } => SecretStatus.Throttled,
-        RequestFailedException { Status: 400 } => SecretStatus.Invalid,
-        RequestFailedException { Status: >= 500 } or HttpRequestException => SecretStatus.Unavailable,
-        _ => SecretStatus.Unknown
+        _ => SecretKit.AzureKeyVault.AzureFailureClassification.Status(exception)
     };
 
     private sealed class ObservationException(SecretStatus status) : IOException("Status observation failed.")

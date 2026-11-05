@@ -8,6 +8,20 @@ public sealed class BoundaryBudgetTests
     [Test]
     [Arguments(false)]
     [Arguments(true)]
+    public async Task StatusZeroTransportFailureIsUnavailable(bool wrapped)
+    {
+        var backend = new WireBackend((_, _) => throw (wrapped
+            ? new Azure.RequestFailedException(0, "protected-canary", null, new HttpRequestException("private-canary"))
+            : new Azure.RequestFailedException(0, "protected-canary")));
+        var result = await new VaultAdministration(new Credential(), backend)
+            .GetVaultAsync(ScopeAuthorityTests.Scope());
+        await Assert.That(result.Status).IsEqualTo(SecretStatus.Unavailable);
+        await Assert.That(result.ToString().Contains("canary", StringComparison.Ordinal)).IsFalse();
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
     public async Task LateStatusResponseCannotPublishAfterLocalCancellation(bool deadline)
     {
         const string url = "https://management.azure.com/subscriptions/11111111-1111-1111-1111-111111111111/providers/Microsoft.KeyVault/locations/eastus/operations/55555555-5555-5555-5555-555555555555?api-version=2026-02-01";

@@ -368,15 +368,9 @@ public sealed partial class AzureKeyVaultClient : ISecretReader, ISecretInventor
     private static SecretStatus Status(Exception exception) => exception switch
     {
         ResponseBudgetExceededException or NativeCoordinateException => SecretStatus.Invalid,
+        RequestFailedException { InnerException: ResponseBudgetExceededException or NativeCoordinateException } => SecretStatus.Invalid,
         ArgumentException => SecretStatus.Invalid,
-        RequestFailedException { Status: 401 or 403 } => SecretStatus.Denied,
-        RequestFailedException { Status: 404 } => SecretStatus.Absent,
-        RequestFailedException { Status: 429 } => SecretStatus.Throttled,
-        RequestFailedException { Status: 400 } => SecretStatus.Invalid,
-        RequestFailedException { Status: 409 } => SecretStatus.Conflict,
-        RequestFailedException { Status: >= 500 } => SecretStatus.Unavailable,
-        HttpRequestException => SecretStatus.Unavailable,
-        _ => SecretStatus.Unknown
+        _ => AzureFailureClassification.Status(exception)
     };
 
     private sealed class OriginTransport(Uri vault, HttpPipelineTransport inner, int maximumResponseBytes,

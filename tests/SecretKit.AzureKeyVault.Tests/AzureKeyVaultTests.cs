@@ -16,6 +16,18 @@ public sealed class AzureKeyVaultTests
     private static readonly Uri Vault = new("https://unit.vault.azure.net");
 
     [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task StatusZeroTransportFailureIsUnavailable(bool wrapped)
+    {
+        var wire = new WireTransport((_, _) => throw (wrapped
+            ? new Azure.RequestFailedException(0, "protected-canary", null, new HttpRequestException("private-canary"))
+            : new Azure.RequestFailedException(0, "protected-canary")));
+        var client = new AzureKeyVaultClient(Vault, new TestCredential(), wire);
+        await Assert.That((await client.ReadAsync(Reference(client))).Status).IsEqualTo(SecretStatus.Unavailable);
+    }
+
+    [Test]
     [Arguments("/secrets/name-canary/0123456789abcdef0123456789abcdef?unexpected=true")]
     [Arguments("/decorated/secrets/name-canary/0123456789abcdef0123456789abcdef")]
     [Arguments("/secrets/name-canary/not-a-version")]
