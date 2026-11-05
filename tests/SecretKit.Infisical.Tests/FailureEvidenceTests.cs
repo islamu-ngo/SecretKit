@@ -243,7 +243,7 @@ public sealed class FailureEvidenceTests
         }
         await Assert.That(activities > 0).IsTrue();
         await Assert.That(measurements > 0).IsTrue();
-        await Assert.That(captured.All(tag => tag.Key is "operation" or "outcome" or "reason" or "dispatch")).IsTrue();
+        await Assert.That(captured.All(tag => tag.Key is "operation" or "outcome" or "reason" or "dispatch" or "termination")).IsTrue();
         await Assert.That(JsonSerializer.Serialize(captured).Contains("canary", StringComparison.Ordinal)).IsFalse();
     }
 

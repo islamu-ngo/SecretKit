@@ -7,26 +7,31 @@ namespace SecretKit.Infisical;
 
 internal sealed class InfisicalOperationBudget : IDisposable
 {
+    private static readonly AsyncLocal<InfisicalOperationObservation?> CurrentObservation = new();
+    private readonly InfisicalOperationObservation? _observation;
     private readonly CancellationToken _caller;
     private readonly CancellationToken _shutdown;
     private readonly TimeProvider _time;
-    private readonly DateTimeOffset _expires;
+    private readonly long _started;
+    private readonly TimeSpan _timeout;
     private readonly CancellationTokenSource _deadline;
     private readonly CancellationTokenSource _linked;
 
     internal InfisicalOperationBudget(TimeSpan timeout, TimeProvider time, CancellationToken caller,
         CancellationToken shutdown = default)
     {
+        _observation = CurrentObservation.Value;
         _caller = caller;
         _shutdown = shutdown;
         _time = time;
-        _expires = time.GetUtcNow() + timeout;
+        _started = time.GetTimestamp();
+        _timeout = timeout;
         _deadline = new(timeout, time);
         _linked = CancellationTokenSource.CreateLinkedTokenSource(caller, shutdown, _deadline.Token);
     }
 
     internal CancellationToken Token => _linked.Token;
-    internal bool Expired => _deadline.IsCancellationRequested || _time.GetUtcNow() >= _expires;
+    internal bool Expired => _deadline.IsCancellationRequested || _time.GetElapsedTime(_started) >= _timeout;
 
     internal void Check()
     {
@@ -37,10 +42,16 @@ internal sealed class InfisicalOperationBudget : IDisposable
 
     internal SecretFailureReason CancellationReason()
     {
+        _observation?.ObserveCancellation(CancellationTermination());
         _caller.ThrowIfCancellationRequested();
         _shutdown.ThrowIfCancellationRequested();
         return Expired ? SecretFailureReason.DeadlineExceeded : SecretFailureReason.TransportFailure;
     }
+
+    internal InfisicalTermination CancellationTermination() =>
+        _caller.IsCancellationRequested ? InfisicalTermination.CallerCanceled :
+        _shutdown.IsCancellationRequested ? InfisicalTermination.ShutdownCanceled :
+        Expired ? InfisicalTermination.DeadlineExceeded : InfisicalTermination.DependencyCanceled;
 
     public void Dispose()
     {
@@ -133,13 +144,19 @@ internal sealed class InfisicalOperationBudget : IDisposable
 
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1068", Justification = "Caller cancellation and adapter shutdown are distinct authorities; keeping the required caller token before optional evidence makes their precedence explicit.")]
     internal static async ValueTask<SecretOutcome<T>> RunAsync<T>(TimeSpan timeout, TimeProvider time,
-        CancellationToken caller, InfisicalOperation operation,
+        CancellationToken caller, InfisicalOperation? operation,
         Func<CancellationToken, ValueTask<SecretOutcome<T>>> execute,
-        Func<DispatchEvidence>? evidence = null, CancellationToken shutdown = default) where T : notnull
+        Func<DispatchEvidence>? evidence = null, CancellationToken shutdown = default,
+        InfisicalOperationObservation? observation = null) where T : notnull
     {
-        long started = System.Diagnostics.Stopwatch.GetTimestamp();
+        InfisicalDiagnosticStart? started = InfisicalDiagnostics.Capture(time);
+        using var deferred = InfisicalDiagnostics.Defer();
+        observation ??= new();
+        InfisicalOperationObservation? previous = CurrentObservation.Value;
+        CurrentObservation.Value = observation;
         SecretStatus status = SecretStatus.Unknown;
         SecretFailureReason reason = SecretFailureReason.None;
+        InfisicalTermination termination = InfisicalTermination.Faulted;
         try
         {
             using var budget = new InfisicalOperationBudget(timeout, time, caller, shutdown);
@@ -162,18 +179,31 @@ internal sealed class InfisicalOperationBudget : IDisposable
             }
             catch (OperationCanceledException)
             {
+                termination = budget.CancellationTermination();
                 reason = budget.CancellationReason();
                 result = SecretOutcome<T>.Failure(evidence?.Invoke() == DispatchEvidence.PossiblyDispatched
                     ? SecretStatus.Unknown : SecretStatus.Unavailable, reason: reason);
             }
             status = result.Status;
             reason = result.Reason;
+            termination = observation.Cancellation ?? InfisicalTermination.Completed;
             return result;
         }
         finally
         {
-            InfisicalDiagnostics.Emit(operation, status, reason,
-                evidence?.Invoke() ?? DispatchEvidence.NotDispatched, started);
+            CurrentObservation.Value = previous;
+            InfisicalDiagnosticInterval? interval = InfisicalDiagnostics.Complete(started, time);
+            var completion = new InfisicalOperationCompletion(status, reason,
+                evidence?.Invoke() ?? DispatchEvidence.NotDispatched, termination);
+            observation.Complete(completion);
+            if (operation is { } selected)
+            {
+                // A cooperative dependency can complete inline in a shutdown
+                // notification. Shutdown drains that notification too: leave
+                // its stack before a listener can synchronously join disposal.
+                await Task.CompletedTask.ConfigureAwait(ConfigureAwaitOptions.ForceYielding);
+                InfisicalDiagnostics.Emit(selected, completion, interval);
+            }
         }
     }
 }

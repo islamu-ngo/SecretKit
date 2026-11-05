@@ -83,6 +83,7 @@ public sealed class InfisicalRuntimeSession : IAsyncDisposable
 
     private async Task AuthenticateAsync(TaskCompletionSource<SecretOutcome<InfisicalRuntimeSession>> completion)
     {
+        using var diagnostics = InfisicalDiagnostics.Defer();
         try { completion.TrySetResult(await AuthenticateCoreAsync().ConfigureAwait(false)); }
         catch (OperationCanceledException) { completion.TrySetCanceled(_openingCancellation.Token); }
         catch (Exception) { completion.TrySetResult(SecretOutcome<InfisicalRuntimeSession>.Failure(SecretStatus.Unavailable)); }
@@ -184,6 +185,7 @@ public sealed class InfisicalRuntimeSession : IAsyncDisposable
             return SecretOutcome<InfisicalRuntimeSession>.Failure(SecretStatus.Invalid);
         cancellationToken.ThrowIfCancellationRequested();
         ValidateOptions(options);
+        using var diagnostics = InfisicalDiagnostics.Defer();
         InfisicalUniversalLogin? login = null;
         InfisicalRuntimeSession? candidate = null;
         try

@@ -292,6 +292,7 @@ public sealed class InfisicalPeriodicTokenSession : IInfisicalTokenSource, IAsyn
     public async ValueTask<SecretStatus> RenewAsync(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        InfisicalDiagnosticStart? started = InfisicalDiagnostics.Capture(_time);
         DateTimeOffset now = _time.GetUtcNow();
         Task<SecretStatus> task;
         TaskCompletionSource<SecretStatus>? completion = null;
@@ -317,48 +318,62 @@ public sealed class InfisicalPeriodicTokenSession : IInfisicalTokenSource, IAsyn
             }
         }
         if (completion is not null)
-            _ = CompleteRenewalAsync(completion, receipt!, ownedToken!, expiresAt);
+            _ = CompleteRenewalAsync(completion, receipt!, ownedToken!, expiresAt, started);
         return await task.WaitAsync(cancellationToken).ConfigureAwait(false);
     }
 
     private async Task CompleteRenewalAsync(TaskCompletionSource<SecretStatus> completion,
-        InfisicalTokenRenewal receipt, SecretMaterial ownedToken, DateTimeOffset expiresAt)
+        InfisicalTokenRenewal receipt, SecretMaterial ownedToken, DateTimeOffset expiresAt,
+        InfisicalDiagnosticStart? started)
     {
-        long started = System.Diagnostics.Stopwatch.GetTimestamp();
+        using var deferred = InfisicalDiagnostics.Defer();
+        var observation = new InfisicalOperationObservation();
         SecretStatus result = SecretStatus.RecoveryRequired;
         CancellationToken canceled = default;
         bool wasCanceled = false;
         bool faulted = false;
         using (ownedToken)
         {
-            try { result = await RenewCoreAsync(receipt, ownedToken, expiresAt).ConfigureAwait(false); }
+            try { result = await RenewCoreAsync(receipt, ownedToken, expiresAt, observation).ConfigureAwait(false); }
             catch (OperationCanceledException exception) { canceled = exception.CancellationToken; wasCanceled = true; }
             catch (Exception) { FailRecovery(); faulted = true; }
         }
+        InfisicalTermination termination = faulted ? InfisicalTermination.Faulted :
+            observation.Cancellation ?? InfisicalTermination.Completed;
+        var diagnostic = new InfisicalOperationCompletion(result, termination switch
+        {
+            InfisicalTermination.DeadlineExceeded => SecretFailureReason.DeadlineExceeded,
+            InfisicalTermination.DependencyCanceled => SecretFailureReason.TransportFailure,
+            _ => SecretFailureReason.None
+        }, receipt.Evidence switch
+        {
+            InfisicalRenewalEvidence.Applied => DispatchEvidence.Applied,
+            InfisicalRenewalEvidence.Rejected => DispatchEvidence.Rejected,
+            InfisicalRenewalEvidence.PossiblyDispatched => DispatchEvidence.PossiblyDispatched,
+            _ => DispatchEvidence.NotDispatched
+        }, termination);
+        InfisicalDiagnosticInterval? interval = InfisicalDiagnostics.Complete(started, _time);
+        // Leave any synchronous cancellation-notification stack before export.
+        // StopAsync drains that notification as well as this shared completion.
+        await Task.CompletedTask.ConfigureAwait(ConfigureAwaitOptions.ForceYielding);
         // Settle owned material before releasing waiters. Signal before invoking
         // listeners so a reentrant caller cannot wait on this same completion.
         if (wasCanceled) completion.TrySetCanceled(canceled);
         else if (faulted) completion.TrySetException(new InvalidOperationException("Token renewal failed."));
         else completion.TrySetResult(result);
-        InfisicalDiagnostics.Emit(InfisicalOperation.Renewal, result, SecretFailureReason.None,
-            receipt.Evidence switch
-            {
-                InfisicalRenewalEvidence.Applied => DispatchEvidence.Applied,
-                InfisicalRenewalEvidence.Rejected => DispatchEvidence.Rejected,
-                InfisicalRenewalEvidence.PossiblyDispatched => DispatchEvidence.PossiblyDispatched,
-                _ => DispatchEvidence.NotDispatched
-            }, started);
+        InfisicalDiagnostics.Emit(InfisicalOperation.Renewal, diagnostic, interval);
     }
 
     private async Task<SecretStatus> RenewCoreAsync(InfisicalTokenRenewal receipt,
-        SecretMaterial ownedToken, DateTimeOffset expiresAt)
+        SecretMaterial ownedToken, DateTimeOffset expiresAt, InfisicalOperationObservation observation)
     {
         DateTimeOffset sentAt = _time.GetUtcNow();
         TimeSpan remaining = expiresAt - sentAt;
         if (remaining <= TimeSpan.Zero) return FailRecovery();
         TimeSpan timeout = remaining < _requestTimeout ? remaining : _requestTimeout;
         if (_operationTimeout < timeout) timeout = _operationTimeout;
-        using var linked = new InfisicalOperationBudget(timeout, _time, _shutdown.Token);
+        using var linked = new InfisicalOperationBudget(timeout, _time, CancellationToken.None,
+            _shutdown.Token);
         SecretMaterial? candidate = null;
         try
         {
@@ -460,6 +475,7 @@ public sealed class InfisicalPeriodicTokenSession : IInfisicalTokenSource, IAsyn
         catch (OperationCanceledException)
         {
             FailRecovery();
+            observation.ObserveCancellation(linked.CancellationTermination());
             if (_shutdown.IsCancellationRequested) throw new OperationCanceledException(_shutdown.Token);
             return SecretStatus.RecoveryRequired;
         }
@@ -518,12 +534,13 @@ public sealed class InfisicalPeriodicTokenSession : IInfisicalTokenSource, IAsyn
     {
         var cleanup = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         Task<bool> bounded = cleanup.Task.WaitAsync(_shutdownTimeout, _time);
+        Task cancellation = _shutdown.CancelAsync();
         _ = Task.Run(async () =>
         {
             bool succeeded = true;
             try
             {
-                try { await _shutdown.CancelAsync().ConfigureAwait(false); }
+                try { await cancellation.ConfigureAwait(false); }
                 catch (Exception) { succeeded = false; }
             }
             finally
