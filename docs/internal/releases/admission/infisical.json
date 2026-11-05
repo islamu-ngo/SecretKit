@@ -354,7 +354,7 @@
     },
     {
       "file": "src/SecretKit.Infisical/Imports/Imports.cs",
-      "sha256": "cbd17878552e06bd965701616f100cd58fb766990129f1f9a43e715a2bca42a0"
+      "sha256": "547c234ce6b3812da253b8538689ddaffd2c416302a65e0e08b372becc0af4f6"
     },
     {
       "file": "src/SecretKit.Infisical/Imports/InfisicalImportWire.cs",
@@ -369,12 +369,16 @@
       "sha256": "2411b99ca67f9818173a58d4c4a92d6fa2c3c2a85c4e41e90a7faf2e51df8bb1"
     },
     {
+      "file": "src/SecretKit.Infisical/Internal/InfisicalNativeOperation.cs",
+      "sha256": "016f78850319946b73988289d96c73df4aa1c87be6b861e0e5b2839a6220d8a6"
+    },
+    {
       "file": "src/SecretKit.Infisical/Internal/InfisicalOperationBudget.cs",
       "sha256": "7bfa1ca73125736e56c707b69d47e3b6e2a7b6522b9923f12e23bf700f37896d"
     },
     {
       "file": "src/SecretKit.Infisical/Internal/NativeWireBindings.cs",
-      "sha256": "2267e52f43c60b7e2c5b1997f8f261b964e77de698cb7a0b76068d9fa0e6cb99"
+      "sha256": "ab32101770a24638b8295ee6a375ec261cab91707820d52481f83ee700e96081"
     },
     {
       "file": "src/SecretKit.Infisical/Organization/InfisicalOrganizationWire.cs",
@@ -386,11 +390,11 @@
     },
     {
       "file": "src/SecretKit.Infisical/Organization/Organization.cs",
-      "sha256": "4a7d30fd2d4639299a461f9d893af6caea8e6b6e9cfafca48c351306df10ca44"
+      "sha256": "84a2d9cb0d899d4ee82075c669c07949d08437ed712bc8985ea84b48c036d862"
     },
     {
       "file": "src/SecretKit.Infisical/Organization/ValidationPolicies.cs",
-      "sha256": "948f214964ae84ff6500627d3c5209ed68f0491fb742ae85e3b6062f370be19c"
+      "sha256": "9a8df112230581b098677bc3a55d575cc66127316c91e72876e10eff6767b6b6"
     },
     {
       "file": "src/SecretKit.Infisical/Rotation/InfisicalRotationApi.cs",
@@ -410,7 +414,7 @@
     },
     {
       "file": "src/SecretKit.Infisical/Secrets/InfisicalClient.cs",
-      "sha256": "c6133ae0d34675dd2da473153618a27fbfcd56852b94c4900a5aeef92e19164d"
+      "sha256": "35cb273a08d0fce9284b00b35b6f09f82d4a9dc3adcfbdfe28abeec856878aaa"
     },
     {
       "file": "src/SecretKit.Infisical/Secrets/InfisicalMutationOperation.cs",
@@ -442,7 +446,7 @@
     },
     {
       "file": "src/SecretKit.Infisical/Secrets/NativeBulk.cs",
-      "sha256": "c3979b98d41126b7ee5c35f847c70ff28c87398568cd36943ea1fa08c9e4afae"
+      "sha256": "f30e3f213c9dfb0826c17b9ece628044a5deb9463088d42f284008757ded8969"
     },
     {
       "file": "src/SecretKit.Infisical/Transport/InfisicalNetworkOptions.cs",

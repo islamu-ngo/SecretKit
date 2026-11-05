@@ -281,8 +281,7 @@ public sealed partial class InfisicalClient
             {
                 return SecretOutcome<InfisicalImport>.Failure(SecretStatus.Invalid);
             }
-            string path = "api/v2/secret-imports" + (method == HttpMethod.Post ? "" : "/" + Uri.EscapeDataString(address.ImportId!));
-            SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target, path, method, payload, authority, receipt, operationToken);
+            SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target, new(method), payload, authority, receipt, operationToken);
             if (!outcome.IsSuccess) { return SecretOutcome<InfisicalImport>.Failure(outcome.Status, outcome.RetryAfter, outcome.Reason); }
             using JsonDocument document = outcome.Value;
             if (!NativeObject(document.RootElement, "secretImport", out JsonElement item) ||
@@ -319,7 +318,7 @@ public sealed partial class InfisicalClient
                 return SecretOutcome<InfisicalNativeList<InfisicalImport>>.Failure(SecretStatus.Invalid);
             }
             SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target,
-                "api/v2/secret-imports" + OrganizationQuery(address), HttpMethod.Get, null, null, null, operationToken);
+                new(HttpMethod.Get), null, null, null, operationToken);
             if (!outcome.IsSuccess) { return SecretOutcome<InfisicalNativeList<InfisicalImport>>.Failure(outcome.Status, outcome.RetryAfter, outcome.Reason); }
             using JsonDocument document = outcome.Value;
             if (!NativeArray(document.RootElement, "secretImports", out JsonElement items))
@@ -357,7 +356,7 @@ public sealed partial class InfisicalClient
                 return SecretOutcome<InfisicalImportedSecrets>.Failure(SecretStatus.Invalid);
             }
             SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target,
-                "api/v2/secret-imports/secrets" + OrganizationQuery(address), HttpMethod.Get, null, null, null, operationToken);
+                new(HttpMethod.Get, InfisicalNativeOperationKind.ReadImportedSecrets), null, null, null, operationToken);
             if (!outcome.IsSuccess) { return SecretOutcome<InfisicalImportedSecrets>.Failure(outcome.Status, outcome.RetryAfter, outcome.Reason); }
             using JsonDocument document = outcome.Value;
             if (!NativeArray(document.RootElement, "secrets", out JsonElement groups) || groups.GetArrayLength() > 1000)

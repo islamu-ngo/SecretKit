@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net.Http.Headers;
 using Refit;
 
@@ -32,9 +33,10 @@ public sealed partial class InfisicalClient
     // These switches bind protected typed addresses to the fixed handwritten interfaces.
     // No caller can choose an endpoint, arbitrary method, raw body or wire request.
     private async Task<HttpRequestMessage> BuildNativeRequestAsync(InfisicalNativeAddress address,
-        string path, HttpMethod method, byte[]? payload, CancellationToken cancellationToken)
+        InfisicalNativeOperation operation, byte[]? payload, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        HttpMethod method = operation.Method;
         ByteArrayContent? content = payload is null ? null : new ByteArrayContent(payload);
         if (content is not null) { content.Headers.ContentType = new MediaTypeHeaderValue("application/json"); }
         bool transferred = false;
@@ -42,18 +44,18 @@ public sealed partial class InfisicalClient
         {
             Task<HttpRequestMessage> building = address switch
             {
-                InfisicalEnvironmentAddress environment => BuildEnvironmentRequest(environment, path, method, content, cancellationToken),
-                InfisicalTagAddress tag => BuildTagRequest(tag, method, content, cancellationToken),
-                InfisicalFolderAddress folder => BuildFolderRequest(folder, path, method, content, cancellationToken),
-                InfisicalImportAddress import => BuildImportRequest(import, path, method, content, cancellationToken),
-                InfisicalBulkAddress => method.Method switch
+                InfisicalEnvironmentAddress environment => BuildEnvironmentRequest(environment, operation, content, cancellationToken),
+                InfisicalTagAddress tag when operation.Kind == InfisicalNativeOperationKind.Standard => BuildTagRequest(tag, method, content, cancellationToken),
+                InfisicalFolderAddress folder => BuildFolderRequest(folder, operation, content, cancellationToken),
+                InfisicalImportAddress import => BuildImportRequest(import, operation, content, cancellationToken),
+                InfisicalBulkAddress when operation.Kind == InfisicalNativeOperationKind.Standard => method.Method switch
                 {
                     "POST" => BulkWire.CreateSecretsAsync(content!, cancellationToken),
                     "PATCH" => BulkWire.UpdateSecretsAsync(content!, cancellationToken),
                     "DELETE" => BulkWire.DeleteSecretsAsync(content!, cancellationToken),
                     _ => throw new InvalidOperationException("Invalid native bulk binding.")
                 },
-                InfisicalValidationAddress validation => BuildValidationRequest(validation, path, method, content, cancellationToken),
+                InfisicalValidationAddress validation => BuildValidationRequest(validation, operation, content, cancellationToken),
                 _ => throw new InvalidOperationException("Invalid native address binding.")
             };
             HttpRequestMessage request = await building.ConfigureAwait(false);
@@ -75,18 +77,19 @@ public sealed partial class InfisicalClient
         }
     }
 
-    private Task<HttpRequestMessage> BuildEnvironmentRequest(InfisicalEnvironmentAddress address, string path,
-        HttpMethod method, HttpContent? content, CancellationToken cancellationToken) => method.Method switch
+    private Task<HttpRequestMessage> BuildEnvironmentRequest(InfisicalEnvironmentAddress address,
+        InfisicalNativeOperation operation, HttpContent? content, CancellationToken cancellationToken) =>
+        (operation.Method.Method, operation.Kind) switch
         {
-            "GET" when address.Selection == InfisicalOrganizationSelector.Slug =>
+            ("GET", InfisicalNativeOperationKind.Standard) when address.Selection == InfisicalOrganizationSelector.Slug =>
                 OrganizationWire.GetEnvironmentBySlugAsync(address.ProjectId, address.Selector, cancellationToken),
-            "GET" => OrganizationWire.GetEnvironmentAsync(address.ProjectId, address.Selector, cancellationToken),
-            "POST" when path.EndsWith("/restore", StringComparison.Ordinal) =>
+            ("GET", InfisicalNativeOperationKind.Standard) => OrganizationWire.GetEnvironmentAsync(address.ProjectId, address.Selector, cancellationToken),
+            ("POST", InfisicalNativeOperationKind.RestoreEnvironment) =>
                 OrganizationWire.RestoreEnvironmentAsync(address.ProjectId, address.Selector, cancellationToken),
-            "POST" => OrganizationWire.CreateEnvironmentAsync(address.ProjectId, content!, cancellationToken),
-            "PATCH" => OrganizationWire.UpdateEnvironmentAsync(address.ProjectId, address.Selector, content!, cancellationToken),
-            "DELETE" => OrganizationWire.DeleteEnvironmentAsync(address.ProjectId, address.Selector,
-                NativeQueryValue(path, "hardDelete")!, cancellationToken),
+            ("POST", InfisicalNativeOperationKind.Standard) => OrganizationWire.CreateEnvironmentAsync(address.ProjectId, content!, cancellationToken),
+            ("PATCH", InfisicalNativeOperationKind.Standard) => OrganizationWire.UpdateEnvironmentAsync(address.ProjectId, address.Selector, content!, cancellationToken),
+            ("DELETE", InfisicalNativeOperationKind.Standard) => OrganizationWire.DeleteEnvironmentAsync(address.ProjectId, address.Selector,
+                Boolean(operation.HardDelete), cancellationToken),
             _ => throw new InvalidOperationException("Invalid environment binding.")
         };
 
@@ -103,43 +106,47 @@ public sealed partial class InfisicalClient
             _ => throw new InvalidOperationException("Invalid tag binding.")
         };
 
-    private Task<HttpRequestMessage> BuildFolderRequest(InfisicalFolderAddress address, string path, HttpMethod method,
-        HttpContent? content, CancellationToken cancellationToken) => method.Method switch
+    private Task<HttpRequestMessage> BuildFolderRequest(InfisicalFolderAddress address, InfisicalNativeOperation operation,
+        HttpContent? content, CancellationToken cancellationToken) => (operation.Method.Method, operation.Kind) switch
         {
-            "GET" when path.StartsWith("api/v2/folders?", StringComparison.Ordinal) =>
+            ("GET", InfisicalNativeOperationKind.ListFolders) =>
                 OrganizationWire.ListFoldersAsync(address.ProjectId, address.Environment!, address.Folder!,
-                    NativeQueryValue(path, "recursive")!, NativeQueryValue(path, "lastSecretModified"), cancellationToken),
-            "GET" => OrganizationWire.GetFolderAsync(address.Id!, cancellationToken),
-            "POST" when path == "api/v2/folders/move" => OrganizationWire.MoveFolderAsync(content!, cancellationToken),
-            "POST" => OrganizationWire.CreateFolderAsync(content!, cancellationToken),
-            "PATCH" when path == "api/v2/folders/batch" => OrganizationWire.UpdateFoldersAsync(content!, cancellationToken),
-            "PATCH" => OrganizationWire.UpdateFolderAsync(address.Id!, content!, cancellationToken),
-            "DELETE" => OrganizationWire.DeleteFolderAsync(address.Id ?? address.Name!, content!, cancellationToken),
+                    Boolean(operation.Recursive), operation.LastSecretModified?.ToString("O", CultureInfo.InvariantCulture), cancellationToken),
+            ("GET", InfisicalNativeOperationKind.Standard) => OrganizationWire.GetFolderAsync(address.Id!, cancellationToken),
+            ("POST", InfisicalNativeOperationKind.MoveFolder) => OrganizationWire.MoveFolderAsync(content!, cancellationToken),
+            ("POST", InfisicalNativeOperationKind.Standard) => OrganizationWire.CreateFolderAsync(content!, cancellationToken),
+            ("PATCH", InfisicalNativeOperationKind.UpdateFolders) => OrganizationWire.UpdateFoldersAsync(content!, cancellationToken),
+            ("PATCH", InfisicalNativeOperationKind.Standard) => OrganizationWire.UpdateFolderAsync(address.Id!, content!, cancellationToken),
+            ("DELETE", InfisicalNativeOperationKind.Standard) => OrganizationWire.DeleteFolderAsync(address.Id ?? address.Name!, content!, cancellationToken),
             _ => throw new InvalidOperationException("Invalid folder binding.")
         };
 
-    private Task<HttpRequestMessage> BuildImportRequest(InfisicalImportAddress address, string path, HttpMethod method,
-        HttpContent? content, CancellationToken cancellationToken) => method.Method switch
+    private Task<HttpRequestMessage> BuildImportRequest(InfisicalImportAddress address, InfisicalNativeOperation operation,
+        HttpContent? content, CancellationToken cancellationToken) => (operation.Method.Method, operation.Kind) switch
         {
-            "GET" when path.StartsWith("api/v2/secret-imports/secrets?", StringComparison.Ordinal) =>
+            ("GET", InfisicalNativeOperationKind.ReadImportedSecrets) =>
                 ImportWire.ReadImportedSecretsAsync(address.ProjectId, address.Environment!, address.Folder!, cancellationToken),
-            "GET" when address.ImportId is null =>
+            ("GET", InfisicalNativeOperationKind.Standard) when address.ImportId is null =>
                 ImportWire.ListImportsAsync(address.ProjectId, address.Environment!, address.Folder!, cancellationToken),
-            "GET" => ImportWire.GetImportAsync(address.ImportId!, cancellationToken),
-            "POST" => ImportWire.CreateImportAsync(content!, cancellationToken),
-            "PATCH" => ImportWire.UpdateImportAsync(address.ImportId!, content!, cancellationToken),
-            "DELETE" => ImportWire.DeleteImportAsync(address.ImportId!, content!, cancellationToken),
+            ("GET", InfisicalNativeOperationKind.Standard) => ImportWire.GetImportAsync(address.ImportId!, cancellationToken),
+            ("POST", InfisicalNativeOperationKind.Standard) => ImportWire.CreateImportAsync(content!, cancellationToken),
+            ("PATCH", InfisicalNativeOperationKind.Standard) => ImportWire.UpdateImportAsync(address.ImportId!, content!, cancellationToken),
+            ("DELETE", InfisicalNativeOperationKind.Standard) => ImportWire.DeleteImportAsync(address.ImportId!, content!, cancellationToken),
             _ => throw new InvalidOperationException("Invalid import binding.")
         };
 
-    private Task<HttpRequestMessage> BuildValidationRequest(InfisicalValidationAddress address, string path, HttpMethod method,
+    private Task<HttpRequestMessage> BuildValidationRequest(InfisicalValidationAddress address, InfisicalNativeOperation operation,
         HttpContent? content, CancellationToken cancellationToken)
     {
-        if (method == HttpMethod.Get && path.StartsWith("api/v1/secret-validation-rules?", StringComparison.Ordinal))
+        if (operation.Method == HttpMethod.Get && operation.Kind == InfisicalNativeOperationKind.ListValidationRules)
         {
             return ValidationWire.ListAllAsync(address.ProjectId, cancellationToken);
         }
-        return (address.Kind, method.Method, address.RuleId is null) switch
+        if (operation.Kind != InfisicalNativeOperationKind.Standard)
+        {
+            throw new InvalidOperationException("Invalid validation binding.");
+        }
+        return (address.Kind, operation.Method.Method, address.RuleId is null) switch
         {
             (InfisicalValidationKind.StaticSecrets, "GET", true) => ValidationWire.ListStaticAsync(address.ProjectId, cancellationToken),
             (InfisicalValidationKind.StaticSecrets, "GET", false) => ValidationWire.GetStaticAsync(address.RuleId!, cancellationToken),
@@ -160,18 +167,4 @@ public sealed partial class InfisicalClient
         };
     }
 
-    private static string? NativeQueryValue(string path, string name)
-    {
-        int start = path.IndexOf('?');
-        if (start < 0) { return null; }
-        foreach (string pair in path[(start + 1)..].Split('&'))
-        {
-            int separator = pair.IndexOf('=');
-            if (separator >= 0 && pair[..separator] == name)
-            {
-                return Uri.UnescapeDataString(pair[(separator + 1)..]);
-            }
-        }
-        return null;
-    }
 }

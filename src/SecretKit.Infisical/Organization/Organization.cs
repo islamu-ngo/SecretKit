@@ -342,15 +342,10 @@ public sealed partial class InfisicalClient
             {
                 return SecretOutcome<InfisicalEnvironment>.Failure(SecretStatus.Invalid);
             }
-            string path = $"api/v1/projects/{Uri.EscapeDataString(address.ProjectId)}/environments";
-            if (method != HttpMethod.Post || restore)
-            {
-                path += (method == HttpMethod.Get && address.Selection == InfisicalOrganizationSelector.Slug ? "/slug/" : "/") +
-                    Uri.EscapeDataString(address.Selector);
-            }
-            if (restore) { path += "/restore"; }
-            if (method == HttpMethod.Delete) { path += "?hardDelete=" + Boolean(hardDelete); }
-            SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target, path, method, payload, authority, receipt, operationToken);
+            var operation = new InfisicalNativeOperation(method,
+                restore ? InfisicalNativeOperationKind.RestoreEnvironment : InfisicalNativeOperationKind.Standard,
+                HardDelete: hardDelete);
+            SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target, operation, payload, authority, receipt, operationToken);
             if (!outcome.IsSuccess) { return SecretOutcome<InfisicalEnvironment>.Failure(outcome.Status, outcome.RetryAfter, outcome.Reason); }
             using JsonDocument document = outcome.Value;
             if (!NativeObject(document.RootElement, "environment", out JsonElement item) ||
@@ -416,13 +411,7 @@ public sealed partial class InfisicalClient
             {
                 return SecretOutcome<InfisicalTag>.Failure(SecretStatus.Invalid);
             }
-            string path = $"api/v1/projects/{Uri.EscapeDataString(address.ProjectId)}/tags";
-            if (method != HttpMethod.Post)
-            {
-                path += (method == HttpMethod.Get && address.Selection == InfisicalOrganizationSelector.Slug ? "/slug/" : "/") +
-                    Uri.EscapeDataString(address.Selector);
-            }
-            SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target, path, method, payload, authority, receipt, operationToken);
+            SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target, new(method), payload, authority, receipt, operationToken);
             if (!outcome.IsSuccess) { return SecretOutcome<InfisicalTag>.Failure(outcome.Status, outcome.RetryAfter, outcome.Reason); }
             using JsonDocument document = outcome.Value;
             if (!NativeObject(document.RootElement, "tag", out JsonElement item) ||
@@ -451,7 +440,7 @@ public sealed partial class InfisicalClient
                 return SecretOutcome<InfisicalNativeList<InfisicalTag>>.Failure(SecretStatus.Invalid);
             }
             SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target,
-                $"api/v1/projects/{Uri.EscapeDataString(address.ProjectId)}/tags", HttpMethod.Get, null, null, null, operationToken);
+                new(HttpMethod.Get), null, null, null, operationToken);
             if (!outcome.IsSuccess) { return SecretOutcome<InfisicalNativeList<InfisicalTag>>.Failure(outcome.Status, outcome.RetryAfter, outcome.Reason); }
             using JsonDocument document = outcome.Value;
             if (!NativeArray(document.RootElement, "tags", out JsonElement items))
@@ -488,9 +477,9 @@ public sealed partial class InfisicalClient
             {
                 return SecretOutcome<InfisicalNativeList<InfisicalFolder>>.Failure(SecretStatus.Invalid);
             }
-            string path = "api/v2/folders" + OrganizationQuery(address) + "&recursive=" + Boolean(recursive) +
-                (lastSecretModified is { } date ? "&lastSecretModified=" + Uri.EscapeDataString(date.ToString("O", CultureInfo.InvariantCulture)) : "");
-            SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target, path, HttpMethod.Get, null, null, null, operationToken);
+            var operation = new InfisicalNativeOperation(HttpMethod.Get, InfisicalNativeOperationKind.ListFolders,
+                Recursive: recursive, LastSecretModified: lastSecretModified);
+            SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target, operation, null, null, null, operationToken);
             if (!outcome.IsSuccess) { return SecretOutcome<InfisicalNativeList<InfisicalFolder>>.Failure(outcome.Status, outcome.RetryAfter, outcome.Reason); }
             using JsonDocument document = outcome.Value;
             if (!NativeArray(document.RootElement, "folders", out JsonElement items))
@@ -588,9 +577,7 @@ public sealed partial class InfisicalClient
             {
                 return SecretOutcome<InfisicalFolder>.Failure(SecretStatus.Invalid);
             }
-            string path = "api/v2/folders";
-            if (method != HttpMethod.Post) { path += "/" + Uri.EscapeDataString(address.Id ?? address.Name!); }
-            SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target, path, method, payload, authority, receipt, operationToken);
+            SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target, new(method), payload, authority, receipt, operationToken);
             if (!outcome.IsSuccess) { return SecretOutcome<InfisicalFolder>.Failure(outcome.Status, outcome.RetryAfter, outcome.Reason); }
             using JsonDocument document = outcome.Value;
             if (!NativeObject(document.RootElement, "folder", out JsonElement item) ||
@@ -641,8 +628,8 @@ public sealed partial class InfisicalClient
                 if (update.Description is not null || update.ClearDescription) { body["description"] = update.Description; }
                 return body;
             }).ToArray();
-            SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target, "api/v2/folders/batch",
-                HttpMethod.Patch, InfisicalOperationBudget.Payload(new { projectId = address.ProjectId, folders = bodies }),
+            SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target,
+                new(HttpMethod.Patch, InfisicalNativeOperationKind.UpdateFolders), InfisicalOperationBudget.Payload(new { projectId = address.ProjectId, folders = bodies }),
                 authority, receipt, operationToken);
             if (!outcome.IsSuccess) { return SecretOutcome<InfisicalNativeList<InfisicalFolder>>.Failure(outcome.Status, outcome.RetryAfter, outcome.Reason); }
             using JsonDocument document = outcome.Value;
@@ -685,8 +672,8 @@ public sealed partial class InfisicalClient
             {
                 return SecretOutcome<InfisicalFolderMove>.Failure(SecretStatus.Invalid);
             }
-            SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target, "api/v2/folders/move",
-                HttpMethod.Post, InfisicalOperationBudget.Payload(new
+            SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target,
+                new(HttpMethod.Post, InfisicalNativeOperationKind.MoveFolder), InfisicalOperationBudget.Payload(new
                 {
                     projectId = address.ProjectId,
                     folderId = address.Id,
@@ -720,9 +707,6 @@ public sealed partial class InfisicalClient
         NativeString(item, "name") is { } name && NativeDates(item)
             ? new(id, environmentId, name, NativeString(item, "parentId"),
                 NativeString(item, "path") ?? NativeString(item, "relativePath"), NativeString(item, "description")) : null;
-
-    private static string OrganizationQuery(InfisicalNativeAddress address) =>
-        $"?projectId={Uri.EscapeDataString(address.ProjectId)}&environment={Uri.EscapeDataString(address.Environment!)}&path={Uri.EscapeDataString(address.Folder!)}";
 
     private static bool NativeObject(JsonElement item, string property, out JsonElement value)
     {

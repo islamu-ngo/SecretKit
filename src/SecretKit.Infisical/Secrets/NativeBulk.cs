@@ -416,8 +416,7 @@ public sealed partial class InfisicalClient
                 method == HttpMethod.Patch ? InfisicalBulkOperation.Update : InfisicalBulkOperation.Delete;
             if (!receipt.Claim(this, target, owned, operation, mode))
                 return SecretOutcome<InfisicalBulkObservation>.Failure(SecretStatus.Invalid);
-            SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target, "api/v4/secrets/batch",
-                method, InfisicalOperationBudget.Payload(requestBody), authority, receipt.Envelope, operationToken, receipt);
+            SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target, new(method), InfisicalOperationBudget.Payload(requestBody), authority, receipt.Envelope, operationToken, receipt);
             if (!outcome.IsSuccess) { return SecretOutcome<InfisicalBulkObservation>.Failure(outcome.Status, outcome.RetryAfter, outcome.Reason); }
             using JsonDocument document = outcome.Value;
             JsonElement root = document.RootElement;

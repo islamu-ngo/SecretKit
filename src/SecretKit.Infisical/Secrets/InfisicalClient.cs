@@ -451,7 +451,7 @@ public sealed partial class InfisicalClient : IInfisicalSecretReader, IAsyncDisp
             receipt.Evidence == DispatchEvidence.NotDispatched));
 
     private async ValueTask<SecretOutcome<JsonDocument>> NativeDocumentAsync(SecretReference target,
-        string path, HttpMethod method, Func<int, byte[]>? serialize, InfisicalNativeAuthority? authority,
+        InfisicalNativeOperation operation, Func<int, byte[]>? serialize, InfisicalNativeAuthority? authority,
         MutationReceipt? receipt, CancellationToken cancellationToken, InfisicalBulkReceipt? bulkReceipt = null)
     {
         ArgumentNullException.ThrowIfNull(target);
@@ -461,7 +461,7 @@ public sealed partial class InfisicalClient : IInfisicalSecretReader, IAsyncDisp
         {
             budget.Check();
             if (!NativeTargetValid(target, authority, receipt) ||
-                (method != HttpMethod.Get && (authority is null || receipt is null)))
+                (operation.Method != HttpMethod.Get && (authority is null || receipt is null)))
                 return SecretOutcome<JsonDocument>.Failure(SecretStatus.Invalid, reason: SecretFailureReason.AuthorityMismatch);
             payload = serialize?.Invoke(_requestLimit);
             budget.Check();
@@ -471,7 +471,7 @@ public sealed partial class InfisicalClient : IInfisicalSecretReader, IAsyncDisp
             try
             {
                 using HttpRequestMessage request = await BuildNativeRequestAsync((InfisicalNativeAddress)target.Address,
-                    path, method, payload, budget.Token).ConfigureAwait(false);
+                    operation, payload, budget.Token).ConfigureAwait(false);
                 return await ReadDocumentAsync(request, budget, receipt, target, authority?.Tokens, bulkReceipt)
                     .ConfigureAwait(false);
             }

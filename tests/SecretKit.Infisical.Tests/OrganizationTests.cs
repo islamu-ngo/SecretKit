@@ -7,6 +7,59 @@ namespace SecretKit.Infisical.Tests;
 public sealed class OrganizationTests
 {
     [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task FolderQueryRetainsExplicitRecursionAndExactModificationTime(bool recursive)
+    {
+        var backend = new QueryBackend();
+        await using InfisicalClient client = Phase5TestSupport.Client(backend);
+        var target = new SecretReference(client.Authority,
+            new InfisicalFolderAddress("project", "dev", Phase5TestSupport.EnvironmentId, "/a b&c"));
+        DateTimeOffset modified = new(2026, 10, 9, 10, 11, 12, TimeSpan.FromMinutes(330));
+
+        var result = await client.ListFoldersAsync(target, recursive: recursive, lastSecretModified: modified);
+
+        await Assert.That(result.Status).IsEqualTo(SecretStatus.Success);
+        await Assert.That(backend.Destination!.AbsolutePath).IsEqualTo("/api/v2/folders");
+        await Assert.That(backend.Destination.Query).IsEqualTo(
+            "?projectId=project&environment=dev&path=%2Fa%20b%26c&recursive=" +
+            (recursive ? "true" : "false") + "&lastSecretModified=2026-10-09T10%3A11%3A12.0000000%2B05%3A30");
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task EnvironmentDeletionRetainsExplicitHardDeleteQuery(bool hardDelete)
+    {
+        var backend = new QueryBackend();
+        await using InfisicalClient client = Phase5TestSupport.Client(backend);
+        var target = new SecretReference(client.Authority, new InfisicalEnvironmentAddress("project", Phase5TestSupport.Id));
+        var receipt = client.CreateReceipt(target);
+
+        var result = await client.DeleteEnvironmentAsync(target, Phase5TestSupport.Admin(client), receipt, hardDelete);
+
+        await Assert.That(result.Status).IsEqualTo(SecretStatus.Absent);
+        await Assert.That(backend.Method).IsEqualTo(HttpMethod.Delete);
+        await Assert.That(backend.Destination!.AbsolutePath).IsEqualTo("/api/v1/projects/project/environments/" + Phase5TestSupport.Id);
+        await Assert.That(backend.Destination.Query).IsEqualTo(hardDelete ? "?hardDelete=true" : "?hardDelete=false");
+    }
+
+    private sealed class QueryBackend : HttpMessageHandler
+    {
+        internal Uri? Destination { get; private set; }
+        internal HttpMethod? Method { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Destination = request.RequestUri;
+            Method = request.Method;
+            return Task.FromResult(request.Method == HttpMethod.Get
+                ? Phase5TestSupport.Json(200, new { folders = Array.Empty<object>() })
+                : Phase5TestSupport.Json(404, new { }));
+        }
+    }
+
+    [Test]
     public async Task ForeignNativeReceiptFailsBeforeCredentials()
     {
         var backend = new OrganizationBackend();

@@ -350,9 +350,7 @@ public sealed partial class InfisicalClient
             {
                 return SecretOutcome<InfisicalValidationRule>.Failure(SecretStatus.Invalid);
             }
-            string path = "api/v1/secret-validation-rules/" + ValidationKindWire(address.Kind) +
-                (method == HttpMethod.Post ? "" : "/" + Uri.EscapeDataString(address.RuleId!));
-            SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target, path, method, payload, authority, receipt, operationToken);
+            SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target, new(method), payload, authority, receipt, operationToken);
             if (!outcome.IsSuccess) { return SecretOutcome<InfisicalValidationRule>.Failure(outcome.Status, outcome.RetryAfter, outcome.Reason); }
             using JsonDocument document = outcome.Value;
             if (!NativeObject(document.RootElement, "secretValidationRule", out JsonElement item) ||
@@ -389,9 +387,9 @@ public sealed partial class InfisicalClient
             {
                 return SecretOutcome<InfisicalNativeList<InfisicalValidationRule>>.Failure(SecretStatus.Invalid);
             }
-            string path = "api/v1/secret-validation-rules" + (allKinds ? "" : "/" + ValidationKindWire(address.Kind)) +
-                "?projectId=" + Uri.EscapeDataString(address.ProjectId);
-            SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target, path, HttpMethod.Get, null, null, null, operationToken);
+            var operation = new InfisicalNativeOperation(HttpMethod.Get,
+                allKinds ? InfisicalNativeOperationKind.ListValidationRules : InfisicalNativeOperationKind.Standard);
+            SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target, operation, null, null, null, operationToken);
             if (!outcome.IsSuccess) { return SecretOutcome<InfisicalNativeList<InfisicalValidationRule>>.Failure(outcome.Status, outcome.RetryAfter, outcome.Reason); }
             using JsonDocument document = outcome.Value;
             if (!NativeArray(document.RootElement, "secretValidationRules", out JsonElement items))
@@ -493,13 +491,6 @@ public sealed partial class InfisicalClient
         return value.ValueKind is JsonValueKind.True or JsonValueKind.False ? value.GetBoolean() :
             throw new InvalidOperationException("Invalid boolean response field.");
     }
-    private static string ValidationKindWire(InfisicalValidationKind kind) => kind switch
-    {
-        InfisicalValidationKind.StaticSecrets => "static-secrets",
-        InfisicalValidationKind.DynamicSecrets => "dynamic-secrets",
-        InfisicalValidationKind.SecretRotations => "secret-rotations",
-        _ => throw new ArgumentOutOfRangeException(nameof(kind))
-    };
     private static string ValidationProviderWire(InfisicalValidationProvider provider) => provider switch
     {
         InfisicalValidationProvider.SqlDatabase => "sql-database",
