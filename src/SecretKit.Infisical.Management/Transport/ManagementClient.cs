@@ -112,10 +112,23 @@ public sealed class ManagementClient
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(authority);
-        return await InfisicalOperationBudget.RunAsync(_transport.OperationTimeout, _time,
-            cancellationToken, null,
-            token => ExecuteOnceAsync(request, authority, grant, receipt, token),
-            () => receipt?.Evidence ?? DispatchEvidence.NotDispatched).ConfigureAwait(false);
+        using IDisposable export = InfisicalDiagnostics.Defer();
+        var started = InfisicalDiagnostics.Capture(_time);
+        var observation = new InfisicalOperationObservation();
+        try
+        {
+            return await InfisicalOperationBudget.RunAsync(_transport.OperationTimeout, _time,
+                cancellationToken, null,
+                token => ExecuteOnceAsync(request, authority, grant, receipt, token),
+                () => receipt?.Evidence ?? DispatchEvidence.NotDispatched,
+                observation: observation).ConfigureAwait(false);
+        }
+        finally
+        {
+            if (observation.Completion is { } completion)
+                ManagementDiagnostics.Emit(request.OperationId, completion,
+                    InfisicalDiagnostics.Complete(started, _time));
+        }
     }
 
     private async ValueTask<SecretOutcome<T>> ExecuteOnceAsync<T>(ManagementRequest<T> request,

@@ -230,11 +230,15 @@
     },
     {
       "file": "src/SecretKit.Infisical.Management/Transport/ManagementClient.cs",
-      "sha256": "4181032fe03f3762d1ae02116b089a9c0d403efd66f87853e4e3e82e44956d0f"
+      "sha256": "a537e72febf7f197fb68fcf2ed54817b3302b5d5ba5305d09fa271ecbc84b88e"
     },
     {
       "file": "src/SecretKit.Infisical.Management/Transport/ManagementContracts.cs",
       "sha256": "d0ee70deb09c42dac088c3aaf2c50e76d59260193e5ba397ee56ca57216f7b1b"
+    },
+    {
+      "file": "src/SecretKit.Infisical.Management/Transport/ManagementDiagnostics.cs",
+      "sha256": "cc8b29846ee7474e1d6888eed0fbc069d6d15782e61d0945fa686ab5d61a5cb0"
     },
     {
       "file": "src/SecretKit.Infisical.Management/Transport/ManagementRequestBuilder.cs",
