@@ -238,15 +238,7 @@ public sealed partial class AzureKeyVaultClient : ISecretReader, ISecretInventor
                 .ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
             SecretProperties properties = response.Value.Properties;
-            if (properties.Id is null || !SameOrigin(_vault, properties.Id) ||
-                !string.Equals(properties.Name, address.Name, StringComparison.OrdinalIgnoreCase) ||
-                (address.Version is not null &&
-                    (!string.Equals(properties.Version, address.Version, StringComparison.OrdinalIgnoreCase) ||
-                        properties.Id.AbsolutePath != $"/secrets/{properties.Name}/{properties.Version}" ||
-                        properties.Id.Query.Length != 0)))
-            {
-                return SecretOutcome<SecretRead>.Failure(SecretStatus.Invalid);
-            }
+            ValidateProperties(properties, address, true);
 
             if (response.Value.Value is null)
             {
@@ -306,10 +298,7 @@ public sealed partial class AzureKeyVaultClient : ISecretReader, ISecretInventor
                 var remaining = limits.MaximumItems - items.Count;
                 foreach (var properties in page.Values)
                 {
-                    if (properties.Id is null || !SameOrigin(_vault, properties.Id))
-                    {
-                        return SecretOutcome<SecretInventory>.Failure(SecretStatus.Invalid);
-                    }
+                    ValidateProperties(properties, null, false);
 
                     if (items.Count == limits.MaximumItems)
                     {
@@ -379,6 +368,7 @@ public sealed partial class AzureKeyVaultClient : ISecretReader, ISecretInventor
     private static SecretStatus Status(Exception exception) => exception switch
     {
         ResponseBudgetExceededException or NativeCoordinateException => SecretStatus.Invalid,
+        ArgumentException => SecretStatus.Invalid,
         RequestFailedException { Status: 401 or 403 } => SecretStatus.Denied,
         RequestFailedException { Status: 404 } => SecretStatus.Absent,
         RequestFailedException { Status: 429 } => SecretStatus.Throttled,

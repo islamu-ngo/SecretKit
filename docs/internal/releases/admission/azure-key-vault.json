@@ -54,7 +54,7 @@
     },
     {
       "file": "src/SecretKit.AzureKeyVault/Secrets/AzureKeyVaultClient.cs",
-      "sha256": "b74dfbfd664e8cba4cbc5e8dda1d7ca053e5d3beb59a1e65f3d6f3546e5edf21"
+      "sha256": "8152b949a0e1fdc4e8b069c2da4e39def7565183080a9fb5873923dd939cb974"
     },
     {
       "file": "src/SecretKit.AzureKeyVault/Secrets/AzureSecretAddress.cs",

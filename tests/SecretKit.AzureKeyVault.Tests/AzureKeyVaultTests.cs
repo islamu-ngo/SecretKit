@@ -16,6 +16,31 @@ public sealed class AzureKeyVaultTests
     private static readonly Uri Vault = new("https://unit.vault.azure.net");
 
     [Test]
+    [Arguments("/secrets/name-canary/0123456789abcdef0123456789abcdef?unexpected=true")]
+    [Arguments("/decorated/secrets/name-canary/0123456789abcdef0123456789abcdef")]
+    [Arguments("/secrets/name-canary/not-a-version")]
+    [Arguments("/secrets/invalid_name/0123456789abcdef0123456789abcdef")]
+    [Arguments("//other.vault.azure.net/secrets/name-canary/0123456789abcdef0123456789abcdef")]
+    public async Task LatestReadAndInventoryRejectNoncanonicalCoordinates(string path)
+    {
+        var row = JsonSerializer.Serialize(new
+        {
+            value = "material-canary",
+            id = "https://unit.vault.azure.net" + path,
+            attributes = new { enabled = true }
+        });
+        var wire = new WireTransport((request, _) => Task.FromResult(WireTransport.Json(200,
+            request.RequestUri!.AbsolutePath.TrimEnd('/') == "/secrets" ? "{\"value\":[" + row + "]}" : row)));
+        var client = new AzureKeyVaultClient(Vault, new TestCredential(), wire);
+        var reference = new SecretReference(client.Authority, new AzureSecretAddress("name-canary"));
+        var read = await client.ReadAsync(reference);
+        if (read.Status == SecretStatus.Success) read.Value.Dispose();
+        var inventory = await client.InspectAsync(new AzureInventoryScope(client.Authority));
+        await Assert.That(inventory.Status).IsEqualTo(SecretStatus.Invalid);
+        await Assert.That(read.Status).IsEqualTo(SecretStatus.Invalid);
+    }
+
+    [Test]
     [Arguments(false)]
     [Arguments(true)]
     public async Task ReadObservationPreservesRequestedReferenceIdentity(bool versioned)
