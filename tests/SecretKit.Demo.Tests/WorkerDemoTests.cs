@@ -7,6 +7,31 @@ public sealed class WorkerDemoTests
     private const string Canary = "worker-private-canary-4f83";
 
     [Test]
+    public async Task RepeatedWorkKeepsOneSessionAndExplicitStopEndsHostedAdmission()
+    {
+        await using var server = new ControlledInfisicalServer(_ => new(200, Secret()));
+        int completed = 0;
+        DemoResult result = await new DemoProcess().WorkerAsync(() => Input(server.Origin) + "\n",
+            ["run"], async (line, stdin) =>
+            {
+                string outcome = Outcome(line);
+                if (outcome == "started" || outcome == "success")
+                {
+                    if (outcome == "success") completed++;
+                    await stdin.WriteLineAsync(completed == 3 ? "stop" : "work");
+                    await stdin.FlushAsync();
+                }
+            });
+        await Assert.That(result.ExitCode).IsEqualTo(0);
+        await Assert.That(string.Join(',', Outcomes(result)))
+            .IsEqualTo("prepared,started,success,success,success,stopped");
+        await Assert.That(server.Requests.Count).IsEqualTo(4);
+        await Assert.That(server.Requests.All(request => request.Method == "GET" &&
+            request.Headers["Authorization"] == "Bearer " + Canary)).IsTrue();
+        await Assert.That((result.Output + result.Error).Contains(Canary, StringComparison.Ordinal)).IsFalse();
+    }
+
+    [Test]
     public async Task MalformedProtectedInputNeverLeaksThroughHostFailure()
     {
         DemoResult result = await new DemoProcess().WorkerAsync(Canary + "\n", ["run"]);

@@ -234,6 +234,8 @@ internal sealed class DemoProcess(string? diagnosticCapture = null,
                 .ToHashSet(StringComparer.Ordinal).SetEquals(["Microsoft.NETCore.App", "Microsoft.AspNetCore.App"]))
                 throw new InvalidOperationException("Unexpected web framework graph.");
 
+        SecretKit.Release.DependencyAudit.RecordInstalledGraph(assetsPath, document);
+
         static bool SamePath(string left, string right) =>
             string.Equals(Path.TrimEndingDirectorySeparator(Path.GetFullPath(left)),
                 Path.TrimEndingDirectorySeparator(Path.GetFullPath(right)),

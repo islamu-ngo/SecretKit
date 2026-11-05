@@ -57,98 +57,57 @@ must install all four packages.
 
 ## Build and verify one immutable local candidate
 
-Run from the SecretKit root with the SDK pinned in `global.json`. Use a fresh,
-empty output directory for each candidate; do not mix package versions or
-overwrite an earlier candidate. These commands build the current seven-package
-solution because existing package witnesses still require that complete family.
-
-Finish source, notices and documentation changes first. Run these commands
-sequentially; the conformance project shares build outputs with the solution.
-Every build uses the same candidate version, and the final solution build
-precedes packing. Do not reuse an existing output for different bytes.
+Run from the SecretKit root after finishing source and documentation changes.
+The local profile owns the version; global.json owns SDK selection. Bootstrap
+the tool without requiring any completed package or demo qualification:
 
 ```bash
-set -eu
-version=0.2.0-integration.3
-candidate="$PWD/artifacts/infisical-integration-quality/candidate-3"
-test ! -e "$candidate"
 dotnet restore SecretKit.slnx --locked-mode
-dotnet restore tests/SecretKit.Infisical.Conformance.Tests/SecretKit.Infisical.Conformance.Tests.csproj --locked-mode
-dotnet build tests/SecretKit.Infisical.Conformance.Tests/SecretKit.Infisical.Conformance.Tests.csproj --configuration Release --no-restore -p:Version="$version"
-dotnet tests/SecretKit.Infisical.Conformance.Tests/bin/Release/net10.0/SecretKit.Infisical.Conformance.Tests.dll --treenode-filter '/*/*/LocalProfileAdmissionTests/*' --minimum-expected-tests 58 --zero-tests-policy strict
-dotnet tests/SecretKit.Infisical.Conformance.Tests/bin/Release/net10.0/SecretKit.Infisical.Conformance.Tests.dll --treenode-filter '/*/*/LocalProfileFunctionalAdmissionTests/*' --minimum-expected-tests 1 --zero-tests-policy strict
-dotnet tests/SecretKit.Infisical.Conformance.Tests/bin/Release/net10.0/SecretKit.Infisical.Conformance.Tests.dll --treenode-filter '/*/*/LocalProfileUpdateWitnessTests/*' --minimum-expected-tests 2 --zero-tests-policy strict
-dotnet build SecretKit.slnx --configuration Release --no-restore -p:Version="$version"
-dotnet format SecretKit.slnx --verify-no-changes --no-restore --verbosity quiet
-dotnet pack SecretKit.slnx --configuration Release --no-build --no-restore -p:Version="$version" --output "$candidate/packages"
-dotnet build SecretKit.slnx --configuration Release --no-restore --no-incremental -p:Version="$version"
-dotnet pack SecretKit.slnx --configuration Release --no-build --no-restore -p:Version="$version" --output "$candidate/rebuild-packages"
-mkdir -p "$candidate/rebuild-originals"
-for id in SecretKit.Core SecretKit.Infisical SecretKit.Extensions.Configuration SecretKit.Extensions.Hosting; do
-  cp "$candidate/rebuild-packages/$id.$version.nupkg" "$candidate/rebuild-originals/"
-done
+dotnet build SecretKit.slnx --configuration Release --no-restore
+dotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll verification ordinary
+cohort="$PWD/artifacts/local-cohort-unique"
+dotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll verification prepare-local "$cohort"
+dotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll verification post-pack "$cohort"
 ```
 
-The second build is an independent compile-output comparison, never a replacement
-for the selected staging originals. It does not require ZIP timestamps to match.
-Before proceeding, generate/review the three app locks against the exact selected
-`packages/` archives in isolated copied app trees, as described under
-[frozen app locks](#frozen-app-locks-and-ci-verification-inputs). NuGet's
-`--lock-file-path` may write the reviewed generated locks directly to their
-source-owned paths. No source lock is hand-edited.
+Choose a previously absent absolute cohort directory with an existing parent.
+Preparation retains both isolated build outputs and caches. It produces seven
+original packages and their symbols, four byte-identical selected originals and
+symbols, a second independently compiled family and selected subset, the local
+qualification record, and frozen console/worker/web demo inputs. DLL, portable
+PDB and document checksums must agree across builds; ZIP-byte equality is only
+an observation. Existing directories are never replaced or merged. A failed
+preparation remains available for diagnosis; use a new directory for another run.
 
-Freeze source, docs, profile and those locks before resuming. Do not repack after
-lock generation. A byte-changing repair requires a new unused version/cohort.
-Promote the selected originals unchanged, then prepare the content record:
+`verification-cohort.json` binds every required archive, symbol and demo input.
+`verification check "$cohort"` verifies the complete selection without running
+tests. Missing, mixed, changed or linked artifacts fail before post-pack tests
+start. Keep the distinct public-proposal package family and release authority
+separate from this local cohort.
+
+Post-pack runs the complete Package and Demo hosts and the Release archive and
+installed-observation classes, with strict positive discovery and independent
+failure aggregation. It derives all candidate, local,
+integration-quality, symbol, rebuild, runtime-hardening and demo selectors from
+the verified record. No ambient candidate or cache selects inputs. Every run
+creates a new `artifacts/verification/observations/<id>/` directory and a separate
+host-local qualification record. The producer's qualification is preserved;
+platform observation files are published exclusively and cannot replace existing,
+linked or producer-owned evidence. Independent Linux/Windows consumers download
+the same cohort and never repack or regenerate source locks.
+
+Build the separate conformance solution before the fixed safe offline lane:
 
 ```bash
-mkdir -p "$candidate/originals" "$candidate/installations"
-for id in SecretKit.Core SecretKit.Infisical SecretKit.Extensions.Configuration SecretKit.Extensions.Hosting; do
-  cp "$candidate/packages/$id.$version.nupkg" "$candidate/originals/"
-done
-dotnet run --project tools/SecretKit.Release --configuration Release --no-build -- local-prepare "$PWD" "$candidate/originals" "$candidate/qualification"
-unset SECRETKIT_DEMO_STAGED_LOCK_DIRECTORY
-SECRETKIT_CANDIDATE_DIRECTORY="$candidate/packages" \
-SECRETKIT_CANDIDATE_VERSION="$version" \
-SECRETKIT_LOCAL_CANDIDATE_DIRECTORY="$candidate/originals" \
-SECRETKIT_LOCAL_CANDIDATE_VERSION="$version" \
-SECRETKIT_LOCAL_QUALIFICATION_DIRECTORY="$candidate/qualification" \
-SECRETKIT_LOCAL_INSTALL_REPORTS="$candidate/installations" \
-SECRETKIT_LOCAL_HANDOFF_DIRECTORY="$candidate/handoff" \
-SECRETKIT_RUNTIME_HARDENING_ORIGINALS="$candidate/originals" \
-SECRETKIT_RUNTIME_HARDENING_VERSION="$version" \
-SECRETKIT_DEMO_CANDIDATE_DIRECTORY="$candidate/originals" \
-SECRETKIT_DEMO_CANDIDATE_VERSION="$version" \
-SECRETKIT_DEMO_SDK=10.0.302 \
-SECRETKIT_INTEGRATION_QUALITY_ORIGINALS="$candidate/originals" \
-SECRETKIT_INTEGRATION_QUALITY_VERSION="$version" \
-SECRETKIT_INTEGRATION_QUALITY_SYMBOLS="$candidate/packages" \
-SECRETKIT_INTEGRATION_QUALITY_REBUILD_ORIGINALS="$candidate/rebuild-originals" \
-SECRETKIT_INTEGRATION_QUALITY_REBUILD_SYMBOLS="$candidate/rebuild-packages" \
-dotnet test --solution SecretKit.slnx --configuration Release --no-build \
-  --max-parallel-test-modules 1 -- \
-  --minimum-expected-tests 1 --zero-tests-policy strict --maximum-parallel-tests 2
-dotnet run --project samples/RuntimeConfiguration --configuration Release --no-build
-dotnet run --project samples/ProviderAssessment --configuration Release --no-build
-dotnet run --project tools/SecretKit.Release --configuration Release --no-build -- local-check "$PWD" "$candidate/originals" "$candidate/qualification"
+dotnet restore SecretKit.Conformance.slnx --locked-mode
+dotnet build SecretKit.Conformance.slnx --configuration Release --no-restore
+dotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll verification offline-conformance
 ```
 
-The full solution run includes the original four installed modes and the separate
-portable-bundle test. Do not repeat the latter against the same retained output:
-it deliberately rejects an existing destination. Dependency advisory review is
-separate: `dotnet package list --project SecretKit.slnx --include-transitive --vulnerable --no-restore`.
-
-Packing is local file creation, not publication. The package tests include
-package-only consumers with fresh restore caches and original-archive hash
-checks. They are not the application's acceptance suite. See
-[package tests](../../tests/SecretKit.Package.Tests/) and the
-[package consumer](../../tests/fixtures/SecretKit.PackageConsumer/).
-
-In an independently owned consumer, configure a local folder feed and an exact
-prerelease version using its own package-management conventions. Map
-`SecretKit.*` to that feed and keep dependency sources explicit. Do not rely on
-a previously populated global cache, floating versions, or SecretKit project
-references as proof that the candidate packages install correctly.
+This lane runs only the documented ProcessLifetimeTests, OwnedSandboxTests and
+three Azure delivery/webhook selections with their existing floors. Whole live
+conformance hosts remain separately authorized. Offline, installed, native and
+publication evidence retain their existing distinct meanings and denominators.
 
 ## Freeze an offline local record
 
@@ -257,70 +216,28 @@ in [local native compatibility](../internal/compatibility/infisical-local-profil
 
 ## Frozen app locks and CI verification inputs
 
-Normal local final-candidate tests use the finalized source-owned
-`tests/PackageQualification/Infisical.{Console,Worker,Web}Demo/packages.lock.json` files unchanged.
-Generate and review those locks from the selected staging originals before
-freezing the local candidate. Final tests copy them into independent app
-workspaces and restore with `--locked-mode`; they never regenerate source locks.
+The verified local cohort owns the demo version. Source-owned console, worker
+and web locks constrain package identity, exact internal relationships and the
+external dependency graph; their old SecretKit version never overrides a new
+profile selection. Preparation generates staged locks in isolated app workspaces
+against the exact originals. Only internal exact versions, internal dependency
+versions and original content hashes may change. External package versions,
+hashes, edges and framework graphs remain fixed. Source locks are not rewritten.
 
-A later CI rebuild is a different artifact even when its package IDs and
-versions match. The archives embed their Git commit and README/notices, so
-historical local lock hashes cannot be substituted for rebuilt archive bytes.
-The credential-free CI job therefore prepares a **temporary CI verification
-bundle**, distinct from the immutable local candidate, before final app tests:
+The cohort's `demos/` directory contains four unchanged originals, a copy of the
+producer qualification, frozen per-app locks and `demo-inputs.json`. The manifest
+binds the actual SDK, commit label, run/attempt, original and staged lock hashes,
+and fixed source inventories. The post-pack verb verifies these bindings and
+passes explicit `SECRETKIT_DEMO_CANDIDATE_DIRECTORY`,
+`SECRETKIT_DEMO_CANDIDATE_VERSION`, `SECRETKIT_DEMO_STAGED_LOCK_DIRECTORY` and
+`SECRETKIT_DEMO_SDK` selectors plus the bound run context to each demo process.
+Local runs use run/attempt 1 unless an explicit CI context is present.
 
-```bash
-dotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll \
-  local-demo-prepare . artifacts/local-originals artifacts/verification/local/qualification \
-  artifacts/demo-inputs "$GITHUB_SHA" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" 10.0.302
-dotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll \
-  local-demo-check . artifacts/demo-inputs \
-  "$GITHUB_SHA" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" 10.0.302
-```
-
-The fresh bundle contains exactly `originals/` (four byte-identical archives),
-`qualification/local-qualification.json`, `locks/{console,worker,web}/packages.lock.json`
-and `demo-inputs.json`. Preparation reuses `local-check`, checks the embedded
-archive commits against the selected CI SHA, copies the actual apps and linked
-sources, and generates locks only in temporary workspaces with isolated caches
-and source-mapped NuGet configurations. Compared with finalized source locks,
-only SecretKit package `contentHash` values may differ. Package IDs, versions,
-request ranges, dependency edges, external hashes and framework graphs must
-remain identical; a mismatch fails instead of rewriting the baseline.
-
-The manifest binds schema/purpose, workflow run/attempt, selected SHA and SDK,
-qualification digest, exact source-lock and staged-lock digests, and fixed app
-source inventories. `local-demo-check` reopens the originals and checks the
-current checkout/profile against the qualification record. It rejects missing,
-extra, duplicate, linked, altered or substituted inputs.
-
-Linux and Windows jobs download the same uploaded bundle without repacking.
-Checkout sets `core.autocrlf=false` through the checkout step's process
-environment only, preserving Linux-bound source bytes without changing global
-Git settings. Select the bundle explicitly for final installed app tests:
-
-```bash
-SECRETKIT_DEMO_CANDIDATE_DIRECTORY="$PWD/artifacts/demo-inputs/originals" \
-SECRETKIT_DEMO_CANDIDATE_VERSION=0.2.0-integration.3 \
-SECRETKIT_DEMO_STAGED_LOCK_DIRECTORY="$PWD/artifacts/demo-inputs" \
-SECRETKIT_DEMO_SDK=10.0.302 \
-dotnet tests/SecretKit.Demo.Tests/bin/Release/net10.0/SecretKit.Demo.Tests.dll \
-  --minimum-expected-tests 65 --zero-tests-policy strict
-```
-
-The workflow SHA, run ID and attempt must also be present in `GITHUB_SHA`,
-`GITHUB_RUN_ID` and `GITHUB_RUN_ATTEMPT`. An unset staged-lock selector uses
-source locks; a set-but-invalid selector fails, with no fallback. Each actual
-app workspace receives frozen selected lock bytes and verifies its original
-and copied project/source/linked-source/lock inputs before restore and after
-execution. Reports identify lock origin and digests, manifest/qualification,
-originals, selected version, SDK, platform and outcome. Existing SDK profile
-validators and the separate worker/web graph guards remain enforced.
-
-This bundle supplies CI-only offline verification evidence. It does not
-requalify the historical local candidate, establish an unobserved Windows or
-native pass, or change the seven-package/two-provider public release approval
-and publishing protocol.
+Every app copies selected locks unchanged and restores in locked mode with a
+fresh cache. A supplied invalid lock selection fails without fallback. Checkout
+uses `core.autocrlf=false` in independent CI consumers so source hashes remain
+portable. The source version and producer evidence remain immutable while each
+consumer writes its own host-local observations.
 
 ## Portable repository feed
 

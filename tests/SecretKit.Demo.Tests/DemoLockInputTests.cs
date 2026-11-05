@@ -31,11 +31,8 @@ public sealed class DemoLockInputTests
     {
         string directory = Environment.GetEnvironmentVariable("SECRETKIT_DEMO_CANDIDATE_DIRECTORY") ??
             throw new InvalidOperationException("Select demo originals.");
-        string root = Path.GetFullPath("../../../../../", AppContext.BaseDirectory);
-        using var sourceLock = System.Text.Json.JsonDocument.Parse(File.ReadAllBytes(
-            Path.Combine(root, "tests/PackageQualification/Infisical.ConsoleDemo/packages.lock.json")));
-        string version = sourceLock.RootElement.GetProperty("dependencies").GetProperty("net10.0")
-            .GetProperty("SecretKit.Core").GetProperty("resolved").GetString()!;
+        string version = Environment.GetEnvironmentVariable("SECRETKIT_DEMO_CANDIDATE_VERSION") ??
+            throw new InvalidOperationException("Select the verified demo cohort version.");
         DemoResult result = await new DemoProcess(candidateSelection: (directory, version))
             .ConsoleAsync("", "--help");
         await Assert.That(result.ExitCode).IsEqualTo(0);

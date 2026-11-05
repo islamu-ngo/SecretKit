@@ -9,7 +9,7 @@ public sealed class PlatformEvidenceTests
         [], "complete-live", []);
     private static PlatformObservation Observation(string operatingSystem = "linux") =>
         new(1, "installed-platform-observation", Scope().Version, Scope().SourceCommit,
-            operatingSystem, "x64", "net10.0", "10.0.10", "10.0.403", 0, 0, true, "candidate-only",
+            operatingSystem, "x64", "net10.0", "10.0.14", "10.0.403", 0, 0, true, "candidate-only",
             Manifest.PackageIds.Select(id => new PackageRecord(id, $"{id}.{Scope().Version}.nupkg",
                 new string('b', 64))).ToArray(), DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch.AddSeconds(1));
 
@@ -36,6 +36,7 @@ public sealed class PlatformEvidenceTests
     [Arguments("framework")]
     [Arguments("runtime")]
     [Arguments("sdk")]
+    [Arguments("old-sdk")]
     [Arguments("family")]
     [Arguments("time")]
     [Arguments("purpose")]
@@ -54,6 +55,7 @@ public sealed class PlatformEvidenceTests
             "framework" => observation with { Framework = "net9.0" },
             "runtime" => observation with { RuntimeVersion = "9.0.10" },
             "sdk" => observation with { SdkVersion = "9.0.302" },
+            "old-sdk" => observation with { SdkVersion = "10.0.302" },
             "family" => observation with { Packages = observation.Packages[..^1] },
             "time" => observation with { CompletedAt = observation.StartedAt.AddTicks(-1) },
             "purpose" => observation with { Purpose = "release-ready" },

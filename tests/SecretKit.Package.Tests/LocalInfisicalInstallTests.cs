@@ -97,14 +97,11 @@ public sealed class LocalInfisicalInstallTests
         string root = Path.GetFullPath("../../../../../", AppContext.BaseDirectory);
         string outputs = Path.Combine(root, "artifacts", "local-package-consumers", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(outputs);
-        string? selected = Environment.GetEnvironmentVariable("SECRETKIT_LOCAL_CANDIDATE_DIRECTORY");
+        string selected = Environment.GetEnvironmentVariable("SECRETKIT_LOCAL_CANDIDATE_DIRECTORY") ??
+            throw new InvalidOperationException("Select verified local originals.");
         string version = Environment.GetEnvironmentVariable("SECRETKIT_LOCAL_CANDIDATE_VERSION") ??
-            Environment.GetEnvironmentVariable("SECRETKIT_CANDIDATE_VERSION") ?? "0.1.0-preview.1";
-        LocalPackageCandidate candidate = selected is null
-            ? LocalPackageCandidate.CopyFromFamily(root, version,
-                Environment.GetEnvironmentVariable("SECRETKIT_CANDIDATE_DIRECTORY") ??
-                    Path.Combine(root, "artifacts", "packages"), Path.Combine(outputs, "originals"))
-            : LocalPackageCandidate.Select(selected, version);
+            throw new InvalidOperationException("Select the verified local version.");
+        LocalPackageCandidate candidate = LocalPackageCandidate.Select(selected, version);
         foreach (string package in LocalPackageCandidate.PackageIds)
         {
             using ZipArchive archive = ZipFile.OpenRead(candidate.ArchivePath(package));
@@ -524,26 +521,23 @@ public sealed class LocalInfisicalBundleTests
     public async Task RetainedBundleInstallsAllModesAfterRelocation()
     {
         string root = Path.GetFullPath("../../../../../", AppContext.BaseDirectory);
-        string scratch = Path.Combine(Path.GetTempPath(), "secretkit-bundle-" + Guid.NewGuid().ToString("N"));
+        string? auditGraphs = Environment.GetEnvironmentVariable("SECRETKIT_DEPENDENCY_AUDIT_GRAPHS");
+        string parent = auditGraphs is null ? Path.GetTempPath() :
+            Path.Combine(Path.GetDirectoryName(auditGraphs)!, "retained-bundles");
+        string scratch = Path.Combine(parent, "secretkit-bundle-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(scratch);
         try
         {
             string version = Environment.GetEnvironmentVariable("SECRETKIT_LOCAL_CANDIDATE_VERSION") ??
-                Environment.GetEnvironmentVariable("SECRETKIT_CANDIDATE_VERSION") ?? "0.1.0-preview.1";
+                throw new InvalidOperationException("Select the verified local version.");
             string originals = Path.Combine(scratch, "originals");
-            LocalPackageCandidate candidate;
-            if (Environment.GetEnvironmentVariable("SECRETKIT_LOCAL_CANDIDATE_DIRECTORY") is { } selected)
-            {
-                LocalPackageCandidate input = LocalPackageCandidate.Select(selected, version);
-                Directory.CreateDirectory(originals);
-                foreach (string id in LocalPackageCandidate.PackageIds)
-                    File.Copy(input.ArchivePath(id), Path.Combine(originals, Path.GetFileName(input.ArchivePath(id))));
-                candidate = LocalPackageCandidate.Select(originals, version);
-            }
-            else
-                candidate = LocalPackageCandidate.CopyFromFamily(root, version,
-                    Environment.GetEnvironmentVariable("SECRETKIT_CANDIDATE_DIRECTORY") ??
-                        Path.Combine(root, "artifacts", "packages"), originals);
+            string selected = Environment.GetEnvironmentVariable("SECRETKIT_LOCAL_CANDIDATE_DIRECTORY") ??
+                throw new InvalidOperationException("Select verified local originals.");
+            LocalPackageCandidate input = LocalPackageCandidate.Select(selected, version);
+            Directory.CreateDirectory(originals);
+            foreach (string id in LocalPackageCandidate.PackageIds)
+                File.Copy(input.ArchivePath(id), Path.Combine(originals, Path.GetFileName(input.ArchivePath(id))));
+            LocalPackageCandidate candidate = LocalPackageCandidate.Select(originals, version);
             string[] ids = ["SecretKit.Core", "SecretKit.Infisical",
                 "SecretKit.Extensions.Configuration", "SecretKit.Extensions.Hosting"];
             Dictionary<string, string> expectedHashes = ids.ToDictionary(id => id,
@@ -626,7 +620,15 @@ public sealed class LocalInfisicalBundleTests
         }
         finally
         {
-            Directory.Delete(scratch, recursive: true);
+            // The connected parent audits these exact installed assets and caches
+            // after the host exits. Their lifetime belongs to that observation.
+            if (auditGraphs is null) Directory.Delete(scratch, recursive: true);
         }
+        if (auditGraphs is not null)
+            foreach (string mode in new[] { "minimal", "configuration", "hosting", "full" })
+            {
+                await Assert.That(File.Exists(Path.Combine(scratch, mode, "obj", "project.assets.json"))).IsTrue();
+                await Assert.That(Directory.Exists(Path.Combine(scratch, mode, "packages"))).IsTrue();
+            }
     }
 }

@@ -19,6 +19,12 @@ if (args.Length > 0 && args[0] == "native")
     return;
 }
 
+if (args is ["enterprise-hardening", "offline"])
+{
+    Environment.ExitCode = await EnterpriseHardeningWorkflow.RunAsync();
+    return;
+}
+
 if (args is ["runtime-hardening", "offline"])
 {
     Environment.ExitCode = await RuntimeHardeningWorkflow.RunAsync();
@@ -68,7 +74,10 @@ internal static class InstalledWorkflow
         await using var wire = new Loopback(deadline.Token);
         using var handler = new SocketsHttpHandler
         {
-            AllowAutoRedirect = false, UseCookies = false, ActivityHeadersPropagator = null, UseProxy = false
+            AllowAutoRedirect = false,
+            UseCookies = false,
+            ActivityHeadersPropagator = null,
+            UseProxy = false
         };
         var network = new InfisicalNetworkOptions
         {
@@ -82,10 +91,15 @@ internal static class InstalledWorkflow
         await using InfisicalRuntimeSession runtime = (await wire.Exchange(
             () => InfisicalRuntimeSession.OpenUniversalAsync(new()
             {
-                Origin = wire.Origin, ClientId = "installed-client-canary", ProjectId = Project,
-                Lifetime = InfisicalTokenLifetime.Finite, OriginalIssuedAt = clock.GetUtcNow(),
-                RenewBefore = TimeSpan.FromSeconds(10), RequestTimeout = TimeSpan.FromSeconds(5),
-                Network = network, TimeProvider = clock
+                Origin = wire.Origin,
+                ClientId = "installed-client-canary",
+                ProjectId = Project,
+                Lifetime = InfisicalTokenLifetime.Finite,
+                OriginalIssuedAt = clock.GetUtcNow(),
+                RenewBefore = TimeSpan.FromSeconds(10),
+                RequestTimeout = TimeSpan.FromSeconds(5),
+                Network = network,
+                TimeProvider = clock
             }, credential, openAttempt, deadline.Token).AsTask(),
             "POST", "/api/v1/auth/universal-auth/login", 200,
             TokenBody(Token), null, body =>
@@ -252,8 +266,13 @@ internal static class InstalledWorkflow
         scenarios.Add(new { id = "S16", subset = "report-and-native-read-serialization-redaction", status = "passed" });
         string report = JsonSerializer.Serialize(new
         {
-            schemaVersion = 1, kind = "local-installed-offline", nativeQualified = false,
-            mode = Mode, scenarios, unqualifiedScenarios = new[] { "S15" }, requests = wire.Requests,
+            schemaVersion = 1,
+            kind = "local-installed-offline",
+            nativeQualified = false,
+            mode = Mode,
+            scenarios,
+            unqualifiedScenarios = new[] { "S15" },
+            requests = wire.Requests,
             elapsedMilliseconds = Stopwatch.GetElapsedTime(started).TotalMilliseconds
         });
         foreach (string canary in new[] { Value, Token, Project, Key, Resource, "bootstrap-canary",
@@ -309,12 +328,25 @@ internal static class InstalledWorkflow
     internal static string SecretBody(int version = 1, string resource = Resource, bool hidden = false,
         string project = Project, string value = Value, string key = Key) => JsonSerializer.Serialize(new
         {
-            secret = new { id = resource, workspace = project, environment = "test", secretPath = "/",
-                type = "shared", secretKey = key, version, secretValue = value, secretValueHidden = hidden }
+            secret = new
+            {
+                id = resource,
+                workspace = project,
+                environment = "test",
+                secretPath = "/",
+                type = "shared",
+                secretKey = key,
+                version,
+                secretValue = value,
+                secretValueHidden = hidden
+            }
         });
     internal static string TokenBody(string token) => JsonSerializer.Serialize(new
     {
-        accessToken = token, tokenType = "Bearer", expiresIn = 60, accessTokenMaxTTL = 120
+        accessToken = token,
+        tokenType = "Bearer",
+        expiresIn = 60,
+        accessTokenMaxTTL = 120
     });
     internal static void Require(bool condition)
     {
@@ -324,8 +356,15 @@ internal static class InstalledWorkflow
     internal sealed class Clock : TimeProvider
     {
         private DateTimeOffset _now = new(2026, 10, 23, 0, 0, 0, TimeSpan.Zero);
+        private long _elapsed;
         public override DateTimeOffset GetUtcNow() => _now;
-        internal void Advance(TimeSpan elapsed) => _now += elapsed;
+        public override long GetTimestamp() => _elapsed;
+        public override long TimestampFrequency => TimeSpan.TicksPerSecond;
+        internal void Advance(TimeSpan elapsed)
+        {
+            _now += elapsed;
+            _elapsed += elapsed.Ticks;
+        }
     }
 
     private sealed record RequiredConsumer(string First, string Second);

@@ -13,6 +13,12 @@ using SecretKit.Infisical;
 using SecretKit.Samples.ProviderAssessment;
 using SecretKit.Samples.RuntimeConfiguration;
 
+if (args is ["enterprise-hardening", "offline"])
+{
+    Environment.ExitCode = await EnterpriseHardeningWorkflow.RunAsync();
+    return;
+}
+
 if (args is ["native", var nativeProvider, var nativeOutput])
 {
     Environment.ExitCode = await NativeProgram.RunAsync(nativeProvider, nativeOutput);

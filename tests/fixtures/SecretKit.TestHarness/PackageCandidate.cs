@@ -139,6 +139,7 @@ public sealed class PackageCandidate
                 if (!SHA256.HashData(original).AsSpan().SequenceEqual(hash)) throw Failure();
             }
             if (resolved.Count != PackageIds.Length) throw Failure();
+            SecretKit.Release.DependencyAudit.RecordInstalledGraph(assetsPath, assets.RootElement);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or
             KeyNotFoundException or ArgumentException)

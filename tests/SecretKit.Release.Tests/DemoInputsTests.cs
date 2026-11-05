@@ -148,11 +148,14 @@ public sealed class DemoInputsTests
     }
 
     [Test]
-    public async Task PreparationRejectsMismatchedBaselineWithoutRegeneratingSourceLocks()
+    public async Task PreparationRejectsMixedBaselineWithoutRegeneratingSourceLocks()
     {
         using var fixture = new DemoFixture();
         string path = Path.Combine(fixture.Local.Source, "tests/PackageQualification/Infisical.ConsoleDemo/packages.lock.json");
-        File.WriteAllText(path, File.ReadAllText(path).Replace(TestBundle.Version, "0.2.0", StringComparison.Ordinal));
+        JsonNode mixed = JsonNode.Parse(File.ReadAllBytes(path))!;
+        mixed["dependencies"]!["net10.0"]!["SecretKit.Core"]!["resolved"] = "0.2.0";
+        mixed["dependencies"]!["net10.0"]!["SecretKit.Core"]!["requested"] = "[0.2.0, 0.2.0]";
+        File.WriteAllText(path, mixed.ToJsonString());
         string qualification = Path.Combine(fixture.Local.Root, "changed-record");
         LocalQualification.Prepare(fixture.Local.Source, fixture.Local.Packages, qualification);
         byte[] baseline = File.ReadAllBytes(path);

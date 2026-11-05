@@ -1,0 +1,205 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SecretKit supplemental enterprise hardening declaration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "profile", "kind", "nativeQualified", "scenarioIds", "evidenceKinds", "installedModes", "preservedDenominators", "gates"],
+  "properties": {
+    "$schema": { "const": "enterprise-hardening-profile.schema.json" },
+    "schemaVersion": { "const": 1 },
+    "profile": { "const": "enterprise-hardening" },
+    "kind": { "const": "supplemental-declaration" },
+    "nativeQualified": { "const": false },
+    "scenarioIds": {
+      "const": ["S01", "S02", "S03", "S04", "S05", "S06", "S07", "S08", "S09", "S10", "S11", "S12", "S13", "S14", "S15", "S16", "S17", "S18", "S19", "S20", "S21", "S22", "S23", "S24", "S25", "S26", "S27", "S28"]
+    },
+    "evidenceKinds": {
+      "const": ["source-offline", "controlled-installed-offline", "artifact-integrity", "native-observation", "platform-observation", "connected-advisory", "publication-authorization"]
+    },
+    "installedModes": {
+      "const": {
+        "minimal": ["S03", "S12", "S14", "S16", "S17"],
+        "configuration": ["S03", "S12", "S14", "S16", "S17", "S07", "S25"],
+        "hosting": ["S03", "S12", "S14", "S16", "S17", "S08", "S09"],
+        "full": ["S03", "S12", "S14", "S16", "S17", "S07", "S25", "S08", "S09"],
+        "seven-package": ["S02", "S03", "S05", "S06", "S10", "S11", "S12", "S13"]
+      }
+    },
+    "preservedDenominators": {
+      "const": {
+        "localProtocol": "S01-S16",
+        "developmentFunctional": 17,
+        "fullNative": 21,
+        "integrationQuality": "unchanged"
+      }
+    },
+    "gates": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 5,
+      "prefixItems": [
+        { "allOf": [{ "$ref": "#/$defs/gate" }, { "type": "object", "properties": { "id": { "const": "G1" } } }] },
+        { "allOf": [{ "$ref": "#/$defs/gate" }, { "type": "object", "properties": { "id": { "const": "G2" } } }] },
+        { "allOf": [{ "$ref": "#/$defs/gate" }, { "type": "object", "properties": { "id": { "const": "G3" } } }] },
+        { "allOf": [{ "$ref": "#/$defs/gate" }, { "type": "object", "properties": { "id": { "const": "G4" } } }] },
+        { "allOf": [{ "$ref": "#/$defs/gate" }, { "type": "object", "properties": { "id": { "const": "G5" } } }] }
+      ],
+      "items": false
+    }
+  },
+  "$defs": {
+    "label": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9_.-]+$" },
+    "text": { "type": "string", "minLength": 1, "maxLength": 1024, "pattern": "^[ -~]+$" },
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "version10": { "type": "string", "maxLength": 128, "pattern": "^10\\.[0-9]+\\.[0-9]+(\\.[0-9]+)?$" },
+    "gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "owner", "trigger", "consequence"],
+      "properties": {
+        "id": { "enum": ["G1", "G2", "G3", "G4", "G5"] },
+        "owner": { "$ref": "#/$defs/text" },
+        "trigger": { "$ref": "#/$defs/text" },
+        "consequence": { "$ref": "#/$defs/text" }
+      }
+    },
+    "archive": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["packageId", "version", "sha256"],
+      "properties": {
+        "packageId": { "$ref": "#/$defs/label" },
+        "version": { "$ref": "#/$defs/label" },
+        "sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profileSha256", "sourceRevision", "sourceContentSha256", "runId", "sdk", "runtime", "platform", "evidenceSha256"],
+      "properties": {
+        "profileSha256": { "$ref": "#/$defs/sha256" },
+        "sourceRevision": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "sourceContentSha256": { "$ref": "#/$defs/sha256" },
+        "runId": { "$ref": "#/$defs/label" },
+        "sdk": { "$ref": "#/$defs/version10" },
+        "runtime": { "$ref": "#/$defs/version10" },
+        "platform": { "$ref": "#/$defs/label" },
+        "evidenceSha256": { "$ref": "#/$defs/sha256" },
+        "archives": { "type": "array", "minItems": 1, "maxItems": 7, "uniqueItems": true, "items": { "$ref": "#/$defs/archive" } },
+        "cohortSha256": { "$ref": "#/$defs/sha256" },
+        "transportSha256": { "$ref": "#/$defs/sha256" },
+        "deploymentSha256": { "$ref": "#/$defs/sha256" },
+        "principalSha256": { "$ref": "#/$defs/sha256" },
+        "policySha256": { "$ref": "#/$defs/sha256" },
+        "effectSha256": { "$ref": "#/$defs/sha256" },
+        "graphSha256": { "$ref": "#/$defs/sha256" },
+        "authorizationSha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "profile", "kind", "scenarioIds", "status", "nativeQualified", "binding"],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "profile": { "const": "enterprise-hardening" },
+        "kind": { "enum": ["source-offline", "controlled-installed-offline", "artifact-integrity", "native-observation", "platform-observation", "connected-advisory", "publication-authorization"] },
+        "scenarioIds": { "type": "array", "minItems": 1, "maxItems": 28, "uniqueItems": true, "items": { "type": "string", "pattern": "^S(0[1-9]|1[0-9]|2[0-8])$" } },
+        "status": { "enum": ["passed", "failed", "unavailable"] },
+        "nativeQualified": { "const": false },
+        "binding": { "$ref": "#/$defs/binding" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "kind": { "not": { "const": "native-observation" } } } },
+          "then": { "properties": { "nativeQualified": { "const": false } } }
+        },
+        {
+          "if": { "properties": { "status": { "not": { "const": "passed" } } } },
+          "then": { "properties": { "nativeQualified": { "const": false } } }
+        },
+        {
+          "if": { "properties": { "status": { "const": "passed" }, "kind": { "enum": ["controlled-installed-offline", "artifact-integrity", "native-observation", "platform-observation", "publication-authorization"] } } },
+          "then": { "properties": { "binding": { "type": "object", "required": ["archives", "cohortSha256"] } } }
+        },
+        {
+          "if": { "properties": { "status": { "const": "passed" }, "kind": { "enum": ["controlled-installed-offline", "native-observation"] } } },
+          "then": { "properties": { "binding": { "type": "object", "required": ["transportSha256"] } } }
+        },
+        {
+          "if": { "properties": { "status": { "const": "passed" }, "kind": { "const": "native-observation" } } },
+          "then": { "properties": { "binding": { "type": "object", "required": ["deploymentSha256", "principalSha256", "policySha256", "effectSha256", "authorizationSha256"] } } }
+        },
+        {
+          "if": { "properties": { "status": { "const": "passed" }, "kind": { "const": "connected-advisory" } } },
+          "then": { "properties": { "binding": { "type": "object", "required": ["graphSha256"] } } }
+        },
+        {
+          "if": { "properties": { "status": { "const": "passed" }, "kind": { "const": "publication-authorization" } } },
+          "then": { "properties": { "binding": { "type": "object", "required": ["authorizationSha256"] } } }
+        }
+      ]
+    },
+    "fileDigest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file", "sha256"],
+      "properties": {
+        "file": { "type": "string", "minLength": 1, "maxLength": 180, "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$" },
+        "sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "proofFiles": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["evidence"],
+      "properties": {
+        "evidence": { "$ref": "#/$defs/fileDigest" },
+        "transport": { "$ref": "#/$defs/fileDigest" },
+        "deployment": { "$ref": "#/$defs/fileDigest" },
+        "principal": { "$ref": "#/$defs/fileDigest" },
+        "policy": { "$ref": "#/$defs/fileDigest" },
+        "effect": { "$ref": "#/$defs/fileDigest" },
+        "graph": { "$ref": "#/$defs/fileDigest" },
+        "authorization": { "$ref": "#/$defs/fileDigest" }
+      }
+    },
+    "selection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "profile", "kind", "scenarioIds", "packageProfile", "sourceRevision", "runId", "sdk", "runtime", "platform", "proofs"],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "profile": { "const": "enterprise-hardening" },
+        "kind": { "$ref": "#/$defs/observation/properties/kind" },
+        "scenarioIds": { "$ref": "#/$defs/observation/properties/scenarioIds" },
+        "packageProfile": { "enum": ["infisical-runtime", "seven-package"] },
+        "sourceRevision": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "runId": { "$ref": "#/$defs/label" },
+        "sdk": { "$ref": "#/$defs/version10" },
+        "runtime": { "$ref": "#/$defs/version10" },
+        "platform": { "$ref": "#/$defs/label" },
+        "provider": { "enum": ["Infisical", "AzureKeyVault"] },
+        "proofs": { "$ref": "#/$defs/proofFiles" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "kind": { "const": "native-observation" } } },
+          "then": { "required": ["provider"] },
+          "else": { "not": { "required": ["provider"] } }
+        }
+      ]
+    },
+    "admission": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "nativeQualified"],
+      "properties": {
+        "status": { "enum": ["bindings-matched", "failed", "unavailable"] },
+        "gate": { "enum": ["G1", "G2"] },
+        "nativeQualified": { "const": false }
+      }
+    }
+  }
+}

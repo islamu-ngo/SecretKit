@@ -1,0 +1,67 @@
+{
+  "$schema": "enterprise-hardening-profile.schema.json",
+  "schemaVersion": 1,
+  "profile": "enterprise-hardening",
+  "kind": "supplemental-declaration",
+  "nativeQualified": false,
+  "scenarioIds": [
+    "S01", "S02", "S03", "S04", "S05", "S06", "S07",
+    "S08", "S09", "S10", "S11", "S12", "S13", "S14",
+    "S15", "S16", "S17", "S18", "S19", "S20", "S21",
+    "S22", "S23", "S24", "S25", "S26", "S27", "S28"
+  ],
+  "evidenceKinds": [
+    "source-offline",
+    "controlled-installed-offline",
+    "artifact-integrity",
+    "native-observation",
+    "platform-observation",
+    "connected-advisory",
+    "publication-authorization"
+  ],
+  "installedModes": {
+    "minimal": ["S03", "S12", "S14", "S16", "S17"],
+    "configuration": ["S03", "S12", "S14", "S16", "S17", "S07", "S25"],
+    "hosting": ["S03", "S12", "S14", "S16", "S17", "S08", "S09"],
+    "full": ["S03", "S12", "S14", "S16", "S17", "S07", "S25", "S08", "S09"],
+    "seven-package": ["S02", "S03", "S05", "S06", "S10", "S11", "S12", "S13"]
+  },
+  "preservedDenominators": {
+    "localProtocol": "S01-S16",
+    "developmentFunctional": 17,
+    "fullNative": 21,
+    "integrationQuality": "unchanged"
+  },
+  "gates": [
+    {
+      "id": "G1",
+      "owner": "Provider qualification maintainer/operator",
+      "trigger": "Authorized Infisical deployment/version, principal/policy and entitlement bindings supplied through the protected channel",
+      "consequence": "Infisical native qualification remains unavailable until actual bound effects and typed enterprise principal/effect custody joins are admitted"
+    },
+    {
+      "id": "G2",
+      "owner": "Azure qualification owner",
+      "trigger": "Explicitly scoped authorized subscription/vault/runtime/admin/observer sandbox inputs supplied",
+      "consequence": "Azure native qualification remains unavailable until actual bound effects and typed enterprise original-operation custody joins are admitted"
+    },
+    {
+      "id": "G3",
+      "owner": "Release maintainer",
+      "trigger": "Required Ubuntu and Windows workflow jobs execute on exact source/profile/archive inputs under separately authorized Git activity",
+      "consequence": "Cross-platform qualification remains open until actual required jobs pass"
+    },
+    {
+      "id": "G4",
+      "owner": "Architecture maintainer",
+      "trigger": "Named sovereign-cloud, AOT or second-hosting consumer demand and accepted maintenance ownership",
+      "consequence": "Revisit support design only on demand; no new support implementation or qualification is declared"
+    },
+    {
+      "id": "G5",
+      "owner": "Security/release maintainers",
+      "trigger": "Connected advisory observation and exact current owned disposition for the resolved graphs",
+      "consequence": "Unavailable advisory data or native audit failure blocks connected clearance; an exception cannot waive native failure"
+    }
+  ]
+}

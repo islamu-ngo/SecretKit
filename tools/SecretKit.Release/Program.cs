@@ -13,17 +13,50 @@ public static class Program
             if (args is ["verification", "ordinary" or "offline-conformance" or "public-install"])
                 return await Verification.RunAsync(Directory.GetCurrentDirectory(), args[1]);
 
-            if (args is ["admission-refresh-sources", string admissionSource, string admissionInventory])
+            if (args.Length is 4 or 5 && args[0] == "enterprise-hardening-check")
             {
-                AdmissionSourceRefresh.Refresh(admissionSource, admissionInventory);
-                Console.WriteLine("admission-sources-refreshed-policy-unchanged");
-                return 0;
+                string selection = Path.GetFullPath(args[2]);
+                string observation = Path.GetFullPath(args[3]);
+                var expected = EnterpriseHardeningProfile.Select(args[1], args.Length == 5 ? args[4] : null,
+                    Path.GetDirectoryName(selection)!, Path.GetFileName(selection));
+                var admission = EnterpriseHardeningProfile.Admit(Path.GetDirectoryName(observation)!,
+                    Path.GetFileName(observation), expected);
+                Console.WriteLine(admission.Status == "bindings-matched"
+                    ? "enterprise-content-consistent-not-qualified"
+                    : $"enterprise-{admission.Status}:{admission.Gate ?? "none"}");
+                return admission.Status == "bindings-matched" ? 0 : admission.Status == "unavailable" ? 2 : 1;
             }
 
             if (args is ["dependency-audit", string auditTarget, string auditOutput])
                 return await DependencyAudit.RunAsync(Directory.GetCurrentDirectory(), auditTarget, auditOutput);
             if (args is ["dependency-audit-installed", string assetsPath, string installedOutput])
                 return await DependencyAudit.RunInstalledAsync(Directory.GetCurrentDirectory(), assetsPath, installedOutput);
+            if (args is ["dependency-audit-installed-set", string auditCohort, string auditObservations, string auditOutputDirectory])
+                return await DependencyAudit.RunInstalledSetAsync(Directory.GetCurrentDirectory(),
+                    auditCohort, auditObservations, auditOutputDirectory);
+
+            if (args is ["verification", "prepare-local", string cohortOutput])
+            {
+                await VerificationCohort.PrepareAsync(Directory.GetCurrentDirectory(), cohortOutput);
+                Console.WriteLine("verification-cohort-prepared-not-native-qualified");
+                return 0;
+            }
+            if (args is ["verification", "post-pack", string cohortInput])
+                return await VerificationCohort.PostPackAsync(Directory.GetCurrentDirectory(), cohortInput);
+            if (args is ["verification", "post-pack", string selectedCohort, string selectedObservations])
+                return await VerificationCohort.PostPackAsync(Directory.GetCurrentDirectory(), selectedCohort, selectedObservations);
+            if (args is ["verification", "check", string cohortCheck])
+            {
+                _ = VerificationCohort.Check(Directory.GetCurrentDirectory(), cohortCheck);
+                return 0;
+            }
+
+            if (args is ["admission-refresh-sources", string admissionSource, string admissionInventory])
+            {
+                AdmissionSourceRefresh.Refresh(admissionSource, admissionInventory);
+                Console.WriteLine("admission-sources-refreshed-policy-unchanged");
+                return 0;
+            }
 
             if (args is ["local-demo-prepare", string demoSource, string demoOriginals,
                 string demoQualification, string demoOutput, string demoCommit, string demoRun,

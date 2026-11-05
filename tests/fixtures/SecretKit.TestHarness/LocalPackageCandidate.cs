@@ -240,6 +240,7 @@ public sealed class LocalPackageCandidate
         foreach (JsonProperty framework in document.GetProperty("project").GetProperty("frameworks").EnumerateObject())
             foreach (JsonProperty reference in framework.Value.GetProperty("frameworkReferences").EnumerateObject())
                 Require(reference.Name == "Microsoft.NETCore.App");
+        SecretKit.Release.DependencyAudit.RecordInstalledGraph(assetsPath, document);
     }
 
     public static string[] Expected(string mode) => mode switch

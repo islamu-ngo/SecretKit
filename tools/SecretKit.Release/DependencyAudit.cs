@@ -123,6 +123,59 @@ public static class DependencyAudit
         return RunAsync(source, graph.Project, output, graph.Version, graph);
     }
 
+    public static async Task<int> RunInstalledSetAsync(string source, string cohort,
+        string observations, string output)
+    {
+        source = Path.GetFullPath(source);
+        cohort = Path.GetFullPath(cohort);
+        observations = Path.GetFullPath(observations);
+        VerificationCohortRecord binding = VerificationCohort.Check(source, cohort);
+        VerificationCohort.CheckObservations(binding,
+            Manifest.Hash(Manifest.ReadFile(cohort, VerificationCohort.RecordFile, MaximumBytes)),
+            PlatformEvidence.CurrentPlatform, observations,
+            EnterpriseHardeningProfile.ReadDeclaration(Path.Combine(source, "docs", "internal", "compatibility")).InstalledModes);
+        string[] files = ValidateInstalledInventory(observations,
+            Manifest.Hash(Manifest.ReadFile(cohort, VerificationCohort.RecordFile, MaximumBytes)),
+            PlatformEvidence.CurrentPlatform);
+        output = Path.GetFullPath(output);
+        CheckOutputPath(output);
+        Guard.Require(!Directory.Exists(output) && !File.Exists(output), "audit-output-exists");
+        Directory.CreateDirectory(output);
+        bool cleared = true;
+        var reports = new List<FileDigest>();
+        for (int i = 0; i < files.Length; i++)
+        {
+            var selected = Manifest.Parse<InstalledAuditGraph>(Manifest.ReadLocalFile(files[i], 131072), 131072);
+            Guard.Require(selected.Version == binding.Version &&
+                selected.Files.All(file => Manifest.IsHash(file.Sha256) &&
+                    Manifest.Hash(Manifest.ReadLocalFile(file.File, MaximumBytes)) == file.Sha256),
+                "audit-installed-selection");
+            JsonElement assets = Manifest.Parse<JsonElement>(Manifest.ReadLocalFile(selected.Assets, MaximumBytes), MaximumBytes);
+            byte[] actual = JsonSerializer.SerializeToUtf8Bytes(InstalledGraph(selected.Assets, assets),
+                Manifest.JsonOptions);
+            Guard.Require(actual.AsSpan().SequenceEqual(JsonSerializer.SerializeToUtf8Bytes(selected, Manifest.JsonOptions)),
+                "audit-installed-graph");
+            int exit = await RunAsync(source, selected.Project, Path.Combine(output, i.ToString(CultureInfo.InvariantCulture)),
+                selected.Version, selected).ConfigureAwait(false);
+            cleared &= exit == 0;
+            string report = Path.Combine(i.ToString(CultureInfo.InvariantCulture), "audit.json");
+            reports.Add(new(report, Manifest.Hash(Manifest.ReadLocalFile(Path.Combine(output, report), MaximumBytes))));
+        }
+        using var summary = new FileStream(Path.Combine(output, "installed-set.json"),
+            FileMode.CreateNew, FileAccess.Write, FileShare.None);
+        await JsonSerializer.SerializeAsync(summary, new
+        {
+            SchemaVersion = 1,
+            Kind = "installed-set-advisory-observation",
+            NativeQualified = false,
+            CohortSha256 = Manifest.Hash(Manifest.ReadFile(cohort, VerificationCohort.RecordFile, MaximumBytes)),
+            Graphs = files.Select(file => new FileDigest(file, Manifest.Hash(Manifest.ReadLocalFile(file, 131072)))),
+            Reports = reports,
+            Cleared = cleared
+        }, Manifest.JsonOptions).ConfigureAwait(false);
+        return cleared ? 0 : 1;
+    }
+
     private static InstalledAuditGraph InstalledGraph(string assetsPath, JsonElement assets)
     {
         assetsPath = Path.GetFullPath(assetsPath);

@@ -1,3 +1,5 @@
+using System.Runtime.InteropServices;
+
 namespace SecretKit.Release;
 
 public sealed record PlatformObservation(int SchemaVersion, string Purpose,
@@ -8,6 +10,17 @@ public sealed record PlatformObservation(int SchemaVersion, string Purpose,
 
 public static class PlatformEvidence
 {
+    public static string CurrentPlatform
+    {
+        get
+        {
+            Guard.Require(RuntimeInformation.ProcessArchitecture == Architecture.X64, "platform-host");
+            if (OperatingSystem.IsWindows()) return "windows-x64";
+            if (OperatingSystem.IsLinux()) return "linux-x64";
+            throw new ReleaseException("platform-host");
+        }
+    }
+
     public static InstallationObservation Validate(PlatformObservation observation, ReleaseScope scope)
     {
         string platform = $"{observation.OperatingSystem}-{observation.Architecture}-{observation.Framework}";

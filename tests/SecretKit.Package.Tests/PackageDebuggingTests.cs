@@ -9,6 +9,38 @@ namespace SecretKit.Package.Tests;
 public sealed class PackageDebuggingTests
 {
     [Test]
+    public async Task SupplementalSevenPackageEvidenceUsesOriginalSymbolsAndIndependentRebuild()
+    {
+        string root = Path.GetFullPath("../../../../../", AppContext.BaseDirectory);
+        string cohort = Required("SECRETKIT_VERIFICATION_COHORT_DIRECTORY");
+        VerificationCohortRecord record = VerificationCohort.Check(root, cohort);
+        var observations = new Dictionary<string, object>();
+        foreach (string id in PackageCandidate.PackageIds)
+        {
+            string archive = Path.Combine(cohort, "family", $"{id}.{record.Version}.nupkg");
+            string symbols = Path.Combine(cohort, "symbols", $"{id}.{record.Version}.snupkg");
+            LocalDebuggingEvidence debugging = LocalQualification.VerifyDebugging(root, archive, symbols, id);
+            await Assert.That(debugging.RemoteSource).IsEqualTo("unverified");
+            LocalRebuildEvidence rebuild = LocalQualification.CompareRebuild(root, archive, symbols,
+                Path.Combine(cohort, "rebuild-family", $"{id}.{record.Version}.nupkg"),
+                Path.Combine(cohort, "rebuild-symbols", $"{id}.{record.Version}.snupkg"), id);
+            observations.Add(id, new { debugging, rebuild });
+        }
+        _ = VerificationCohort.Check(root, cohort);
+        string output = Path.Combine(root, "artifacts/enterprise-hardening/debugging", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(output);
+        await File.WriteAllTextAsync(Path.Combine(output, "debugging.json"), JsonSerializer.Serialize(new
+        {
+            schemaVersion = 1,
+            profile = "enterprise-hardening",
+            kind = "artifact-integrity",
+            nativeQualified = false,
+            record.Version,
+            observations
+        }, Manifest.JsonOptions));
+    }
+
+    [Test]
     public async Task SelectedOriginalSymbolsBindExactCapturedCompileInputs()
     {
         string root = Path.GetFullPath("../../../../../", AppContext.BaseDirectory);

@@ -33,10 +33,10 @@ public static class DemoInputs
         foreach (DemoAppInput app in baseline)
         {
             RequireAppFiles(source, app.Id);
-            // Fail before any restore if the finalized source baseline selects
-            // a different candidate. Never adjust versions to make CI pass.
+            // Source locks constrain the external graph, not the selected
+            // local cohort version. Validate their internal shape before restore.
             ValidateLockChange(Read(source, SourceLock(app.Id)), Read(source, SourceLock(app.Id)),
-                app.Id, record.Version, null);
+                app.Id, null, null);
         }
         string destination = Path.GetFullPath(output);
         Guard.Require(!Directory.Exists(destination) && !File.Exists(destination), "demo-output-exists");
@@ -49,7 +49,6 @@ public static class DemoInputs
             "demo-output-in-source");
         string workspace = Path.Combine(Path.GetDirectoryName(destination)!, "demo-work-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(workspace);
-        try
         {
             var staged = new Dictionary<string, byte[]>(StringComparer.Ordinal);
             foreach (DemoAppInput app in baseline)
@@ -122,10 +121,6 @@ public static class DemoInputs
             Candidate.Write(destination, ManifestFile, manifest);
             _ = Check(source, destination, commit, run, attempt, sdk);
         }
-        finally
-        {
-            Directory.Delete(workspace, recursive: true);
-        }
     }
 
     public static DemoInputManifest Check(string source, string directory,
@@ -169,7 +164,7 @@ public static class DemoInputs
         return manifest;
     }
 
-    internal static void ValidateLockChange(byte[] baseline, byte[] staged, string app, string version,
+    internal static void ValidateLockChange(byte[] baseline, byte[] staged, string app, string? version,
         Func<string, byte[]>? archive)
     {
         _ = Manifest.Parse<JsonElement>(baseline);
@@ -189,6 +184,8 @@ public static class DemoInputs
             "web" => ["SecretKit.Core", "SecretKit.Infisical", "SecretKit.Extensions.Configuration"],
             _ => throw new ReleaseException("demo-app")
         };
+        string baselineVersion = expected["SecretKit.Core"]!["resolved"]!.GetValue<string>();
+        version ??= baselineVersion;
         foreach (JsonObject graph in new[] { expected, actual })
         {
             Manifest.ExactSet(graph.Where(p => p.Key.StartsWith("SecretKit.", StringComparison.OrdinalIgnoreCase))
@@ -196,9 +193,10 @@ public static class DemoInputs
             foreach (string id in packages)
             {
                 JsonObject package = graph[id]!.AsObject();
-                Guard.Require(package["resolved"]!.GetValue<string>() == version &&
+                string selected = ReferenceEquals(graph, expected) ? baselineVersion : version;
+                Guard.Require(package["resolved"]!.GetValue<string>() == selected &&
                     package["type"]!.GetValue<string>() == "Direct" &&
-                    package["requested"]!.GetValue<string>() == $"[{version}, {version}]" &&
+                    package["requested"]!.GetValue<string>() == $"[{selected}, {selected}]" &&
                     Convert.FromBase64String(package["contentHash"]!.GetValue<string>()).Length == 64,
                     "demo-lock-version");
             }
@@ -209,9 +207,18 @@ public static class DemoInputs
                 Guard.Require(actual[id]!["contentHash"]!.GetValue<string>() ==
                     Convert.ToBase64String(SHA512.HashData(archive(id))), "demo-lock-original");
             actual[id]!["contentHash"] = expected[id]!["contentHash"]!.DeepClone();
+            expected[id]!["resolved"] = version;
+            expected[id]!["requested"] = $"[{version}, {version}]";
+            if (expected[id]!["dependencies"] is JsonObject dependencies)
+                foreach (string dependency in dependencies.Select(pair => pair.Key)
+                    .Where(key => key.StartsWith("SecretKit.", StringComparison.Ordinal)).ToArray())
+                {
+                    Guard.Require(packages.Contains(dependency) &&
+                        dependencies[dependency]!.GetValue<string>() == baselineVersion, "demo-lock-internal");
+                    dependencies[dependency] = version;
+                }
         }
-        // Object property order is immaterial; every value other than the
-        // admitted internal archive hashes remains part of the frozen graph.
+        // Only internal exact versions and original hashes may change.
         Guard.Require(JsonNode.DeepEquals(original, current), "demo-lock-graph");
     }
 

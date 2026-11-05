@@ -12,6 +12,28 @@ public sealed class WebDemoTests
     private const string Hostile = "synthetic-web-exception-canary-8e22";
 
     [Test]
+    public async Task AcceptedClientServesRepeatedJobsWithoutProviderReadsUntilExplicitReplacement()
+    {
+        await using var provider = new ControlledInfisicalServer(_ => Secret(Value));
+        await using var downstream = new ControlledInfisicalServer(_ => new(202, "{}"));
+        DemoResult result = await ExerciseAsync(provider.Origin, downstream.Origin, async session =>
+        {
+            for (int i = 0; i < 3; i++)
+            {
+                WebReply reply = await session.WorkAsync();
+                await Assert.That(reply.Status).IsEqualTo(HttpStatusCode.OK);
+                await Assert.That(reply.Revision).IsEqualTo(1);
+            }
+            await Assert.That(provider.Requests.Count).IsEqualTo(1);
+            await session.CommandAsync("enable", "enabled");
+            await Assert.That((await session.WorkAsync()).Revision).IsEqualTo(2);
+            await Assert.That(provider.Requests.Count).IsEqualTo(2);
+        });
+        await Assert.That(downstream.Requests.Count).IsEqualTo(4);
+        await CleanAsync(result);
+    }
+
+    [Test]
     public async Task HttpFailureAndDefaultHostOutputDoNotDiscloseProtectedInput()
     {
         await using var provider = new ControlledInfisicalServer(_ => new(403,

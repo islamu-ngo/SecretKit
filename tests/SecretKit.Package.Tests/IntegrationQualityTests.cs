@@ -37,7 +37,9 @@ public sealed class IntegrationQualityTests
         string assets = Path.Combine(installation.Intermediate, "project.assets.json");
         candidate.VerifyRestored(assets, installation.Packages, mode);
         await PackageInstallTests.Run(root, ["build", project, "--configuration", "Release", "--no-restore",
+            "-p:UseSharedCompilation=false",
             .. installation.Properties]);
+        await EnterpriseHardeningInstallTests.ObserveLocalAsync(root, installation, mode, output);
         string text = await PackageInstallTests.Run(root,
             [Path.Combine(installation.Binary, "Release/net10.0/SecretKit.InfisicalConsumer.dll"),
                 "integration-quality", "offline"]);

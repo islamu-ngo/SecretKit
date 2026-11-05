@@ -43,7 +43,7 @@ public static partial class LocalQualification
     public static LocalDebuggingEvidence VerifyDebugging(
         string source, string packagePath, string symbolsPath, string id)
     {
-        Guard.Require(PackageIds.Contains(id), "debug-package-id");
+        Guard.Require(Manifest.PackageIds.Contains(id), "debug-package-id");
         string root = Path.GetFullPath(source);
         LocalSourceSnapshot snapshot = CaptureSource(root);
         byte[] packageBytes = ReadArchive(packagePath);
@@ -227,6 +227,7 @@ public static partial class LocalQualification
         string path = name.Replace('\\', '/');
         return path.StartsWith($"src/{id}/obj/", StringComparison.Ordinal) ||
             path.Contains($"/src/{id}/obj/", StringComparison.Ordinal) ||
+            path.StartsWith($"/__secretkit_build__/obj/{id}/", StringComparison.Ordinal) ||
             (id == "SecretKit.Infisical" && path.EndsWith(".g.cs", StringComparison.Ordinal) &&
                 (path.StartsWith("Refit.Generator/", StringComparison.Ordinal) ||
                     path.Contains("/Refit.Generator/", StringComparison.Ordinal)));
