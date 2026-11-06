@@ -170,6 +170,7 @@ var assignmentScope = new SecretKit.AzureKeyVault.Management.RoleAssignmentScope
 Require(vaultAdministration.PrepareReceipt(assignmentScope,
     SecretKit.AzureKeyVault.Management.ManagementMutation.CreateRoleAssignment).Evidence ==
     DispatchEvidence.NotDispatched);
+await SqlLifecycleScenario.RunAsync();
 Console.WriteLine("PACKAGE_CONSUMER_OK");
 
 static void Require(bool condition)
