@@ -4,6 +4,7 @@
 > Status: Implemented package boundaries with proposed local-readiness changes
 > Owner: SecretKit architecture maintainer
 > Scope Reviewed: 2026-10-23; current implementation evidence is in current-preview
+> SQL lifecycle sections: 2026-11-06, source and controlled offline verification
 > Source Anchors: [internal overview](README.md), [historical research](RESEARCH_EVIDENCE.md), [runtime contracts](RUNTIME_CONTRACTS.md), [ADR-001](adr/ADR-001-capability-aware-secret-sdk.md)
 
 The implemented package boundaries separate portable reads from provider-native
@@ -71,6 +72,24 @@ needs separate verification. MSSQL/ODBC research concerned this peripheral test
 infrastructure, and no ODBC helper was implemented or database dependency added
 to shipped libraries. The [database credential guide](../public/database-credentials.md)
 records the current boundary and research status.
+
+Dynamic lifecycle coordination belongs to `SecretKit.Infisical`. A client-local
+weak registry maps validated definition/lease UUID pairs to canonical scalar
+lease state; live references, credential copies and operations retain it
+strongly. Parent definition permits coordinate child operations with exclusive
+deletion/rename. Parent uncertainty blocks material use without retaining or
+scanning credential buffers, while fresh UUID-addressed cleanup stays explicit.
+Lock nesting is definition, then lease, then material; network, token callbacks
+and external delegates run outside these locks. Metadata reads cannot restore
+usable state or extend its deadline.
+
+Rotation clients close admission atomically with dispatch reservation and retain
+owned transport through operation settlement. Sync disposal schedules cleanup;
+async disposal bounds the wait, with eventual cleanup preserved after timeout.
+Native dynamic/rotation request intent is derived independently from typed
+coordinates and validated before token acquisition. The Refit request-builder
+interface receives no bearer argument. These internal owners do not add a
+portable lease abstraction, material cache, database client or hidden scheduler.
 
 ## Deliberately Small Core
 

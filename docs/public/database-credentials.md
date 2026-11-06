@@ -4,6 +4,7 @@
 > **Status:** Current package boundary, not a database compatibility claim
 > **Owner:** SecretKit maintainers
 > **Last verified:** 2026-10-25 against package boundaries and retained source guidance
+> **SQL lifecycle update:** 2026-11-06, controlled offline verification; database effects remain unqualified
 > **Source anchors:** [Core](../../src/SecretKit.Core/), [Infisical](providers/infisical.md), [management](providers/management.md)
 
 SecretKit supports secret-provider APIs, not a general database-support matrix.
@@ -39,6 +40,20 @@ verified provider behavior. They do not imply that SecretKit implements a
 database driver, a universal database abstraction or every database/version
 combination. See [current provider support](provider-support.md) and the
 [current preview](current-preview.md) for implemented subsets and evidence limits.
+
+Within one `InfisicalDynamicClient`, references for the same definition and lease
+share expiry, revocation and uncertain-effect state. Deleting a definition
+invalidates governed child exports; an uncertain deletion or rename blocks use
+until the application chooses recovery. Stale name-addressed handles fail before
+credentials after a local rename. None of these local controls erases previously
+exported strings or closes database connections.
+
+Dispose each lease wrapper and each copied credential owner independently.
+Retain the exact reference and construct its own receipt for explicit remote
+cleanup. Prefer asynchronous rotation-client disposal when the host needs bounded
+drain; a timeout does not destroy transport still used by a reserved operation.
+The application remains responsible for connection pools, active sessions,
+credential replacement and downstream verification.
 
 ## Optional integration tests: verify returned credentials
 

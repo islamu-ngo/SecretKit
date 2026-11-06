@@ -9,20 +9,20 @@ internal interface IInfisicalRotationApi
 {
     [Get("/api/v2/secret-rotations")]
     Task<HttpRequestMessage> ListAsync([AliasAs("projectId")] string projectId,
-        [Header("Authorization")] string authorization, CancellationToken cancellationToken);
+        CancellationToken cancellationToken);
 
     [Get("/api/v2/secret-rotations/{profile}/{rotationId}")]
     Task<HttpRequestMessage> GetAsync(string profile, string rotationId,
-        [Header("Authorization")] string authorization, CancellationToken cancellationToken);
+        CancellationToken cancellationToken);
 
     [Post("/api/v2/secret-rotations/{profile}/{rotationId}/rotate-secrets")]
     Task<HttpRequestMessage> RotateAsync(string profile, string rotationId,
-        [Header("Authorization")] string authorization, CancellationToken cancellationToken);
+        CancellationToken cancellationToken);
 
     [Patch("/api/v2/secret-rotations/{profile}/{rotationId}")]
     Task<HttpRequestMessage> SetAutomaticAsync(string profile, string rotationId,
         [Body] InfisicalRotationEnablementBody body,
-        [Header("Authorization")] string authorization, CancellationToken cancellationToken);
+        CancellationToken cancellationToken);
 }
 
 internal sealed class InfisicalRotationEnablementBody(bool enabled)

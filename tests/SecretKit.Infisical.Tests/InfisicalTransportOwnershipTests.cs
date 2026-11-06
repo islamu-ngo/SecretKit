@@ -13,6 +13,144 @@ namespace SecretKit.Infisical.Tests;
 public sealed class InfisicalTransportOwnershipTests
 {
     [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task ShutdownTimerFactoryFailureStillNotifiesDrainsAndClosesOwnedTransport(bool dynamic)
+    {
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        using var caller = new CancellationTokenSource();
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var origin = new Uri($"http://127.0.0.1:{((IPEndPoint)listener.LocalEndpoint).Port}/");
+        var clock = new ShutdownTimerClock(throwOnShutdown: true);
+        using var tokens = new CallbackTokens { ImmediateAcquisitions = 1 };
+        var network = new InfisicalNetworkOptions
+        {
+            AllowLoopbackDevelopmentHttp = true,
+            ShutdownTimeout = TimeSpan.FromSeconds(5)
+        };
+        IAsyncDisposable client;
+        Func<Task<SecretStatus>> begin;
+        if (dynamic)
+        {
+            var native = new InfisicalDynamicClient(origin, tokens,
+                new("project", "test", "/", Guid.NewGuid()), network, clock);
+            client = native;
+            begin = async () => (await native.ListDefinitionsAsync(caller.Token)).Status;
+        }
+        else
+        {
+            var authority = new SecretAuthority();
+            var rotation = new InfisicalRotationClient(origin, authority,
+                new(authority, tokens, "project"), network, clock);
+            var scope = new SecretReference(authority, new InfisicalRotationScope("project"));
+            client = rotation;
+            begin = async () => (await rotation.ListAsync(scope, cancellationToken: caller.Token)).Status;
+        }
+
+        // A completed request leaves an actual SDK-owned socket pooled for cleanup.
+        Task<SecretStatus> first = begin();
+        using TcpClient connection = await listener.AcceptTcpClientAsync(deadline.Token);
+        await using NetworkStream stream = connection.GetStream();
+        using var reader = new StreamReader(stream, Encoding.ASCII, leaveOpen: true);
+        while (await reader.ReadLineAsync(deadline.Token) is { Length: > 0 }) { }
+        byte[] body = Encoding.UTF8.GetBytes(dynamic ? "{\"dynamicSecrets\":[]}" : "{\"secretRotations\":[]}");
+        await stream.WriteAsync(Encoding.ASCII.GetBytes(
+            $"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {body.Length}\r\n\r\n"), deadline.Token);
+        await stream.WriteAsync(body, deadline.Token);
+        await Assert.That(await first.WaitAsync(deadline.Token)).IsEqualTo(SecretStatus.Success);
+        Task<int> closed = stream.ReadAsync(new byte[1], deadline.Token).AsTask();
+        Task<SecretStatus> pending = begin();
+        try
+        {
+            await tokens.Entered.Task.WaitAsync(deadline.Token);
+            Task stop = client.DisposeAsync().AsTask();
+            await clock.FactoryEntered.Task.WaitAsync(deadline.Token);
+            await tokens.CallbackEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await Assert.That(closed.IsCompleted).IsFalse();
+            tokens.CallbackRelease.TrySetResult();
+            await tokens.CallbackFinished.Task.WaitAsync(deadline.Token);
+            await Assert.That(closed.IsCompleted).IsFalse();
+            tokens.OperationRelease.TrySetResult();
+            if (dynamic)
+                await Assert.That(async () => await pending.WaitAsync(deadline.Token)).Throws<OperationCanceledException>();
+            else
+                await Assert.That(await pending.WaitAsync(deadline.Token)).IsEqualTo(SecretStatus.Invalid);
+            await Assert.That(await closed.WaitAsync(deadline.Token)).IsEqualTo(0);
+            InvalidOperationException? failure = null;
+            try { await stop.WaitAsync(deadline.Token); }
+            catch (InvalidOperationException exception) { failure = exception; }
+            await Assert.That(failure).IsNotNull();
+            await Assert.That(failure!.InnerException).IsNull();
+            await Assert.That(failure.ToString().Contains("timer-setup-canary", StringComparison.Ordinal)).IsFalse();
+            await Assert.That(stop.IsFaulted).IsTrue();
+            await Assert.That(client.DisposeAsync().AsTask()).IsSameReferenceAs(stop);
+            await Assert.That(() => tokens.LastCopy!.Reveal()).Throws<ObjectDisposedException>();
+        }
+        finally
+        {
+            clock.FactoryRelease.TrySetResult();
+            tokens.CallbackRelease.TrySetResult();
+            tokens.OperationRelease.TrySetResult();
+            await caller.CancelAsync();
+            try { await pending.WaitAsync(TimeSpan.FromSeconds(5)); } catch (OperationCanceledException) { }
+            await deadline.CancelAsync();
+            try { await closed; } catch (OperationCanceledException) { }
+            // The unfixed client's disposal task is stranded: never join it during test cleanup.
+        }
+    }
+
+    [Test]
+    public async Task SynchronousRotationDisposeDoesNotWaitForShutdownTimerFactory()
+    {
+        using var caller = new CancellationTokenSource();
+        using var tokens = new CallbackTokens();
+        using var wire = new CleanupWire();
+        var clock = new ShutdownTimerClock(throwOnShutdown: false);
+        var authority = new SecretAuthority();
+        using var client = new InfisicalRotationClient(new("https://selected.test"), authority,
+            new(authority, tokens, "project"),
+            new()
+            {
+                Transport = InfisicalTransportOptions.HostControlled(wire),
+                ShutdownTimeout = TimeSpan.FromSeconds(5)
+            }, clock);
+        var scope = new SecretReference(authority, new InfisicalRotationScope("project"));
+        Task<SecretOutcome<InfisicalNativeList<InfisicalRotationProgress>>> pending =
+            client.ListAsync(scope, cancellationToken: caller.Token).AsTask();
+        Task? invocation = null;
+        try
+        {
+            await tokens.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            invocation = Task.Run(client.Dispose);
+            await clock.FactoryEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+            // The factory remains blocked until after the synchronous call has returned.
+            await invocation.WaitAsync(TimeSpan.FromSeconds(5));
+            await Assert.That(clock.FactoryRelease.Task.IsCompleted).IsFalse();
+            await Assert.That(async () => await client.ListAsync(scope)).Throws<ObjectDisposedException>();
+
+            clock.FactoryRelease.TrySetResult();
+            await tokens.CallbackEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            tokens.CallbackRelease.TrySetResult();
+            tokens.OperationRelease.TrySetResult();
+            await Assert.That((await pending.WaitAsync(TimeSpan.FromSeconds(5))).Status).IsEqualTo(SecretStatus.Invalid);
+            await client.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+            await Assert.That(wire.Sent).IsFalse();
+            await Assert.That(() => tokens.LastCopy!.Reveal()).Throws<ObjectDisposedException>();
+        }
+        finally
+        {
+            clock.FactoryRelease.TrySetResult();
+            tokens.CallbackRelease.TrySetResult();
+            tokens.OperationRelease.TrySetResult();
+            await caller.CancelAsync();
+            if (invocation is not null) await invocation.WaitAsync(TimeSpan.FromSeconds(5));
+            try { await pending.WaitAsync(TimeSpan.FromSeconds(5)); } catch (OperationCanceledException) { }
+        }
+    }
+
+    [Test]
     public async Task OneDeadlineCoversNotificationDrainAndBlockedOwnedCleanup()
     {
         var clock = new ShutdownClock();
@@ -26,7 +164,7 @@ public sealed class InfisicalTransportOwnershipTests
         {
             await tokens.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
             stop = client.DisposeAsync().AsTask();
-            await clock.Armed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await clock.ShutdownArmed.Task.WaitAsync(TimeSpan.FromSeconds(5));
             await tokens.CallbackEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
             clock.Advance(TimeSpan.FromSeconds(2));
             tokens.CallbackRelease.TrySetResult();
@@ -91,7 +229,7 @@ public sealed class InfisicalTransportOwnershipTests
             await tokens.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
             stop = client.DisposeAsync().AsTask();
             await tokens.CallbackEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
-            await clock.Armed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await clock.ShutdownArmed.Task.WaitAsync(TimeSpan.FromSeconds(5));
             Task repeated = client.DisposeAsync().AsTask();
             await Assert.That(repeated).IsSameReferenceAs(stop);
             await Assert.That(begin).Throws<ObjectDisposedException>();
@@ -463,6 +601,8 @@ public sealed class InfisicalTransportOwnershipTests
 
     internal sealed class CallbackTokens : IInfisicalTokenSource, IDisposable
     {
+        private int _acquisitions;
+        internal int ImmediateAcquisitions { get; init; }
         internal TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal TaskCompletionSource CallbackEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal TaskCompletionSource CallbackRelease { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -473,6 +613,8 @@ public sealed class InfisicalTransportOwnershipTests
         internal SecretMaterial? LastCopy { get; private set; }
         public async ValueTask<SecretOutcome<InfisicalAccessToken>> GetTokenAsync(CancellationToken cancellationToken)
         {
+            if (Interlocked.Increment(ref _acquisitions) <= ImmediateAcquisitions)
+                return SecretOutcome<InfisicalAccessToken>.Success(new(SecretMaterial.FromText("initial-token")));
             using var registration = cancellationToken.Register(() =>
             {
                 OnCancel?.Invoke();
@@ -515,12 +657,31 @@ public sealed class InfisicalTransportOwnershipTests
         }
     }
 
+    private sealed class ShutdownTimerClock(bool throwOnShutdown) : TimeProvider
+    {
+        private readonly ShutdownClock _clock = new();
+        internal TaskCompletionSource FactoryEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal TaskCompletionSource FactoryRelease { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public override DateTimeOffset GetUtcNow() => _clock.GetUtcNow();
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            if (dueTime == TimeSpan.FromSeconds(5))
+            {
+                FactoryEntered.TrySetResult();
+                if (throwOnShutdown) throw new InvalidOperationException("timer-setup-canary");
+                FactoryRelease.Task.GetAwaiter().GetResult();
+            }
+            return _clock.CreateTimer(callback, state, dueTime, period);
+        }
+    }
+
     internal sealed class ShutdownClock : TimeProvider
     {
         private readonly object _gate = new();
         private readonly List<Timer> _timers = [];
         private DateTimeOffset _now = DateTimeOffset.UtcNow;
         internal TaskCompletionSource Armed { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal TaskCompletionSource ShutdownArmed { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public override DateTimeOffset GetUtcNow() { lock (_gate) return _now; }
         public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
         {
@@ -528,6 +689,7 @@ public sealed class InfisicalTransportOwnershipTests
             lock (_gate) _timers.Add(timer);
             timer.Change(dueTime, period);
             Armed.TrySetResult();
+            if (dueTime == TimeSpan.FromSeconds(5)) ShutdownArmed.TrySetResult();
             return timer;
         }
         internal void Advance(TimeSpan amount)

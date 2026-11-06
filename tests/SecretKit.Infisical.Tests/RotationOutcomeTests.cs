@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net;
 using System.Text;
 using System.Text.Json;
@@ -514,6 +515,323 @@ public sealed class RotationOutcomeTests
         await Assert.That(receipt.Effect).IsEqualTo(InfisicalRotationEffect.AcceptedPending);
         await Assert.That(wire.Rotations).IsEqualTo(1);
         await Assert.That(async () => await client.GetAsync(target)).Throws<ObjectDisposedException>();
+    }
+
+    [Test]
+    public async Task DisposalAtTokenReturnPreventsDispatchAndDisposesTemporaryMaterial()
+    {
+        using var wire = new RotationWire();
+        using var http = new HttpClient(wire);
+        InfisicalRotationClient? selected = null;
+        using var tokens = new Tokens { OnIssued = () => selected!.Dispose() };
+        using var client = Client(http, tokens);
+        selected = client;
+        var target = Target(client);
+        var receipt = new InfisicalRotationReceipt(target, InfisicalRotationAction.RotateSecrets);
+
+        SecretOutcome<InfisicalRotationProgress> result = await client.RotateSecretsAsync(target, receipt);
+
+        await Assert.That(result.Status).IsEqualTo(SecretStatus.Invalid);
+        await Assert.That(receipt.Dispatch).IsEqualTo(InfisicalRotationDispatch.NotDispatched);
+        await Assert.That(wire.Requests).IsEqualTo(0);
+        await Assert.That(() => tokens.LastCopy!.Reveal()).Throws<ObjectDisposedException>();
+    }
+
+    [Test]
+    public async Task OwnedClientRetainsReservedTransportUntilRotationSettlement()
+    {
+        using var wire = new RotationWire { HoldResponse = true };
+        using var tokens = new Tokens();
+        var authority = new SecretAuthority();
+        using var client = new InfisicalRotationClient(new("https://rotation.example"), authority,
+            new(authority, tokens, "private-project"),
+            new() { Transport = InfisicalTransportOptions.HostControlled(wire) });
+        var target = Target(client);
+        var receipt = new InfisicalRotationReceipt(target, InfisicalRotationAction.RotateSecrets);
+        Task<SecretOutcome<InfisicalRotationProgress>> pending = client.RotateSecretsAsync(target, receipt).AsTask();
+        try
+        {
+            await wire.Committed.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            client.Dispose();
+            wire.Release.TrySetResult();
+
+            SecretOutcome<InfisicalRotationProgress> result = await pending.WaitAsync(TimeSpan.FromSeconds(10));
+
+            await Assert.That(result.IsSuccess).IsTrue();
+            await Assert.That(receipt.Effect).IsEqualTo(InfisicalRotationEffect.AcceptedPending);
+            await Assert.That(wire.Rotations).IsEqualTo(1);
+        }
+        finally
+        {
+            wire.Release.TrySetResult();
+        }
+    }
+
+    [Test]
+    public async Task AlreadyCanceledCallerWinsDisposedClientAdmission()
+    {
+        using var wire = new RotationWire();
+        using var http = new HttpClient(wire);
+        using var tokens = new Tokens { Forbidden = true };
+        using var client = Client(http, tokens);
+        var target = Target(client);
+        client.Dispose();
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        await Assert.That(async () => await client.GetAsync(target, cancellation.Token))
+            .Throws<OperationCanceledException>();
+        await Assert.That(wire.Requests).IsEqualTo(0);
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task AsyncDrainPreservesReservedOperationAndLatchesTimeout(bool timeout)
+    {
+        using var wire = new RotationWire { HoldResponse = true };
+        using var tokens = new Tokens();
+        var clock = new InfisicalTransportOwnershipTests.ShutdownClock();
+        var authority = new SecretAuthority();
+        using var client = new InfisicalRotationClient(new("https://rotation.example"), authority,
+            new(authority, tokens, "private-project"),
+            new()
+            {
+                Transport = InfisicalTransportOptions.HostControlled(wire),
+                ShutdownTimeout = TimeSpan.FromSeconds(5)
+            }, clock);
+        var target = Target(client);
+        var receipt = new InfisicalRotationReceipt(target, InfisicalRotationAction.RotateSecrets);
+        Task<SecretOutcome<InfisicalRotationProgress>> pending = client.RotateSecretsAsync(target, receipt).AsTask();
+        try
+        {
+            await wire.Committed.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            Task stop = client.DisposeAsync().AsTask();
+            await Assert.That(stop.IsCompleted).IsFalse();
+            await Assert.That(async () => await client.GetAsync(target)).Throws<ObjectDisposedException>();
+            if (timeout)
+            {
+                await clock.ShutdownArmed.Task.WaitAsync(TimeSpan.FromSeconds(10));
+                clock.Advance(TimeSpan.FromSeconds(5));
+                await Assert.That(async () => await stop.WaitAsync(TimeSpan.FromSeconds(10)))
+                    .Throws<TimeoutException>();
+                await Assert.That(pending.IsCompleted).IsFalse();
+            }
+            wire.Release.TrySetResult();
+
+            SecretOutcome<InfisicalRotationProgress> result = await pending.WaitAsync(TimeSpan.FromSeconds(10));
+
+            await Assert.That(result.IsSuccess).IsTrue();
+            await Assert.That(receipt.Effect).IsEqualTo(InfisicalRotationEffect.AcceptedPending);
+            if (!timeout) await stop.WaitAsync(TimeSpan.FromSeconds(10));
+            await Assert.That(client.DisposeAsync().AsTask()).IsSameReferenceAs(stop);
+        }
+        finally
+        {
+            wire.Release.TrySetResult();
+        }
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task ShutdownBoundsBlockedTokenCallbacksAndPreservesEventualCleanup(bool synchronous)
+    {
+        using var wire = new RotationWire();
+        using var tokens = new InfisicalTransportOwnershipTests.CallbackTokens();
+        var clock = new InfisicalTransportOwnershipTests.ShutdownClock();
+        var authority = new SecretAuthority();
+        using var client = new InfisicalRotationClient(new("https://rotation.example"), authority,
+            new(authority, tokens, "private-project"),
+            new()
+            {
+                Transport = InfisicalTransportOptions.HostControlled(wire),
+                ShutdownTimeout = TimeSpan.FromSeconds(5)
+            }, clock);
+        Task<SecretOutcome<InfisicalRotationProgress>> pending = client.GetAsync(Target(client)).AsTask();
+        Task? stop = null;
+        try
+        {
+            await tokens.Entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            if (synchronous) client.Dispose();
+            stop = client.DisposeAsync().AsTask();
+            await tokens.CallbackEntered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await clock.ShutdownArmed.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            clock.Advance(TimeSpan.FromSeconds(5));
+
+            await Assert.That(async () => await stop.WaitAsync(TimeSpan.FromSeconds(10))).Throws<TimeoutException>();
+            await Assert.That(pending.IsCompleted).IsFalse();
+
+            tokens.CallbackRelease.TrySetResult();
+            tokens.OperationRelease.TrySetResult();
+            SecretOutcome<InfisicalRotationProgress> result = await pending.WaitAsync(TimeSpan.FromSeconds(10));
+            await Assert.That(result.Status).IsEqualTo(SecretStatus.Invalid);
+            await Assert.That(wire.Requests).IsEqualTo(0);
+            await Assert.That(() => tokens.LastCopy!.Reveal()).Throws<ObjectDisposedException>();
+            await Assert.That(client.DisposeAsync().AsTask()).IsSameReferenceAs(stop);
+        }
+        finally
+        {
+            tokens.CallbackRelease.TrySetResult();
+            tokens.OperationRelease.TrySetResult();
+        }
+    }
+
+    [Test]
+    [Arguments(0)]
+    [Arguments(-1)]
+    [Arguments(61)]
+    public async Task ShutdownBudgetMustBePositiveAndAtMostOneMinute(int seconds)
+    {
+        using var tokens = new Tokens { Forbidden = true };
+        var authority = new SecretAuthority();
+        await Assert.That(() => new InfisicalRotationClient(new("https://rotation.example"), authority,
+            new(authority, tokens, "private-project"),
+            new() { ShutdownTimeout = TimeSpan.FromSeconds(seconds) })).Throws<ArgumentException>();
+    }
+
+    [Test]
+    public async Task SafeSocketTransportSurvivesShutdownTimeoutAndClosesAfterSettlement()
+    {
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var listener = new System.Net.Sockets.TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        int port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        var clock = new InfisicalTransportOwnershipTests.ShutdownClock();
+        using var tokens = new Tokens();
+        var authority = new SecretAuthority();
+        using var client = new InfisicalRotationClient(new($"http://127.0.0.1:{port}"), authority,
+            new(authority, tokens, "private-project"),
+            new() { AllowLoopbackDevelopmentHttp = true, ShutdownTimeout = TimeSpan.FromSeconds(5) }, clock);
+        var target = Target(client);
+        var receipt = new InfisicalRotationReceipt(target, InfisicalRotationAction.RotateSecrets);
+        Task<SecretOutcome<InfisicalRotationProgress>> pending = client.RotateSecretsAsync(target, receipt).AsTask();
+        using System.Net.Sockets.TcpClient connection = await listener.AcceptTcpClientAsync(deadline.Token);
+        await using System.Net.Sockets.NetworkStream stream = connection.GetStream();
+        using var reader = new StreamReader(stream, Encoding.ASCII, leaveOpen: true);
+        string? requestLine = await reader.ReadLineAsync(deadline.Token);
+        await Assert.That(requestLine).IsEqualTo(
+            $"POST /api/v2/secret-rotations/postgres-credentials/{Id}/rotate-secrets HTTP/1.1");
+        while (await reader.ReadLineAsync(deadline.Token) is { Length: > 0 }) { }
+
+        Task stop = client.DisposeAsync().AsTask();
+        await clock.ShutdownArmed.Task.WaitAsync(deadline.Token);
+        clock.Advance(TimeSpan.FromSeconds(5));
+        await Assert.That(async () => await stop.WaitAsync(deadline.Token)).Throws<TimeoutException>();
+        await Assert.That(pending.IsCompleted).IsFalse();
+        byte[] body = JsonSerializer.SerializeToUtf8Bytes(new
+        {
+            secretRotation = new
+            {
+                id = Id,
+                projectId = "private-project",
+                type = "postgres-credentials",
+                environment = new { slug = "private-env" },
+                folder = new { path = "/private-path" },
+                rotationStatus = "pending",
+                isAutoRotationEnabled = true,
+                isLastRotationManual = true,
+                lastRotationAttemptedAt = "2026-10-09T10:00:00Z",
+                lastRotatedAt = "2026-10-08T10:00:00Z"
+            }
+        });
+        await stream.WriteAsync(Encoding.ASCII.GetBytes(
+            $"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {body.Length}\r\n\r\n"), deadline.Token);
+        await stream.WriteAsync(body, deadline.Token);
+
+        SecretOutcome<InfisicalRotationProgress> result = await pending.WaitAsync(deadline.Token);
+
+        await Assert.That(result.IsSuccess).IsTrue();
+        await Assert.That(receipt.Effect).IsEqualTo(InfisicalRotationEffect.AcceptedPending);
+        // EOF is the actual owned SocketsHttpHandler cleanup, after the reserved response settled.
+        await Assert.That(await stream.ReadAsync(new byte[1], deadline.Token)).IsEqualTo(0);
+        await Assert.That(client.DisposeAsync().AsTask()).IsSameReferenceAs(stop);
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task DisposalWinsReleasedAcquisitionExceptionWithoutDispatch(bool io)
+    {
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var acquisition = new TaskCompletionSource<SecretOutcome<InfisicalAccessToken>>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        using var wire = new RotationWire();
+        using var http = new HttpClient(wire);
+        using var tokens = new Tokens
+        {
+            OnAcquire = () => entered.TrySetResult(),
+            PendingAcquisition = acquisition.Task
+        };
+        using var client = Client(http, tokens);
+        var target = Target(client);
+        var receipt = new InfisicalRotationReceipt(target, InfisicalRotationAction.RotateSecrets);
+        Task<SecretOutcome<InfisicalRotationProgress>> pending = client.RotateSecretsAsync(target, receipt).AsTask();
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        client.Dispose();
+        acquisition.SetException(io
+            ? new IOException("protected-acquisition-canary")
+            : new HttpRequestException("protected-acquisition-canary"));
+
+        SecretOutcome<InfisicalRotationProgress> result = await pending.WaitAsync(TimeSpan.FromSeconds(5));
+
+        await Assert.That(result.Status).IsEqualTo(SecretStatus.Invalid);
+        await Assert.That(receipt.Dispatch).IsEqualTo(InfisicalRotationDispatch.NotDispatched);
+        await Assert.That(wire.Requests).IsEqualTo(0);
+    }
+
+    [Test]
+    public async Task RotationCompletionListenerCanSynchronouslyDisposeItsEmittingClient()
+    {
+        using var wire = new RotationWire();
+        using var tokens = new Tokens();
+        var clock = new InfisicalTransportOwnershipTests.ShutdownClock();
+        var authority = new SecretAuthority();
+        using var client = new InfisicalRotationClient(new("https://rotation.example"), authority,
+            new(authority, tokens, "private-project"),
+            new()
+            {
+                Transport = InfisicalTransportOptions.HostControlled(wire),
+                ShutdownTimeout = TimeSpan.FromSeconds(5)
+            }, clock);
+        using var parent = new Activity("rotation-completion-disposal").Start();
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Exception? callbackFailure = null;
+        Task? disposal = null;
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = source => source.Name == "SecretKit.Infisical",
+            Sample = (ref ActivityCreationOptions<ActivityContext> options) =>
+                options.Parent.SpanId == parent.SpanId ? ActivitySamplingResult.AllData : ActivitySamplingResult.None,
+            ActivityStopped = activity =>
+            {
+                if (activity.ParentSpanId != parent.SpanId ||
+                    activity.GetTagItem("operation")?.ToString() != nameof(InfisicalOperation.Rotation)) return;
+                disposal = client.DisposeAsync().AsTask();
+                entered.TrySetResult();
+                try { disposal.GetAwaiter().GetResult(); }
+                catch (Exception exception) { callbackFailure = exception; }
+            }
+        };
+        ActivitySource.AddActivityListener(listener);
+        var target = Target(client);
+        var receipt = new InfisicalRotationReceipt(target, InfisicalRotationAction.RotateSecrets);
+        Task<SecretOutcome<InfisicalRotationProgress>> pending = client.RotateSecretsAsync(target, receipt).AsTask();
+        try
+        {
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            SecretOutcome<InfisicalRotationProgress> result = await pending.WaitAsync(TimeSpan.FromSeconds(2));
+            await Assert.That(result.IsSuccess).IsTrue();
+            await Assert.That(callbackFailure).IsNull();
+            await Assert.That(receipt.Effect).IsEqualTo(InfisicalRotationEffect.AcceptedPending);
+            await Assert.That(client.DisposeAsync().AsTask()).IsSameReferenceAs(disposal);
+        }
+        finally
+        {
+            // Release the baseline ownership cycle after the test's safety timeout.
+            clock.Advance(TimeSpan.FromSeconds(5));
+            await pending.WaitAsync(TimeSpan.FromSeconds(5));
+        }
     }
 
     private static InfisicalRotationClient Client(HttpClient http, Tokens tokens, int responseLimit = 4096,

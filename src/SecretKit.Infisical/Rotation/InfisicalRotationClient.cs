@@ -1,3 +1,4 @@
+using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text.Json;
 using Refit;
@@ -11,16 +12,23 @@ namespace SecretKit.Infisical;
 /// HTTP, TLS, retries and logging policy is not enforced by the SDK.
 /// Construction performs no I/O. No polling, runtime refresh or consumer activation is performed.
 /// </summary>
-public sealed class InfisicalRotationClient : IDisposable
+public sealed class InfisicalRotationClient : IDisposable, IAsyncDisposable
 {
     private readonly Uri _origin;
     private readonly HttpClient _transport;
     private readonly InfisicalTransportBinding _binding;
+    private readonly IInfisicalRotationApi _api;
     private readonly InfisicalNativeAuthority _administration;
     private readonly int _maximumResponseBytes;
     private readonly TimeSpan _operationTimeout;
     private readonly TimeProvider _time;
-    private int _disposed;
+    private readonly object _gate = new();
+    private readonly CancellationTokenSource _shutdown = new();
+    private readonly TimeSpan _shutdownTimeout;
+    private TaskCompletionSource? _drained;
+    private Task? _disposeTask;
+    private int _active;
+    private bool _disposed;
 
     /// <summary>Creates a fixed-origin rotation client bound to explicit local and administrative authority, without I/O.</summary>
     public InfisicalRotationClient(Uri trustedOrigin,
@@ -32,28 +40,97 @@ public sealed class InfisicalRotationClient : IDisposable
         ArgumentNullException.ThrowIfNull(administration);
         network ??= new();
         InfisicalTransportBinding.ValidateOrigin(trustedOrigin, network);
-        if (network.MaximumResponseBytes is < 1024 or > 16 * 1024 * 1024)
+        if (network.MaximumResponseBytes is < 1024 or > 16 * 1024 * 1024 ||
+            network.ShutdownTimeout <= TimeSpan.Zero || network.ShutdownTimeout > TimeSpan.FromMinutes(1))
         {
             throw new ArgumentException("Invalid native response budget.");
         }
         _origin = trustedOrigin;
         _binding = new(trustedOrigin, network);
         _transport = _binding.Client;
+        _api = RestService.ForGenerated<IInfisicalRotationApi>(_binding.Requests, new RefitSettings
+        {
+            CaptureMethodArguments = false,
+            CaptureRequestContent = false
+        });
         Authority = authority;
         _administration = administration;
         _maximumResponseBytes = network.MaximumResponseBytes;
         _operationTimeout = network.OperationTimeout;
         _time = timeProvider ?? TimeProvider.System;
+        _shutdownTimeout = network.ShutdownTimeout;
     }
 
     /// <summary>The exact local authority required by rotation references; not a server permission grant.</summary>
     public SecretAuthority Authority { get; }
 
-    /// <summary>Closes new operation admission before disposing SDK-owned transport resources, never the host's client or handler.</summary>
-    /// <remarks>Previously admitted work may settle under its existing budget; disposal does not promise to drain it.</remarks>
-    public void Dispose()
+    /// <summary>Closes admission immediately and schedules cleanup after accepted operations exit.</summary>
+    /// <remarks>Does not block on host callbacks or revoke remote credentials. Borrowed resources remain host-owned.</remarks>
+    public void Dispose() => _ = BeginShutdown();
+
+    /// <summary>Closes admission and awaits the original bounded shutdown attempt.</summary>
+    /// <remarks>Reserved operations may settle. A timeout ends only this wait; owned cleanup still awaits actual drain.</remarks>
+    /// <exception cref="TimeoutException">The configured shutdown bound elapsed before cleanup finished.</exception>
+    public ValueTask DisposeAsync() => new(BeginShutdown());
+
+    private Task BeginShutdown()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) == 0) _binding.Dispose();
+        TaskCompletionSource completion;
+        Task drained;
+        lock (_gate)
+        {
+            if (_disposeTask is not null) return _disposeTask;
+            _disposed = true;
+            _drained = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            if (_active == 0) _drained.SetResult();
+            drained = _drained.Task;
+            completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            _disposeTask = completion.Task;
+        }
+        _ = Task.Run(() => ShutdownAsync(drained, completion));
+        return completion.Task;
+    }
+
+    private async Task ShutdownAsync(Task drained, TaskCompletionSource completion)
+    {
+        var cleanup = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        // Cleanup must not depend on successful or cooperative host timer creation.
+        _ = Task.Run(async () =>
+        {
+            bool succeeded = true;
+            try
+            {
+                try { await _shutdown.CancelAsync().ConfigureAwait(false); }
+                catch (Exception) { succeeded = false; }
+            }
+            finally
+            {
+                try
+                {
+                    await drained.ConfigureAwait(false);
+                    _binding.Dispose();
+                }
+                catch (Exception) { succeeded = false; }
+                finally
+                {
+                    _shutdown.Dispose();
+                    cleanup.TrySetResult(succeeded);
+                }
+            }
+        });
+        try
+        {
+            if (await cleanup.Task.WaitAsync(_shutdownTimeout, _time).ConfigureAwait(false)) completion.TrySetResult();
+            else completion.TrySetException(new InvalidOperationException("Rotation client shutdown failed."));
+        }
+        catch (TimeoutException)
+        {
+            completion.TrySetException(new TimeoutException("Rotation client shutdown timed out."));
+        }
+        catch (Exception)
+        {
+            completion.TrySetException(new InvalidOperationException("Rotation client shutdown failed."));
+        }
     }
 
     /// <summary>Observes bounded native rotation metadata for an explicitly authorized project scope.</summary>
@@ -61,9 +138,7 @@ public sealed class InfisicalRotationClient : IDisposable
     public async ValueTask<SecretOutcome<InfisicalNativeList<InfisicalRotationProgress>>> ListAsync(
         SecretReference scope, int maximumItems = 128, CancellationToken cancellationToken = default)
     {
-        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
-        return await InfisicalOperationBudget.RunAsync(_operationTimeout, _time, cancellationToken,
-            InfisicalOperation.Rotation, ExecuteAsync).ConfigureAwait(false);
+        return await RunAsync(ExecuteAsync, cancellationToken: cancellationToken).ConfigureAwait(false);
 
         async ValueTask<SecretOutcome<InfisicalNativeList<InfisicalRotationProgress>>> ExecuteAsync(CancellationToken operationToken)
         {
@@ -132,9 +207,9 @@ public sealed class InfisicalRotationClient : IDisposable
         InfisicalRotationAction? action, InfisicalRotationReceipt? receipt,
         InfisicalRotationPrecondition precondition, CancellationToken cancellationToken)
     {
-        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
-        return await InfisicalOperationBudget.RunAsync(_operationTimeout, _time, cancellationToken,
-            InfisicalOperation.Rotation, ExecuteAsync, () => receipt?.Dispatch switch { InfisicalRotationDispatch.ResponseUnknown => DispatchEvidence.PossiblyDispatched, InfisicalRotationDispatch.ResponseObserved => DispatchEvidence.Applied, InfisicalRotationDispatch.Rejected => DispatchEvidence.Rejected, _ => DispatchEvidence.NotDispatched }).ConfigureAwait(false);
+        return await RunAsync(ExecuteAsync,
+            () => receipt?.Dispatch switch { InfisicalRotationDispatch.ResponseUnknown => DispatchEvidence.PossiblyDispatched, InfisicalRotationDispatch.ResponseObserved => DispatchEvidence.Applied, InfisicalRotationDispatch.Rejected => DispatchEvidence.Rejected, _ => DispatchEvidence.NotDispatched },
+            cancellationToken).ConfigureAwait(false);
 
         async ValueTask<SecretOutcome<InfisicalRotationProgress>> ExecuteAsync(CancellationToken operationToken)
         {
@@ -179,76 +254,125 @@ public sealed class InfisicalRotationClient : IDisposable
         }
     }
 
-    private async ValueTask<SecretOutcome<JsonDocument>> SendAsync(InfisicalNativeAddress address,
+    private async ValueTask<SecretOutcome<T>> RunAsync<T>(
+        Func<CancellationToken, ValueTask<SecretOutcome<T>>> execute,
+        Func<DispatchEvidence>? evidence = null, CancellationToken cancellationToken = default) where T : notnull
+    {
+        using var deferred = InfisicalDiagnostics.Defer();
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_gate)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            _active++;
+        }
+        try
+        {
+            // Shutdown applies to pre-dispatch admission only. Reserved sends keep their caller/deadline budget.
+            return await InfisicalOperationBudget.RunAsync(_operationTimeout, _time, cancellationToken,
+                InfisicalOperation.Rotation, execute, evidence).ConfigureAwait(false);
+        }
+        finally
+        {
+            lock (_gate)
+            {
+                if (--_active == 0) _drained?.TrySetResult();
+            }
+        }
+    }
+
+    private ValueTask<SecretOutcome<JsonDocument>> SendAsync(InfisicalNativeAddress address,
         bool? enabled, SecretReference target, InfisicalRotationAction? action,
         InfisicalRotationReceipt? receipt, CancellationToken cancellationToken)
     {
+        return SendConstructedAsync(address, BuildAsync, target, action, receipt, cancellationToken);
+
+        Task<HttpRequestMessage> BuildAsync(CancellationToken token)
+        {
+            if (address is InfisicalRotationScope scope)
+                return _api.ListAsync(scope.ProjectId, token);
+            var rotation = (InfisicalRotationAddress)address;
+            string profile = WireProfile(rotation.Profile);
+            return enabled is { } setting
+                ? _api.SetAutomaticAsync(profile, rotation.RotationId, new(setting), token)
+                : action is null
+                    ? _api.GetAsync(profile, rotation.RotationId, token)
+                    : _api.RotateAsync(profile, rotation.RotationId, token);
+        }
+    }
+
+    internal async ValueTask<SecretOutcome<JsonDocument>> SendConstructedAsync(InfisicalNativeAddress address,
+        Func<CancellationToken, Task<HttpRequestMessage>> build,
+        SecretReference target, InfisicalRotationAction? action,
+        InfisicalRotationReceipt? receipt, CancellationToken cancellationToken)
+    {
+        using var admission = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _shutdown.Token);
+        bool reserved = false;
         try
         {
-            var tokenOutcome = await _administration.Tokens.GetTokenAsync(cancellationToken).ConfigureAwait(false);
-            if (!tokenOutcome.IsSuccess)
+            lock (_gate)
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                return SecretOutcome<JsonDocument>.Failure(tokenOutcome.Status, tokenOutcome.RetryAfter, tokenOutcome.Reason);
+                if (_disposed) return SecretOutcome<JsonDocument>.Failure(SecretStatus.Invalid);
             }
-            using var token = tokenOutcome.Value;
-            cancellationToken.ThrowIfCancellationRequested();
-            if (token.ExpiresAt <= _time.GetUtcNow())
-            {
-                return SecretOutcome<JsonDocument>.Failure(SecretStatus.Expired);
-            }
-            using var controlled = new HttpClient(new RequestBuilderOnlyHandler())
-            {
-                BaseAddress = _origin,
-                Timeout = Timeout.InfiniteTimeSpan
-            };
-            // Do not let Refit manufacture ApiException objects retaining provider bodies.
-            var api = RestService.ForGenerated<IInfisicalRotationApi>(controlled, new RefitSettings
-            {
-                ExceptionFactory = _ => ValueTask.FromResult<Exception?>(null)
-            });
-            string authorization = "Bearer " + token.Material.Reveal();
-            cancellationToken.ThrowIfCancellationRequested();
-            HttpRequestMessage built;
+            using HttpRequestMessage request = await build(admission.Token).ConfigureAwait(false);
+            InfisicalNativeRequestIntent intent;
+            const string collection = "/api/v2/secret-rotations";
             if (address is InfisicalRotationScope scope)
             {
-                built = await api.ListAsync(scope.ProjectId, authorization, cancellationToken).ConfigureAwait(false);
+                intent = new(HttpMethod.Get, collection,
+                    new Dictionary<string, string> { ["projectId"] = scope.ProjectId });
             }
             else
             {
                 var rotation = (InfisicalRotationAddress)address;
-                string profile = WireProfile(rotation.Profile);
-                built = enabled is { } setting
-                    ? await api.SetAutomaticAsync(profile, rotation.RotationId, new(setting), authorization,
-                        cancellationToken).ConfigureAwait(false)
-                    : action is null
-                        ? await api.GetAsync(profile, rotation.RotationId, authorization, cancellationToken).ConfigureAwait(false)
-                        : await api.RotateAsync(profile, rotation.RotationId, authorization, cancellationToken).ConfigureAwait(false);
+                string path = collection + "/" + Uri.EscapeDataString(WireProfile(rotation.Profile)) +
+                    "/" + Uri.EscapeDataString(rotation.RotationId);
+                HttpMethod method = action switch
+                {
+                    InfisicalRotationAction.RotateSecrets => HttpMethod.Post,
+                    InfisicalRotationAction.EnableAutomaticRotation or InfisicalRotationAction.DisableAutomaticRotation => HttpMethod.Patch,
+                    _ => HttpMethod.Get
+                };
+                intent = new(method, action == InfisicalRotationAction.RotateSecrets ? path + "/rotate-secrets" : path);
             }
-            using var request = built;
-            Uri? uri = request.RequestUri;
-            if (uri is null)
-            {
+            if (!intent.TryBind(request, _origin))
                 return SecretOutcome<JsonDocument>.Failure(SecretStatus.Invalid);
-            }
-            if (!uri.IsAbsoluteUri)
-            {
-                uri = new Uri(_origin, uri);
-                request.RequestUri = uri;
-            }
-            if (uri.Scheme != _origin.Scheme || uri.Host != _origin.Host || uri.Port != _origin.Port ||
-                uri.UserInfo.Length != 0)
-            {
-                return SecretOutcome<JsonDocument>.Failure(SecretStatus.Invalid);
-            }
             cancellationToken.ThrowIfCancellationRequested();
-            if (action is { } selected && !receipt!.Begin(target, selected))
+            var tokenOutcome = await _administration.Tokens.GetTokenAsync(admission.Token).ConfigureAwait(false);
+            if (!tokenOutcome.IsSuccess)
             {
+                cancellationToken.ThrowIfCancellationRequested();
+                lock (_gate)
+                {
+                    if (_disposed) return SecretOutcome<JsonDocument>.Failure(SecretStatus.Invalid);
+                }
+                return SecretOutcome<JsonDocument>.Failure(tokenOutcome.Status, tokenOutcome.RetryAfter, tokenOutcome.Reason);
+            }
+            using var token = tokenOutcome.Value;
+            cancellationToken.ThrowIfCancellationRequested();
+            lock (_gate)
+            {
+                if (_disposed) return SecretOutcome<JsonDocument>.Failure(SecretStatus.Invalid);
+            }
+            if (token.ExpiresAt <= _time.GetUtcNow())
+            {
+                return SecretOutcome<JsonDocument>.Failure(SecretStatus.Expired);
+            }
+            string bearer = token.Material.Reveal();
+            if (bearer.Length is < 1 or > 16384 ||
+                !bearer.All(character => char.IsAsciiLetterOrDigit(character) ||
+                    character is '-' or '_' or '.' or '~' or '+' or '/' or '='))
                 return SecretOutcome<JsonDocument>.Failure(SecretStatus.Invalid);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
+            cancellationToken.ThrowIfCancellationRequested();
+            lock (_gate)
+            {
+                if (_disposed || action is { } selected && !receipt!.Begin(target, selected))
+                    return SecretOutcome<JsonDocument>.Failure(SecretStatus.Invalid);
+                reserved = true;
             }
             using var response = await _transport.SendAsync(request, HttpCompletionOption.ResponseHeadersRead,
                 cancellationToken).ConfigureAwait(false);
-            if (response.RequestMessage?.RequestUri is { } final && final != uri)
+            if (response.RequestMessage?.RequestUri is { } final && final != request.RequestUri)
             {
                 return SecretOutcome<JsonDocument>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.InvalidResponse);
             }
@@ -314,6 +438,11 @@ public sealed class InfisicalRotationClient : IDisposable
                 CryptographicOperations.ZeroMemory(bytes);
             }
         }
+        catch (OperationCanceledException) when (!reserved && !cancellationToken.IsCancellationRequested &&
+            _shutdown.IsCancellationRequested)
+        {
+            return SecretOutcome<JsonDocument>.Failure(SecretStatus.Invalid);
+        }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             throw new OperationCanceledException("Native rotation operation canceled.", cancellationToken);
@@ -322,18 +451,16 @@ public sealed class InfisicalRotationClient : IDisposable
             JsonException or FormatException or OperationCanceledException)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (!reserved)
+            {
+                lock (_gate)
+                {
+                    if (_disposed) return SecretOutcome<JsonDocument>.Failure(SecretStatus.Invalid);
+                }
+            }
             return SecretOutcome<JsonDocument>.Failure(SecretStatus.Unknown, reason: exception is JsonException
                     ? SecretFailureReason.InvalidResponse : SecretFailureReason.TransportFailure);
         }
-    }
-
-    // Refit's Task<HttpRequestMessage> seam performs construction only. Fail closed if it
-    // attempts to dispatch; only the explicit host transport send above is authorized.
-    private sealed class RequestBuilderOnlyHandler : HttpMessageHandler
-    {
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,
-            CancellationToken cancellationToken) =>
-            throw new HttpRequestException("The native Refit seam may only construct requests.");
     }
 
     private static bool UniqueProperties(JsonElement value)

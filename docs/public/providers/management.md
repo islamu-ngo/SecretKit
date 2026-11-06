@@ -4,6 +4,7 @@
 > **Status:** Retained implemented subsets; in development, not ready for production
 > **Owner:** SecretKit maintainers
 > **Last verified:** 2026-10-25, source inspection at `e6fe6b864420d9c8035395fa6c70a9c4ab1e67dd`; not a native qualification run
+> **SQL lifecycle boundary review:** 2026-11-06, source and controlled offline verification
 > **Source anchors:** [Infisical management](../../../src/SecretKit.Infisical.Management/), [Azure management](../../../src/SecretKit.AzureKeyVault.Management/), focused evidence below
 
 Management packages are optional. They do not grant administration rights,
@@ -176,6 +177,12 @@ omitted/false/true distinctions. Configuration deletion or credential metadata
 does not independently prove SQL revocation or consumer convergence. Trigger,
 automatic enablement and progress remain on `InfisicalRotationClient`, with
 different receipts.
+The runtime client's shared dynamic-lease and definition lifecycle is local to
+that exact `InfisicalDynamicClient`. Management configuration changes do not
+settle another client's receipts or synchronize its held material. Applications
+coordinate separately selected administrative actions and runtime recovery.
+See [dynamic lifecycle and rotation ownership](infisical.md#dynamic-definitions-are-broader-than-credential-acquisition)
+before treating configuration deletion as credential or database-session cleanup.
 
 ### Results and evidence
 

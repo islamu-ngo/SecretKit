@@ -105,7 +105,7 @@ public sealed class InfisicalDynamicDefinition
 {
     internal InfisicalDynamicDefinition(InfisicalDynamicTarget target, Guid id,
         InfisicalDynamicProvider provider, InfisicalLeaseDuration defaultTtl,
-        InfisicalLeaseDuration? maximumTtl, decimal version, string? status)
+        InfisicalLeaseDuration? maximumTtl, decimal version, string? status, InfisicalDefinitionLifecycle lifecycle)
     {
         Target = target;
         Id = id;
@@ -114,7 +114,9 @@ public sealed class InfisicalDynamicDefinition
         MaximumTtl = maximumTtl;
         Version = version;
         Status = status;
+        Lifecycle = lifecycle;
     }
+    internal InfisicalDefinitionLifecycle Lifecycle { get; }
     /// <summary>The client-bound target validated for this definition.</summary>
     [JsonIgnore] public InfisicalDynamicTarget Target { get; }
     /// <summary>The observed native definition UUID.</summary>

@@ -17,6 +17,8 @@ namespace SecretKit.Infisical;
 public sealed class InfisicalDynamicClient : IAsyncDisposable
 {
     private const int MaximumSchemaMembers = 1024;
+    private const string DefinitionPath = "/api/v1/dynamic-secrets";
+    private const string LeasePath = DefinitionPath + "/leases";
     private readonly Uri _origin;
     private readonly HttpClient _http;
     private readonly InfisicalTransportBinding _binding;
@@ -28,6 +30,8 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
     private readonly TimeSpan _operationTimeout;
     private readonly int _maximumItems;
     private readonly object _gate = new();
+    private readonly Dictionary<(Guid DefinitionId, Guid LeaseId), WeakReference<InfisicalLeaseLifecycle>> _leases = [];
+    private readonly Dictionary<Guid, WeakReference<InfisicalDefinitionLifecycle>> _definitions = [];
     private readonly CancellationTokenSource _shutdown = new();
     private readonly TimeSpan _shutdownTimeout;
     private TaskCompletionSource? _drained;
@@ -87,6 +91,7 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
         async ValueTask<SecretOutcome<InfisicalNativeList<InfisicalDynamicDefinition>>> ExecuteAsync(CancellationToken operationToken)
         {
             SecretOutcome<JsonDocument> response = await SendAsync(
+                ReadIntent(DefinitionPath),
                 (_, _, token) => _wire.ListDefinitionsAsync(Scope.ProjectSlug, Scope.EnvironmentSlug, Scope.Path, token),
                 null, null, operationToken).ConfigureAwait(false);
             if (!response.IsSuccess)
@@ -135,6 +140,7 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
                 return SecretOutcome<InfisicalDynamicDefinition>.Failure(SecretStatus.Invalid, reason: SecretFailureReason.AuthorityMismatch);
             }
             SecretOutcome<JsonDocument> response = await SendAsync(
+                ReadIntent(DefinitionPath + "/" + Uri.EscapeDataString(target.Name)),
                 (_, _, token) => _wire.InspectDefinitionAsync(target.Name, Scope.ProjectSlug, Scope.EnvironmentSlug, Scope.Path, token),
                 null, null, operationToken).ConfigureAwait(false);
             return DefinitionResult(response, target, null, null);
@@ -181,6 +187,7 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
                 options?.Write(writer);
             });
             SecretOutcome<JsonDocument> response = await SendAsync(
+                new(HttpMethod.Post, DefinitionPath),
                 (content, mutation, token) => _wire.CreateDefinitionAsync(content!, mutation!, token),
                 body, receipt, operationToken).ConfigureAwait(false);
             return DefinitionResult(response, target, null, receipt, profile.Provider);
@@ -207,8 +214,21 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
     {
         cancellationToken.ThrowIfCancellationRequested();
         lock (_gate) ObjectDisposedException.ThrowIf(_disposed, this);
-        return await InfisicalOperationBudget.RunAsync(_operationTimeout, _time, cancellationToken,
-            InfisicalOperation.Dynamic, ExecuteAsync, () => receipt?.Evidence ?? DispatchEvidence.NotDispatched, shutdown: _shutdown.Token).ConfigureAwait(false);
+        InfisicalDefinitionLifecycle? admitted = null;
+        bool exclusive = false;
+        try
+        {
+            return await InfisicalOperationBudget.RunAsync(_operationTimeout, _time, cancellationToken,
+                InfisicalOperation.Dynamic, ExecuteAsync, () => receipt?.Evidence ?? DispatchEvidence.NotDispatched, shutdown: _shutdown.Token).ConfigureAwait(false);
+        }
+        finally
+        {
+            if (admitted is not null)
+            {
+                if (exclusive) admitted.EndExclusive(receipt, patch.NewName, false);
+                else admitted.EndChild();
+            }
+        }
 
         async ValueTask<SecretOutcome<InfisicalDynamicDefinition>> ExecuteAsync(CancellationToken operationToken)
         {
@@ -222,6 +242,11 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
                 return SecretOutcome<InfisicalDynamicDefinition>.Failure(SecretStatus.Invalid, reason: definition.Target.Owner != this
                     ? SecretFailureReason.AuthorityMismatch : SecretFailureReason.None);
             }
+            exclusive = patch.NewName is not null;
+            SecretStatus admission = definition.Lifecycle.Begin(definition.Target.Name, exclusive);
+            if (admission != SecretStatus.Success)
+                return SecretOutcome<InfisicalDynamicDefinition>.Failure(admission);
+            admitted = definition.Lifecycle;
             Func<int, byte[]> body = Body(writer =>
             {
                 writer.WriteStartObject("data");
@@ -229,6 +254,7 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
                 writer.WriteEndObject();
             });
             SecretOutcome<JsonDocument> response = await SendAsync(
+                new(HttpMethod.Patch, DefinitionPath + "/" + Uri.EscapeDataString(definition.Target.Name)),
                 (content, mutation, token) => _wire.UpdateDefinitionAsync(definition.Target.Name, content!, mutation!, token),
                 body, receipt, operationToken).ConfigureAwait(false);
             InfisicalDynamicTarget returnedTarget = patch.NewName is null ? definition.Target : Definition(patch.NewName);
@@ -243,8 +269,13 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
     {
         cancellationToken.ThrowIfCancellationRequested();
         lock (_gate) ObjectDisposedException.ThrowIf(_disposed, this);
-        return await InfisicalOperationBudget.RunAsync(_operationTimeout, _time, cancellationToken,
-            InfisicalOperation.Dynamic, ExecuteAsync, () => receipt?.Evidence ?? DispatchEvidence.NotDispatched, shutdown: _shutdown.Token).ConfigureAwait(false);
+        InfisicalDefinitionLifecycle? admitted = null;
+        try
+        {
+            return await InfisicalOperationBudget.RunAsync(_operationTimeout, _time, cancellationToken,
+                InfisicalOperation.Dynamic, ExecuteAsync, () => receipt?.Evidence ?? DispatchEvidence.NotDispatched, shutdown: _shutdown.Token).ConfigureAwait(false);
+        }
+        finally { admitted?.EndExclusive(receipt, null, true); }
 
         async ValueTask<SecretOutcome<InfisicalDynamicDeletion>> ExecuteAsync(CancellationToken operationToken)
         {
@@ -254,7 +285,12 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
                 return SecretOutcome<InfisicalDynamicDeletion>.Failure(SecretStatus.Invalid, reason: definition.Target.Owner != this
                     ? SecretFailureReason.AuthorityMismatch : SecretFailureReason.None);
             }
+            SecretStatus admission = definition.Lifecycle.Begin(definition.Target.Name, true);
+            if (admission != SecretStatus.Success)
+                return SecretOutcome<InfisicalDynamicDeletion>.Failure(admission);
+            admitted = definition.Lifecycle;
             SecretOutcome<JsonDocument> response = await SendAsync(
+                new(HttpMethod.Delete, DefinitionPath + "/" + Uri.EscapeDataString(definition.Target.Name)),
                 (content, mutation, token) => _wire.DeleteDefinitionAsync(definition.Target.Name, content!, mutation!, token),
                 Body(writer => writer.WriteBoolean("isForced", forceRecordRemoval)), receipt,
                 operationToken).ConfigureAwait(false);
@@ -285,6 +321,7 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
                     ? SecretFailureReason.AuthorityMismatch : SecretFailureReason.None);
             }
             SecretOutcome<JsonDocument> response = await SendAsync(
+                ReadIntent(DefinitionPath + "/" + Uri.EscapeDataString(definition.Target.Name) + "/leases"),
                 (_, _, token) => _wire.ListLeasesAsync(definition.Target.Name, Scope.ProjectSlug, Scope.EnvironmentSlug, Scope.Path, token),
                 null, null, operationToken).ConfigureAwait(false);
             if (!response.IsSuccess)
@@ -308,6 +345,8 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
                 }
                 observations.Add(observation);
             }
+            foreach (InfisicalLeaseObservation observation in observations)
+                observation.Reference.Lifecycle.ObserveRead(observation);
             return SecretOutcome<InfisicalNativeList<InfisicalLeaseObservation>>.Success(new(observations, true));
         }
     }
@@ -331,6 +370,7 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
                     ? SecretFailureReason.AuthorityMismatch : SecretFailureReason.None);
             }
             SecretOutcome<JsonDocument> response = await SendAsync(
+                ReadIntent(LeasePath + "/" + reference.Id.ToString("D")),
                 (_, _, token) => _wire.InspectLeaseAsync(reference.Id, Scope.ProjectSlug, Scope.EnvironmentSlug, Scope.Path, token),
                 null, null, operationToken).ConfigureAwait(false);
             if (!response.IsSuccess)
@@ -345,7 +385,8 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
             {
                 return SecretOutcome<InfisicalLeaseObservation>.Failure(SecretStatus.Invalid);
             }
-            return SecretOutcome<InfisicalLeaseObservation>.Success(observation!);
+            observation!.Reference.Lifecycle.ObserveRead(observation);
+            return SecretOutcome<InfisicalLeaseObservation>.Success(observation);
         }
     }
 
@@ -359,8 +400,13 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
     {
         cancellationToken.ThrowIfCancellationRequested();
         lock (_gate) ObjectDisposedException.ThrowIf(_disposed, this);
-        return await InfisicalOperationBudget.RunAsync(_operationTimeout, _time, cancellationToken,
-            InfisicalOperation.Dynamic, ExecuteAsync, () => receipt?.Evidence ?? DispatchEvidence.NotDispatched, shutdown: _shutdown.Token).ConfigureAwait(false);
+        InfisicalDefinitionLifecycle? admitted = null;
+        try
+        {
+            return await InfisicalOperationBudget.RunAsync(_operationTimeout, _time, cancellationToken,
+                InfisicalOperation.Dynamic, ExecuteAsync, () => receipt?.Evidence ?? DispatchEvidence.NotDispatched, shutdown: _shutdown.Token).ConfigureAwait(false);
+        }
+        finally { admitted?.EndChild(); }
 
         async ValueTask<SecretOutcome<InfisicalDatabaseLease>> ExecuteAsync(CancellationToken operationToken)
         {
@@ -378,7 +424,12 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
             {
                 return SecretOutcome<InfisicalDatabaseLease>.Failure(SecretStatus.Invalid);
             }
+            SecretStatus admission = definition.Lifecycle.Begin(definition.Target.Name, false);
+            if (admission != SecretStatus.Success)
+                return SecretOutcome<InfisicalDatabaseLease>.Failure(admission);
+            admitted = definition.Lifecycle;
             SecretOutcome<JsonDocument> response = await SendAsync(
+                new(HttpMethod.Post, LeasePath),
                 (content, mutation, token) => _wire.AcquireAsync(content!, mutation!, token),
                 Body(writer =>
                 {
@@ -405,50 +456,19 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
             {
                 return SecretOutcome<InfisicalDatabaseLease>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.InvalidResponse);
             }
+            observation.Reference.Lifecycle.ObserveRead(observation);
             receipt.Record(DispatchEvidence.Applied);
-            return SecretOutcome<InfisicalDatabaseLease>.Success(new(observation, _time, username, password));
+            return SecretOutcome<InfisicalDatabaseLease>.Success(new(observation, username, password));
         }
     }
 
     /// <summary>Explicit renewal uses returned expireAt, never a locally fabricated extension.</summary>
-    public async ValueTask<SecretOutcome<InfisicalLeaseObservation>> RenewAsync(
+    public ValueTask<SecretOutcome<InfisicalLeaseObservation>> RenewAsync(
         InfisicalDatabaseLease lease, InfisicalDynamicMutationReceipt receipt,
         InfisicalLeaseDuration? ttl = null, CancellationToken cancellationToken = default)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        lock (_gate) ObjectDisposedException.ThrowIf(_disposed, this);
-        return await InfisicalOperationBudget.RunAsync(_operationTimeout, _time, cancellationToken,
-            InfisicalOperation.Dynamic, ExecuteAsync, () => receipt?.Evidence ?? DispatchEvidence.NotDispatched, shutdown: _shutdown.Token).ConfigureAwait(false);
-
-        async ValueTask<SecretOutcome<InfisicalLeaseObservation>> ExecuteAsync(CancellationToken operationToken)
-        {
-            ArgumentNullException.ThrowIfNull(lease);
-            if (!ValidMutation(null, lease.Reference, receipt, InfisicalDynamicOperation.Renew, operationToken))
-            {
-                return SecretOutcome<InfisicalLeaseObservation>.Failure(SecretStatus.Invalid, reason: lease.Reference.Definition.Target.Owner != this
-                    ? SecretFailureReason.AuthorityMismatch : SecretFailureReason.None);
-            }
-            if (lease.State == InfisicalLeaseLocalState.Expired)
-            {
-                return SecretOutcome<InfisicalLeaseObservation>.Failure(SecretStatus.Expired);
-            }
-            if (!lease.BeginMutation(true))
-            {
-                return SecretOutcome<InfisicalLeaseObservation>.Failure(SecretStatus.Conflict);
-            }
-            InfisicalLeaseObservation? observed = null;
-            try
-            {
-                SecretOutcome<InfisicalLeaseObservation> result =
-                    await RenewObservedAsync(lease.Observation, receipt, ttl, operationToken, true).ConfigureAwait(false);
-                observed = result.IsSuccess ? result.Value : null;
-                return result;
-            }
-            finally
-            {
-                lease.FinishMutation(receipt, observed, false);
-            }
-        }
+        ArgumentNullException.ThrowIfNull(lease);
+        return RenewObservedAsync(lease.Reference, receipt, ttl, lease, cancellationToken);
     }
 
     /// <summary>Metadata-only renewal for any admitted definition; never acquires or returns credentials.</summary>
@@ -457,90 +477,86 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
         InfisicalLeaseDuration? ttl = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(previous);
-        return previous.Reference.MaterialOwner is { } owner
-            ? RenewAsync(owner, receipt, ttl, cancellationToken)
-            : RenewObservedAsync(previous, receipt, ttl, cancellationToken);
+        return RenewObservedAsync(previous.Reference, receipt, ttl, null, cancellationToken);
     }
 
     private async ValueTask<SecretOutcome<InfisicalLeaseObservation>> RenewObservedAsync(
-        InfisicalLeaseObservation previous, InfisicalDynamicMutationReceipt receipt,
-        InfisicalLeaseDuration? ttl, CancellationToken cancellationToken, bool withinBudget = false)
+        InfisicalLeaseReference reference, InfisicalDynamicMutationReceipt receipt,
+        InfisicalLeaseDuration? ttl, InfisicalDatabaseLease? materialOwner, CancellationToken cancellationToken)
     {
-        if (withinBudget) return await ExecuteAsync(cancellationToken).ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
         lock (_gate) ObjectDisposedException.ThrowIf(_disposed, this);
-        return await InfisicalOperationBudget.RunAsync(_operationTimeout, _time, cancellationToken,
-            InfisicalOperation.Dynamic, ExecuteAsync, () => receipt?.Evidence ?? DispatchEvidence.NotDispatched, shutdown: _shutdown.Token).ConfigureAwait(false);
+        InfisicalDefinitionLifecycle? admitted = null;
+        try
+        {
+            return await InfisicalOperationBudget.RunAsync(_operationTimeout, _time, cancellationToken,
+                InfisicalOperation.Dynamic, ExecuteAsync, () => receipt?.Evidence ?? DispatchEvidence.NotDispatched, shutdown: _shutdown.Token).ConfigureAwait(false);
+        }
+        finally { admitted?.EndChild(); }
 
         async ValueTask<SecretOutcome<InfisicalLeaseObservation>> ExecuteAsync(CancellationToken operationToken)
         {
-            ArgumentNullException.ThrowIfNull(previous);
-            if (!ValidMutation(null, previous.Reference, receipt, InfisicalDynamicOperation.Renew, operationToken))
+            if (!ValidMutation(null, reference, receipt, InfisicalDynamicOperation.Renew, operationToken))
             {
-                return SecretOutcome<InfisicalLeaseObservation>.Failure(SecretStatus.Invalid, reason: previous.Reference.Definition.Target.Owner != this
+                return SecretOutcome<InfisicalLeaseObservation>.Failure(SecretStatus.Invalid, reason: reference.Definition.Target.Owner != this
                     ? SecretFailureReason.AuthorityMismatch : SecretFailureReason.None);
             }
-            if (previous.ExpiresAt <= _time.GetUtcNow())
-            {
-                return SecretOutcome<InfisicalLeaseObservation>.Failure(SecretStatus.Expired);
-            }
-            SecretOutcome<JsonDocument> response = await SendAsync(
-                (content, mutation, token) => _wire.RenewAsync(previous.Reference.Id, content!, mutation!, token),
-                Body(writer =>
+            InfisicalLeaseLifecycle lifecycle = reference.Lifecycle;
+            DateTimeOffset now = _time.GetUtcNow();
+            (DateTimeOffset CreatedAt, decimal Version) baseline;
+            lock (lifecycle.Parent.Gate)
+                lock (lifecycle.Gate)
                 {
-                    if (ttl is not null)
+                    if (materialOwner?.IsDisposed == true)
+                        return SecretOutcome<InfisicalLeaseObservation>.Failure(SecretStatus.Invalid);
+                    SecretStatus parentAdmission = lifecycle.Parent.Begin(null, false);
+                    if (parentAdmission != SecretStatus.Success)
+                        return SecretOutcome<InfisicalLeaseObservation>.Failure(parentAdmission);
+                    admitted = lifecycle.Parent;
+                    SecretStatus admission = lifecycle.BeginMutation(true, now, out baseline);
+                    if (admission != SecretStatus.Success)
+                        return SecretOutcome<InfisicalLeaseObservation>.Failure(admission);
+                }
+            try
+            {
+                SecretOutcome<JsonDocument> response = await SendAsync(
+                    new(HttpMethod.Post, LeasePath + "/" + reference.Id.ToString("D") + "/renew"),
+                    (content, mutation, token) => _wire.RenewAsync(reference.Id, content!, mutation!, token),
+                    Body(writer =>
                     {
-                        writer.WriteString("ttl", ttl.Wire);
-                    }
-                }), receipt, operationToken).ConfigureAwait(false);
-            if (!response.IsSuccess)
-            {
-                return SecretOutcome<InfisicalLeaseObservation>.Failure(response.Status, response.RetryAfter, response.Reason);
+                        if (ttl is not null)
+                        {
+                            writer.WriteString("ttl", ttl.Wire);
+                        }
+                    }), receipt, operationToken).ConfigureAwait(false);
+                if (!response.IsSuccess)
+                {
+                    return SecretOutcome<InfisicalLeaseObservation>.Failure(response.Status, response.RetryAfter, response.Reason);
+                }
+                using JsonDocument document = response.Value;
+                if (!Object(document.RootElement, "lease", out JsonElement returned) ||
+                    !TryLease(returned, reference.Definition, reference, out InfisicalLeaseObservation? observation) ||
+                    observation!.ExpiresAt <= _time.GetUtcNow() ||
+                    !lifecycle.ApplyRenewal(observation, baseline, receipt))
+                {
+                    return SecretOutcome<InfisicalLeaseObservation>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.InvalidResponse);
+                }
+                return SecretOutcome<InfisicalLeaseObservation>.Success(observation);
             }
-            using JsonDocument document = response.Value;
-            if (!Object(document.RootElement, "lease", out JsonElement returned) ||
-                !TryLease(returned, previous.Reference.Definition, previous.Reference, out InfisicalLeaseObservation? observation) ||
-                observation!.CreatedAt != previous.CreatedAt || observation.ExpiresAt <= _time.GetUtcNow() ||
-                observation.Version < previous.Version)
+            finally
             {
-                return SecretOutcome<InfisicalLeaseObservation>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.InvalidResponse);
+                lifecycle.FinishMutation(receipt, false);
             }
-            receipt.Record(DispatchEvidence.Applied);
-            return SecretOutcome<InfisicalLeaseObservation>.Success(observation);
         }
     }
 
     /// <summary>Remote cleanup is explicit; force removes the record without proving external revocation.</summary>
-    public async ValueTask<SecretOutcome<InfisicalDynamicDeletion>> RevokeAsync(
+    public ValueTask<SecretOutcome<InfisicalDynamicDeletion>> RevokeAsync(
         InfisicalDatabaseLease lease, InfisicalDynamicMutationReceipt receipt,
         bool forceRecordRemoval = false, CancellationToken cancellationToken = default)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        lock (_gate) ObjectDisposedException.ThrowIf(_disposed, this);
-        return await InfisicalOperationBudget.RunAsync(_operationTimeout, _time, cancellationToken,
-            InfisicalOperation.Dynamic, ExecuteAsync, () => receipt?.Evidence ?? DispatchEvidence.NotDispatched, shutdown: _shutdown.Token).ConfigureAwait(false);
-
-        async ValueTask<SecretOutcome<InfisicalDynamicDeletion>> ExecuteAsync(CancellationToken operationToken)
-        {
-            ArgumentNullException.ThrowIfNull(lease);
-            if (!ValidMutation(null, lease.Reference, receipt, InfisicalDynamicOperation.Revoke, operationToken))
-            {
-                return SecretOutcome<InfisicalDynamicDeletion>.Failure(SecretStatus.Invalid, reason: lease.Reference.Definition.Target.Owner != this
-                    ? SecretFailureReason.AuthorityMismatch : SecretFailureReason.None);
-            }
-            if (!lease.BeginMutation(false))
-            {
-                return SecretOutcome<InfisicalDynamicDeletion>.Failure(SecretStatus.Conflict);
-            }
-            try
-            {
-                return await RevokeReferenceAsync(lease.Reference, receipt, forceRecordRemoval, operationToken, true).ConfigureAwait(false);
-            }
-            finally
-            {
-                lease.FinishMutation(receipt, null, true);
-            }
-        }
+        ArgumentNullException.ThrowIfNull(lease);
+        return RevokeReferenceAsync(lease.Reference, receipt, forceRecordRemoval, cancellationToken);
     }
 
     /// <summary>Explicit cleanup of an inspected or retained reference, including after local material disposal.</summary>
@@ -549,20 +565,22 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
         bool forceRecordRemoval = false, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(reference);
-        return reference.MaterialOwner is { } owner
-            ? RevokeAsync(owner, receipt, forceRecordRemoval, cancellationToken)
-            : RevokeReferenceAsync(reference, receipt, forceRecordRemoval, cancellationToken);
+        return RevokeReferenceAsync(reference, receipt, forceRecordRemoval, cancellationToken);
     }
 
     private async ValueTask<SecretOutcome<InfisicalDynamicDeletion>> RevokeReferenceAsync(
         InfisicalLeaseReference reference, InfisicalDynamicMutationReceipt receipt,
-        bool forceRecordRemoval, CancellationToken cancellationToken, bool withinBudget = false)
+        bool forceRecordRemoval, CancellationToken cancellationToken)
     {
-        if (withinBudget) return await ExecuteAsync(cancellationToken).ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
         lock (_gate) ObjectDisposedException.ThrowIf(_disposed, this);
-        return await InfisicalOperationBudget.RunAsync(_operationTimeout, _time, cancellationToken,
-            InfisicalOperation.Dynamic, ExecuteAsync, () => receipt?.Evidence ?? DispatchEvidence.NotDispatched, shutdown: _shutdown.Token).ConfigureAwait(false);
+        InfisicalDefinitionLifecycle? admitted = null;
+        try
+        {
+            return await InfisicalOperationBudget.RunAsync(_operationTimeout, _time, cancellationToken,
+                InfisicalOperation.Dynamic, ExecuteAsync, () => receipt?.Evidence ?? DispatchEvidence.NotDispatched, shutdown: _shutdown.Token).ConfigureAwait(false);
+        }
+        finally { admitted?.EndChild(); }
 
         async ValueTask<SecretOutcome<InfisicalDynamicDeletion>> ExecuteAsync(CancellationToken operationToken)
         {
@@ -572,22 +590,38 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
                 return SecretOutcome<InfisicalDynamicDeletion>.Failure(SecretStatus.Invalid, reason: reference.Definition.Target.Owner != this
                     ? SecretFailureReason.AuthorityMismatch : SecretFailureReason.None);
             }
-            SecretOutcome<JsonDocument> response = await SendAsync(
-                (content, mutation, token) => _wire.RevokeAsync(reference.Id, content!, mutation!, token),
-                Body(writer => writer.WriteBoolean("isForced", forceRecordRemoval)), receipt,
-                operationToken).ConfigureAwait(false);
-            if (!response.IsSuccess)
+            InfisicalLeaseLifecycle lifecycle = reference.Lifecycle;
+            SecretStatus parentAdmission = lifecycle.Parent.Begin(null, false, cleanup: true);
+            if (parentAdmission != SecretStatus.Success)
+                return SecretOutcome<InfisicalDynamicDeletion>.Failure(parentAdmission);
+            admitted = lifecycle.Parent;
+            SecretStatus admission = lifecycle.BeginMutation(false, _time.GetUtcNow(), out _);
+            if (admission != SecretStatus.Success)
+                return SecretOutcome<InfisicalDynamicDeletion>.Failure(admission);
+            try
             {
-                return SecretOutcome<InfisicalDynamicDeletion>.Failure(response.Status, response.RetryAfter, response.Reason);
+                SecretOutcome<JsonDocument> response = await SendAsync(
+                    new(HttpMethod.Delete, LeasePath + "/" + reference.Id.ToString("D")),
+                    (content, mutation, token) => _wire.RevokeAsync(reference.Id, content!, mutation!, token),
+                    Body(writer => writer.WriteBoolean("isForced", forceRecordRemoval)), receipt,
+                    operationToken).ConfigureAwait(false);
+                if (!response.IsSuccess)
+                {
+                    return SecretOutcome<InfisicalDynamicDeletion>.Failure(response.Status, response.RetryAfter, response.Reason);
+                }
+                using JsonDocument document = response.Value;
+                if (!Object(document.RootElement, "lease", out JsonElement returned) ||
+                    !TryLease(returned, reference.Definition, reference, out InfisicalLeaseObservation? observation))
+                {
+                    return SecretOutcome<InfisicalDynamicDeletion>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.InvalidResponse);
+                }
+                receipt.Record(DispatchEvidence.Applied);
+                return SecretOutcome<InfisicalDynamicDeletion>.Success(new(forceRecordRemoval, observation!.NativeStatus));
             }
-            using JsonDocument document = response.Value;
-            if (!Object(document.RootElement, "lease", out JsonElement returned) ||
-                !TryLease(returned, reference.Definition, reference, out InfisicalLeaseObservation? observation))
+            finally
             {
-                return SecretOutcome<InfisicalDynamicDeletion>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.InvalidResponse);
+                lifecycle.FinishMutation(receipt, true);
             }
-            receipt.Record(DispatchEvidence.Applied);
-            return SecretOutcome<InfisicalDynamicDeletion>.Success(new(forceRecordRemoval, observation!.NativeStatus));
         }
     }
 
@@ -639,11 +673,21 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
         {
             return false;
         }
-        definition = new(target, id, provider, ttl, max, version, Text(element, "status"));
+        InfisicalDefinitionLifecycle? lifecycle;
+        lock (_gate)
+        {
+            if (!_definitions.TryGetValue(id, out WeakReference<InfisicalDefinitionLifecycle>? weak) ||
+                !weak.TryGetTarget(out lifecycle))
+            {
+                lifecycle = new(target.Name);
+                if (!_disposed) _definitions[id] = new(lifecycle);
+            }
+        }
+        definition = new(target, id, provider, ttl, max, version, Text(element, "status"), lifecycle);
         return true;
     }
 
-    private static bool TryLease(JsonElement element, InfisicalDynamicDefinition definition,
+    private bool TryLease(JsonElement element, InfisicalDynamicDefinition definition,
         InfisicalLeaseReference? expected, out InfisicalLeaseObservation? observation)
     {
         observation = null;
@@ -658,7 +702,25 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
         {
             return false;
         }
-        observation = new(expected ?? new(definition, id), created, expires, version, Text(element, "status"));
+        string? status = Text(element, "status");
+        InfisicalLeaseReference reference;
+        if (expected is not null)
+            reference = expected;
+        else
+        {
+            lock (_gate)
+            {
+                var key = (definition.Id, id);
+                if (!_leases.TryGetValue(key, out WeakReference<InfisicalLeaseLifecycle>? weak) ||
+                    !weak.TryGetTarget(out InfisicalLeaseLifecycle? lifecycle))
+                {
+                    lifecycle = new(definition.Lifecycle, _time, created, expires, version, status);
+                    if (!_disposed) _leases[key] = new(lifecycle);
+                }
+                reference = new(definition, id, lifecycle);
+            }
+        }
+        observation = new(reference, created, expires, version, status);
         return true;
     }
 
@@ -673,7 +735,15 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
             writer.WriteEndObject();
         }, maximum);
 
-    private async ValueTask<SecretOutcome<JsonDocument>> SendAsync(
+    private InfisicalNativeRequestIntent ReadIntent(string path) => new(HttpMethod.Get, path,
+        new Dictionary<string, string>
+        {
+            ["projectSlug"] = Scope.ProjectSlug,
+            ["environmentSlug"] = Scope.EnvironmentSlug,
+            ["path"] = Scope.Path
+        });
+
+    internal async ValueTask<SecretOutcome<JsonDocument>> SendAsync(InfisicalNativeRequestIntent intent,
         Func<HttpContent?, InfisicalDynamicMutationReceipt?, CancellationToken, Task<HttpRequestMessage>> operation,
         Func<int, byte[]>? serialize, InfisicalDynamicMutationReceipt? receipt, CancellationToken token)
     {
@@ -685,6 +755,10 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
             lock (_gate)
             {
                 ObjectDisposedException.ThrowIf(_disposed, this);
+                foreach (var key in _leases.Where(pair => !pair.Value.TryGetTarget(out _)).Select(pair => pair.Key).ToArray())
+                    _leases.Remove(key);
+                foreach (Guid key in _definitions.Where(pair => !pair.Value.TryGetTarget(out _)).Select(pair => pair.Key).ToArray())
+                    _definitions.Remove(key);
                 _active++;
             }
             try
@@ -700,7 +774,8 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
                 }
                 linked.Check();
                 using HttpRequestMessage request = await operation(content, receipt, linked.Token).ConfigureAwait(false);
-                _binding.BindRequest(request);
+                if (!intent.TryBind(request, _origin))
+                    return Failure(SecretStatus.Invalid, receipt, SecretFailureReason.InvalidResponse);
                 SecretOutcome<InfisicalAccessToken> supplied =
                     await _tokens.GetTokenAsync(linked.Token).ConfigureAwait(false);
                 if (!supplied.IsSuccess)
@@ -909,6 +984,8 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
                 return new(_disposeTask);
             }
             _disposed = true;
+            _leases.Clear();
+            _definitions.Clear();
             _drained = new(TaskCreationOptions.RunContinuationsAsynchronously);
             if (_active == 0)
             {
@@ -918,13 +995,13 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
             completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
             _disposeTask = completion.Task;
         }
-        _ = ShutdownAsync(drained, completion);
+        _ = Task.Run(() => ShutdownAsync(drained, completion));
         return new(completion.Task);
     }
     private async Task ShutdownAsync(Task drained, TaskCompletionSource completion)
     {
         var cleanup = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        Task<bool> bounded = cleanup.Task.WaitAsync(_shutdownTimeout, _time);
+        // Cleanup must not depend on successful or cooperative host timer creation.
         _ = Task.Run(async () =>
         {
             bool succeeded = true;
@@ -950,7 +1027,7 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
         });
         try
         {
-            if (await bounded.ConfigureAwait(false))
+            if (await cleanup.Task.WaitAsync(_shutdownTimeout, _time).ConfigureAwait(false))
                 completion.TrySetResult();
             else
                 completion.TrySetException(new InvalidOperationException("Dynamic client shutdown failed."));
@@ -958,6 +1035,10 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
         catch (TimeoutException)
         {
             completion.TrySetException(new TimeoutException("Dynamic client shutdown timed out."));
+        }
+        catch (Exception)
+        {
+            completion.TrySetException(new InvalidOperationException("Dynamic client shutdown failed."));
         }
     }
     /// <summary>Returns a fixed label without scope or identity.</summary>

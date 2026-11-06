@@ -4,6 +4,7 @@
 > **Status:** Implemented library boundaries and consumer responsibilities
 > **Owner:** SecretKit maintainers
 > **Last verified:** 2026-10-25 against linked source and runtime contracts
+> **SQL lifecycle update:** 2026-11-06, controlled ownership, cancellation and transport verification
 > **Source anchors:** [security policy](../../SECURITY.md), [runtime contracts](../internal/RUNTIME_CONTRACTS.md), [Core](core-api.md)
 
 Use this guide when deciding who owns credentials, material, transport and
@@ -41,6 +42,8 @@ not infer the application's authorization policy.
 | `SecretRead` / `InfisicalSecretRead` | Caller disposes each successful result; material belongs to the read |
 | `SecretMaterial.Copy()` / `InfisicalAccessToken` returned by a source | Recipient owns and disposes the independent copy |
 | Default `InfisicalClient` transport | Client owns it; asynchronously dispose the client after accepted work drains |
+| `InfisicalRotationClient` | Close admission with `Dispose`; use `DisposeAsync` for bounded drain and deferred owned cleanup |
+| Dynamic lease / copied database credentials | Caller disposes every buffer owner independently; remote lifecycle is shared within the creating client |
 | Supplied token source / credential / transport | Host owns it; client disposal does not transfer ownership |
 | `SecretSnapshotLoader` | Application owns it; dispose after stopping collection/acquisition |
 | `SecretSnapshotHandle` | Each logical operation owns its acquired handle |
@@ -60,6 +63,19 @@ locks. Timeout and callback failure do not abandon owned cleanup or imply
 successful drain; cleanup continues when cooperation permits it. Arbitrary host
 callbacks cannot be killed. Repeated stop/disposal retains the original bounded
 outcome, even after eventual cleanup; canceled waiters do not cancel that cleanup.
+Rotation shutdown similarly shares one bounded result. It rejects new work and
+signals pre-dispatch acquisition without canceling already-reserved requests.
+Reserved operations keep their caller/deadline budget and receipt evidence.
+`Dispose()` schedules this work without synchronously waiting on host callbacks;
+`DisposeAsync()` can time out while eventual cleanup remains pending.
+
+Dynamic aliases share only scalar lifecycle and parent-definition state, never
+credential buffers in a global registry. Exact-reference receipt authority stays
+separate from shared revocation. Reads cannot restore uncertain/revoked state;
+definition deletion invalidates governed child exports and stale handles after
+rename fail before credentials. Independent copies and already-exported strings
+retain their separate ownership. These are client-local controls, not remote
+database-session revocation or cross-process synchronization.
 
 Use [configuration and runtime](configuration-and-runtime.md) for generation
 lifetimes and [authentication and hosting](authentication-and-hosting.md) for

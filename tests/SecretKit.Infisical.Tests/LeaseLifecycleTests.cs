@@ -382,15 +382,43 @@ internal sealed class DynamicWireFixture : HttpMessageHandler
     internal string? RawNextResponse { get; set; }
     internal HttpContent? NextStreamingResponse { get; set; }
     internal HttpStatusCode? StatusNextResponse { get; set; }
+    internal int TokenCalls;
+    internal int SendCount;
     internal TaskCompletionSource? _committed;
     private TaskCompletionSource? _held;
+    private TaskCompletionSource? _release;
     internal int LeaseCount { get { lock (_gate) { return _leases.Count; } } }
     internal int DefinitionCount { get { lock (_gate) { return _definitions.Count; } } }
     internal int LeaseVersion(Guid id) { lock (_gate) { return _leases[id].Version; } }
     internal JsonElement Inputs(string name) { lock (_gate) { return _definitions[name].Inputs; } }
+    internal string LeaseResponse(Guid id)
+    {
+        lock (_gate) { return JsonSerializer.Serialize(new { lease = LeaseWire(_leases[id], includeDefinition: true) }); }
+    }
+    internal string DefinitionResponse(string name)
+    {
+        lock (_gate) { return JsonSerializer.Serialize(new { dynamicSecret = DefinitionWire(_definitions[name]) }); }
+    }
+    internal string AcquisitionResponse(Guid id)
+    {
+        lock (_gate)
+        {
+            LeaseRow row = _leases[id];
+            return JsonSerializer.Serialize(new
+            {
+                dynamicSecret = DefinitionWire(row.Definition),
+                lease = LeaseWire(row),
+                data = new { DB_USERNAME = row.Username, DB_PASSWORD = row.Password }
+            });
+        }
+    }
+    internal void ObserveLease(Guid id, DateTimeOffset expires, string? status = null)
+    {
+        lock (_gate) { _leases[id].Expires = expires; _leases[id].Status = status; }
+    }
     internal InfisicalDynamicClient Client(int maximumItems = 128, int maximumBytes = 1024 * 1024,
         int maximumRequestBytes = 1024 * 1024) =>
-        new(new Uri("https://dynamic.test"), new Tokens(), new(Project, Environment, FolderPath, FolderId),
+        new(new Uri("https://dynamic.test"), new Tokens(this), new(Project, Environment, FolderPath, FolderId),
             new InfisicalNetworkOptions
             {
                 MaximumResponseBytes = maximumBytes,
@@ -401,13 +429,17 @@ internal sealed class DynamicWireFixture : HttpMessageHandler
     {
         _committed = new(TaskCreationOptions.RunContinuationsAsynchronously);
         _held = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        _release = _held;
         return _committed;
     }
-    internal async Task<InfisicalDynamicDefinition> CreateDatabaseAsync(InfisicalDynamicClient client)
+    internal void ReleaseCommit() => _release?.TrySetResult();
+    internal TaskCompletionSource CommitRelease => _release ?? throw new InvalidOperationException("No fixture barrier.");
+    internal async Task<InfisicalDynamicDefinition> CreateDatabaseAsync(InfisicalDynamicClient client,
+        string name = "database")
     {
         using var profile = new NativeSqlDefinitionProfile(NativeSqlEngine.Postgres, "database.test", 5432,
             Material(), Material(), "database", "CREATE {{username}}", "DROP {{username}}");
-        InfisicalDynamicTarget target = client.Definition("database");
+        InfisicalDynamicTarget target = client.Definition(name);
         return (await client.CreateDefinitionAsync(target, profile, new(TimeSpan.FromSeconds(60)),
             new(TimeSpan.FromSeconds(120)), new(target, InfisicalDynamicOperation.CreateDefinition))).Value;
     }
@@ -415,6 +447,7 @@ internal sealed class DynamicWireFixture : HttpMessageHandler
 
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
+        Interlocked.Increment(ref SendCount);
         cancellationToken.ThrowIfCancellationRequested();
         if (request.RequestUri?.GetLeftPart(UriPartial.Authority) != "https://dynamic.test" ||
             request.Headers.Authorization?.Scheme != "Bearer")
@@ -622,7 +655,7 @@ internal sealed class DynamicWireFixture : HttpMessageHandler
         updatedAt = Time.GetUtcNow(),
         version = row.Version,
         externalEntityId = row.Username,
-        status = (string?)null,
+        status = row.Status,
         dynamicSecret = includeDefinition ? DefinitionWire(row.Definition) : null
     };
     private static TimeSpan Seconds(string value) => TimeSpan.FromSeconds(long.Parse(value[..^1], System.Globalization.CultureInfo.InvariantCulture));
@@ -649,6 +682,7 @@ internal sealed class DynamicWireFixture : HttpMessageHandler
         internal string Username { get; } = Material();
         internal string Password { get; } = Material();
         internal int Version { get; set; } = 1;
+        internal string? Status { get; set; }
     }
     internal sealed class ManualTime : TimeProvider
     {
@@ -656,10 +690,11 @@ internal sealed class DynamicWireFixture : HttpMessageHandler
         public override DateTimeOffset GetUtcNow() => _now;
         internal void Advance(TimeSpan duration) => _now += duration;
     }
-    private sealed class Tokens : IInfisicalTokenSource
+    private sealed class Tokens(DynamicWireFixture owner) : IInfisicalTokenSource
     {
         public ValueTask<SecretOutcome<InfisicalAccessToken>> GetTokenAsync(CancellationToken cancellationToken)
         {
+            Interlocked.Increment(ref owner.TokenCalls);
             cancellationToken.ThrowIfCancellationRequested();
             return ValueTask.FromResult(SecretOutcome<InfisicalAccessToken>.Success(new(SecretMaterial.FromText(Material()))));
         }

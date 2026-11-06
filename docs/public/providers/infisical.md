@@ -4,6 +4,7 @@
 > **Status:** Implemented subsets; in development, not ready for production
 > **Owner:** SecretKit maintainers
 > **Last verified:** 2026-10-25, source inspection at `e6fe6b864420d9c8035395fa6c70a9c4ab1e67dd`; not a new live run
+> **SQL lifecycle update:** 2026-11-06, source and controlled offline verification; no new native qualification
 > **Source anchors:** [client](../../../src/SecretKit.Infisical/Secrets/InfisicalClient.cs), [addresses](../../../src/SecretKit.Infisical/Secrets/InfisicalSecretAddress.cs), [tests](../../../tests/SecretKit.Infisical.Tests/)
 
 Use `InfisicalClient` for common secret reads, direct-folder inventory, selected
@@ -199,7 +200,32 @@ local material and does not revoke remotely. Retain `lease.Reference` if explici
 `RevokeLeaseAsync` cleanup is needed after disposal. A deletion acknowledgement has
 `ExternalRevocationVerified=false`; it does not prove database sessions or
 fixed-expiry external credentials are unusable.
+Within one client, acquired, listed and inspected references for the same
+definition/lease UUID pair share lifecycle state. A revoke through any alias
+blocks exports from every governed copy. Renewal uses the canonical observed
+creation/version/expiry baseline; stale aliases cannot roll it back. Metadata
+reads do not extend the usable deadline or clear uncertainty or revocation.
+Clients and different definitions retain independent authority.
+
+Receipts still bind to the exact reference object: construct a renewal or revoke
+receipt with the alias passed to that operation. Sharing lifecycle does not make
+another alias's receipt valid. Disposing a lease wrapper clears its own buffers;
+independent copies remain usable while the shared lifecycle permits. The retained
+reference can renew metadata or request cleanup after wrapper disposal; renewing
+the disposed wrapper itself returns `Invalid`.
+
+Definition deletion and rename exclude active child operations through response
+publication. Contention returns `Conflict` before acquiring credentials. A
+validated deletion blocks all child exports locally; ambiguous deletion or
+rename blocks exports, acquisition, renewal and name-addressed mutations.
+Fresh explicit UUID-addressed lease cleanup remains possible without clearing
+parent uncertainty. After a validated rename, old name-addressed handles return
+`Invalid` before credentials, even if another definition reuses that name.
+These controls coordinate this client's live objects; they do not synchronize
+other clients, processes or external provider actors.
 Evidence: [LeaseLifecycleTests](../../../tests/SecretKit.Infisical.Tests/LeaseLifecycleTests.cs),
+[LeaseAliasLifecycleTests](../../../tests/SecretKit.Infisical.Tests/LeaseAliasLifecycleTests.cs),
+[DefinitionLifecycleTests](../../../tests/SecretKit.Infisical.Tests/DefinitionLifecycleTests.cs),
 [DynamicDefinitionTests](../../../tests/SecretKit.Infisical.Tests/DynamicDefinitionTests.cs).
 
 ### Rotation trigger acceptance is not completion
@@ -208,11 +234,17 @@ Construct `InfisicalRotationClient(trustedOrigin, authority, administration,
 network: null)` with a matching `InfisicalNativeAuthority`. It defaults to safe
 networking; `network.MaximumResponseBytes` selects the byte budget and
 `network.Transport` selects any explicit host-controlled pipeline. Construction
-performs no I/O. Dispose the rotation client to release its SDK-owned resources.
-Disposal closes new admission first: later list, get, trigger and enablement
-calls throw `ObjectDisposedException` before credential acquisition. An operation
-admitted earlier may settle under its original budget; disposal does not drain
-it or undo its effects. Borrowed clients and handlers remain host-owned.
+performs no I/O. `Dispose()` closes admission immediately and schedules eventual
+owned cleanup without blocking on host callbacks. Prefer `await DisposeAsync()`
+to await drain within `network.ShutdownTimeout` (positive, at most one minute).
+New uncancelled calls throw `ObjectDisposedException` before credentials;
+already-cancelled callers retain cancellation precedence. An earlier call that
+loses dispatch reservation returns `Invalid` with an undispatched receipt.
+Reserved requests may settle under their original caller/deadline budget.
+A shutdown timeout throws `TimeoutException` and leaves cleanup pending until
+operations and callbacks actually return. Repeated disposal shares the original
+bounded result. Borrowed clients, handlers and token sources remain host-owned;
+neither disposal path undoes provider effects.
 `InfisicalRotationAddress` selects project, environment, path, native profile
 and rotation UUID. The profile enum routes existing operations; it does not
 provide configuration schemas for every profile.
@@ -227,6 +259,13 @@ strings, job IDs and timestamps are not completion attribution.
 Evidence: [RotationOutcomeTests](../../../tests/SecretKit.Infisical.Tests/RotationOutcomeTests.cs).
 
 ## Transport and remaining gaps
+
+Dynamic and rotation requests are built without bearer parameters and checked
+against independent method, fixed origin, escaped path and exact scalar query
+intent before token acquisition. Duplicate decoded query keys, traversal,
+fragments and userinfo fail as `Invalid` with owned request/content disposal.
+Query ordering may vary; encoded coordinates must match the selected intent.
+The host still owns any instrumentation inside an explicitly supplied pipeline.
 
 Response acceptance is operation-specific. Required fields, types, scope and
 structural bounds remain enforced; authentication admits bounded additive

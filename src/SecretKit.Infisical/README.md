@@ -199,11 +199,21 @@ release only its created wrappers. `InfisicalRotationClient` is now disposable
 because it can own a safe transport. Typed authority, response budgets and
 receipts remain enforced in both modes. The old public injection overloads are
 removed rather than retained as aliases.
-Rotation disposal atomically closes new admission before releasing owned
-transport resources. All four operation entrypoints subsequently throw
-`ObjectDisposedException` before credential acquisition. Already admitted work
-retains its existing budget and receipt evidence and may settle; disposal does
-not promise to drain or preempt it.
+Rotation disposal atomically closes admission with dispatch reservation.
+`Dispose()` schedules eventual owned cleanup without blocking on host callbacks;
+`DisposeAsync()` awaits it within `ShutdownTimeout`. A timeout ends the wait,
+while cleanup still waits for active work. New uncancelled calls throw
+`ObjectDisposedException`; already-cancelled callers retain cancellation
+precedence. Earlier calls losing reservation return `Invalid` before dispatch.
+Reserved work retains its caller/deadline budget and receipt evidence.
+
+Dynamic lease aliases within one client share canonical expiry, renewal and
+revocation state. Parent definition deletion invalidates governed child exports;
+ambiguous deletion/rename blocks use, and stale name-addressed handles fail
+before credentials after a local rename. Receipts remain bound to the exact
+reference passed to the operation. Each wrapper/copy owns its own buffers;
+disposing one does not revoke remotely or erase an exported string.
+See [SQL credential ownership](../../docs/public/database-credentials.md).
 
 `OperationTimeout` defaults to 30 seconds and accepts positive durations up to
 one minute. It covers credential acquisition, request construction, send, parse
