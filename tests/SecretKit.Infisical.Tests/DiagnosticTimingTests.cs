@@ -351,7 +351,11 @@ public sealed class DiagnosticTimingTests
         await wire.Entered.Task.WaitAsync(Bound);
         Task? stopping = null;
         if (cause.StartsWith("caller", StringComparison.Ordinal)) caller.Cancel();
-        if (cause == "shutdown") stopping = client.DisposeAsync().AsTask();
+        if (cause == "shutdown")
+        {
+            stopping = client.DisposeAsync().AsTask();
+            await wire.CancellationObserved.Task.WaitAsync(Bound);
+        }
         if (cause.Contains("deadline", StringComparison.Ordinal)) clock.Advance(TimeSpan.FromSeconds(3));
         wire.Release.TrySetResult();
         if (cause is "caller" or "shutdown" or "caller-deadline")
@@ -564,6 +568,7 @@ public sealed class DiagnosticTimingTests
     {
         internal TaskCompletionSource Entered { get; } = Signal();
         internal TaskCompletionSource Release { get; } = Signal();
+        internal TaskCompletionSource CancellationObserved { get; } = Signal();
         internal Exception? Failure { get; init; }
         internal string Body { get; init; } = ReadBody;
         internal bool LoginImmediately { get; init; }
@@ -576,7 +581,12 @@ public sealed class DiagnosticTimingTests
                 return new(HttpStatusCode.OK) { Content = new StringContent(LoginBody) };
             }
             Entered.TrySetResult();
-            await Release.Task.WaitAsync(token);
+            try { await Release.Task.WaitAsync(token); }
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            {
+                CancellationObserved.TrySetResult();
+                throw;
+            }
             if (Failure is not null) throw Failure;
             return new(HttpStatusCode.OK) { Content = new StringContent(Body) };
         }
