@@ -71,16 +71,17 @@ public sealed class InfisicalSecretAddress : SecretAddress
 /// <summary>Direct-folder metadata inventory without recursion, reference expansion or acquisition.</summary>
 public sealed class InfisicalInventoryScope : SecretInventoryScope
 {
-    /// <summary>Binds a direct-folder inventory to the exact client authority and a 1..10,000 item budget.</summary>
+    /// <summary>Binds a canonical direct-folder inventory to the exact authority and a 1..10,000 item budget.</summary>
+    /// <remarks>Project, environment and folder are limited to 1,024 characters. Folder segments
+    /// cannot contain traversal, encoded separators, empty segments or backslashes.</remarks>
     public InfisicalInventoryScope(SecretAuthority authority, string projectId, string environment,
         string folder, int maximumItems = 1000) : base(authority)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(projectId);
-        ArgumentException.ThrowIfNullOrWhiteSpace(environment);
-        ArgumentException.ThrowIfNullOrWhiteSpace(folder);
-        if (!folder.StartsWith('/') || folder.Split('/').Any(part => part is "." or ".."))
+        InfisicalNativeAddress.NativeText(projectId);
+        InfisicalNativeAddress.NativeText(environment);
+        if (!InfisicalInventorySelection.CanonicalPath(folder))
         {
-            throw new ArgumentException("An absolute provider folder is required.", nameof(folder));
+            throw new ArgumentException("A canonical absolute folder is required.", nameof(folder));
         }
 
         if (maximumItems is < 1 or > 10000)

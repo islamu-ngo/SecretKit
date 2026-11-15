@@ -49,6 +49,22 @@ share acquisition/parsing and reject returned coordinate contradictions without
 claiming a qualified revision for resolved/imported material. Inventory never
 delivers material and rejects duplicate names or contradictory returned scope.
 
+`InspectNativeAsync` adds protected direct metadata/revisions and ordered raw
+import candidates through that same parser and transport. Imported observations
+are never local writable references or resource-only revisions. Rotation state
+is nullable; missing evidence does not become false. Structural completeness
+describes only the selected visible view and collection window.
+
+One call context owns the deadline and consumed-body byte/request/item/folder
+allowances across serial traversal. Defaults are 1,000 entries, 100 folders
+including root, 100 requests, 1 MiB, depth 20 and the client timeout. Admission
+supports at most 10,000 entries, 1,000 folders/requests, 16 MiB and depth 20;
+the timeout cannot exceed the client timeout. Canonical selected/returned paths
+are bounded to 1,024 characters. Recursion requires the expected environment
+UUID and returned direct-child ancestry; missing evidence or any reached bound
+remains incomplete, never absence or a snapshot guarantee. Bytes consumed from
+success, failure and discarded fields are charged before accumulation.
+
 Application cache policy, tenant bindings, required/optional grouping, client
 activation, Data Protection admission and replica convergence remain outside
 the SDK. A selection's explicit optional policy admits proven absence only; it

@@ -500,6 +500,41 @@ public sealed partial class InfisicalClient
         }
     }
 
+    private async ValueTask<SecretOutcome<IReadOnlyList<InfisicalFolder>>> ListInventoryFoldersAsync(
+        string path, InfisicalInventoryContext context)
+    {
+        var selection = context.Selection;
+        var address = new InfisicalFolderAddress(selection.ProjectId, selection.Environment,
+            selection.EnvironmentId!, path);
+        var operation = new InfisicalNativeOperation(HttpMethod.Get, InfisicalNativeOperationKind.ListFolders,
+            Recursive: false);
+        using HttpRequestMessage request = await BuildNativeRequestAsync(address, operation, null, context.Budget.Token)
+            .ConfigureAwait(false);
+        var outcome = await ReadInventoryDocumentAsync(request, context).ConfigureAwait(false);
+        if (!outcome.IsSuccess) return outcome.ConvertFailure<IReadOnlyList<InfisicalFolder>>();
+        using JsonDocument document = outcome.Value;
+        if (!NativeArray(document.RootElement, "folders", out JsonElement items))
+            return SecretOutcome<IReadOnlyList<InfisicalFolder>>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.InvalidResponse);
+        var folders = new List<InfisicalFolder>();
+        foreach (JsonElement item in items.EnumerateArray())
+        {
+            context.Budget.Check();
+            if (NativeString(item, "envId") is { } returnedEnvironment && returnedEnvironment != selection.EnvironmentId ||
+                NativeString(item, "path") is { } returnedPath && NativeString(item, "relativePath") is { } relativePath &&
+                    returnedPath != relativePath)
+                return SecretOutcome<IReadOnlyList<InfisicalFolder>>.Failure(SecretStatus.Invalid, reason: SecretFailureReason.InvalidResponse);
+            if (ParseFolder(item, selection.EnvironmentId!) is not { } folder)
+                return SecretOutcome<IReadOnlyList<InfisicalFolder>>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.InvalidResponse);
+            folders.Add(folder);
+            if (folders.Count > selection.MaximumFolders)
+            {
+                context.Reasons.Add(InfisicalInventoryIncompleteReason.FolderLimit);
+                break;
+            }
+        }
+        return SecretOutcome<IReadOnlyList<InfisicalFolder>>.Success(folders.AsReadOnly());
+    }
+
     /// <summary>Inspects an ID-selected folder and validates its native environment correspondence.</summary>
     public ValueTask<SecretOutcome<InfisicalFolder>> GetFolderAsync(SecretReference target,
         CancellationToken cancellationToken = default) =>

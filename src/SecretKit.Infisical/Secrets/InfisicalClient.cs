@@ -249,6 +249,9 @@ public sealed partial class InfisicalClient : IInfisicalSecretReader, IAsyncDisp
             }
 
             using var linked = new InfisicalOperationBudget(_operationTimeout, _time, operationToken, _shutdown.Token);
+            var selection = new InfisicalInventorySelection(Authority, folder.ProjectId, folder.Environment,
+                folder.Folder, maximumItems: folder.MaximumItems, maximumResponseBytes: _responseLimit);
+            var inventory = new InfisicalInventoryContext(selection, linked);
             BeginOperation();
             try
             {
@@ -256,55 +259,21 @@ public sealed partial class InfisicalClient : IInfisicalSecretReader, IAsyncDisp
                 using HttpRequestMessage request = await _staticWire.InspectAsync(folder.ProjectId,
                     folder.Environment, folder.Folder, "false", "false", "false", "false", "false",
                     linked.Token).ConfigureAwait(false);
-                SecretOutcome<JsonDocument> outcome = await ReadDocumentAsync(request, linked).ConfigureAwait(false);
+                SecretOutcome<JsonDocument> outcome = await ReadDocumentAsync(request, linked, inventory: inventory).ConfigureAwait(false);
                 if (!outcome.IsSuccess)
                 {
                     return outcome.ConvertFailure<SecretInventory>();
                 }
 
                 using JsonDocument document = outcome.Value;
-                if (document.RootElement.ValueKind != JsonValueKind.Object ||
-                    !document.RootElement.TryGetProperty("secrets", out JsonElement secrets) ||
-                    secrets.ValueKind != JsonValueKind.Array)
-                {
-                    return SecretOutcome<SecretInventory>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.InvalidResponse);
-                }
-
-                var observations = new List<SecretObservation>();
-                var names = new HashSet<string>(StringComparer.Ordinal);
-                foreach (JsonElement secret in secrets.EnumerateArray())
-                {
-                    linked.Check();
-                    if (observations.Count == folder.MaximumItems)
-                    {
-                        break;
-                    }
-
-                    if (secret.ValueKind != JsonValueKind.Object ||
-                        !secret.TryGetProperty("secretKey", out JsonElement key) || key.ValueKind != JsonValueKind.String)
-                    {
-                        return SecretOutcome<SecretInventory>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.InvalidResponse);
-                    }
-
-                    string? name = key.GetString();
-                    if (string.IsNullOrWhiteSpace(name) || name is "." or "..")
-                    {
-                        return SecretOutcome<SecretInventory>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.InvalidResponse);
-                    }
-
-                    SecretStatus provenance = ReadScope(secret, folder.ProjectId, folder.Environment, folder.Folder, false);
-                    if (provenance != SecretStatus.Success || !names.Add(name))
-                        return SecretOutcome<SecretInventory>.Failure(
-                            provenance == SecretStatus.Success ? SecretStatus.Invalid : provenance);
-
-                    var address = new InfisicalSecretAddress(folder.ProjectId, folder.Environment, folder.Folder, name);
-                    observations.Add(new SecretObservation(new SecretReference(Authority, address), Version(secret),
-                        _time.GetUtcNow(), SecretValidity.Unknown));
-                }
+                SecretStatus parsed = ParseInventoryPage(document.RootElement, folder.Folder, inventory, qualifyRevisions: false);
+                if (parsed != SecretStatus.Success)
+                    return SecretOutcome<SecretInventory>.Failure(parsed, reason: SecretFailureReason.InvalidResponse);
 
                 linked.Check();
-                return SecretOutcome<SecretInventory>.Success(new SecretInventory(observations, startedAt,
-                    _time.GetUtcNow(), secrets.GetArrayLength() <= folder.MaximumItems));
+                return SecretOutcome<SecretInventory>.Success(new SecretInventory(inventory.Entries.Select(entry =>
+                    new SecretObservation(entry.Reference!, entry.Version, entry.ObservedAt, SecretValidity.Unknown)),
+                    startedAt, _time.GetUtcNow(), inventory.Reasons.Count == 0));
             }
             catch (OperationCanceledException)
             {
@@ -319,7 +288,8 @@ public sealed partial class InfisicalClient : IInfisicalSecretReader, IAsyncDisp
 
     private async ValueTask<SecretOutcome<JsonDocument>> ReadDocumentAsync(HttpRequestMessage request,
         InfisicalOperationBudget budget, MutationReceipt? receipt = null, SecretReference? target = null,
-        IInfisicalTokenSource? nativeTokens = null, InfisicalBulkReceipt? bulkReceipt = null)
+        IInfisicalTokenSource? nativeTokens = null, InfisicalBulkReceipt? bulkReceipt = null,
+        InfisicalInventoryContext? inventory = null)
     {
         CancellationToken cancellationToken = budget.Token;
         try
@@ -342,6 +312,8 @@ public sealed partial class InfisicalClient : IInfisicalSecretReader, IAsyncDisp
                 return SecretOutcome<JsonDocument>.Failure(SecretStatus.Invalid, reason: SecretFailureReason.CredentialUnavailable);
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
             budget.Check();
+            if (inventory is not null && !inventory.TryBeginRequest())
+                return SecretOutcome<JsonDocument>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.CollectionLimitExceeded);
             if (bulkReceipt is not null) bulkReceipt.BeginDispatch(_receipts);
             else if (receipt is not null) _receipts.BeginDispatch(receipt, target!);
             using HttpResponseMessage response = await _http.SendAsync(request,
@@ -356,8 +328,17 @@ public sealed partial class InfisicalClient : IInfisicalSecretReader, IAsyncDisp
                     else status = SecretStatus.Unknown;
                 }
                 budget.Check();
-                return await InfisicalFailureResponse.ReadAsync<JsonDocument>(response, _responseLimit,
-                    _time, status, cancellationToken: cancellationToken).ConfigureAwait(false);
+                int maximumBytes = Math.Min(_responseLimit, inventory?.RemainingBytes ?? _responseLimit);
+                if (inventory is not null && response.Content.Headers.ContentLength > maximumBytes)
+                {
+                    inventory.Reasons.Add(InfisicalInventoryIncompleteReason.ByteLimit);
+                    return DocumentFailure(status, SecretFailureReason.ResponseTooLarge, receipt);
+                }
+                SecretOutcome<JsonDocument> failure = await InfisicalFailureResponse.ReadAsync<JsonDocument>(response, maximumBytes,
+                    _time, status, consumeBytes: inventory is null ? null : count => { inventory.ConsumeBytes(count); },
+                    cancellationToken: cancellationToken).ConfigureAwait(false);
+                return inventory?.ByteLimitExceeded == true
+                    ? DocumentFailure(status, SecretFailureReason.ResponseTooLarge, receipt) : failure;
             }
             if (response.Content.Headers.ContentLength > _responseLimit)
                 return DocumentFailure(SecretStatus.Invalid, SecretFailureReason.ResponseTooLarge, receipt);
@@ -367,10 +348,15 @@ public sealed partial class InfisicalClient : IInfisicalSecretReader, IAsyncDisp
             try
             {
                 int count;
-                while ((count = await body.ReadAsync(buffer.AsMemory(0, 8192), cancellationToken).ConfigureAwait(false)) > 0)
+                while ((count = await body.ReadAsync(buffer.AsMemory(0, Math.Min(8192,
+                    Math.Min(_responseLimit - (int)collected.Length, inventory?.RemainingBytes ?? _responseLimit) + 1)),
+                    cancellationToken).ConfigureAwait(false)) > 0)
                 {
+                    if (inventory is not null && !inventory.ConsumeBytes(count))
+                        return DocumentFailure(SecretStatus.Invalid, SecretFailureReason.ResponseTooLarge, receipt);
                     if (collected.Length + count > _responseLimit)
                         return DocumentFailure(SecretStatus.Invalid, SecretFailureReason.ResponseTooLarge, receipt);
+                    if (inventory is not null) budget.Check();
                     collected.Write(buffer, 0, count);
                 }
                 // Parse a late acknowledgement to retain any actual effect. The
@@ -425,6 +411,7 @@ public sealed partial class InfisicalClient : IInfisicalSecretReader, IAsyncDisp
     private static SecretStatus ReadScope(JsonElement secret, string project, string environment,
         string folder, bool required)
     {
+        bool complete = true;
         foreach ((string field, string expected) in new[]
         {
             ("workspace", project), ("environment", environment), ("secretPath", folder), ("type", "shared")
@@ -432,13 +419,13 @@ public sealed partial class InfisicalClient : IInfisicalSecretReader, IAsyncDisp
         {
             if (!secret.TryGetProperty(field, out JsonElement value))
             {
-                if (required) return SecretStatus.Unknown;
+                if (required) complete = false;
                 continue;
             }
-            if (value.ValueKind != JsonValueKind.String) return SecretStatus.Unknown;
+            if (value.ValueKind != JsonValueKind.String) { complete = false; continue; }
             if (!string.Equals(value.GetString(), expected, StringComparison.Ordinal)) return SecretStatus.Invalid;
         }
-        return SecretStatus.Success;
+        return complete ? SecretStatus.Success : SecretStatus.Unknown;
     }
 
     private static string Boolean(bool value) => value ? "true" : "false";

@@ -92,6 +92,33 @@ direct-folder metadata, without recursion, expansion or lease acquisition.
 The scope accepts 1..10,000 items; completeness is an observation, not a snapshot.
 Foreign scope and duplicate returned names are rejected.
 
+For native metadata and optional child/import coverage, call
+`InspectNativeAsync(new InfisicalInventorySelection(client.Authority, projectId,
+environment, folder), cancellationToken)`. The result exposes protected
+`Entries`, ordered `ImportGroups`, the selection, observation window,
+`IsComplete` and closed `IncompleteReasons`. It never requests values, reference
+expansion or personal overrides. Common `InspectAsync` projects the same parser.
+
+Direct entries carry an authority-bound reference, optional opaque `Revision`,
+`ModifiedAt`, nullable `TagIds` and nullable `IsRotatedSecret`. A revision
+requires returned matching scope, resource ID and positive version; it compares
+equal to a native-read revision for that resource. Null rotation remains
+unknown. Imported candidates retain source environment/path and logical
+destination; they have no direct reference, qualified revision or inferred
+effective winner.
+
+Defaults are 1,000 entries, 100 folders including the root, 100 requests,
+1 MiB of consumed response bodies, depth 20 and the client timeout. Supported
+bounds are 1..10,000 entries, 1..1,000 folders/requests, 1 KiB..16 MiB,
+depth 0..20 and a positive timeout no greater than the client timeout.
+Project/environment and canonical folder paths are bounded to 1,024 characters.
+Recursion requires an explicit expected environment UUID and verifies returned
+child ancestry; depth zero still checks whether children remain. One deadline
+and byte allowance cover all success, failure and discarded-field bodies.
+Missing ancestry, revision or import provenance and exhausted bounds remain
+incomplete. Completeness describes the selected visible view, never hidden
+resource absence, permission to read values or an atomic snapshot.
+
 ## Selected shared-secret mutations
 
 `CreateAsync(target, material, receipt, cancellationToken)` and
