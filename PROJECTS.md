@@ -134,7 +134,8 @@ explicitly; live child stages remain controlled by their authorized parent
 scenarios. Candidate-dependent demos and installed-package consumers are a
 separate post-pack stage described in [local packages](docs/public/local-packages.md).
 After that conformance build, `verification offline-conformance` runs only the
-five named safe process/sandbox/delivery/webhook selections, with strict positive
-discovery and their documented floors. It never executes a whole live host.
+fixed safe selections and positive discovery floors owned by
+[`Verification.cs`](tools/SecretKit.Release/Verification.cs), including process,
+sandbox, delivery/webhook and local admission guards. It never executes a whole live host.
 
 Documentation changes use relative-link, formatting, and path/command validation. No product build is needed when product behavior is unchanged.

@@ -104,8 +104,9 @@ dotnet build SecretKit.Conformance.slnx --configuration Release --no-restore
 dotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll verification offline-conformance
 ```
 
-This lane runs only the documented ProcessLifetimeTests, OwnedSandboxTests and
-three Azure delivery/webhook selections with their existing floors. Whole live
+This lane runs only the fixed safe selections and positive discovery floors in
+[`Verification.cs`](../../tools/SecretKit.Release/Verification.cs), including
+process, sandbox, delivery/webhook and local admission guards. Whole live
 conformance hosts remain separately authorized. Offline, installed, native and
 publication evidence retain their existing distinct meanings and denominators.
 
