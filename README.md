@@ -136,6 +136,7 @@ Package installation and recovery harnesses live under
 ## Security and support boundaries
 
 - Credentials, origin and authority are explicit host choices. Installing a package grants no access.
+- SecretKit never launches vendor CLIs or other processes. A host may still pick a CLI-backed credential such as `AzureCliCredential`; SecretKit only sees the resulting `TokenCredential` ([ADR-006](docs/internal/adr/ADR-006-configurator-provisioning-and-credential-sources.md)).
 - Dispose owned reads and material. Callback spans cannot outlive their callback.
 - Diagnostic classifications exclude secret values, credentials and protected coordinates; host instrumentation and exported strings remain host responsibilities.
 - Cancellation propagates. Mutation receipts retain dispatch evidence; uncertain writes must not be replayed automatically.

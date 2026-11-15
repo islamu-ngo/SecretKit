@@ -12,6 +12,7 @@ No entry grants remote execution or publication.
 | Remote source debugging | Package maintainers | Commit-bound published source is authorized and available | Actual SourceLink URL resolution and matching document checksums for selected assemblies/PDBs |
 | Native Infisical conformance | Provider engineering maintainers | Authorized deployment/version, identities and entitlement inputs exist | Existing full native cases and supplements, independent effects, policy and network evidence |
 | Event-side adoption | Event maintainers | A separately authorized Event integration task | Event-owned requirements, selected SecretKit originals and application tests; no implementation copying |
+| Configurator-side provisioning adoption | Configurator maintainers | A separately authorized Configurator pilot (Infisical, Universal Auth, Desktop and Terminal) | Configurator-owned requirements, selected SecretKit originals, Linux/Windows/macOS desktop execution and the [ADR-006](adr/ADR-006-configurator-provisioning-and-credential-sources.md) boundaries: no CLI data path, explicit credential sources only |
 | Public package release | Release maintainers | Explicit publisher authority and release approval | Existing seven-package public admission protocol, provenance and checks; local qualification is insufficient |
 
 The [current preview](../public/current-preview.md) and

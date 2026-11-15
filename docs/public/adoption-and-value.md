@@ -88,7 +88,10 @@ notifications/acknowledgements.
 
 Event and Configurator integration are outside this library workstream; these
 docs do not establish either application's acceptance or preserve their contracts
-as compatibility shims. Development changes update real callers directly.
+as compatibility shims. Configurator's 2026-11-14 decision to use SecretKit,
+not vendor CLIs, for its native secret-store operations is recorded in
+[ADR-006](../internal/adr/ADR-006-configurator-provisioning-and-credential-sources.md);
+it adds proposed roadmap items, not implemented support. Development changes update real callers directly.
 Core treats database credentials as opaque material; no database drivers ship.
 The [removed connector catalog](connector-scope-decision.md) is not required for
 ordinary reads or a reason to discard retained native rotation/gateway features.

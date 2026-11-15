@@ -25,6 +25,8 @@ to understand or follow this repository contract.
 - Configuration export and hosting are independent optional packages.
 - No database, ASP.NET shared framework, UI, reflection plugin discovery or
   arbitrary request execution belongs in these libraries.
+- No vendor CLI wrapper or process execution. A CLI can only be a host-selected
+  credential source outside SecretKit (ADR-006).
 - Runtime and administrative identities are explicitly selected, never inferred.
 - Clients and transports supplied by a host stay host-owned.
 - No hidden workers, fallback principals, material cache or mutation replay.

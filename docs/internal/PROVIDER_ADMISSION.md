@@ -8,6 +8,12 @@ not another backend. No third provider, provider stub, universal lifecycle
 facade, older framework target or restored connection/sync catalog is admitted
 by this workstream.
 
+[ADR-006](adr/ADR-006-configurator-provisioning-and-credential-sources.md)
+records ISLAMU Configurator, on 2026-11-14, as a named consumer for
+provisioning work. A future third-provider proposal (for example OpenBao) may
+cite that demand, but it still needs every row of evidence below. ADR-006
+admits no provider, and a vendor CLI never qualifies as a provider transport.
+
 This decision preserves the [core-first scope](CORE_SCOPE_AND_ROADMAP.md),
 [public provider boundaries](../public/provider-support.md) and the existing
 seven-package, two-provider public release authority. A local four-package

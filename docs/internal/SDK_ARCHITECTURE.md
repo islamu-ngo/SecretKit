@@ -249,6 +249,8 @@ Event would own desired/observed integration revisions, tenant authorization, HA
 
 Configurator would own definitions, review UX, intended-identity selection, application acceptance and operator authorization. Administrative visibility would not be treated as proof that the consuming application's identity could read a value. SecretKit would not import Configurator scenario runners or expand its currently approved MVP.
 
+[ADR-006](adr/ADR-006-configurator-provisioning-and-credential-sources.md) (2026-11-14) makes Configurator a named consumer of this workflow. SecretKit is Configurator's only secret-operation path. Vendor CLIs never carry secret values, and no SecretKit package launches a process. A CLI can only be a credential source the host selects explicitly, such as `AzureCliCredential` supplied as a `TokenCredential`.
+
 ## Functional Sources And Limits
 
 - [Azure secret SDK](https://learn.microsoft.com/en-us/dotnet/api/overview/azure/security.keyvault.secrets-readme?view=azure-dotnet) supports the reuse proposal; exact package/transitive approvals remain open.

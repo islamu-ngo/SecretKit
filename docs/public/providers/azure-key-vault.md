@@ -48,6 +48,36 @@ hyphens; versions contain exactly 32 hexadecimal characters. Bind addresses
 with `new SecretReference(client.Authority, address)`; references cannot cross
 client instances even when vault/name match.
 
+## Select a credential
+
+SecretKit references Azure.Core's `TokenCredential`, not Azure.Identity. The
+host chooses one credential type, installs its package and owns its
+configuration, cache and disposal. SecretKit does not test these credential
+types, and live Azure sign-in behavior is unverified here.
+
+Select one credential explicitly. A discovery chain such as
+`DefaultAzureCredential` picks an identity from the environment, which conflicts
+with SecretKit's rule that authority is selected, never inferred.
+
+For interactive operator tools, such as ISLAMU Configurator's desktop and
+terminal clients ([ADR-006](../../internal/adr/ADR-006-configurator-provisioning-and-credential-sources.md)):
+
+- **Browser or device-code sign-in:** `InteractiveBrowserCredential` or
+  `DeviceCodeCredential` with the operator organization's **own** Entra
+  public-client ID and tenant. Without a client ID, Azure.Identity uses a
+  development application that Microsoft does not recommend for production.
+  A persisted token cache refuses unprotected storage unless
+  `UnsafeAllowUnencryptedStorage` is set; keep that protection.
+- **Existing Azure CLI login:** `AzureCliCredential`, chosen explicitly by the
+  operator. It runs `az account get-access-token` in a subprocess and returns
+  only an access token. This helps in tenants that block consent to new
+  applications, because the Azure CLI is a pre-approved Microsoft application.
+  The CLI never handles secret values in this composition, and SecretKit itself
+  never launches it.
+
+Workloads keep using their deployment's managed identity or workload credential,
+selected the same explicit way.
+
 ## Common reads and version semantics
 
 `ReadAsync(reference, cancellationToken)` is consumption: it checks validity

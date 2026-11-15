@@ -52,6 +52,7 @@ implemented subset.
 | [Delivery/maintenance](DELIVERY_AND_MAINTENANCE.md), [publication protocol](releases/PUBLICATION_PROTOCOL.md) | Release evidence and publication authority, distinct from local evaluation |
 | [Provider admission](PROVIDER_ADMISSION.md), [onboarding](PROVIDER_ONBOARDING.md) | Demand, ownership, native semantics and repeatable provider contribution evidence |
 | [Accepted catalog removal](../public/connector-scope-decision.md) | 2026-10-11 removal of broad third-party connection/sync administration; native SQL rotation and gateway/proxy subsets retained |
+| [ADR-006](adr/ADR-006-configurator-provisioning-and-credential-sources.md), [Configurator roadmap](CORE_SCOPE_AND_ROADMAP.md#configurator-provisioning-consumer) | 2026-11-14 decision: Configurator is a named provisioning consumer; no vendor CLI data path or process execution; CLIs only as host-selected credential sources; proposed roadmap items |
 
 The four-package local profile does not replace the seven-package public release
 family or authorize publication. Runtime and administrative credentials remain

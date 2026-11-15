@@ -159,6 +159,35 @@ independently established original timing and lifetime policy. Do not invent
 issuance evidence, decode a JWT to infer authority or reuse Universal's
 login-bound evidence for a different token.
 
+### Interactive operator tools
+
+Operator tools such as ISLAMU Configurator's desktop and terminal clients use
+the same explicit exchanges ([ADR-006](../internal/adr/ADR-006-configurator-provisioning-and-credential-sources.md)):
+
+- **First path:** Universal Auth with a machine identity the operator's
+  organization created for that tool. The host owns client-secret custody, for
+  example in an OS keyring, and supplies it as `SecretMaterial` for each login.
+- **Machine OIDC:** `InfisicalLoginProof.Oidc` exchanges a host-acquired proof
+  for a machine identity. It does not establish delegation from a human user.
+- **Deferred human delegation:** Infisical documents
+  [OAuth applications](https://infisical.com/docs/documentation/platform/oauth-applications/overview).
+  [Token exchange](https://infisical.com/docs/documentation/platform/oauth-applications/token-exchange)
+  is a future organization-owned confidential-middleware integration, requiring
+  a protected client secret, active organization OIDC SSO and prior user SSO
+  sign-in. It carries the user's effective permissions within delegated-token
+  limits, excludes administration mutations and issues no refresh token.
+  [Authorization code](https://infisical.com/docs/documentation/platform/oauth-applications/authorization-code)
+  currently offers only `secrets:read`; its documented client-secret requirement
+  needs a separate custody decision even with PKCE. Never embed a confidential
+  client secret in a desktop binary. Neither OAuth flow is implemented here.
+- **Not supported:** reusing the Infisical CLI's own user session. It has no
+  documented third-party contract.
+
+SecretKit never launches the Infisical CLI or any other process.
+These documentation facts were checked 2026-11-15; they do not establish
+deployment availability or live conformance. Universal Auth remains the pilot.
+Configurator's separate ADR has not been edited.
+
 ### Receipts, errors and network boundaries
 
 Login receipts belong to the authentication instance and cannot replay a

@@ -3,8 +3,8 @@
 > **Audience:** Application developers and integration designers
 > **Status:** Current product boundary; future orchestration is not implemented
 > **Owner:** SecretKit maintainers
-> **Last verified:** 2026-11-02 source review of adoption APIs and package boundaries
-> **Source anchors:** [Architecture](../internal/SDK_ARCHITECTURE.md), [support](provider-support.md), [accepted scope](connector-scope-decision.md)
+> **Last verified:** 2026-11-14 source review of credential seams for the Configurator decision; no checks rerun
+> **Source anchors:** [Architecture](../internal/SDK_ARCHITECTURE.md), [support](provider-support.md), [accepted scope](connector-scope-decision.md), [ADR-006](../internal/adr/ADR-006-configurator-provisioning-and-credential-sources.md)
 
 SecretKit supplies in-process provider access. The application decides what the
 values mean and when its services become active. Start with the
@@ -108,6 +108,34 @@ Configurator owns destination clients/configuration, deployment sequencing,
 operator review and recovery. SecretKit supplies retained provider operations,
 not cross-system atomicity. Lost mutation responses retain caller-held receipts;
 they do not authorize automatic replay.
+
+Accepted 2026-11-14 ([ADR-006](../internal/adr/ADR-006-configurator-provisioning-and-credential-sources.md)):
+
+- Configurator's native clients use SecretKit for every secret-store operation.
+  That covers value-free inventory, reads through the intended identity and
+  reviewed typed writes.
+- No vendor CLI ever carries secret values or mutations, and no SecretKit
+  package launches a process.
+- An operator may explicitly choose an existing CLI login as a credential
+  source, for example Azure.Identity's `AzureCliCredential` passed as the
+  `TokenCredential`. SecretKit only receives the resulting credential.
+- Azure interactive sign-in uses the operator's own Entra client ID.
+- Infisical retains Universal Auth for the pilot. Machine OIDC Auth does not
+  establish human delegation. [OAuth applications](https://infisical.com/docs/documentation/platform/oauth-applications/overview)
+  document human delegation; implementation is deferred. Token exchange is a
+  future organization-owned confidential-middleware path with protected
+  client-secret custody, active OIDC SSO and prior user sign-in; delegated tokens
+  cannot mutate administration. Authorization code currently offers only
+  `secrets:read` and requires its own client-secret custody decision despite
+  PKCE. See [authentication guidance](authentication-and-hosting.md#interactive-operator-tools)
+  for the official flow references and boundaries.
+- Configurator's browser client never gains secret-store access.
+
+The proposed SecretKit work lives in the
+[Configurator roadmap](../internal/CORE_SCOPE_AND_ROADMAP.md#configurator-provisioning-consumer);
+none of it is implemented support yet.
+The human-sign-in guidance was corrected 2026-11-15 in SecretKit only;
+Configurator's separate ADR has not been edited.
 
 No working Coolify integration or end-to-end deployment workflow is claimed.
 Reconsider a specific integration only for a named consumer, established
