@@ -98,7 +98,7 @@ static async Task<InfisicalPeriodicTokenSession> LoginFiniteSessionAsync(
         OriginalIssuedAt = login.RequestStartedAt,
         ExpiresAt = login.Token.ExpiresAt!.Value,
         Lifetime = InfisicalTokenLifetime.Finite,
-        ReportedMaximumTtl = TimeSpan.FromSeconds(login.AccessTokenMaxTTL)
+        ReportedMaximumTtl = login.AccessTokenMaxTtl
     });
     return new InfisicalPeriodicTokenSession(login, bound,
         renewBefore: TimeSpan.FromSeconds(10),
@@ -116,7 +116,7 @@ outcomes but does not persist a durable receipt journal.
 `RequestStartedAt` is the caller-observed request start, a conservative lower
 bound for a fresh login, **not server issuance evidence**. Do not replace it with
 a later handoff time. `Token.ExpiresAt` is based on reported positive `expiresIn`
-from that request start. `AccessTokenMaxTTL` is reported metadata, not proof of
+from that request start. `AccessTokenMaxTtl` is reported metadata, not proof of
 finite or periodic semantics.
 
 ### Host-supplied proofs
@@ -152,7 +152,7 @@ using var tokenCopy = new InfisicalAccessToken(
 // Hand a source an independent copy, not login.Token itself.
 ```
 
-Proof login exposes `Token`, `ExpiresIn` and `AccessTokenMaxTTL`; it has no
+Proof login exposes `Token`, `ExpiresIn` and `AccessTokenMaxTtl`; it has no
 `BindLifetimeEvidence` handoff API. To maintain an externally supplied or
 proof-derived token, use the origin/material session constructor only with
 independently established original timing and lifetime policy. Do not invent
