@@ -149,7 +149,7 @@ public sealed class SecretSnapshotLoader : IDisposable
                     }
                     else if (failure is null)
                     {
-                        failure = SecretOutcome<long>.Failure(outcome.Status, outcome.RetryAfter, outcome.Reason);
+                        failure = outcome.ConvertFailure<long>();
                         observation.Termination = delivery.Termination;
                         Interlocked.Exchange(ref terminal, 1);
                     }
@@ -196,7 +196,7 @@ public sealed class SecretSnapshotLoader : IDisposable
             cancellationToken.ThrowIfCancellationRequested();
             if (deadline.IsCancellationRequested)
                 return Fail(SecretStatus.Unavailable, reason: SecretFailureReason.DeadlineExceeded);
-            if (failure is not null) return Fail(failure.Status, failure.RetryAfter, failure.Reason);
+            if (failure is not null) return Fail(failure.Status, failure.RetryAfter, failure.Reason, failure.CorrelationId);
 
             lock (_gate)
             {
@@ -293,7 +293,7 @@ public sealed class SecretSnapshotLoader : IDisposable
         }
 
         SecretOutcome<long> Fail(SecretStatus status, TimeSpan? retryAfter = null,
-            SecretFailureReason reason = SecretFailureReason.None)
+            SecretFailureReason reason = SecretFailureReason.None, SecretCorrelationId? correlationId = null)
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (deadline.IsCancellationRequested)
@@ -302,10 +302,11 @@ public sealed class SecretSnapshotLoader : IDisposable
                 status = SecretStatus.Unavailable;
                 retryAfter = null;
                 reason = SecretFailureReason.DeadlineExceeded;
+                correlationId = null;
             }
             lock (_gate)
                 _lastAttempt = new SecretCollectionAttempt(started, _time.GetUtcNow(), status, retryAfter, reason: reason);
-            return SecretOutcome<long>.Failure(status, retryAfter, reason);
+            return SecretOutcome<long>.Failure(status, retryAfter, reason, correlationId);
         }
     }
 

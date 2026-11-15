@@ -48,6 +48,7 @@ public sealed class OptionalSelectionTests
     [Arguments(SecretStatus.Unavailable)]
     [Arguments(SecretStatus.Invalid)]
     [Arguments(SecretStatus.Expired)]
+    [Arguments(SecretStatus.Unknown)]
     public async Task OptionalDoesNotConvertFailuresToAbsence(SecretStatus status)
     {
         var reader = new SelectionReader();
@@ -57,10 +58,12 @@ public sealed class OptionalSelectionTests
         reader.Status = status;
         reader.Reason = SecretFailureReason.InvalidResponse;
         reader.RetryAfter = status == SecretStatus.Unavailable ? TimeSpan.FromSeconds(3) : null;
+        reader.CorrelationId = new SecretCorrelationId("configuration-private-canary");
         SecretOutcome<long> failure = await loader.RefreshAsync();
         await Assert.That(failure.Status).IsEqualTo(status);
         await Assert.That(failure.Reason).IsEqualTo(reader.Reason);
         await Assert.That(failure.RetryAfter).IsEqualTo(reader.RetryAfter);
+        await Assert.That(failure.CorrelationId).IsSameReferenceAs(reader.CorrelationId);
         await Assert.That(loader.LastAttempt!.Reason).IsEqualTo(reader.Reason);
         await Assert.That(loader.LastAttempt!.RetryAfter).IsEqualTo(reader.RetryAfter);
         using var current = loader.Acquire();
@@ -103,6 +106,7 @@ internal sealed class SelectionReader : ISecretReader, IDisposable
     public SecretStatus Status { get; set; } = SecretStatus.Success;
     public SecretFailureReason Reason { get; set; }
     public TimeSpan? RetryAfter { get; set; }
+    public SecretCorrelationId? CorrelationId { get; set; }
     public SecretValidity Validity { get; set; } = SecretValidity.Valid;
     public string Text { get; set; } = "synthetic-value";
     public DateTimeOffset? Expiry { get; set; }
@@ -129,7 +133,7 @@ internal sealed class SelectionReader : ISecretReader, IDisposable
     {
         if (BeforeRead is not null) await BeforeRead(cancellationToken);
         if (Status != SecretStatus.Success)
-            return SecretOutcome<SecretRead>.Failure(Status, RetryAfter, Reason);
+            return SecretOutcome<SecretRead>.Failure(Status, RetryAfter, Reason, CorrelationId);
         var read = new SecretRead(SecretMaterial.FromText(Text),
             new SecretObservation(ForeignReference ?? reference, null, DateTimeOffset.UnixEpoch, Validity, Expiry));
         Delivered.Add(read);

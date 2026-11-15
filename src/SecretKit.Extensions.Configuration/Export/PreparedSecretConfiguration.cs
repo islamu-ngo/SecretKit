@@ -34,7 +34,7 @@ public sealed class PreparedSecretConfiguration : IDisposable
             if (!outcome.IsSuccess)
             {
                 loader.Dispose();
-                return SecretOutcome<PreparedSecretConfiguration>.Failure(outcome.Status, outcome.RetryAfter, outcome.Reason);
+                return outcome.ConvertFailure<PreparedSecretConfiguration>();
             }
             return SecretOutcome<PreparedSecretConfiguration>.Success(
                 new PreparedSecretConfiguration(loader, loader.Acquire()));
