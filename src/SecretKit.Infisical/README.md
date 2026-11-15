@@ -144,6 +144,11 @@ RecoveryRequired, and recovery only with a separately administrator-authorized
 replacement. Credentials are not persisted or retried.
 Renewal already uses the explicit host-started `InfisicalPeriodicTokenSession`.
 
+Revocation returns a typed `SecretOutcome<InfisicalTokenRevocationReceipt>`.
+Success reuses the pre-created receipt; retain that receipt across failure or
+cancellation. Failure correlation requires explicit disclosure and does not
+authorize automatic retry.
+
 The 28 dynamic definition profiles now include established optional gateway,
 password, AWS policy/group/tag, Elasticsearch CA, Mongo null port/CA,
 Kubernetes authentication/SSL, Couchbase bucket, Milvus privilege, SSH algorithm,

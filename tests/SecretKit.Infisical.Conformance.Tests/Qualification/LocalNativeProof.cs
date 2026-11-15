@@ -351,7 +351,7 @@ internal sealed partial class LocalNativeProof : IAsyncDisposable
             Ledger.Effect(operation, DispatchEvidence.PossiblyDispatched);
             try
             {
-                return await proof.RevokeTokenAsync(credentials[key], receipt, token) == SecretStatus.Success &&
+                return (await proof.RevokeTokenAsync(credentials[key], receipt, token)).Status == SecretStatus.Success &&
                     receipt.Evidence == DispatchEvidence.Applied;
             }
             finally { Ledger.Effect(operation, receipt.Evidence, acknowledged: true); }

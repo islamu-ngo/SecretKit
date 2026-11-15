@@ -37,7 +37,7 @@ internal static class InfisicalTokenRevocationEffects
         AuthenticationDispatchResult<SecretStatus> dispatch = await AuthenticationDispatch.InvokeAsync(
             environment, definition, probe, "/api/v1/auth/token/revoke", async ct =>
             {
-                SecretStatus status = await authentication.RevokeTokenAsync(issued.AccessToken, receipt, ct);
+                SecretStatus status = (await authentication.RevokeTokenAsync(issued.AccessToken, receipt, ct)).Status;
                 return SecretOutcome<SecretStatus>.Success(status);
             }, token);
         if (dispatch.Interrupted)

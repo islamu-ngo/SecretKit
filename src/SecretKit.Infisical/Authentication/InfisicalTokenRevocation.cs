@@ -19,34 +19,27 @@ public sealed partial class InfisicalProofAuthentication
     /// provider acknowledgement, not an independently observed invalidation effect.
     /// No token source, fallback, renewal or replay is invoked.
     /// </summary>
-    public async ValueTask<SecretStatus> RevokeTokenAsync(SecretMaterial token,
+    public async ValueTask<SecretOutcome<InfisicalTokenRevocationReceipt>> RevokeTokenAsync(SecretMaterial token,
         InfisicalTokenRevocationReceipt receipt, CancellationToken cancellationToken = default)
     {
-        SecretOutcome<int> outcome = await InfisicalOperationBudget.RunAsync(_operationTimeout, _time,
+        return await InfisicalOperationBudget.RunAsync(_operationTimeout, _time,
             cancellationToken, InfisicalOperation.Revocation, ExecuteAsync, () => receipt?.Evidence ?? DispatchEvidence.NotDispatched).ConfigureAwait(false);
-        return outcome.Status;
 
-        async ValueTask<SecretOutcome<int>> ExecuteAsync(CancellationToken operationToken)
-        {
-            SecretStatus status = await RevokeCoreAsync(operationToken).ConfigureAwait(false);
-            return status == SecretStatus.Success ? SecretOutcome<int>.Success(0) : SecretOutcome<int>.Failure(status);
-        }
-
-        async ValueTask<SecretStatus> RevokeCoreAsync(CancellationToken operationToken)
+        async ValueTask<SecretOutcome<InfisicalTokenRevocationReceipt>> ExecuteAsync(CancellationToken operationToken)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             ArgumentNullException.ThrowIfNull(token);
             ArgumentNullException.ThrowIfNull(receipt);
             operationToken.ThrowIfCancellationRequested();
             if (!ReferenceEquals(receipt.Owner, this) || receipt.Evidence != DispatchEvidence.NotDispatched)
-                return SecretStatus.Invalid;
+                return SecretOutcome<InfisicalTokenRevocationReceipt>.Failure(SecretStatus.Invalid);
             char[] characters = token.ExportCharacters();
             byte[] payload = new byte[Math.Min(128 * 1024, _requestLimit)];
             byte[] bytes = new byte[_responseLimit + 1];
             try
             {
                 if (characters.Length is < 1 or > 16384 || characters.Any(char.IsControl))
-                    return SecretStatus.Invalid;
+                    return SecretOutcome<InfisicalTokenRevocationReceipt>.Failure(SecretStatus.Invalid);
                 using var stream = new MemoryStream(payload, writable: true);
                 using (var writer = new Utf8JsonWriter(stream))
                 {
@@ -59,9 +52,9 @@ public sealed partial class InfisicalProofAuthentication
                 using var request = await _wire.RevokeTokenAsync(content, operationToken).ConfigureAwait(false);
                 if (request.RequestUri is { IsAbsoluteUri: false } relative) request.RequestUri = new(_origin, relative);
                 if (request.Method != HttpMethod.Post || request.RequestUri != new Uri(_origin, "/api/v1/auth/token/revoke"))
-                    return SecretStatus.Invalid;
+                    return SecretOutcome<InfisicalTokenRevocationReceipt>.Failure(SecretStatus.Invalid);
                 operationToken.ThrowIfCancellationRequested();
-                if (!receipt.TryBeginDispatch()) return SecretStatus.Invalid;
+                if (!receipt.TryBeginDispatch()) return SecretOutcome<InfisicalTokenRevocationReceipt>.Failure(SecretStatus.Invalid);
                 using var response = await _transport.SendAsync(request, HttpCompletionOption.ResponseHeadersRead,
                     operationToken).ConfigureAwait(false);
                 if (response.StatusCode != HttpStatusCode.OK)
@@ -71,12 +64,16 @@ public sealed partial class InfisicalProofAuthentication
                         HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => SecretStatus.Denied,
                         HttpStatusCode.BadRequest or HttpStatusCode.UnprocessableEntity => SecretStatus.Invalid,
                         HttpStatusCode.TooManyRequests => SecretStatus.Throttled,
+                        HttpStatusCode.ServiceUnavailable => SecretStatus.Unavailable,
                         _ => SecretStatus.Unknown
                     };
-                    if (status != SecretStatus.Unknown) receipt.Record(DispatchEvidence.Rejected);
-                    return status;
+                    if ((int)response.StatusCode is >= 400 and < 500 && status != SecretStatus.Unknown)
+                        receipt.Record(DispatchEvidence.Rejected);
+                    return await InfisicalFailureResponse.ReadAsync<InfisicalTokenRevocationReceipt>(response,
+                        _responseLimit, _time, status, resource: false, cancellationToken: operationToken).ConfigureAwait(false);
                 }
-                if (response.Content.Headers.ContentLength > _responseLimit) return SecretStatus.Unknown;
+                if (response.Content.Headers.ContentLength > _responseLimit)
+                    return SecretOutcome<InfisicalTokenRevocationReceipt>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.ResponseTooLarge);
                 using Stream body = await response.Content.ReadAsStreamAsync(operationToken).ConfigureAwait(false);
                 int length = 0;
                 while (length < bytes.Length)
@@ -85,20 +82,22 @@ public sealed partial class InfisicalProofAuthentication
                     if (read == 0) break;
                     length += read;
                 }
-                if (length > _responseLimit) return SecretStatus.Unknown;
+                if (length > _responseLimit)
+                    return SecretOutcome<InfisicalTokenRevocationReceipt>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.ResponseTooLarge);
                 using var document = JsonDocument.Parse(bytes.AsMemory(0, length), new JsonDocumentOptions { MaxDepth = 8 });
                 JsonElement root = document.RootElement;
                 if (root.ValueKind != JsonValueKind.Object || root.EnumerateObject().Count() != 1 ||
                     !root.TryGetProperty("message", out var message) || message.ValueKind != JsonValueKind.String)
-                    return SecretStatus.Unknown;
+                    return SecretOutcome<InfisicalTokenRevocationReceipt>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.InvalidResponse);
                 receipt.Record(DispatchEvidence.Applied);
                 operationToken.ThrowIfCancellationRequested();
-                return SecretStatus.Success;
+                return SecretOutcome<InfisicalTokenRevocationReceipt>.Success(receipt);
             }
             catch (OperationCanceledException) { throw new OperationCanceledException("Token revocation canceled.", operationToken); }
             catch (Exception error) when (error is HttpRequestException or IOException or JsonException or InvalidOperationException or NotSupportedException)
             {
-                return SecretStatus.Unknown;
+                return SecretOutcome<InfisicalTokenRevocationReceipt>.Failure(SecretStatus.Unknown,
+                    reason: error is HttpRequestException or IOException ? SecretFailureReason.TransportFailure : SecretFailureReason.InvalidResponse);
             }
             finally
             {

@@ -294,7 +294,7 @@
     },
     {
       "file": "src/SecretKit.Infisical/Authentication/InfisicalTokenRevocation.cs",
-      "sha256": "662b81b1ba5a55886fa88359fa39c4cbae97eb680308b2a967b803e7bfdae3c2"
+      "sha256": "7bb406757c630804c0606995478ee89afa420c3183755050a93c742c6ecbe15d"
     },
     {
       "file": "src/SecretKit.Infisical/Authentication/InfisicalUniversalAuthentication.cs",

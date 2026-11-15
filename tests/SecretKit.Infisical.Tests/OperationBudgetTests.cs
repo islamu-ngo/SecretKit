@@ -188,7 +188,7 @@ public sealed class OperationBudgetTests
                         return (await client.LoginAsync(proof, client.CreateReceipt())).Status;
                 case "revocation":
                     using (var client = new InfisicalProofAuthentication(new("https://api.test"), network, clock))
-                        return await client.RevokeTokenAsync(material, client.CreateRevocationReceipt());
+                        return (await client.RevokeTokenAsync(material, client.CreateRevocationReceipt())).Status;
                 case "renewal":
                     await using (var session = new InfisicalPeriodicTokenSession(new("https://api.test"), material,
                         new InfisicalTokenLifetimeEvidence

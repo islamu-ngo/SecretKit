@@ -270,6 +270,10 @@ Endpoints would use HTTPS and normal certificate validation. Approved secure pro
 
 ## Authentication And Optional Host Maintenance
 
+RevokeTokenAsync returns SecretOutcome<InfisicalTokenRevocationReceipt>.
+Success reuses the native receipt; failed outcomes retain no successful value.
+The original revocation receipt preserves evidence across failure and cancellation.
+
 The adapter would consume explicit credential/token/proof sources. Azure would accept caller-selected `TokenCredential`, not choose a hidden default credential chain. Infisical auth methods would be admitted individually; cloud proof creation and external federation would remain explicit host or approved integration responsibilities.
 
 Normal token constraints would follow actual supported responses: expiry, maximum lifetime, use limits, periodic renewal and revocation are not interchangeable. Authentication could fail while configuration remained locally loaded; readiness would report this honestly without revealing the token.

@@ -67,10 +67,10 @@ public sealed class NativeAuthenticationTests
                 using var current = (await session.GetTokenAsync(cancellationToken)).Value;
                 using var proof = new InfisicalProofAuthentication(origin, network);
                 var receipt = proof.CreateRevocationReceipt();
-                await Assert.That(await proof.RevokeTokenAsync(current.Material, receipt, cancellationToken))
+                await Assert.That((await proof.RevokeTokenAsync(current.Material, receipt, cancellationToken)).Status)
                     .IsEqualTo(SecretStatus.Success);
                 await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.Applied);
-                await Assert.That(await proof.RevokeTokenAsync(current.Material, receipt, cancellationToken))
+                await Assert.That((await proof.RevokeTokenAsync(current.Material, receipt, cancellationToken)).Status)
                     .IsEqualTo(SecretStatus.Invalid);
             }
             else

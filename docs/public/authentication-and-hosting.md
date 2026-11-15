@@ -326,6 +326,11 @@ request deadline is bounded by `requestTimeout` and remaining token lifetime;
 session stop cancels the shared operation. Successful renewal publishes a new
 owned token, leaving previously returned copies independently owned.
 
+`InfisicalProofAuthentication.RevokeTokenAsync` returns
+`SecretOutcome<InfisicalTokenRevocationReceipt>`. On success its value is the
+same pre-created receipt. On failure/cancellation retain that original receipt;
+do not look for a success value or infer that revocation had no effect.
+
 `LastRenewal` exists before dispatch and can be retained as material-free evidence.
 Its `Evidence` is `NotDispatched`, `PossiblyDispatched`, `Applied` or `Rejected`.
 The native request posts an `accessToken` body to `/api/v1/auth/token/renew`.

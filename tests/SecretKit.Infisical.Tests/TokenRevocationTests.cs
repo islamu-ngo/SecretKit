@@ -23,11 +23,11 @@ public sealed class TokenRevocationTests
         });
         using var client = new InfisicalProofAuthentication(new("https://auth.test"), wire);
         var receipt = client.CreateRevocationReceipt();
-        var status = await client.RevokeTokenAsync(token, receipt);
+        var status = (await client.RevokeTokenAsync(token, receipt)).Status;
         await Assert.That(status).IsEqualTo(SecretStatus.Success);
         await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.Applied);
         await Assert.That(JsonSerializer.Serialize(receipt).Contains("private", StringComparison.Ordinal)).IsFalse();
-        await Assert.That(await client.RevokeTokenAsync(token, receipt)).IsEqualTo(SecretStatus.Invalid);
+        await Assert.That((await client.RevokeTokenAsync(token, receipt)).Status).IsEqualTo(SecretStatus.Invalid);
         await Assert.That(wire.Sends).IsEqualTo(1);
         await Assert.That(token.Reveal()).IsEqualTo("selected-token-canary");
     }
@@ -50,7 +50,7 @@ public sealed class TokenRevocationTests
         var wire = new Wire((_, _) => Task.FromResult(Response(code, body)));
         using var client = new InfisicalProofAuthentication(new("https://auth.test"), wire);
         var receipt = client.CreateRevocationReceipt();
-        await Assert.That(await client.RevokeTokenAsync(token, receipt)).IsEqualTo(expected);
+        await Assert.That((await client.RevokeTokenAsync(token, receipt)).Status).IsEqualTo(expected);
         await Assert.That(receipt.Evidence).IsEqualTo(evidence);
         await Assert.That(wire.Sends).IsEqualTo(1);
     }
@@ -62,11 +62,11 @@ public sealed class TokenRevocationTests
         var wire = new Wire((_, _) => throw new InvalidOperationException("Must not dispatch."));
         using var client = new InfisicalProofAuthentication(new("https://auth.test"), wire);
         using var other = new InfisicalProofAuthentication(new("https://auth.test"), wire);
-        await Assert.That(await client.RevokeTokenAsync(token, other.CreateRevocationReceipt())).IsEqualTo(SecretStatus.Invalid);
+        await Assert.That((await client.RevokeTokenAsync(token, other.CreateRevocationReceipt())).Status).IsEqualTo(SecretStatus.Invalid);
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
         var receipt = client.CreateRevocationReceipt();
-        await Assert.That(async () => await client.RevokeTokenAsync(token, receipt, cancellation.Token)).Throws<OperationCanceledException>();
+        await Assert.That(async () => (await client.RevokeTokenAsync(token, receipt, cancellation.Token)).Status).Throws<OperationCanceledException>();
         await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.NotDispatched);
         await Assert.That(wire.Sends).IsEqualTo(0);
     }
@@ -83,10 +83,10 @@ public sealed class TokenRevocationTests
         });
         using var client = new InfisicalProofAuthentication(new("https://auth.test"), wire);
         var receipt = client.CreateRevocationReceipt();
-        await Assert.That(await client.RevokeTokenAsync(token, receipt)).IsEqualTo(SecretStatus.Unknown);
+        await Assert.That((await client.RevokeTokenAsync(token, receipt)).Status).IsEqualTo(SecretStatus.Unknown);
         await Assert.That(committed).IsTrue();
         await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.PossiblyDispatched);
-        await Assert.That(await client.RevokeTokenAsync(token, receipt)).IsEqualTo(SecretStatus.Invalid);
+        await Assert.That((await client.RevokeTokenAsync(token, receipt)).Status).IsEqualTo(SecretStatus.Invalid);
         await Assert.That(wire.Sends).IsEqualTo(1);
     }
 
@@ -103,7 +103,7 @@ public sealed class TokenRevocationTests
         });
         using var client = new InfisicalProofAuthentication(new("https://auth.test"), wire);
         var receipt = client.CreateRevocationReceipt();
-        await Assert.That(async () => await client.RevokeTokenAsync(token, receipt, cancellation.Token)).Throws<OperationCanceledException>();
+        await Assert.That(async () => (await client.RevokeTokenAsync(token, receipt, cancellation.Token)).Status).Throws<OperationCanceledException>();
         await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.PossiblyDispatched);
         await Assert.That(wire.Sends).IsEqualTo(1);
     }
@@ -116,7 +116,7 @@ public sealed class TokenRevocationTests
         using var client = new InfisicalProofAuthentication(new("https://auth.test"), wire,
             new InfisicalNetworkOptions { MaximumResponseBytes = 1024 });
         var receipt = client.CreateRevocationReceipt();
-        await Assert.That(await client.RevokeTokenAsync(token, receipt)).IsEqualTo(SecretStatus.Unknown);
+        await Assert.That((await client.RevokeTokenAsync(token, receipt)).Status).IsEqualTo(SecretStatus.Unknown);
         await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.PossiblyDispatched);
     }
 

@@ -10,6 +10,7 @@ public sealed class AuthenticationEnvelopeTests
     [Test]
     [Arguments("universal")]
     [Arguments("proof")]
+    [Arguments("revocation")]
     public async Task NativeAuthenticationAttemptsRetainPrivateThrottleEvidence(string owner)
     {
         var clock = new InfisicalTransportOwnershipTests.ShutdownClock();
@@ -27,13 +28,22 @@ public sealed class AuthenticationEnvelopeTests
             outcome = (await client.LoginAsync("identity", token, receipt)).ConvertFailure<object>();
             await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.Rejected);
         }
-        else
+        else if (owner == "proof")
         {
             using var client = new InfisicalProofAuthentication(new("https://auth.test"), network, clock);
             using var proof = InfisicalLoginProof.Jwt("identity", token);
             var receipt = client.CreateReceipt();
             outcome = (await client.LoginAsync(proof, receipt)).ConvertFailure<object>();
             await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.Rejected);
+        }
+        else
+        {
+            using var client = new InfisicalProofAuthentication(new("https://auth.test"), network, clock);
+            var receipt = client.CreateRevocationReceipt();
+            outcome = (await client.RevokeTokenAsync(token, receipt)).ConvertFailure<object>();
+            await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.Rejected);
+            var reused = await client.RevokeTokenAsync(token, receipt);
+            await Assert.That(reused.CorrelationId).IsNull();
         }
         await Assert.That(outcome.Status).IsEqualTo(SecretStatus.Throttled);
         await Assert.That(outcome.RetryAfter).IsEqualTo(TimeSpan.FromSeconds(42));
