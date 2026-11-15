@@ -22,5 +22,13 @@ public enum SecretFailureReason
     /// <summary>The encoded request exceeded its admitted budget.</summary>
     RequestTooLarge,
     /// <summary>The collection exceeded an admitted selection or material limit.</summary>
-    CollectionLimitExceeded
+    CollectionLimitExceeded,
+    /// <summary>The selected resource may be missing or concealed by access policy.</summary>
+    NotFoundOrInaccessible,
+    /// <summary>The provider rejected the request's validation or semantic constraints.</summary>
+    ValidationFailed,
+    /// <summary>The provider rejected the selected authentication credential.</summary>
+    AuthenticationRejected,
+    /// <summary>The provider reported insufficient permission for the selected operation.</summary>
+    PermissionDenied
 }

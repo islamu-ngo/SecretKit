@@ -104,6 +104,13 @@ For explicit `IConfiguration` export:
 Do not return raw provider bodies, token material or secret values from health
 checks, error pages or issue reports.
 
+Failure `CorrelationId` is protected metadata, even when its syntax is valid.
+`SecretCorrelationId.Reveal()` deliberately creates an ordinary caller-held
+string. Decide who may see it before exporting it to support systems. Outcomes
+exclude the property from JSON; fixed formatting, bounded exceptions and SDK
+diagnostics do not export it. Failure conversion preserves the protected object,
+not a logged copy. Provider messages and details are never retained in outcomes.
+
 `FromUtf8` copies strictly decoded text without an intermediate string;
 `GetUtf8ByteCount` and `TryCopyUtf8To` permit caller-owned encoded buffers.
 The caller still owns clearing exports. Encoding failures are sanitized fixed

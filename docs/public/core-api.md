@@ -19,6 +19,7 @@ specialized lifecycle operations remain provider-native.
 | `SecretAuthority`, `SecretAddress`, `SecretReference`, `SecretInventoryScope` | Instance authority and provider-owned coordinates; [declarations](../../src/SecretKit.Core/Primitives/SecretReference.cs) |
 | `SecretOutcome<T>`, `SecretStatus` | Success-only value access and failure categories; [declarations](../../src/SecretKit.Core/Outcomes/SecretOutcome.cs) |
 | `SecretFailureReason` | Closed material-free failure detail; [declaration](../../src/SecretKit.Core/Outcomes/SecretFailureReason.cs) |
+| `SecretCorrelationId` | Bounded identifier with explicit disclosure; [declaration](../../src/SecretKit.Core/Outcomes/SecretCorrelationId.cs) |
 | `SecretMaterial` | Clearable owned characters and explicit exports; [declaration](../../src/SecretKit.Core/Material/SecretMaterial.cs) |
 | `SecretRead`, `SecretObservation`, `SecretValidity` | Owned read plus value-free observations; [declarations](../../src/SecretKit.Core/Reading/SecretObservation.cs) |
 | `MutationReceipt`, `DispatchEvidence` | Caller-held mutation dispatch evidence; [declarations](../../src/SecretKit.Core/Receipts/MutationReceipt.cs) |
@@ -84,16 +85,31 @@ These are contract categories, not a universal HTTP mapping. Not every adapter
 or operation produces every status. Consult its native guide for response
 mapping and supported variants.
 
-`Success(value)` rejects null and has `Reason=None`. `Failure(status, retryAfter,
-reason)` rejects `Success`, undefined status/reason values, negative timing, and
+`Success(value)` rejects null and has `Reason=None` and no correlation.
+`Failure(status, retryAfter, reason, correlationId)` rejects `Success`,
+undefined status/reason values, negative timing, and
 retry timing on a status other than `Throttled` or `Unavailable`. `RetryAfter`
 may be null. Provider adapters clamp their HTTP retry advice to 24 hours.
 
 `SecretFailureReason` supplies closed detail: deadline, transport, response size,
 invalid response, authority mismatch, unavailable credential, unsupported contract,
-request size or collection limit. `None` means no finer evidence. Reasons do not
+request size, collection limit, `NotFoundOrInaccessible`, `ValidationFailed`,
+`AuthenticationRejected` or `PermissionDenied`. `None` means no finer evidence. Reasons do not
 carry provider text or identify secrets. Advice never schedules work or grants
 permission to replay a mutation with an uncertain effect.
+
+`ConvertFailure<TResult>()` carries status, reason, retry advice and the same
+protected correlation identifier into another outcome type. Calling it on
+success throws without copying or disposing the successful value.
+`Match` keeps its status/reason/advice callback; inspect `CorrelationId`
+explicitly when authorized support work needs it. `GetValueOrThrow` does not
+put correlation into its exception.
+
+`SecretCorrelationId` accepts 1..128 ASCII letters, digits, hyphens, underscores
+or dots. Its `Reveal()` method exports an ordinary string. Default formatting
+uses a fixed marker and outcome JSON ignores the correlation property. A valid
+identifier can still be sensitive; it proves neither identity nor idempotency.
+See [security and ownership](security-and-ownership.md).
 
 Caller cancellation propagates as `OperationCanceledException`. Invalid
 constructor arguments, disposed-object use and other programming errors can

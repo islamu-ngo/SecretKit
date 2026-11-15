@@ -6,6 +6,54 @@ namespace SecretKit.Core.Tests;
 public sealed class OutcomeContractTests
 {
     [Test]
+    public async Task ProtectedCorrelationSurvivesConversionWithoutImplicitDisclosure()
+    {
+        const string canary = "private-request.canary_123";
+        var correlation = new SecretCorrelationId(canary);
+        var original = SecretOutcome<string>.Failure(SecretStatus.Throttled, TimeSpan.FromSeconds(42),
+            SecretFailureReason.ValidationFailed, correlation);
+
+        var converted = original.ConvertFailure<SecretRead>();
+
+        await Assert.That(converted.Status).IsEqualTo(SecretStatus.Throttled);
+        await Assert.That(converted.Reason).IsEqualTo(original.Reason);
+        await Assert.That(converted.RetryAfter).IsEqualTo(TimeSpan.FromSeconds(42));
+        await Assert.That(ReferenceEquals(converted.CorrelationId, correlation)).IsTrue();
+        await Assert.That(converted.CorrelationId!.Reveal()).IsEqualTo(canary);
+        string implicitOutput = $"{original}{converted}{correlation}" +
+            JsonSerializer.Serialize(new { original, converted, correlation });
+        await Assert.That(implicitOutput.Contains(canary, StringComparison.Ordinal)).IsFalse();
+        try { converted.GetValueOrThrow(); }
+        catch (SecretUnavailableException error)
+        {
+            await Assert.That(error.ToString().Contains(canary, StringComparison.Ordinal)).IsFalse();
+            await Assert.That(error.InnerException).IsNull();
+        }
+    }
+
+    [Test]
+    public async Task FailureConversionRejectsSuccessWithoutDisposingItsValue()
+    {
+        using var material = SecretMaterial.FromText("still-owned");
+        var success = SecretOutcome<SecretMaterial>.Success(material);
+        await Assert.That(() => success.ConvertFailure<string>()).Throws<InvalidOperationException>();
+        await Assert.That(material.Reveal()).IsEqualTo("still-owned");
+        await Assert.That(success.CorrelationId).IsNull();
+    }
+
+    [Test]
+    [Arguments("")]
+    [Arguments("coordinate/secret")]
+    [Arguments("a\nb")]
+    [Arguments("caf\u00e9")]
+    public async Task InvalidCorrelationNeverLeaksThroughArgumentErrors(string value)
+    {
+        await Assert.That(() => new SecretCorrelationId(value)).Throws<ArgumentException>();
+        await Assert.That(() => new SecretCorrelationId(new string('a', 129))).Throws<ArgumentException>();
+        await Assert.That(new SecretCorrelationId(new string('a', 128)).Reveal().Length).IsEqualTo(128);
+    }
+
+    [Test]
     public async Task DefinedReasonsSurviveWithoutCreatingSuccessfulValues()
     {
         foreach (SecretFailureReason reason in Enum.GetValues<SecretFailureReason>())

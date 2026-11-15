@@ -44,12 +44,13 @@ public sealed class SecretOutcome<T> where T : notnull
     private readonly T? _value;
 
     private SecretOutcome(SecretStatus status, T? value, TimeSpan? retryAfter,
-        SecretFailureReason reason = SecretFailureReason.None)
+        SecretFailureReason reason = SecretFailureReason.None, SecretCorrelationId? correlationId = null)
     {
         Status = status;
         _value = value;
         RetryAfter = retryAfter;
         Reason = reason;
+        CorrelationId = correlationId;
     }
 
     /// <summary>Gets the operation category; only Success permits value access.</summary>
@@ -60,6 +61,18 @@ public sealed class SecretOutcome<T> where T : notnull
 
     /// <summary>Gets closed failure detail without material, coordinates or provider text.</summary>
     public SecretFailureReason Reason { get; }
+
+    /// <summary>Gets optional protected correlation evidence; access does not authorize replay.</summary>
+    [JsonIgnore]
+    public SecretCorrelationId? CorrelationId { get; }
+
+    /// <summary>Preserves all failure evidence while changing the successful value type.</summary>
+    /// <typeparam name="TResult">The destination's non-null successful value type.</typeparam>
+    /// <returns>A failure retaining status, reason, advice and the same protected identifier.</returns>
+    /// <exception cref="InvalidOperationException">This outcome is successful; its value remains owned by the caller.</exception>
+    public SecretOutcome<TResult> ConvertFailure<TResult>() where TResult : notnull =>
+        IsSuccess ? throw new InvalidOperationException("A successful outcome cannot be converted as a failure.") :
+            SecretOutcome<TResult>.Failure(Status, RetryAfter, Reason, CorrelationId);
 
     /// <summary>Gets whether this outcome contains a successful value.</summary>
     public bool IsSuccess => Status == SecretStatus.Success;
@@ -111,10 +124,11 @@ public sealed class SecretOutcome<T> where T : notnull
     /// <param name="status">A defined category other than Success.</param>
     /// <param name="retryAfter">Optional nonnegative advice, valid only for Throttled or Unavailable.</param>
     /// <param name="reason">Optional closed failure detail.</param>
+    /// <param name="correlationId">Optional protected provider correlation identifier.</param>
     /// <returns>A failure outcome whose Value cannot be accessed.</returns>
     /// <exception cref="ArgumentException">The status or retry timing violates these constraints.</exception>
     public static SecretOutcome<T> Failure(SecretStatus status, TimeSpan? retryAfter = null,
-        SecretFailureReason reason = SecretFailureReason.None)
+        SecretFailureReason reason = SecretFailureReason.None, SecretCorrelationId? correlationId = null)
     {
         if (status == SecretStatus.Success || !Enum.IsDefined(status))
         {
@@ -132,7 +146,7 @@ public sealed class SecretOutcome<T> where T : notnull
             throw new ArgumentException("Retry timing requires throttling or unavailability and nonnegative advice.", nameof(retryAfter));
         }
 
-        return new(status, default, retryAfter, reason);
+        return new(status, default, retryAfter, reason, correlationId);
     }
 
     /// <summary>Returns the status category without formatting the successful value.</summary>
