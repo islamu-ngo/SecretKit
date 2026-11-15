@@ -346,7 +346,7 @@ public sealed partial class InfisicalClient
                 restore ? InfisicalNativeOperationKind.RestoreEnvironment : InfisicalNativeOperationKind.Standard,
                 HardDelete: hardDelete);
             SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target, operation, payload, authority, receipt, operationToken);
-            if (!outcome.IsSuccess) { return SecretOutcome<InfisicalEnvironment>.Failure(outcome.Status, outcome.RetryAfter, outcome.Reason); }
+            if (!outcome.IsSuccess) { return outcome.ConvertFailure<InfisicalEnvironment>(); }
             using JsonDocument document = outcome.Value;
             if (!NativeObject(document.RootElement, "environment", out JsonElement item) ||
                 NativeString(item, "projectId") != address.ProjectId ||
@@ -412,7 +412,7 @@ public sealed partial class InfisicalClient
                 return SecretOutcome<InfisicalTag>.Failure(SecretStatus.Invalid);
             }
             SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target, new(method), payload, authority, receipt, operationToken);
-            if (!outcome.IsSuccess) { return SecretOutcome<InfisicalTag>.Failure(outcome.Status, outcome.RetryAfter, outcome.Reason); }
+            if (!outcome.IsSuccess) { return outcome.ConvertFailure<InfisicalTag>(); }
             using JsonDocument document = outcome.Value;
             if (!NativeObject(document.RootElement, "tag", out JsonElement item) ||
                 ParseTag(item, address.ProjectId) is not { } tag ||
@@ -441,7 +441,7 @@ public sealed partial class InfisicalClient
             }
             SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target,
                 new(HttpMethod.Get), null, null, null, operationToken);
-            if (!outcome.IsSuccess) { return SecretOutcome<InfisicalNativeList<InfisicalTag>>.Failure(outcome.Status, outcome.RetryAfter, outcome.Reason); }
+            if (!outcome.IsSuccess) { return outcome.ConvertFailure<InfisicalNativeList<InfisicalTag>>(); }
             using JsonDocument document = outcome.Value;
             if (!NativeArray(document.RootElement, "tags", out JsonElement items))
             {
@@ -480,7 +480,7 @@ public sealed partial class InfisicalClient
             var operation = new InfisicalNativeOperation(HttpMethod.Get, InfisicalNativeOperationKind.ListFolders,
                 Recursive: recursive, LastSecretModified: lastSecretModified);
             SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target, operation, null, null, null, operationToken);
-            if (!outcome.IsSuccess) { return SecretOutcome<InfisicalNativeList<InfisicalFolder>>.Failure(outcome.Status, outcome.RetryAfter, outcome.Reason); }
+            if (!outcome.IsSuccess) { return outcome.ConvertFailure<InfisicalNativeList<InfisicalFolder>>(); }
             using JsonDocument document = outcome.Value;
             if (!NativeArray(document.RootElement, "folders", out JsonElement items))
             {
@@ -578,7 +578,7 @@ public sealed partial class InfisicalClient
                 return SecretOutcome<InfisicalFolder>.Failure(SecretStatus.Invalid);
             }
             SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target, new(method), payload, authority, receipt, operationToken);
-            if (!outcome.IsSuccess) { return SecretOutcome<InfisicalFolder>.Failure(outcome.Status, outcome.RetryAfter, outcome.Reason); }
+            if (!outcome.IsSuccess) { return outcome.ConvertFailure<InfisicalFolder>(); }
             using JsonDocument document = outcome.Value;
             if (!NativeObject(document.RootElement, "folder", out JsonElement item) ||
                 ParseFolder(item, address.EnvironmentId) is not { } folder ||
@@ -631,7 +631,7 @@ public sealed partial class InfisicalClient
             SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target,
                 new(HttpMethod.Patch, InfisicalNativeOperationKind.UpdateFolders), InfisicalOperationBudget.Payload(new { projectId = address.ProjectId, folders = bodies }),
                 authority, receipt, operationToken);
-            if (!outcome.IsSuccess) { return SecretOutcome<InfisicalNativeList<InfisicalFolder>>.Failure(outcome.Status, outcome.RetryAfter, outcome.Reason); }
+            if (!outcome.IsSuccess) { return outcome.ConvertFailure<InfisicalNativeList<InfisicalFolder>>(); }
             using JsonDocument document = outcome.Value;
             if (!NativeArray(document.RootElement, "folders", out JsonElement items) || items.GetArrayLength() > owned.Length)
             {
@@ -680,7 +680,7 @@ public sealed partial class InfisicalClient
                     destinationEnvironment = destination.Environment,
                     destinationPath = destination.Folder
                 }), authority, receipt, operationToken);
-            if (!outcome.IsSuccess) { return SecretOutcome<InfisicalFolderMove>.Failure(outcome.Status, outcome.RetryAfter, outcome.Reason); }
+            if (!outcome.IsSuccess) { return outcome.ConvertFailure<InfisicalFolderMove>(); }
             using JsonDocument document = outcome.Value;
             JsonElement item = document.RootElement;
             if (NativeString(item, "folderId") != address.Id ||

@@ -50,7 +50,7 @@ public sealed class InfisicalSecretScopeTests
         var scope = reader.CreateScope("canary-project", "canary-env");
         await Assert.That((await scope.InspectAsync("missing")).Status).IsEqualTo(SecretStatus.Unknown);
         reader.Complete = true;
-        await Assert.That((await scope.InspectAsync("missing")).Status).IsEqualTo(SecretStatus.Absent);
+        await Assert.That((await scope.InspectAsync("missing")).Status).IsEqualTo(SecretStatus.Unknown);
     }
 
     [Test]

@@ -39,7 +39,7 @@ public sealed class InfisicalSecretScope
         _reader.TryGetSecretAsync(Reference(key), cancellationToken);
 
     /// <summary>Finds value-free metadata in bounded direct-folder inventory without acquiring secret material.</summary>
-    /// <remarks>A missing item in incomplete inventory remains Unknown. This does not establish value-read permission.</remarks>
+    /// <remarks>An omitted item remains Unknown even in a complete visible list. This does not establish value-read permission.</remarks>
     public async ValueTask<SecretOutcome<SecretObservation>> InspectAsync(string key, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -47,7 +47,7 @@ public sealed class InfisicalSecretScope
         SecretOutcome<SecretInventory> outcome = await _reader.InspectAsync(_scope, cancellationToken).ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
         if (!outcome.IsSuccess)
-            return SecretOutcome<SecretObservation>.Failure(outcome.Status, outcome.RetryAfter, outcome.Reason);
+            return outcome.ConvertFailure<SecretObservation>();
         foreach (SecretObservation observation in outcome.Value.Items)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -59,7 +59,8 @@ public sealed class InfisicalSecretScope
                 return SecretOutcome<SecretObservation>.Success(new(reference, observation.Version,
                     observation.ObservedAt, observation.Validity, observation.ExpiresAt));
         }
-        return SecretOutcome<SecretObservation>.Failure(outcome.Value.IsComplete ? SecretStatus.Absent : SecretStatus.Unknown);
+        return SecretOutcome<SecretObservation>.Failure(SecretStatus.Unknown,
+            reason: SecretFailureReason.NotFoundOrInaccessible);
     }
 
     private SecretReference Reference(string key) => new(_reader.Authority,

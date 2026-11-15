@@ -11,6 +11,23 @@ namespace SecretKit.Infisical.Tests;
 public sealed class FailureEvidenceTests
 {
     [Test]
+    public async Task DocumentedBodyOnlyThrottleRetainsAdviceThroughReadProjection()
+    {
+        using var wire = new Wire(_ => new HttpResponseMessage(HttpStatusCode.TooManyRequests)
+        {
+            Content = new StringContent("""{"reqId":"req-private","statusCode":429,"error":"RateLimitExceeded","message":"Rate limit exceeded. Please try again in 42 seconds"}""")
+        });
+        await using var client = new InfisicalClient(new("https://api.test"), new Tokens(),
+            new InfisicalNetworkOptions { Transport = InfisicalTransportOptions.HostControlled(wire) });
+
+        var outcome = await client.ReadAsync(Reference(client));
+
+        await Assert.That(outcome.Status).IsEqualTo(SecretStatus.Throttled);
+        await Assert.That(outcome.RetryAfter).IsEqualTo(TimeSpan.FromSeconds(42));
+        await Assert.That(wire.Requests).IsEqualTo(1);
+    }
+
+    [Test]
     public async Task ListenerReentryAcrossAnAsynchronousReadDoesNotRecurse()
     {
         using var wire = new AsynchronousWire();
@@ -234,12 +251,16 @@ public sealed class FailureEvidenceTests
         await Assert.That(JsonSerializer.Serialize(captured).Contains("canary", StringComparison.Ordinal)).IsTrue();
         captured.Clear();
         activities = measurements = 0;
-        using var wire = new Wire(_ => new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
+        using var wire = new Wire(_ => new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)
+        {
+            Content = new StringContent("""{"reqId":"private-correlation-canary","error":"InternalServerError","message":"private-prose-canary","details":"private-coordinate-canary"}""")
+        });
         await using (client = new InfisicalClient(new("https://coordinate-canary.test"), new Tokens(),
             new InfisicalNetworkOptions { Transport = InfisicalTransportOptions.HostControlled(wire) }))
         {
             var result = await client.ReadAsync(Reference(client));
             await Assert.That(result.Status).IsEqualTo(SecretStatus.Unavailable);
+            await Assert.That(result.CorrelationId!.Reveal()).IsEqualTo("private-correlation-canary");
         }
         await Assert.That(activities > 0).IsTrue();
         await Assert.That(measurements > 0).IsTrue();

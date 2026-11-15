@@ -89,7 +89,7 @@ public sealed class PortableReadTests
     }
 
     [Test]
-    [Arguments(false, 404, SecretStatus.Absent)]
+    [Arguments(false, 404, SecretStatus.Unknown)]
     [Arguments(true, 404, SecretStatus.Absent)]
     [Arguments(false, 403, SecretStatus.Denied)]
     [Arguments(true, 403, SecretStatus.Denied)]

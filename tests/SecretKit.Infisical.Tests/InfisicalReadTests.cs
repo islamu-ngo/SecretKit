@@ -317,7 +317,7 @@ public sealed class InfisicalReadTests
     [Test]
     [Arguments(401, SecretStatus.Denied)]
     [Arguments(403, SecretStatus.Denied)]
-    [Arguments(404, SecretStatus.Absent)]
+    [Arguments(404, SecretStatus.Unknown)]
     [Arguments(429, SecretStatus.Throttled)]
     [Arguments(503, SecretStatus.Unavailable)]
     [Arguments(302, SecretStatus.Invalid)]
@@ -332,6 +332,33 @@ public sealed class InfisicalReadTests
         await Assert.That(outcome.Status).IsEqualTo(status);
         await Assert.That(JsonSerializer.Serialize(outcome).Contains(canary, StringComparison.Ordinal)).IsFalse();
         await Assert.That(outcome.RetryAfter).IsNull();
+    }
+
+    [Test]
+    public async Task ConcealedResourceCannotBecomeOptionalSecretOrMissingMetadata()
+    {
+        await using InfisicalClient client = Client(new WireHandler((_, _) => Task.FromResult(
+            new HttpResponseMessage(HttpStatusCode.NotFound)
+            {
+                Content = new StringContent("""{"statusCode":404,"error":"NotFound","message":"concealed"}""")
+            })));
+        var scope = client.CreateScope("project", "test");
+
+        await Assert.That(async () => await scope.TryGetSecretAsync("test-key"))
+            .Throws<SecretUnavailableException>();
+        await Assert.That((await client.ReadNativeAsync(Reference(client))).Status).IsEqualTo(SecretStatus.Unknown);
+        await Assert.That((await scope.InspectAsync("test-key")).Status).IsEqualTo(SecretStatus.Unknown);
+    }
+
+    [Test]
+    public async Task LocallyCompleteVisibleInventoryDoesNotProveMissingResource()
+    {
+        await using InfisicalClient client = Client(new WireHandler((_, _) => Task.FromResult(
+            new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("""{"secrets":[]}""") })));
+
+        var result = await client.CreateScope("project", "test").InspectAsync("test-key");
+
+        await Assert.That(result.Status).IsEqualTo(SecretStatus.Unknown);
     }
 
     [Test]

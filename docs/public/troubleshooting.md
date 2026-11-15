@@ -39,6 +39,22 @@ Inspect `Reason` for closed detail without provider prose: `DeadlineExceeded`,
 Throttled or Unavailable is timing only; it neither starts work nor authorizes
 replay. Provider retry timing is nonnegative and capped at 24 hours.
 
+Infisical resource 404s use `Unknown` / `NotFoundOrInaccessible`: missing
+resources, concealed resources and missing routes cannot be distinguished by
+that response alone. An omitted key in a locally complete visible inventory is
+also unknown. `TryGetSecretAsync` therefore throws a bounded failure, and optional
+Configuration collection preserves its previous valid generation.
+
+Recognized error classes can supply `ValidationFailed`,
+`AuthenticationRejected` or `PermissionDenied`. A valid `CorrelationId` is
+available only for deliberate support disclosure through `Reveal()`; do not
+print it by default. Raw messages/details never enter outcomes. Malformed or
+oversized detail bodies cannot replace an observed HTTP rejection or receipt.
+
+For throttling, a valid `Retry-After` header wins. A headerless 429 can recover
+only the documented wait-message grammar; arbitrary prose and 503 body messages
+provide no timing. Advice never initiates a retry.
+
 ## Cancellation or a lost write response
 
 Cancellation propagates. The caller must retain its `MutationReceipt` even if

@@ -230,7 +230,7 @@
     },
     {
       "file": "src/SecretKit.Infisical.Management/Transport/ManagementClient.cs",
-      "sha256": "a537e72febf7f197fb68fcf2ed54817b3302b5d5ba5305d09fa271ecbc84b88e"
+      "sha256": "523125dceb6e36c464ff2aa5fc2f67c5872dccf25652cbb70c1f0860f836980f"
     },
     {
       "file": "src/SecretKit.Infisical.Management/Transport/ManagementContracts.cs",
@@ -270,7 +270,7 @@
     },
     {
       "file": "src/SecretKit.Infisical/Authentication/InfisicalProofAuthentication.cs",
-      "sha256": "f3d585a811bed2890efd73fa85337964d4704fe9b6ad339b74e01f7f1dfa017c"
+      "sha256": "1bb1e4326bece335a73914582b242857f8c52ddd357eea3d2b9d14d4573d3f2b"
     },
     {
       "file": "src/SecretKit.Infisical/Authentication/InfisicalProofAuthenticationWire.cs",
@@ -286,7 +286,7 @@
     },
     {
       "file": "src/SecretKit.Infisical/Authentication/InfisicalRuntimeSession.cs",
-      "sha256": "6d7265201aa5fa9e52858b8743f3e022f95e0a4da7e73e9a1d5d5f8bdb49721b"
+      "sha256": "60dc4fc5ff9ee1df772551e08bd671281432d4eb85db8ab4be82d455c4402bf1"
     },
     {
       "file": "src/SecretKit.Infisical/Authentication/InfisicalTokenRevocation.cs",
@@ -294,7 +294,7 @@
     },
     {
       "file": "src/SecretKit.Infisical/Authentication/InfisicalUniversalAuthentication.cs",
-      "sha256": "970d1af127e8963c4f4a80c1aa1de7e7eaac29225fd7c978446a241e92c2151b"
+      "sha256": "40d5673b2754368cea2cdf5fe76a4bd04a6a68426a35d3a41c4ff3525b33f67d"
     },
     {
       "file": "src/SecretKit.Infisical/Authentication/NativeAuthority.cs",
@@ -306,7 +306,7 @@
     },
     {
       "file": "src/SecretKit.Infisical/Dynamic/InfisicalDynamicClient.cs",
-      "sha256": "bb6e37f441745e21bf5da025d741f66f4adaadd69e2a7530fba99361afce6f69"
+      "sha256": "aabb95c9d46c6a70634c70ea63c2ec76a2b18445742dc39b9d495d37ad21b6c0"
     },
     {
       "file": "src/SecretKit.Infisical/Dynamic/InfisicalDynamicTypes.cs",
@@ -362,7 +362,7 @@
     },
     {
       "file": "src/SecretKit.Infisical/Imports/Imports.cs",
-      "sha256": "547c234ce6b3812da253b8538689ddaffd2c416302a65e0e08b372becc0af4f6"
+      "sha256": "f0de1643127df2dd1116987978722b22a00f90a2736dcf1babf116cbea578aec"
     },
     {
       "file": "src/SecretKit.Infisical/Imports/InfisicalImportWire.cs",
@@ -377,12 +377,16 @@
       "sha256": "2411b99ca67f9818173a58d4c4a92d6fa2c3c2a85c4e41e90a7faf2e51df8bb1"
     },
     {
+      "file": "src/SecretKit.Infisical/Internal/InfisicalFailureResponse.cs",
+      "sha256": "e993eac7318c7a6dc34613557c4c55021731c2cfa9337e692a0d8aa8c9bd7420"
+    },
+    {
       "file": "src/SecretKit.Infisical/Internal/InfisicalNativeOperation.cs",
       "sha256": "016f78850319946b73988289d96c73df4aa1c87be6b861e0e5b2839a6220d8a6"
     },
     {
       "file": "src/SecretKit.Infisical/Internal/InfisicalOperationBudget.cs",
-      "sha256": "7bfa1ca73125736e56c707b69d47e3b6e2a7b6522b9923f12e23bf700f37896d"
+      "sha256": "801c078aead8b5a70c70b3f65670c2d21716656e415f72106b022f3e890bc5bb"
     },
     {
       "file": "src/SecretKit.Infisical/Internal/NativeWireBindings.cs",
@@ -398,11 +402,11 @@
     },
     {
       "file": "src/SecretKit.Infisical/Organization/Organization.cs",
-      "sha256": "84a2d9cb0d899d4ee82075c669c07949d08437ed712bc8985ea84b48c036d862"
+      "sha256": "94d3df06a5acd923a7f3d475f8acbb92c3749e4494cf5f2af9d81ce0ac2887d2"
     },
     {
       "file": "src/SecretKit.Infisical/Organization/ValidationPolicies.cs",
-      "sha256": "9a8df112230581b098677bc3a55d575cc66127316c91e72876e10eff6767b6b6"
+      "sha256": "11906033b6533fa441f80ae8056e8542d757ec976496f538275fb732386394c3"
     },
     {
       "file": "src/SecretKit.Infisical/Rotation/InfisicalRotationApi.cs",
@@ -410,7 +414,7 @@
     },
     {
       "file": "src/SecretKit.Infisical/Rotation/InfisicalRotationClient.cs",
-      "sha256": "b7a66f482f71c88e67d5779d653002c6a6e5c31ef59a8f268aa1d5f75aae5022"
+      "sha256": "ee9754d0e1173334b5bb81c9481fc0536e63ec3c71f16be02dd121ef067897f7"
     },
     {
       "file": "src/SecretKit.Infisical/Rotation/InfisicalRotationModels.cs",
@@ -422,7 +426,7 @@
     },
     {
       "file": "src/SecretKit.Infisical/Secrets/InfisicalClient.cs",
-      "sha256": "35cb273a08d0fce9284b00b35b6f09f82d4a9dc3adcfbdfe28abeec856878aaa"
+      "sha256": "402620ccfcbcda3252af072d42b19d557209537f9cfcc01c5d3a3d94510f7908"
     },
     {
       "file": "src/SecretKit.Infisical/Secrets/InfisicalMutationOperation.cs",
@@ -442,11 +446,11 @@
     },
     {
       "file": "src/SecretKit.Infisical/Secrets/InfisicalSecretScope.cs",
-      "sha256": "05870dbeaef0958b29b912258b317edd6cd614b7ae94d6cd00bfe900e84321a8"
+      "sha256": "8efa086f29338839a3dc44767c2a9c347d130540c4955d5a91741a62f3b0a890"
     },
     {
       "file": "src/SecretKit.Infisical/Secrets/InfisicalStaticChanges.cs",
-      "sha256": "0972ee0bb30a3db13114ad6444fe9997d973dd228203cb71982427185dc8427c"
+      "sha256": "fe92e8dff9d16fe47a327403678c548fb085fe1e1db19ba915d0314a2a930559"
     },
     {
       "file": "src/SecretKit.Infisical/Secrets/InfisicalStaticWire.cs",
@@ -454,7 +458,7 @@
     },
     {
       "file": "src/SecretKit.Infisical/Secrets/NativeBulk.cs",
-      "sha256": "f30e3f213c9dfb0826c17b9ece628044a5deb9463088d42f284008757ded8969"
+      "sha256": "4bd99f336467213508192bc6949a4caf29bf97eade98c1ca7b0713a2f54b355c"
     },
     {
       "file": "src/SecretKit.Infisical/Transport/InfisicalNativeRequestIntent.cs",

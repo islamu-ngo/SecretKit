@@ -269,10 +269,13 @@ public sealed partial class InfisicalProofAuthentication : IDisposable
                         HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => SecretStatus.Denied,
                         HttpStatusCode.BadRequest or HttpStatusCode.UnprocessableEntity => SecretStatus.Invalid,
                         HttpStatusCode.TooManyRequests => SecretStatus.Throttled,
+                        HttpStatusCode.ServiceUnavailable => SecretStatus.Unavailable,
                         _ => SecretStatus.Unknown
                     };
-                    if (status != SecretStatus.Unknown) receipt.Record(DispatchEvidence.Rejected);
-                    return SecretOutcome<InfisicalProofLogin>.Failure(status);
+                    if ((int)response.StatusCode is >= 400 and < 500 && status != SecretStatus.Unknown)
+                        receipt.Record(DispatchEvidence.Rejected);
+                    return await InfisicalFailureResponse.ReadAsync<InfisicalProofLogin>(response,
+                        _responseLimit, _time, status, resource: false, cancellationToken: operationToken).ConfigureAwait(false);
                 }
                 if (response.Content.Headers.ContentLength > _responseLimit)
                     return SecretOutcome<InfisicalProofLogin>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.ResponseTooLarge);

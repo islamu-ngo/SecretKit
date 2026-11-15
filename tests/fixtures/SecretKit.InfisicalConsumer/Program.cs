@@ -126,9 +126,11 @@ internal static class InstalledWorkflow
         using InfisicalSecretRead first = (await Read(200, SecretBody())).Value;
         Require(first.Material.Reveal() == Value && constructed == 1);
         SecretOutcome<InfisicalSecretRead> optional = await Read(404, "{}");
-        Require(optional.Status == SecretStatus.Absent && constructed == 1 && complete.First == Value);
-        scenarios.Add(new { id = "S09", subset = "two-required-denied-or-absent-no-construction", status = "passed" });
-        scenarios.Add(new { id = "S10", subset = "separate-optional-absence-preserves-required-consumer", status = "passed" });
+        Require(optional.Status == SecretStatus.Unknown &&
+            optional.Reason == SecretFailureReason.NotFoundOrInaccessible &&
+            constructed == 1 && complete.First == Value);
+        scenarios.Add(new { id = "S09", subset = "two-required-denied-or-unestablished-no-construction", status = "passed" });
+        scenarios.Add(new { id = "S10", subset = "separate-optional-ambiguity-preserves-required-consumer", status = "passed" });
 
         await using var replacement = new InfisicalClient(wire.Origin, session, network, clock);
         using InfisicalSecretRead same = (await wire.Exchange(
@@ -204,16 +206,15 @@ internal static class InstalledWorkflow
         IConfigurationRoot configuration = new ConfigurationBuilder().Add(export).Build();
         using var configurationOwner = (IDisposable)configuration;
         Require(configuration["Application:Value"] == Value);
-        using PreparedSecretConfiguration optionalPrepared = (await wire.Exchange(
+        var optionalPrepared = await wire.Exchange(
             () => PreparedSecretConfiguration.PrepareAsync(
                 [new("optional", client, reference, SecretPresencePolicy.Optional)], clock,
                 new SecretCollectionOptions(maximumSelections: 1, maximumMaterialBytes: 1024),
                 deadline.Token).AsTask(),
-            "GET", "/api/v4/secrets/" + Key, 404, "{}", Token)).Value;
-        Require(optionalPrepared.ReadOutcome("optional").Status == SecretStatus.Absent);
-        IConfigurationRoot optionalConfiguration = optionalPrepared.Export(
-            [new("optional", "Application:Optional")]);
-        Require(optionalConfiguration["Application:Optional"] is null);
+            "GET", "/api/v4/secrets/" + Key, 404, "{}", Token);
+        Require(!optionalPrepared.IsSuccess && optionalPrepared.Status == SecretStatus.Unknown &&
+            optionalPrepared.Reason == SecretFailureReason.NotFoundOrInaccessible);
+        Require(configuration["Application:Value"] == Value);
         Require((await wire.Exchange(() => requiredLoader.RefreshAsync(deadline.Token).AsTask(),
             "GET", "/api/v4/secrets/" + Key, 200, SecretBody(version: 2, value: "next-generation-canary"),
             Token)).Value == 2);
@@ -293,7 +294,9 @@ internal static class InstalledWorkflow
                 secondStatus == 200 ? SecretBody(key: "secondary", value: "secondary-material-canary") : "{}", Token);
             if (!second.IsSuccess)
             {
-                Require(second.Status == (secondStatus == 403 ? SecretStatus.Denied : SecretStatus.Absent));
+                Require(second.Status == (secondStatus == 403 ? SecretStatus.Denied : SecretStatus.Unknown));
+                if (secondStatus == 404)
+                    Require(second.Reason == SecretFailureReason.NotFoundOrInaccessible);
                 return null;
             }
             using InfisicalSecretRead requiredSecond = second.Value;

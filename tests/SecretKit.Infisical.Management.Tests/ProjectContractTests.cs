@@ -20,6 +20,36 @@ public sealed class ProjectContractTests
     private const string Role = "00000025-0000-0000-0000-000000000025";
 
     [Test]
+    [Arguments(404, SecretStatus.Unknown, SecretFailureReason.NotFoundOrInaccessible)]
+    [Arguments(403, SecretStatus.Denied, SecretFailureReason.PermissionDenied)]
+    [Arguments(429, SecretStatus.Throttled, SecretFailureReason.None)]
+    public async Task ProjectFailuresRetainAmbiguityAndPrivateSupportEvidence(
+        int code, SecretStatus expected, SecretFailureReason reason)
+    {
+        string error = code == 403 ? "PermissionDenied" : code == 404 ? "NotFound" : "RateLimitExceeded";
+        using var transport = Transport(new Server(JsonSerializer.Serialize(new
+        {
+            reqId = "management-private-canary",
+            statusCode = code,
+            error,
+            message = "Rate limit exceeded. Please try again in 42 seconds",
+            details = "protected-payload-canary"
+        }), (HttpStatusCode)code));
+        var client = new ManagementClient(transport);
+        var authority = new ManagementAuthority(client.Authority, new Tokens(), Org, "project");
+        using var request = ProjectOperations.GetProject(Org, "project");
+
+        var result = await client.ExecuteAsync(request, authority,
+            authority.IssueGrant(request.OperationId, new(Org, "project")));
+
+        await Assert.That(result.Status).IsEqualTo(expected);
+        await Assert.That(result.Reason).IsEqualTo(reason);
+        await Assert.That(result.CorrelationId!.Reveal()).IsEqualTo("management-private-canary");
+        await Assert.That(result.RetryAfter).IsEqualTo(code == 429 ? TimeSpan.FromSeconds(42) : (TimeSpan?)null);
+        await Assert.That(JsonSerializer.Serialize(result).Contains("canary", StringComparison.Ordinal)).IsFalse();
+    }
+
+    [Test]
     public async Task FractionalEnvironmentResultIsAnEstablishedNumber()
     {
         using var transport = Transport(new Server($$$"""
@@ -948,14 +978,14 @@ public sealed class ProjectContractTests
         }
     }
 
-    private sealed class Server(string response) : HttpMessageHandler
+    private sealed class Server(string response, HttpStatusCode status = HttpStatusCode.OK) : HttpMessageHandler
     {
         public bool Dispatched { get; private set; }
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
             Dispatched = true;
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            return Task.FromResult(new HttpResponseMessage(status)
             {
                 Content = new StringContent(response, Encoding.UTF8, "application/json")
             });

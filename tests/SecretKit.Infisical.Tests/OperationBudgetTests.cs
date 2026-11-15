@@ -7,6 +7,48 @@ namespace SecretKit.Infisical.Tests;
 public sealed class OperationBudgetTests
 {
     [Test]
+    [Arguments(false, false)]
+    [Arguments(true, false)]
+    [Arguments(false, true)]
+    [Arguments(true, true)]
+    public async Task SlowErrorDetailsPreserveHttpRejectionAndCallerCancellation(bool mutation, bool cancelCaller)
+    {
+        var clock = new InfisicalTransportOwnershipTests.ShutdownClock();
+        using var body = new StalledBody();
+        using var wire = new FailureEvidenceTests.Wire(_ => new HttpResponseMessage(HttpStatusCode.Forbidden)
+        {
+            Content = new StreamContent(body)
+        });
+        await using var client = new InfisicalClient(new("https://api.test"), new FailureEvidenceTests.Tokens(),
+            new InfisicalNetworkOptions
+            {
+                Transport = InfisicalTransportOptions.HostControlled(wire),
+                OperationTimeout = TimeSpan.FromSeconds(2)
+            }, clock);
+        var target = FailureEvidenceTests.Reference(client);
+        var receipt = client.CreateReceipt(target);
+        using var value = SecretMaterial.FromText("selected-value");
+        using var cancellation = new CancellationTokenSource();
+        Task<SecretOutcome<object>> pending = ExecuteAsync();
+        await body.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        if (cancelCaller) cancellation.Cancel();
+        else clock.Advance(TimeSpan.FromSeconds(3));
+
+        if (cancelCaller)
+            await Assert.That(async () => await pending).Throws<OperationCanceledException>();
+        else
+            await Assert.That((await pending).Status).IsEqualTo(SecretStatus.Denied);
+        await Assert.That(receipt.Evidence).IsEqualTo(mutation ? DispatchEvidence.Rejected : DispatchEvidence.NotDispatched);
+        await Assert.That(body.Disposed).IsTrue();
+        await Assert.That(wire.Requests).IsEqualTo(1);
+
+        async Task<SecretOutcome<object>> ExecuteAsync() => mutation
+            ? (await client.CreateAsync(target, value, receipt, cancellation.Token)).ConvertFailure<object>()
+            : (await client.ReadAsync(target, cancellation.Token)).ConvertFailure<object>();
+    }
+
+    [Test]
     public async Task SecondarySerializersRejectEncodedOverflowWithoutDispatch()
     {
         using var wire = new FailureEvidenceTests.Wire(_ => throw new InvalidOperationException("Oversized request dispatched."));

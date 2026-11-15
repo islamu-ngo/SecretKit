@@ -237,7 +237,7 @@ public sealed class InfisicalMutationTests
         await Assert.That(result.Value.Disposition).IsEqualTo(InfisicalChangeDisposition.SubmittedForApproval);
         await Assert.That(result.Value.Version is null).IsTrue();
         await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.Pending);
-        await Assert.That((await client.ReadAsync(target)).Status).IsEqualTo(SecretStatus.Absent);
+        await Assert.That((await client.ReadAsync(target)).Status).IsEqualTo(SecretStatus.Unknown);
         await Assert.That(JsonSerializer.Serialize(result.Value).Contains(result.Value.ApprovalId!, StringComparison.Ordinal)).IsFalse();
     }
 
@@ -259,7 +259,7 @@ public sealed class InfisicalMutationTests
         await Assert.That(result.Status).IsEqualTo(SecretStatus.Denied);
         await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.Rejected);
         await Assert.That(() => result.Value).Throws<InvalidOperationException>();
-        await Assert.That((await client.ReadAsync(target)).Status).IsEqualTo(SecretStatus.Absent);
+        await Assert.That((await client.ReadAsync(target)).Status).IsEqualTo(SecretStatus.Unknown);
         SecretOutcome<InfisicalStaticChange> replay = await client.CreateAsync(target, material, receipt);
         await Assert.That(replay.Status).IsEqualTo(SecretStatus.Invalid);
         await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.Rejected);
@@ -279,7 +279,7 @@ public sealed class InfisicalMutationTests
         await Assert.That(async () => await client.CreateAsync(target, material, receipt, cancellation.Token))
             .Throws<OperationCanceledException>();
         await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.NotDispatched);
-        await Assert.That((await client.ReadAsync(target)).Status).IsEqualTo(SecretStatus.Absent);
+        await Assert.That((await client.ReadAsync(target)).Status).IsEqualTo(SecretStatus.Unknown);
     }
 
     [Test]
@@ -321,7 +321,7 @@ public sealed class InfisicalMutationTests
 
         await Assert.That(result.Status).IsEqualTo(SecretStatus.Unsupported);
         await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.NotDispatched);
-        await Assert.That((await client.ReadAsync(Target(client))).Status).IsEqualTo(SecretStatus.Absent);
+        await Assert.That((await client.ReadAsync(Target(client))).Status).IsEqualTo(SecretStatus.Unknown);
     }
 
     private static string Material() => Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));

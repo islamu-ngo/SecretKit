@@ -38,7 +38,7 @@ public sealed class OrganizationTests
 
         var result = await client.DeleteEnvironmentAsync(target, Phase5TestSupport.Admin(client), receipt, hardDelete);
 
-        await Assert.That(result.Status).IsEqualTo(SecretStatus.Absent);
+        await Assert.That(result.Status).IsEqualTo(SecretStatus.Unknown);
         await Assert.That(backend.Method).IsEqualTo(HttpMethod.Delete);
         await Assert.That(backend.Destination!.AbsolutePath).IsEqualTo("/api/v1/projects/project/environments/" + Phase5TestSupport.Id);
         await Assert.That(backend.Destination.Query).IsEqualTo(hardDelete ? "?hardDelete=true" : "?hardDelete=false");
@@ -147,7 +147,7 @@ public sealed class OrganizationTests
         var moved = new SecretReference(client.Authority, new InfisicalFolderAddress("project", "prod", Phase5TestSupport.OtherEnvironmentId, "/", folder.Id));
         await Assert.That((await client.GetFolderAsync(moved)).Value.EnvironmentId).IsEqualTo(Phase5TestSupport.OtherEnvironmentId);
         await Assert.That((await client.DeleteFolderAsync(moved, admin, client.CreateReceipt(moved))).Value.Id).IsEqualTo(folder.Id);
-        await Assert.That((await client.GetFolderAsync(moved)).Status).IsEqualTo(SecretStatus.Absent);
+        await Assert.That((await client.GetFolderAsync(moved)).Status).IsEqualTo(SecretStatus.Unknown);
         await Assert.That(JsonSerializer.Serialize(folder)).IsEqualTo("{}");
     }
 

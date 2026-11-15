@@ -109,7 +109,7 @@ public sealed class InfisicalRuntimeSession : IAsyncDisposable
                 .ConfigureAwait(false);
             if (!result.IsSuccess)
             {
-                return SecretOutcome<InfisicalRuntimeSession>.Failure(result.Status, result.RetryAfter, result.Reason);
+                return result.ConvertFailure<InfisicalRuntimeSession>();
             }
             using InfisicalUniversalLogin login = result.Value;
             budget.Check();
@@ -195,8 +195,7 @@ public sealed class InfisicalRuntimeSession : IAsyncDisposable
             var authenticated = await LoginOnceAsync(options, clientSecret, attempt, cancellationToken)
                 .ConfigureAwait(false);
             if (!authenticated.IsSuccess)
-                return SecretOutcome<InfisicalRuntimeSession>.Failure(
-                    authenticated.Status, authenticated.RetryAfter, authenticated.Reason);
+                return authenticated.ConvertFailure<InfisicalRuntimeSession>();
             login = authenticated.Value;
             cancellationToken.ThrowIfCancellationRequested();
             InfisicalTokenLifetimeEvidence evidence = login.BindLifetimeEvidence(new()

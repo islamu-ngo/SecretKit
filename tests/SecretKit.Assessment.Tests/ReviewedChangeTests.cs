@@ -76,7 +76,7 @@ public sealed class ReviewedChangeTests
         await Assert.That(uncertain.Material.Reveal()).IsEqualTo(material.Reveal());
         await Assert.That(uncertain.Observation.Version).IsEqualTo("1");
         await Assert.That((await fixture.Infisical.ReadAsync(fixture.InfisicalTarget("pending-canary"))).Status)
-            .IsEqualTo(SecretStatus.Absent);
+            .IsEqualTo(SecretStatus.Unknown);
         foreach (object model in selected.Cast<object>().Concat(results).Append(scenario))
         {
             await Assert.That(JsonSerializer.Serialize(model).Contains("canary", StringComparison.Ordinal)).IsFalse();
@@ -186,7 +186,10 @@ public sealed class ReviewedChangeTests
         await Assert.That(read.Material.Reveal()).IsEqualTo("material-canary");
         await Assert.That(read.Observation.Version).IsEqualTo(azure ? 1.ToString("x32") : "1");
         SecretReference queued = azure ? fixture.AzureTarget("queued") : fixture.InfisicalTarget("queued");
-        await Assert.That((await reader.ReadAsync(queued)).Status).IsEqualTo(SecretStatus.Absent);
+        var queuedRead = await reader.ReadAsync(queued);
+        await Assert.That(queuedRead.Status).IsEqualTo(azure ? SecretStatus.Absent : SecretStatus.Unknown);
+        if (!azure)
+            await Assert.That(queuedRead.Reason).IsEqualTo(SecretFailureReason.NotFoundOrInaccessible);
         // The consumer batch is single-run; this does not assert provider parity for unsent receipts.
         await Assert.That(async () => await scenario.ExecuteAsync()).Throws<InvalidOperationException>();
     }

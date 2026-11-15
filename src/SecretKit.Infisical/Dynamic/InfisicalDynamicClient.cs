@@ -96,7 +96,7 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
                 null, null, operationToken).ConfigureAwait(false);
             if (!response.IsSuccess)
             {
-                return SecretOutcome<InfisicalNativeList<InfisicalDynamicDefinition>>.Failure(response.Status, response.RetryAfter, response.Reason);
+                return response.ConvertFailure<InfisicalNativeList<InfisicalDynamicDefinition>>();
             }
             using JsonDocument document = response.Value;
             if (!Array(document.RootElement, "dynamicSecrets", out JsonElement items) ||
@@ -298,7 +298,7 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
                 DefinitionResult(response, definition.Target, definition.Id, receipt, definition.Provider);
             return result.IsSuccess
                 ? SecretOutcome<InfisicalDynamicDeletion>.Success(new(forceRecordRemoval, result.Value.Status))
-                : SecretOutcome<InfisicalDynamicDeletion>.Failure(result.Status, result.RetryAfter, result.Reason);
+                : result.ConvertFailure<InfisicalDynamicDeletion>();
         }
     }
 
@@ -326,7 +326,7 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
                 null, null, operationToken).ConfigureAwait(false);
             if (!response.IsSuccess)
             {
-                return SecretOutcome<InfisicalNativeList<InfisicalLeaseObservation>>.Failure(response.Status, response.RetryAfter, response.Reason);
+                return response.ConvertFailure<InfisicalNativeList<InfisicalLeaseObservation>>();
             }
             using JsonDocument document = response.Value;
             if (!Array(document.RootElement, "leases", out JsonElement items) || items.GetArrayLength() > _maximumItems)
@@ -375,7 +375,7 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
                 null, null, operationToken).ConfigureAwait(false);
             if (!response.IsSuccess)
             {
-                return SecretOutcome<InfisicalLeaseObservation>.Failure(response.Status, response.RetryAfter, response.Reason);
+                return response.ConvertFailure<InfisicalLeaseObservation>();
             }
             using JsonDocument document = response.Value;
             if (!Object(document.RootElement, "lease", out JsonElement lease) ||
@@ -441,7 +441,7 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
                 }), receipt, operationToken).ConfigureAwait(false);
             if (!response.IsSuccess)
             {
-                return SecretOutcome<InfisicalDatabaseLease>.Failure(response.Status, response.RetryAfter, response.Reason);
+                return response.ConvertFailure<InfisicalDatabaseLease>();
             }
             using JsonDocument document = response.Value;
             if (!Object(document.RootElement, "dynamicSecret", out JsonElement returned) ||
@@ -531,7 +531,7 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
                     }), receipt, operationToken).ConfigureAwait(false);
                 if (!response.IsSuccess)
                 {
-                    return SecretOutcome<InfisicalLeaseObservation>.Failure(response.Status, response.RetryAfter, response.Reason);
+                    return response.ConvertFailure<InfisicalLeaseObservation>();
                 }
                 using JsonDocument document = response.Value;
                 if (!Object(document.RootElement, "lease", out JsonElement returned) ||
@@ -607,7 +607,7 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
                     operationToken).ConfigureAwait(false);
                 if (!response.IsSuccess)
                 {
-                    return SecretOutcome<InfisicalDynamicDeletion>.Failure(response.Status, response.RetryAfter, response.Reason);
+                    return response.ConvertFailure<InfisicalDynamicDeletion>();
                 }
                 using JsonDocument document = response.Value;
                 if (!Object(document.RootElement, "lease", out JsonElement returned) ||
@@ -639,7 +639,7 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
     {
         if (!response.IsSuccess)
         {
-            return SecretOutcome<InfisicalDynamicDefinition>.Failure(response.Status, response.RetryAfter, response.Reason);
+            return response.ConvertFailure<InfisicalDynamicDefinition>();
         }
         using JsonDocument document = response.Value;
         if (!Object(document.RootElement, "dynamicSecret", out JsonElement returned) ||
@@ -782,7 +782,8 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
                 {
                     linked.Check();
                     return SecretOutcome<JsonDocument>.Failure(supplied.Status, supplied.RetryAfter,
-                        supplied.Reason == SecretFailureReason.None ? SecretFailureReason.CredentialUnavailable : supplied.Reason);
+                        supplied.Reason == SecretFailureReason.None ? SecretFailureReason.CredentialUnavailable : supplied.Reason,
+                        supplied.CorrelationId);
                 }
                 using InfisicalAccessToken access = supplied.Value;
                 linked.Check();
@@ -809,7 +810,7 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
                     {
                         400 or 422 => SecretStatus.Invalid,
                         401 or 403 => SecretStatus.Denied,
-                        404 => SecretStatus.Absent,
+                        404 => SecretStatus.Unknown,
                         409 => SecretStatus.Conflict,
                         429 => SecretStatus.Throttled,
                         >= 500 => SecretStatus.Unavailable,
@@ -818,9 +819,10 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
                     if (receipt is not null && (int)response.StatusCode is >= 400 and < 500)
                     {
                         receipt.Record(status == SecretStatus.Conflict ? DispatchEvidence.Conflict : DispatchEvidence.Rejected);
-                        return SecretOutcome<JsonDocument>.Failure(status, InfisicalOperationBudget.RetryAfter(response, _time));
                     }
-                    return Failure(status, receipt, retryAfter: InfisicalOperationBudget.RetryAfter(response, _time));
+                    if (receipt?.Evidence == DispatchEvidence.PossiblyDispatched) status = SecretStatus.Unknown;
+                    return await InfisicalFailureResponse.ReadAsync<JsonDocument>(response, _byteLimit, _time,
+                        status, cancellationToken: linked.Token).ConfigureAwait(false);
                 }
                 if (response.Content.Headers.ContentLength > _byteLimit)
                 {

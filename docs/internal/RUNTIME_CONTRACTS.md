@@ -134,6 +134,26 @@ or Unavailable; provider advice is clamped to 24 hours and never starts a retry.
 Success has no reason or advice. Unknown dispatched effects retain their original
 receipt; advisory timing cannot authorize mutation replay.
 
+Infisical resource 404s and visible-inventory omissions return Unknown with
+NotFoundOrInaccessible. Neither establishes resource absence or permits an
+optional Configuration selection to publish absence. Authentication fixed-route
+404s remain Unknown without inferring a missing identity. Core/Azure absence
+semantics remain provider-specific.
+
+Failures optionally carry a protected SecretCorrelationId. Its bounded ASCII
+syntax is not a nonsensitivity claim; only Reveal explicitly exports it.
+ConvertFailure<TResult> retains the same identifier, reason and advice.
+Success conversion is rejected without changing value ownership; Match and
+GetValueOrThrow do not export correlation. The Infisical decoder reads one
+bounded error body at depth 16, rejects duplicate/type-invalid known fields and
+maps only admitted classes. Messages/details are discarded; HTTP status and
+already-recorded effect evidence remain authoritative.
+
+Retry-After headers take precedence. Only a 429 with the exact documented
+English wait-message grammar can supply body advice, bounded to 24 hours.
+Malformed, negative, overflowing or arbitrary prose supplies no advice.
+No 503 body prose schedules or authorizes an operation.
+
 Expected provider outcomes would use bounded material-free states rather than arbitrary provider exception text. Success, absence, denied, unavailable, invalid, throttled, conflict, pending and unknown would be distinguishable where supported. Programming misuse would remain an argument/disposal error. Provider payloads, raw responses, credentials, sensitive addresses and vendor inner exceptions would not enter ordinary diagnostics.
 
 The caller would obtain a caller-held operation receipt before dispatch. This order is essential: cancellation after send could prevent a return value, so a receipt created only in a successful response could not preserve uncertainty. The receipt contract would describe dispatch/effect evidence only; it would not add a lifecycle-native feature to Core.

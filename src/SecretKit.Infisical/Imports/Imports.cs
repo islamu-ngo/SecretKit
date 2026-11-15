@@ -282,7 +282,7 @@ public sealed partial class InfisicalClient
                 return SecretOutcome<InfisicalImport>.Failure(SecretStatus.Invalid);
             }
             SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target, new(method), payload, authority, receipt, operationToken);
-            if (!outcome.IsSuccess) { return SecretOutcome<InfisicalImport>.Failure(outcome.Status, outcome.RetryAfter, outcome.Reason); }
+            if (!outcome.IsSuccess) { return outcome.ConvertFailure<InfisicalImport>(); }
             using JsonDocument document = outcome.Value;
             if (!NativeObject(document.RootElement, "secretImport", out JsonElement item) ||
                 ParseImport(item, address.FolderId) is not { } import ||
@@ -319,7 +319,7 @@ public sealed partial class InfisicalClient
             }
             SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target,
                 new(HttpMethod.Get), null, null, null, operationToken);
-            if (!outcome.IsSuccess) { return SecretOutcome<InfisicalNativeList<InfisicalImport>>.Failure(outcome.Status, outcome.RetryAfter, outcome.Reason); }
+            if (!outcome.IsSuccess) { return outcome.ConvertFailure<InfisicalNativeList<InfisicalImport>>(); }
             using JsonDocument document = outcome.Value;
             if (!NativeArray(document.RootElement, "secretImports", out JsonElement items))
             {
@@ -357,7 +357,7 @@ public sealed partial class InfisicalClient
             }
             SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target,
                 new(HttpMethod.Get, InfisicalNativeOperationKind.ReadImportedSecrets), null, null, null, operationToken);
-            if (!outcome.IsSuccess) { return SecretOutcome<InfisicalImportedSecrets>.Failure(outcome.Status, outcome.RetryAfter, outcome.Reason); }
+            if (!outcome.IsSuccess) { return outcome.ConvertFailure<InfisicalImportedSecrets>(); }
             using JsonDocument document = outcome.Value;
             if (!NativeArray(document.RootElement, "secrets", out JsonElement groups) || groups.GetArrayLength() > 1000)
             {

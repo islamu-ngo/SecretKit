@@ -46,10 +46,11 @@ public sealed class RuntimeManagementDependencyTests
         $"method {I}InfisicalTransportBinding::get_Requests [32;0;0]()->{H}HttpClient",
         $"method {I}InfisicalTransportBinding::Dispose [32;0;0]()->Void",
 
-        // One credential-to-publication budget and finite Retry-After parsing.
+        // One credential-to-publication budget and bounded private error projection.
         $"type {I}InfisicalOperation",
         $"type {I}InfisicalOperationBudget",
-        $"method {I}InfisicalOperationBudget::RetryAfter [0;0;2]({H}HttpResponseMessage,{S}TimeProvider)->{S}Nullable`1<{S}TimeSpan>",
+        $"type {I}InfisicalFailureResponse",
+        $"method {I}InfisicalFailureResponse::ReadAsync [16;1;7]({H}HttpResponseMessage,Int32,{S}TimeProvider,{C}SecretStatus,Boolean,{S}Action`1<Int32>,{S}Threading.CancellationToken)->{S}Threading.Tasks.ValueTask`1<{C}SecretOutcome`1<!!0>>",
         $"method {I}InfisicalOperationBudget::RunAsync [16;1;8]({S}TimeSpan,{S}TimeProvider,{S}Threading.CancellationToken,{S}Nullable`1<{I}InfisicalOperation>,{S}Func`2<{S}Threading.CancellationToken,{S}Threading.Tasks.ValueTask`1<{C}SecretOutcome`1<!!0>>>,{S}Func`1<{C}DispatchEvidence>,{S}Threading.CancellationToken,{I}InfisicalOperationObservation)->{S}Threading.Tasks.ValueTask`1<{C}SecretOutcome`1<!!0>>",
 
         // C14 reuses capture/deferral/observation, not the runtime diagnostic emitter.

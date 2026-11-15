@@ -33,7 +33,7 @@ public sealed class ConsoleDemoTests
     [Test]
     [Arguments("read", 200, "success", 0)]
     [Arguments("read", 403, "denied", 4)]
-    [Arguments("read", 404, "absent", 4)]
+    [Arguments("read", 404, "unknown", 4)]
     [Arguments("create", 200, "applied", 0)]
     [Arguments("update", 200, "applied", 0)]
     [Arguments("create", 403, "denied", 4)]

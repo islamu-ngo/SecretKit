@@ -230,7 +230,7 @@ public sealed class RotationOutcomeTests
     [Arguments(400, SecretStatus.Invalid, InfisicalRotationDispatch.Rejected)]
     [Arguments(401, SecretStatus.Denied, InfisicalRotationDispatch.Rejected)]
     [Arguments(403, SecretStatus.Denied, InfisicalRotationDispatch.Rejected)]
-    [Arguments(404, SecretStatus.Absent, InfisicalRotationDispatch.Rejected)]
+    [Arguments(404, SecretStatus.Unknown, InfisicalRotationDispatch.Rejected)]
     [Arguments(409, SecretStatus.Conflict, InfisicalRotationDispatch.Rejected)]
     [Arguments(422, SecretStatus.Invalid, InfisicalRotationDispatch.Rejected)]
     [Arguments(429, SecretStatus.Unknown, InfisicalRotationDispatch.ResponseUnknown)]

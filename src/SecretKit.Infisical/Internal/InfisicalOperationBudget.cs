@@ -167,7 +167,10 @@ internal sealed class InfisicalOperationBudget : IDisposable
                 result = await execute(budget.Token).ConfigureAwait(false);
                 try
                 {
-                    budget.Check();
+                    caller.ThrowIfCancellationRequested();
+                    shutdown.ThrowIfCancellationRequested();
+                    if (result.IsSuccess) budget.Check();
+                    else if (budget.Expired) observation.ObserveCancellation(InfisicalTermination.DeadlineExceeded);
                 }
                 catch
                 {

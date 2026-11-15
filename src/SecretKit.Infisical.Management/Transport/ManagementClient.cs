@@ -161,7 +161,7 @@ public sealed class ManagementClient
             if (!tokenOutcome.IsSuccess)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                return SecretOutcome<T>.Failure(tokenOutcome.Status, tokenOutcome.RetryAfter, tokenOutcome.Reason);
+                return tokenOutcome.ConvertFailure<T>();
             }
             using InfisicalAccessToken token = tokenOutcome.Value;
             cancellationToken.ThrowIfCancellationRequested();
@@ -205,7 +205,7 @@ public sealed class ManagementClient
                 {
                     HttpStatusCode.BadRequest or HttpStatusCode.UnprocessableEntity => SecretStatus.Invalid,
                     HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => SecretStatus.Denied,
-                    HttpStatusCode.NotFound => SecretStatus.Absent,
+                    HttpStatusCode.NotFound => SecretStatus.Unknown,
                     HttpStatusCode.Conflict or HttpStatusCode.PreconditionFailed => SecretStatus.Conflict,
                     HttpStatusCode.TooManyRequests => SecretStatus.Throttled,
                     HttpStatusCode.ServiceUnavailable => SecretStatus.Unavailable,
@@ -215,12 +215,14 @@ public sealed class ManagementClient
                 {
                     receipt?.Record(DispatchEvidence.Conflict);
                 }
-                else if (status is SecretStatus.Invalid or SecretStatus.Denied or SecretStatus.Absent or SecretStatus.Throttled)
+                else if (status is SecretStatus.Invalid or SecretStatus.Denied or SecretStatus.Throttled ||
+                    response.StatusCode == HttpStatusCode.NotFound)
                 {
                     receipt?.Record(DispatchEvidence.Rejected);
                 }
                 cancellationToken.ThrowIfCancellationRequested();
-                return SecretOutcome<T>.Failure(status, InfisicalOperationBudget.RetryAfter(response, _time));
+                return await InfisicalFailureResponse.ReadAsync<T>(response, _transport.ResponseLimit, _time,
+                    status, cancellationToken: cancellationToken).ConfigureAwait(false);
             }
             if (response.Content.Headers.ContentLength > _transport.ResponseLimit)
             {

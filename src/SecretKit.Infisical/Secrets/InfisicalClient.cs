@@ -105,7 +105,7 @@ public sealed partial class InfisicalClient : IInfisicalSecretReader, IAsyncDisp
                 .ConfigureAwait(false);
             return outcome.IsSuccess
                 ? SecretOutcome<SecretRead>.Success(new SecretRead(outcome.Value.Material, outcome.Value.Observation))
-                : SecretOutcome<SecretRead>.Failure(outcome.Status, outcome.RetryAfter, outcome.Reason);
+                : outcome.ConvertFailure<SecretRead>();
         }
     }
 
@@ -126,7 +126,7 @@ public sealed partial class InfisicalClient : IInfisicalSecretReader, IAsyncDisp
             return outcome.IsSuccess
                 ? SecretOutcome<InfisicalSecretRead>.Success(new InfisicalSecretRead(
                     outcome.Value.Material, outcome.Value.Observation, outcome.Value.Revision!))
-                : SecretOutcome<InfisicalSecretRead>.Failure(outcome.Status, outcome.RetryAfter, outcome.Reason);
+                : outcome.ConvertFailure<InfisicalSecretRead>();
         }
     }
 
@@ -155,7 +155,7 @@ public sealed partial class InfisicalClient : IInfisicalSecretReader, IAsyncDisp
             SecretOutcome<JsonDocument> outcome = await ReadDocumentAsync(request, linked).ConfigureAwait(false);
             if (!outcome.IsSuccess)
             {
-                return SecretOutcome<AcquiredRead>.Failure(outcome.Status, outcome.RetryAfter, outcome.Reason);
+                return outcome.ConvertFailure<AcquiredRead>();
             }
 
             using JsonDocument document = outcome.Value;
@@ -259,7 +259,7 @@ public sealed partial class InfisicalClient : IInfisicalSecretReader, IAsyncDisp
                 SecretOutcome<JsonDocument> outcome = await ReadDocumentAsync(request, linked).ConfigureAwait(false);
                 if (!outcome.IsSuccess)
                 {
-                    return SecretOutcome<SecretInventory>.Failure(outcome.Status, outcome.RetryAfter, outcome.Reason);
+                    return outcome.ConvertFailure<SecretInventory>();
                 }
 
                 using JsonDocument document = outcome.Value;
@@ -332,7 +332,8 @@ public sealed partial class InfisicalClient : IInfisicalSecretReader, IAsyncDisp
             budget.Check();
             if (!token.IsSuccess)
                 return SecretOutcome<JsonDocument>.Failure(token.Status, token.RetryAfter,
-                    token.Reason == SecretFailureReason.None ? SecretFailureReason.CredentialUnavailable : token.Reason);
+                    token.Reason == SecretFailureReason.None ? SecretFailureReason.CredentialUnavailable : token.Reason,
+                    token.CorrelationId);
             if (access!.ExpiresAt <= _time.GetUtcNow())
                 return SecretOutcome<JsonDocument>.Failure(SecretStatus.Expired, reason: SecretFailureReason.CredentialUnavailable);
             string bearer = access.Material.Reveal();
@@ -355,9 +356,8 @@ public sealed partial class InfisicalClient : IInfisicalSecretReader, IAsyncDisp
                     else status = SecretStatus.Unknown;
                 }
                 budget.Check();
-                return SecretOutcome<JsonDocument>.Failure(status,
-                    status is SecretStatus.Throttled or SecretStatus.Unavailable
-                        ? InfisicalOperationBudget.RetryAfter(response, _time) : null);
+                return await InfisicalFailureResponse.ReadAsync<JsonDocument>(response, _responseLimit,
+                    _time, status, cancellationToken: cancellationToken).ConfigureAwait(false);
             }
             if (response.Content.Headers.ContentLength > _responseLimit)
                 return DocumentFailure(SecretStatus.Invalid, SecretFailureReason.ResponseTooLarge, receipt);
@@ -409,7 +409,7 @@ public sealed partial class InfisicalClient : IInfisicalSecretReader, IAsyncDisp
     {
         400 or 422 => SecretStatus.Invalid,
         401 or 403 => SecretStatus.Denied,
-        404 => SecretStatus.Absent,
+        404 => SecretStatus.Unknown,
         409 => SecretStatus.Conflict,
         429 => SecretStatus.Throttled,
         >= 500 => SecretStatus.Unavailable,

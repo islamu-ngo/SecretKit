@@ -53,7 +53,7 @@ public sealed class InfisicalTestingFakesTests
         await Assert.That(inventory.IsComplete).IsFalse();
         await Assert.That(inventory.Items[0].Reference.BelongsTo(reader.Authority)).IsTrue();
         await Assert.That((await reader.CreateScope("other-project", "test-env").InspectAsync("first")).Status)
-            .IsEqualTo(SecretStatus.Absent);
+            .IsEqualTo(SecretStatus.Unknown);
         reader.Dispose();
         await Assert.That(async () => await reader.ReadAsync(inventory.Items[0].Reference))
             .Throws<ObjectDisposedException>();

@@ -123,7 +123,8 @@ public sealed partial class InfisicalClient
                     SecretStatus status = receipt.Evidence == DispatchEvidence.PossiblyDispatched
                         ? SecretStatus.Unknown : result.Status;
                     return SecretOutcome<InfisicalStaticChange>.Failure(status,
-                        status is SecretStatus.Throttled or SecretStatus.Unavailable ? result.RetryAfter : null, result.Reason);
+                        status is SecretStatus.Throttled or SecretStatus.Unavailable ? result.RetryAfter : null,
+                        result.Reason, result.CorrelationId);
                 }
 
                 using JsonDocument document = result.Value;

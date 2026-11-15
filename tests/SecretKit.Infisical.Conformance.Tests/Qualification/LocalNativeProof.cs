@@ -417,9 +417,12 @@ internal sealed partial class LocalNativeProof : IAsyncDisposable
         await using var client = new InfisicalClient(sandbox.Origin, setup,
             new InfisicalNetworkOptions { AllowLoopbackDevelopmentHttp = true });
         var reference = new SecretReference(client.Authority, new InfisicalSecretAddress(project, environment, folder, key));
-        var absent = await client.ReadNativeAsync(reference, token);
-        if (absent.IsSuccess) absent.Value.Dispose();
-        NativeWorkflow.Require(absent.Status == SecretStatus.Absent);
+        var prior = await client.ReadNativeAsync(reference, token);
+        if (prior.IsSuccess) prior.Value.Dispose();
+        // This is not absence proof. Only the explicit create-only operation
+        // below may establish a new fixture in this owner/run-specific namespace.
+        NativeWorkflow.Require(prior.Status == SecretStatus.Unknown &&
+            prior.Reason == SecretFailureReason.NotFoundOrInaccessible);
         var receipt = client.CreateReceipt(reference);
         int operation = Ledger.Begin("fixture", parent, [selection.OrganizationId, project, environment, folder, key]);
         Ledger.Effect(operation, DispatchEvidence.PossiblyDispatched);

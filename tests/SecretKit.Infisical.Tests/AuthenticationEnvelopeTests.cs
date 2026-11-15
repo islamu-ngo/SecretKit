@@ -1,11 +1,47 @@
 using System.Net;
 using System.Text;
+using System.Text.Json;
 using SecretKit.Core;
 
 namespace SecretKit.Infisical.Tests;
 
 public sealed class AuthenticationEnvelopeTests
 {
+    [Test]
+    [Arguments("universal")]
+    [Arguments("proof")]
+    public async Task NativeAuthenticationAttemptsRetainPrivateThrottleEvidence(string owner)
+    {
+        var clock = new InfisicalTransportOwnershipTests.ShutdownClock();
+        using var wire = new FailureEvidenceTests.Wire(_ => new HttpResponseMessage(HttpStatusCode.TooManyRequests)
+        {
+            Content = new StringContent("""{"reqId":"auth-private-canary","error":"RateLimitExceeded","statusCode":429,"message":"Rate limit exceeded. Please try again in 42 seconds"}""")
+        });
+        var network = new InfisicalNetworkOptions { Transport = InfisicalTransportOptions.HostControlled(wire) };
+        using var token = SecretMaterial.FromText("selected-token");
+        SecretOutcome<object> outcome;
+        if (owner == "universal")
+        {
+            using var client = new InfisicalUniversalAuthentication(new("https://auth.test"), network, clock);
+            var receipt = client.CreateReceipt();
+            outcome = (await client.LoginAsync("identity", token, receipt)).ConvertFailure<object>();
+            await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.Rejected);
+        }
+        else
+        {
+            using var client = new InfisicalProofAuthentication(new("https://auth.test"), network, clock);
+            using var proof = InfisicalLoginProof.Jwt("identity", token);
+            var receipt = client.CreateReceipt();
+            outcome = (await client.LoginAsync(proof, receipt)).ConvertFailure<object>();
+            await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.Rejected);
+        }
+        await Assert.That(outcome.Status).IsEqualTo(SecretStatus.Throttled);
+        await Assert.That(outcome.RetryAfter).IsEqualTo(TimeSpan.FromSeconds(42));
+        await Assert.That(outcome.CorrelationId!.Reveal()).IsEqualTo("auth-private-canary");
+        await Assert.That(JsonSerializer.Serialize(outcome).Contains("canary", StringComparison.Ordinal)).IsFalse();
+        await Assert.That(wire.Requests).IsEqualTo(1);
+    }
+
     [Test]
     [Arguments("universal", "type")]
     [Arguments("proof", "type")]

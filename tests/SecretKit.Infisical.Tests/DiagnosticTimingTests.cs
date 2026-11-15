@@ -393,6 +393,7 @@ public sealed class DiagnosticTimingTests
             _ => ValueTask.FromResult(SecretMaterial.FromText("bootstrap-canary")));
         Exception? callbackError = null;
         bool reentered = false;
+        var exported = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         using var capture = new Capture(ActivitySamplingResult.AllData, (phase, _) =>
         {
             if (phase != "stop" || reentered) return;
@@ -405,6 +406,7 @@ public sealed class DiagnosticTimingTests
                 runtime.StopAsync().WaitAsync(Bound).GetAwaiter().GetResult();
             }
             catch (Exception exception) { callbackError = exception; }
+            finally { exported.TrySetResult(); }
         });
         if (deferredRead)
         {
@@ -416,6 +418,7 @@ public sealed class DiagnosticTimingTests
             var result = await runtime.EnsureAuthenticatedAsync();
             await Assert.That(result.IsSuccess).IsTrue();
         }
+        await exported.Task.WaitAsync(Bound);
         await Assert.That(callbackError).IsNull();
         await Assert.That(reentered).IsTrue();
         await Assert.That(runtime.OpeningAttempt.LoginReceipt!.Evidence).IsEqualTo(DispatchEvidence.Applied);

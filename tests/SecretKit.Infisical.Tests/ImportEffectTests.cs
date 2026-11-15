@@ -27,7 +27,7 @@ public sealed class ImportEffectTests
         await Assert.That(observation.ImportCreated).IsEqualTo(InfisicalEffectEvidence.Observed);
         await Assert.That(observation.ReplicationRequested).IsTrue();
         await Assert.That(observation.Destination).IsEqualTo(InfisicalDestinationEvidence.Unknown);
-        await Assert.That(observation.DeliveryStatus).IsEqualTo(approvalPolicy ? SecretStatus.Absent : SecretStatus.Success);
+        await Assert.That(observation.DeliveryStatus).IsEqualTo(approvalPolicy ? SecretStatus.Unknown : SecretStatus.Success);
         await Assert.That(observation.FreshIntendedReadSucceeded).IsEqualTo(!approvalPolicy);
         // Even the server's success report cannot establish approval policy merge/completeness.
         await Assert.That(observation.ReplicationReportedSuccessful).IsTrue();
@@ -81,7 +81,7 @@ public sealed class ImportEffectTests
         await Assert.That(JsonSerializer.Serialize(grouped).Contains(state.SourceValue, StringComparison.Ordinal)).IsFalse();
         await Assert.That((await client.DeleteImportAsync(byId, admin, client.CreateReceipt(byId))).Value.Id).IsEqualTo(import.Id);
         await Assert.That((await client.ListImportsAsync(create)).Value.Items.Count).IsEqualTo(0);
-        await Assert.That((await client.GetImportAsync(byId)).Status).IsEqualTo(SecretStatus.Absent);
+        await Assert.That((await client.GetImportAsync(byId)).Status).IsEqualTo(SecretStatus.Unknown);
     }
 
     [Test]
@@ -148,7 +148,7 @@ public sealed class ImportEffectTests
         await Assert.That(result.AllApplied).IsEqualTo(!pendingApproval);
         await Assert.That(result.ApprovalPending).IsEqualTo(pendingApproval);
         await Assert.That(receipt.Evidence).IsEqualTo(pendingApproval ? DispatchEvidence.Pending : DispatchEvidence.Applied);
-        await Assert.That((await client.ReadAsync(SecretTarget(client))).Status).IsEqualTo(pendingApproval ? SecretStatus.Absent : SecretStatus.Success);
+        await Assert.That((await client.ReadAsync(SecretTarget(client))).Status).IsEqualTo(pendingApproval ? SecretStatus.Unknown : SecretStatus.Success);
         await Assert.That(material.Reveal()).IsEqualTo(state.SourceValue);
         await Assert.That(JsonSerializer.Serialize(input).Contains(state.SourceValue, StringComparison.Ordinal)).IsFalse();
     }

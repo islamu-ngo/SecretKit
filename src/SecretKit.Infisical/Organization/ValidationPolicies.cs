@@ -351,7 +351,7 @@ public sealed partial class InfisicalClient
                 return SecretOutcome<InfisicalValidationRule>.Failure(SecretStatus.Invalid);
             }
             SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target, new(method), payload, authority, receipt, operationToken);
-            if (!outcome.IsSuccess) { return SecretOutcome<InfisicalValidationRule>.Failure(outcome.Status, outcome.RetryAfter, outcome.Reason); }
+            if (!outcome.IsSuccess) { return outcome.ConvertFailure<InfisicalValidationRule>(); }
             using JsonDocument document = outcome.Value;
             if (!NativeObject(document.RootElement, "secretValidationRule", out JsonElement item) ||
                 ParseValidationRule(item, address.ProjectId, address.Kind) is not { } rule ||
@@ -390,7 +390,7 @@ public sealed partial class InfisicalClient
             var operation = new InfisicalNativeOperation(HttpMethod.Get,
                 allKinds ? InfisicalNativeOperationKind.ListValidationRules : InfisicalNativeOperationKind.Standard);
             SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target, operation, null, null, null, operationToken);
-            if (!outcome.IsSuccess) { return SecretOutcome<InfisicalNativeList<InfisicalValidationRule>>.Failure(outcome.Status, outcome.RetryAfter, outcome.Reason); }
+            if (!outcome.IsSuccess) { return outcome.ConvertFailure<InfisicalNativeList<InfisicalValidationRule>>(); }
             using JsonDocument document = outcome.Value;
             if (!NativeArray(document.RootElement, "secretValidationRules", out JsonElement items))
             {

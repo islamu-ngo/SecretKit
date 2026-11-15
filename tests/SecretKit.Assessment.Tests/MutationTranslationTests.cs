@@ -66,7 +66,8 @@ public sealed class MutationTranslationTests
             }
             else
             {
-                await Assert.That(read.Status).IsEqualTo(SecretStatus.Absent);
+                await Assert.That(read.Status).IsEqualTo(SecretStatus.Unknown);
+                await Assert.That(read.Reason).IsEqualTo(SecretFailureReason.NotFoundOrInaccessible);
             }
         }
 

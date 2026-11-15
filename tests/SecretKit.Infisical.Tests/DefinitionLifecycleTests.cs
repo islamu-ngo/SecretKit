@@ -71,7 +71,7 @@ public sealed class DefinitionLifecycleTests
         await Assert.That(wire.TokenCalls).IsEqualTo(tokens);
         var cleanup = new InfisicalDynamicMutationReceipt(first.Reference, InfisicalDynamicOperation.Revoke);
         var cleaned = await client.RevokeLeaseAsync(first.Reference, cleanup);
-        await Assert.That(cleaned.Status).IsEqualTo(rename ? SecretStatus.Success : SecretStatus.Absent);
+        await Assert.That(cleaned.Status).IsEqualTo(rename ? SecretStatus.Success : SecretStatus.Unknown);
         await Assert.That(wire.TokenCalls).IsEqualTo(tokens + 1);
         await Assert.That(cleanup.Evidence).IsEqualTo(rename ? DispatchEvidence.Applied : DispatchEvidence.Rejected);
         await Assert.That(second.State).IsEqualTo(InfisicalLeaseLocalState.EffectUnknown);

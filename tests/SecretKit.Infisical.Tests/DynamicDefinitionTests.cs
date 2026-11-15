@@ -285,7 +285,7 @@ public sealed class DynamicDefinitionTests
         var delete = new InfisicalDynamicMutationReceipt(updated.Target, InfisicalDynamicOperation.DeleteDefinition);
         InfisicalDynamicDeletion result = (await client.DeleteDefinitionAsync(updated, delete)).Value;
         await Assert.That(result.ExternalRevocationVerified).IsFalse();
-        await Assert.That((await client.InspectDefinitionAsync(updated.Target)).Status).IsEqualTo(SecretStatus.Absent);
+        await Assert.That((await client.InspectDefinitionAsync(updated.Target)).Status).IsEqualTo(SecretStatus.Unknown);
         await Assert.That(wire.LeaseCount).IsEqualTo(0);
         await Assert.That(wire.DefinitionCount).IsEqualTo(0);
         await Assert.That(delete.Evidence).IsEqualTo(DispatchEvidence.Applied);
@@ -349,7 +349,7 @@ public sealed class DynamicDefinitionTests
         await Assert.That(updated.Id).IsEqualTo(original.Id);
         await Assert.That(updated.Target.Name).IsEqualTo("renamed");
         await Assert.That(updated.MaximumTtl is null).IsTrue();
-        await Assert.That((await client.InspectDefinitionAsync(original.Target)).Status).IsEqualTo(SecretStatus.Absent);
+        await Assert.That((await client.InspectDefinitionAsync(original.Target)).Status).IsEqualTo(SecretStatus.Unknown);
         await Assert.That(wire.Inputs("renamed").GetProperty("password").GetString()).IsEqualTo(material);
         await Assert.That(JsonSerializer.Serialize(patch).Contains(material, StringComparison.Ordinal)).IsFalse();
         await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.Applied);

@@ -173,6 +173,86 @@ public sealed class LocalNativeProofTests
         new string('a', 40), SecretKit.Release.Manifest.Hash("controlled-cohort"u8.ToArray()),
         "10.0.999", Environment.Version.ToString(), System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier);
 
+    [Test]
+    [Arguments("present")]
+    [Arguments("denied")]
+    [Arguments("malformed")]
+    public async Task FixturePreReadPresenceDenialAndUnrelatedFailurePreventCreation(string condition)
+    {
+        var backend = new CausalBackend(new ProofTime());
+        int creates = 0;
+        await using var server = new ProofServer((method, uri, headers, body) =>
+        {
+            if (uri.AbsolutePath.StartsWith("/api/v4/secrets/", StringComparison.Ordinal))
+            {
+                if (method == "POST") creates++;
+                if (method == "GET")
+                {
+                    if (condition == "denied") return (403, new { });
+                    if (condition == "malformed") return (200, new { });
+                    var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
+                    return (200, new
+                    {
+                        secret = new
+                        {
+                            id = "existing",
+                            workspace = query["projectId"],
+                            environment = query["environment"],
+                            secretPath = query["secretPath"],
+                            secretKey = Uri.UnescapeDataString(uri.AbsolutePath.Split('/')[^1]),
+                            secretValue = "preexisting-canary",
+                            secretValueHidden = false,
+                            type = "shared",
+                            version = 1
+                        }
+                    });
+                }
+            }
+            return backend.Handle(method, uri, headers, body);
+        });
+        using var sandbox = Sandbox(server.Origin);
+        await using var proof = new LocalNativeProof(sandbox, Selection(server.Origin), LocalProfileAdmissionTests.Binding);
+
+        await Assert.That(async () => await proof.ProduceAsync(CancellationToken.None)).Throws<InvalidOperationException>();
+        await proof.CleanupAsync(CancellationToken.None);
+
+        await Assert.That(creates).IsEqualTo(0);
+        await Assert.That(backend.OwnedResourcesRemain).IsFalse();
+    }
+
+    [Test]
+    public async Task FixtureCreationCollisionCannotOverwriteOrAdoptAnExistingResource()
+    {
+        var backend = new CausalBackend(new ProofTime());
+        Uri? collided = null;
+        var setupHeaders = new Dictionary<string, string> { ["Authorization"] = "Bearer setup-token-canary" };
+        await using var server = new ProofServer((method, uri, headers, body) =>
+        {
+            if (method == "POST" && uri.AbsolutePath.StartsWith("/api/v4/secrets/", StringComparison.Ordinal) && collided is null)
+            {
+                collided = uri;
+                JsonNode existing = JsonNode.Parse(body)!;
+                existing["secretValue"] = "preexisting-canary";
+                backend.Handle(method, uri, headers, existing.ToJsonString());
+            }
+            return backend.Handle(method, uri, headers, body);
+        });
+        using var sandbox = Sandbox(server.Origin);
+        await using var proof = new LocalNativeProof(sandbox, Selection(server.Origin), LocalProfileAdmissionTests.Binding);
+
+        await Assert.That(async () => await proof.ProduceAsync(CancellationToken.None)).Throws<InvalidOperationException>();
+        await proof.CleanupAsync(CancellationToken.None);
+
+        await Assert.That(collided).IsNotNull();
+        var selection = Selection(server.Origin);
+        var query = new UriBuilder(collided!) { Query = $"projectId={selection.ProjectId}&environment={selection.Environment}&secretPath={Uri.EscapeDataString(selection.Folder)}" };
+        var observed = backend.Handle("GET", query.Uri, setupHeaders, "");
+        JsonNode retained = JsonSerializer.SerializeToNode(observed.Item2)!["secret"]!;
+        await Assert.That(observed.Item1).IsEqualTo(200);
+        await Assert.That(retained["secretValue"]!.GetValue<string>()).IsEqualTo("preexisting-canary");
+        await Assert.That(retained["version"]!.GetValue<int>()).IsEqualTo(1);
+    }
+
     private sealed class EnterpriseFixture : IAsyncDisposable
     {
         internal readonly ProofTime Clock = new();
@@ -580,7 +660,8 @@ public sealed class LocalNativeProofTests
             new InfisicalSecretAddress(input.Settings.ProjectId, input.Settings.Environment,
                 input.Settings.Folder, input.Settings.ApprovalKey!));
         var before = await witness.ReadNativeAsync(approvalReference, CancellationToken.None);
-        await Assert.That(before.Status).IsEqualTo(SecretStatus.Absent);
+        await Assert.That(before.Status).IsEqualTo(SecretStatus.Unknown);
+        await Assert.That(before.Reason).IsEqualTo(SecretFailureReason.NotFoundOrInaccessible);
         proof.BeginChild();
         var report = NativeWorkflow.EmptyReport(input);
         await NativeWorkflow.ExecuteAsync(input, report, CancellationToken.None, () => Task.CompletedTask,
@@ -593,7 +674,11 @@ public sealed class LocalNativeProofTests
         var after = await witness.ReadNativeAsync(approvalReference, CancellationToken.None);
         await Assert.That(after.IsSuccess).IsEqualTo(applyDespitePending);
         if (after.IsSuccess) after.Value.Dispose();
-        else await Assert.That(after.Status).IsEqualTo(SecretStatus.Absent);
+        else
+        {
+            await Assert.That(after.Status).IsEqualTo(SecretStatus.Unknown);
+            await Assert.That(after.Reason).IsEqualTo(SecretFailureReason.NotFoundOrInaccessible);
+        }
         await LocalProfileConformance.ReconcileCleanupAsync(report, () => proof.RemoveSecretAsync(input.Settings.ProjectId,
             input.Settings.Environment, input.Settings.Folder, input.Settings.WriteKey, CancellationToken.None),
             () => Task.CompletedTask);
@@ -971,6 +1056,7 @@ public sealed class LocalNativeProofTests
                 var target = (project, environment, folder, key);
                 if (method is "POST" or "PATCH")
                 {
+                    if (method == "POST" && values.ContainsKey(target)) return (409, new { });
                     bool pending = SubmitApproval && key == "SDK_12345678_APPROVAL";
                     if (pending && !ApplyDespitePending)
                     {

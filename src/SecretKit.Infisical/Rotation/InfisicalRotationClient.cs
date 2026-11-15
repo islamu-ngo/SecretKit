@@ -153,7 +153,7 @@ public sealed class InfisicalRotationClient : IDisposable, IAsyncDisposable
                 operationToken).ConfigureAwait(false);
             if (!response.IsSuccess)
             {
-                return SecretOutcome<InfisicalNativeList<InfisicalRotationProgress>>.Failure(response.Status, response.RetryAfter, response.Reason);
+                return response.ConvertFailure<InfisicalNativeList<InfisicalRotationProgress>>();
             }
             using JsonDocument document = response.Value;
             if (!ObjectProperty(document.RootElement, "secretRotations", JsonValueKind.Array, out var items))
@@ -239,7 +239,7 @@ public sealed class InfisicalRotationClient : IDisposable, IAsyncDisposable
                 .ConfigureAwait(false);
             if (!outcome.IsSuccess)
             {
-                return SecretOutcome<InfisicalRotationProgress>.Failure(outcome.Status, outcome.RetryAfter, outcome.Reason);
+                return outcome.ConvertFailure<InfisicalRotationProgress>();
             }
             using JsonDocument document = outcome.Value;
             if (!ObjectProperty(document.RootElement, "secretRotation", JsonValueKind.Object, out var rotation) ||
@@ -345,7 +345,7 @@ public sealed class InfisicalRotationClient : IDisposable, IAsyncDisposable
                 {
                     if (_disposed) return SecretOutcome<JsonDocument>.Failure(SecretStatus.Invalid);
                 }
-                return SecretOutcome<JsonDocument>.Failure(tokenOutcome.Status, tokenOutcome.RetryAfter, tokenOutcome.Reason);
+                return tokenOutcome.ConvertFailure<JsonDocument>();
             }
             using var token = tokenOutcome.Value;
             cancellationToken.ThrowIfCancellationRequested();
@@ -381,7 +381,7 @@ public sealed class InfisicalRotationClient : IDisposable, IAsyncDisposable
                 200 => SecretStatus.Success,
                 400 or 422 => SecretStatus.Invalid,
                 401 or 403 => SecretStatus.Denied,
-                404 => SecretStatus.Absent,
+                404 => SecretStatus.Unknown,
                 409 => SecretStatus.Conflict,
                 429 => SecretStatus.Throttled,
                 >= 500 => SecretStatus.Unavailable,
@@ -389,15 +389,14 @@ public sealed class InfisicalRotationClient : IDisposable, IAsyncDisposable
             };
             if (status != SecretStatus.Success)
             {
-                if (action is not null && status is SecretStatus.Invalid or SecretStatus.Denied or
-                    SecretStatus.Absent or SecretStatus.Conflict)
+                if (action is not null && (status is SecretStatus.Invalid or SecretStatus.Denied or
+                    SecretStatus.Conflict || (int)response.StatusCode == 404))
                 {
                     receipt!.Reject();
                 }
                 if (receipt?.Dispatch == InfisicalRotationDispatch.ResponseUnknown) status = SecretStatus.Unknown;
-                return SecretOutcome<JsonDocument>.Failure(status,
-                    status is SecretStatus.Throttled or SecretStatus.Unavailable
-                        ? InfisicalOperationBudget.RetryAfter(response, _time) : null);
+                return await InfisicalFailureResponse.ReadAsync<JsonDocument>(response, _maximumResponseBytes,
+                    _time, status, cancellationToken: cancellationToken).ConfigureAwait(false);
             }
             if (response.Content.Headers.ContentLength > _maximumResponseBytes)
             {
