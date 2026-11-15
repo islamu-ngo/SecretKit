@@ -26,6 +26,13 @@ compatibility aliases and obsolete-contract preservation are not requirements.
 
 ## Existing state versus required work
 
+The [operator host guide](../public/interactive-hosts.md) and nonpackable
+`Infisical.OperatorWorkflow` sample compose existing native/Management seams
+for explicit review, bounded metadata recheck, bulk apply, intended-identity
+delivery and sign-out. Public Consumer tests drive its actual entrypoint and
+folder/delete recipes using deterministic handlers. These offline source
+examples do not close installed-package, native or hosted-platform gates.
+
 The native package now exposes qualified raw, non-imported reads and opaque
 resource revisions. Common reads validate returned scope contradictions without
 inventing native evidence. Token-bound lifetime handoff, caller-driven

@@ -141,6 +141,13 @@
           "TUnit.Core": "1.73.19"
         }
       },
+      "infisical.operatorworkflow": {
+        "type": "Project",
+        "dependencies": {
+          "SecretKit.Infisical": "[0.1.0-preview.1, )",
+          "SecretKit.Infisical.Management": "[0.1.0-preview.1, )"
+        }
+      },
       "runtimeconfiguration": {
         "type": "Project",
         "dependencies": {
@@ -164,6 +171,13 @@
         "dependencies": {
           "Refit": "[16.3.0, )",
           "SecretKit.Core": "[0.1.0-preview.1, )"
+        }
+      },
+      "secretkit.infisical.management": {
+        "type": "Project",
+        "dependencies": {
+          "Refit": "[16.3.0, )",
+          "SecretKit.Infisical": "[0.1.0-preview.1, )"
         }
       },
       "Microsoft.Extensions.Configuration": {

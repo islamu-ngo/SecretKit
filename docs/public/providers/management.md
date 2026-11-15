@@ -15,6 +15,13 @@ receipts before dispatch. Runtime lifecycle remains native:
 
 ## Infisical administration
 
+The [interactive operator example](../interactive-hosts.md) reads
+`ProjectSummary.AutoCapitalization` through explicitly selected Management
+authority. Omitted/null/false/true remain distinct; unknown required policy
+blocks that host's automatic apply. Canonical key review and rotation checks
+are host policy, not hidden runtime Management calls. Neither this setting nor
+an admin inventory proves intended-identity delivery, CAS or a rotation lock.
+
 All types in this section are in `SecretKit.Infisical.Management`.
 `ManagementTransport(Uri origin, InfisicalNetworkOptions? network = null)`
 selects the shared fixed-origin safe or explicit host-controlled binding.

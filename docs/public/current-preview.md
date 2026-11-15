@@ -21,6 +21,14 @@ compatibility.** Package presence does not mean complete provider support.
 
 ## Recent source verification
 
+The November 15 [operator host example](interactive-hosts.md) adds a nonpackable
+offline sample and public-seam Consumer tests for capitalization/rotation
+preflight, explicit folder creation, one-item bulk deletion and the actual
+review/apply/readiness/sign-out entrypoint. It preserves pending, partial and
+uncertain receipts without replay. These source workflows are separate from
+installed archive, live-provider and hosted-platform qualification; no new
+native result or production-readiness claim follows.
+
 The November 5 documentation inspection records the implemented
 [enterprise hardening contracts](../internal/adr/ADR-005-enterprise-hardening-contracts.md):
 operation-specific strict response acceptance, explicit identity replacement,

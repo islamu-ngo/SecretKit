@@ -33,6 +33,7 @@ available public NuGet release or certify a provider deployment.
 | Read a secret or inspect metadata | [Provider guides](providers/README.md) |
 | Collect required settings and export configuration deliberately | [Configuration and runtime](configuration-and-runtime.md) |
 | Supply credentials, maintain a token, or recover after token loss | [Authentication and hosting](authentication-and-hosting.md) |
+| Compose an interactive operator workflow with reviewed writes | [Interactive hosts](interactive-hosts.md) |
 | Use selected provider-native lifecycle or administration APIs | [Provider guides](providers/README.md), [management](providers/management.md) |
 | Run a console, worker, or loopback web consumer | [Demos and recovery](demos-and-recovery.md) |
 | Handle a failed read, uncertain write, or startup failure | [Troubleshooting](troubleshooting.md) |

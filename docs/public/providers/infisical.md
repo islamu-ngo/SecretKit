@@ -12,6 +12,14 @@ shared-secret writes and the native organization/import operations below. Use
 the separate dynamic and rotation clients for their native lifecycle contracts.
 Administration factories live in [the management package](management.md).
 
+For an operator workflow, follow [interactive hosts](../interactive-hosts.md).
+Native inventory is value-free evidence, not readiness or ACL completeness.
+Automatic apply in that example requires direct targets, established revisions
+and explicitly false rotation ownership; imported targets and null rotation
+block it. A fresh revision recheck races with server changes and is not CAS or
+a guaranteed rotation lock. Folder creation and one-item bulk deletion retain
+their own receipts; pending, partial or uncertain application never authorizes replay.
+
 ## Construct a client and bind an address
 
 The read-client constructor is:
@@ -118,6 +126,7 @@ and byte allowance cover all success, failure and discarded-field bodies.
 Missing ancestry, revision or import provenance and exhausted bounds remain
 incomplete. Completeness describes the selected visible view, never hidden
 resource absence, permission to read values or an atomic snapshot.
+See [interactive hosts](../interactive-hosts.md) for reviewed apply policy.
 
 ## Selected shared-secret mutations
 
