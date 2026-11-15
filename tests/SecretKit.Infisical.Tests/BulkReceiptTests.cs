@@ -13,6 +13,7 @@ public sealed class BulkReceiptTests
     [Arguments("duplicate-field")]
     [Arguments("malformed")]
     [Arguments("nonpositive-version")]
+    [Arguments("case-changed")]
     public async Task FirstSupportedRowRemainsObservableWhenLaterRowContradicts(string failure)
     {
         const string first = """{"secretKey":"first","type":"shared","workspace":"project","environment":"dev","version":1}""";
@@ -22,6 +23,7 @@ public sealed class BulkReceiptTests
             "duplicate-field" => """{"secretKey":"second","type":"shared","workspace":"project","environment":"dev","version":1,"version":2}""",
             "malformed" => "null",
             "nonpositive-version" => """{"secretKey":"second","type":"shared","workspace":"project","environment":"dev","version":0}""",
+            "case-changed" => """{"secretKey":"SECOND","type":"shared","workspace":"project","environment":"dev","version":1}""",
             _ => """{"secretKey":"foreign","type":"shared","workspace":"project","environment":"dev","version":1}"""
         };
         using var wire = new BulkWire("{\"secrets\":[" + first + "," + later + "]}");
@@ -34,7 +36,7 @@ public sealed class BulkReceiptTests
         var result = await client.CreateSecretsAsync(target, inputs, Phase5TestSupport.Admin(client), receipt);
         await Assert.That(wire.Committed).IsTrue();
         await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.PossiblyDispatched);
-        await Assert.That(result.Status).IsEqualTo(SecretStatus.Invalid);
+        await Assert.That(result.Status).IsEqualTo(SecretStatus.Unknown);
         await Assert.That(receipt.Items[0].Evidence).IsEqualTo(DispatchEvidence.Applied);
         await Assert.That(receipt.Items[0].Version).IsEqualTo("1");
         await Assert.That(receipt.Items[1].Evidence).IsEqualTo(DispatchEvidence.PossiblyDispatched);

@@ -458,7 +458,7 @@
     },
     {
       "file": "src/SecretKit.Infisical/Secrets/InfisicalStaticChanges.cs",
-      "sha256": "fe92e8dff9d16fe47a327403678c548fb085fe1e1db19ba915d0314a2a930559"
+      "sha256": "4e2b2cc3e5d62e7841041ee81a84275090357d19458e5a0f307ea6faa44ffb93"
     },
     {
       "file": "src/SecretKit.Infisical/Secrets/InfisicalStaticWire.cs",
@@ -466,7 +466,7 @@
     },
     {
       "file": "src/SecretKit.Infisical/Secrets/NativeBulk.cs",
-      "sha256": "4bd99f336467213508192bc6949a4caf29bf97eade98c1ca7b0713a2f54b355c"
+      "sha256": "8005144dd7e31f9959cf7d6f376cd96a223bd6c291cc22ff4445a96aa6619ef0"
     },
     {
       "file": "src/SecretKit.Infisical/Transport/InfisicalNativeRequestIntent.cs",

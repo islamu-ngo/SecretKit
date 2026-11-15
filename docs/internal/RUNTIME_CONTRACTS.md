@@ -170,6 +170,11 @@ English wait-message grammar can supply body advice, bounded to 24 hours.
 Malformed, negative, overflowing or arbitrary prose supplies no advice.
 No 503 body prose schedules or authorizes an operation.
 
+After dispatch, single or bulk acknowledgements with mismatched coordinates,
+case-changed keys or malformed correlation return Unknown. Valid earlier bulk
+rows retain their established per-item evidence. Pending is never promoted to
+Applied and uncertain writes are not replayed.
+
 Expected provider outcomes would use bounded material-free states rather than arbitrary provider exception text. Success, absence, denied, unavailable, invalid, throttled, conflict, pending and unknown would be distinguishable where supported. Programming misuse would remain an argument/disposal error. Provider payloads, raw responses, credentials, sensitive addresses and vendor inner exceptions would not enter ordinary diagnostics.
 
 The caller would obtain a caller-held operation receipt before dispatch. This order is essential: cancellation after send could prevent a return value, so a receipt created only in a successful response could not preserve uncertainty. The receipt contract would describe dispatch/effect evidence only; it would not add a lifecycle-native feature to Core.

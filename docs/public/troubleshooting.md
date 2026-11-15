@@ -71,6 +71,11 @@ or persisted journal. Do not reset it, reuse it for a different reference, or
 retry an uncertain mutation to learn whether the first one worked. Readback can
 show current state without attributing a change to this request.
 
+A returned key with different capitalization does not prove the requested
+write. Mismatched single/bulk acknowledgements return Unknown and retain their
+original dispatch evidence. Previously established per-item effects remain
+known even when a later batch row is malformed.
+
 For console/worker/web exit categories and drain failures, use
 [demos and recovery](demos-and-recovery.md#interpret-outcomes-and-recover).
 

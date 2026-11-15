@@ -424,7 +424,7 @@ public sealed partial class InfisicalClient
                 root.EnumerateObject().Select(property => property.Name).Distinct(StringComparer.Ordinal).Count() !=
                     root.EnumerateObject().Count() ||
                 root.EnumerateObject().Any(property => property.Name != "secrets" && !UniqueBulkProperties(property.Value)))
-                return SecretOutcome<InfisicalBulkObservation>.Failure(SecretStatus.Invalid);
+                return SecretOutcome<InfisicalBulkObservation>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.InvalidResponse);
             if (root.ValueKind == JsonValueKind.Object && root.TryGetProperty("approval", out JsonElement approval))
             {
                 if (approval.ValueKind != JsonValueKind.Object || root.TryGetProperty("secrets", out _) ||
@@ -457,7 +457,7 @@ public sealed partial class InfisicalClient
                         (path.ValueKind != JsonValueKind.String || path.GetString() != address.Folder) ||
                     Version(item) is not { } version)
                 {
-                    return SecretOutcome<InfisicalBulkObservation>.Failure(SecretStatus.Invalid);
+                    return SecretOutcome<InfisicalBulkObservation>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.InvalidResponse);
                 }
                 receipt.RecordItem(index, DispatchEvidence.Applied, version);
             }

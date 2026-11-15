@@ -139,7 +139,7 @@ application activation is performed. See
 
 Applied static responses require returned key, workspace, environment and a
 positive integral version. Missing or malformed required evidence is Unknown;
-contradictory keys/scope and nonpositive versions are Invalid. Returned
+contradictory keys/scope and nonpositive versions also remain Unknown. Returned
 `secretPath` and `type`, when present, must match; omission stays unobserved and
 is not filled from the request. A provider may have acted even when its response
 is rejected, so the receipt remains PossiblyDispatched rather than Applied.

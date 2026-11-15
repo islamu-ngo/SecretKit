@@ -168,7 +168,7 @@ public sealed partial class InfisicalClient
                     secret.TryGetProperty("version", out JsonElement returnedVersion) &&
                         returnedVersion.ValueKind == JsonValueKind.Number &&
                         returnedVersion.TryGetInt32(out int number) && number <= 0)
-                    return SecretOutcome<InfisicalStaticChange>.Failure(SecretStatus.Invalid);
+                    return SecretOutcome<InfisicalStaticChange>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.InvalidResponse);
 
                 if (Version(secret) is not { } version)
                     return SecretOutcome<InfisicalStaticChange>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.InvalidResponse);
