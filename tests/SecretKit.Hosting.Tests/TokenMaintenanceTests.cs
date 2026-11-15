@@ -38,7 +38,7 @@ public sealed class TokenMaintenanceTests
         var session = Session(time, wire);
         var helper = new InfisicalAuthenticationMaintenance(session, TimeSpan.FromSeconds(5));
         using var independent = new CancellationTokenSource();
-        Task<SecretStatus> renewal = session.RenewAsync().AsTask();
+        Task<SecretOutcome<InfisicalTokenRenewal>> renewal = session.RenewAsync().AsTask();
         Task? stop = null;
         try
         {
@@ -55,7 +55,7 @@ public sealed class TokenMaintenanceTests
             await Assert.That(async () => await cancelledWait.WaitAsync(TimeSpan.FromSeconds(5)))
                 .Throws<OperationCanceledException>();
             await Assert.That(session.State).IsEqualTo(InfisicalTokenSessionState.Stopped);
-            await Assert.That(async () => await session.RenewAsync()).Throws<ObjectDisposedException>();
+            await Assert.That(async () => (await session.RenewAsync()).Status).Throws<ObjectDisposedException>();
             time.Advance(TimeSpan.FromSeconds(5));
             await Assert.That(async () => await stop.WaitAsync(TimeSpan.FromSeconds(5))).Throws<TimeoutException>();
             await Assert.That(stop.IsFaulted).IsTrue();
@@ -146,7 +146,7 @@ public sealed class TokenMaintenanceTests
             return Json("late-faulted");
         });
         session = Session(time, wire);
-        Task<SecretStatus> renewal = session.RenewAsync().AsTask();
+        Task<SecretOutcome<InfisicalTokenRenewal>> renewal = session.RenewAsync().AsTask();
         Task? stop = null;
         try
         {
@@ -211,7 +211,7 @@ public sealed class TokenMaintenanceTests
         await Assert.That(session.State).IsEqualTo(InfisicalTokenSessionState.RenewalDue);
         await Assert.That(session.LastRenewal).IsNull();
 
-        await Assert.That(await session.RenewAsync()).IsEqualTo(SecretStatus.Success);
+        await Assert.That((await session.RenewAsync()).Status).IsEqualTo(SecretStatus.Success);
         using var renewed = (await session.GetTokenAsync(CancellationToken.None)).Value;
         await Assert.That(renewed.Material.Reveal()).IsEqualTo("renewed");
     }
@@ -234,15 +234,19 @@ public sealed class TokenMaintenanceTests
             return await response.Task.WaitAsync(token);
         }));
         using var waiter = new CancellationTokenSource();
-        Task<SecretStatus> first = session.RenewAsync(waiter.Token).AsTask();
+        Task<SecretOutcome<InfisicalTokenRenewal>> first = session.RenewAsync(waiter.Token).AsTask();
         await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
         var receipt = session.LastRenewal!;
-        Task<SecretStatus> second = session.RenewAsync().AsTask();
+        Task<SecretOutcome<InfisicalTokenRenewal>> second = session.RenewAsync().AsTask();
+        Task<SecretOutcome<InfisicalTokenRenewal>> third = session.RenewAsync().AsTask();
 
         waiter.Cancel();
         await Assert.That(async () => await first).Throws<OperationCanceledException>();
         response.SetResult(Json("replacement"));
-        await Assert.That(await second).IsEqualTo(SecretStatus.Success);
+        var shared = await second;
+        await Assert.That(shared.Status).IsEqualTo(SecretStatus.Success);
+        await Assert.That(shared).IsSameReferenceAs(await third);
+        await Assert.That(shared.Value).IsSameReferenceAs(receipt);
 
         await Assert.That(supplied).IsEqualTo("bootstrap-copy");
         await Assert.That(receipt.Evidence).IsEqualTo(InfisicalRenewalEvidence.Applied);
@@ -286,14 +290,14 @@ public sealed class TokenMaintenanceTests
         await using var session = Session(time, new Wire((_, _) => Task.FromResult(Json("renewed", expiry: 90))));
         time.Advance(TimeSpan.FromSeconds(50));
 
-        await Assert.That(await session.RenewAsync()).IsEqualTo(SecretStatus.Success);
+        await Assert.That((await session.RenewAsync()).Status).IsEqualTo(SecretStatus.Success);
 
         using var copy = (await session.GetTokenAsync(CancellationToken.None)).Value;
         await Assert.That(copy.ExpiresAt).IsEqualTo(Epoch.AddSeconds(120));
         time.Advance(TimeSpan.FromSeconds(70));
         await Assert.That((await session.GetTokenAsync(CancellationToken.None)).Status)
             .IsEqualTo(SecretStatus.RecoveryRequired);
-        await Assert.That(await session.RenewAsync()).IsEqualTo(SecretStatus.RecoveryRequired);
+        await Assert.That((await session.RenewAsync()).Status).IsEqualTo(SecretStatus.RecoveryRequired);
     }
 
     [Test]
@@ -304,11 +308,13 @@ public sealed class TokenMaintenanceTests
         var time = new ManualTime(Epoch);
         await using var session = Session(time, new Wire((_, _) => Task.FromResult(new HttpResponseMessage(status))));
 
-        await Assert.That(await session.RenewAsync()).IsEqualTo(SecretStatus.RecoveryRequired);
+        await Assert.That((await session.RenewAsync()).Status).IsEqualTo(status == HttpStatusCode.TooManyRequests
+            ? SecretStatus.Throttled : SecretStatus.Unknown);
+        await Assert.That(session.State).IsEqualTo(InfisicalTokenSessionState.RecoveryRequired);
 
         var receipt = session.LastRenewal;
         await Assert.That(receipt!.Evidence).IsEqualTo(InfisicalRenewalEvidence.PossiblyDispatched);
-        await Assert.That(await session.RenewAsync()).IsEqualTo(SecretStatus.RecoveryRequired);
+        await Assert.That((await session.RenewAsync()).Status).IsEqualTo(SecretStatus.RecoveryRequired);
         await Assert.That(session.LastRenewal).IsSameReferenceAs(receipt);
         await Assert.That((await session.GetTokenAsync(CancellationToken.None)).Status)
             .IsEqualTo(SecretStatus.RecoveryRequired);
@@ -320,11 +326,11 @@ public sealed class TokenMaintenanceTests
         var time = new ManualTime(Epoch);
         await using var session = Session(time, new Wire((_, _) => throw new HttpRequestException("protected-canary")));
 
-        await Assert.That(await session.RenewAsync()).IsEqualTo(SecretStatus.RecoveryRequired);
+        await Assert.That((await session.RenewAsync()).Status).IsEqualTo(SecretStatus.Unknown);
 
         var receipt = session.LastRenewal!;
         await Assert.That(receipt.Evidence).IsEqualTo(InfisicalRenewalEvidence.PossiblyDispatched);
-        await Assert.That(await session.RenewAsync()).IsEqualTo(SecretStatus.RecoveryRequired);
+        await Assert.That((await session.RenewAsync()).Status).IsEqualTo(SecretStatus.RecoveryRequired);
         await Assert.That(session.LastRenewal).IsSameReferenceAs(receipt);
         await Assert.That(session.ToString().Contains("protected-canary", StringComparison.Ordinal)).IsFalse();
     }
@@ -345,7 +351,7 @@ public sealed class TokenMaintenanceTests
             Content = new StringContent(json, Encoding.UTF8, "application/json")
         })));
 
-        await Assert.That(await session.RenewAsync()).IsEqualTo(SecretStatus.RecoveryRequired);
+        await Assert.That((await session.RenewAsync()).Status).IsEqualTo(SecretStatus.Unknown);
 
         await Assert.That((await session.GetTokenAsync(CancellationToken.None)).Status)
             .IsEqualTo(SecretStatus.RecoveryRequired);
@@ -364,7 +370,7 @@ public sealed class TokenMaintenanceTests
                     Encoding.UTF8, "application/json")
             })));
 
-        await Assert.That(await session.RenewAsync()).IsEqualTo(SecretStatus.Success);
+        await Assert.That((await session.RenewAsync()).Status).IsEqualTo(SecretStatus.Success);
         using InfisicalAccessToken token = (await session.GetTokenAsync(CancellationToken.None)).Value;
         await Assert.That(token.Material.Reveal()).IsEqualTo("replacement");
         await Assert.That(session.LastRenewal!.Evidence).IsEqualTo(InfisicalRenewalEvidence.Applied);
@@ -382,7 +388,7 @@ public sealed class TokenMaintenanceTests
         await helper.StartAsync(CancellationToken.None);
 
         await Assert.That(helper.State).IsEqualTo(AuthenticationMaintenanceState.RecoveryRequired);
-        await Assert.That(await session.RenewAsync()).IsEqualTo(SecretStatus.RecoveryRequired);
+        await Assert.That((await session.RenewAsync()).Status).IsEqualTo(SecretStatus.RecoveryRequired);
         await Assert.That(session.LastRenewal).IsNull();
     }
 
@@ -397,7 +403,7 @@ public sealed class TokenMaintenanceTests
             entered.TrySetResult();
             return await response.Task;
         }));
-        Task<SecretStatus> renewal = session.RenewAsync().AsTask();
+        Task<SecretOutcome<InfisicalTokenRenewal>> renewal = session.RenewAsync().AsTask();
         await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         time.Advance(TimeSpan.FromSeconds(60));
@@ -459,7 +465,7 @@ public sealed class TokenMaintenanceTests
             TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(5),
             new InfisicalNetworkOptions { AllowLoopbackDevelopmentHttp = true }, time);
 
-        await Assert.That(await session.RenewAsync(deadline.Token)).IsEqualTo(SecretStatus.Success);
+        await Assert.That((await session.RenewAsync(deadline.Token)).Status).IsEqualTo(SecretStatus.Success);
 
         using var captured = JsonDocument.Parse(await server);
         await Assert.That(captured.RootElement.GetProperty("accessToken").GetString()).IsEqualTo("local-existing");
@@ -522,12 +528,12 @@ public sealed class TokenMaintenanceTests
             entered.TrySetResult();
             return await pending.Task.WaitAsync(token);
         }));
-        Task<SecretStatus> renewal = session.RenewAsync().AsTask();
+        Task<SecretOutcome<InfisicalTokenRenewal>> renewal = session.RenewAsync().AsTask();
         await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         time.Advance(TimeSpan.FromSeconds(60));
 
-        await Assert.That(await renewal.WaitAsync(TimeSpan.FromSeconds(5))).IsEqualTo(SecretStatus.RecoveryRequired);
+        await Assert.That((await renewal.WaitAsync(TimeSpan.FromSeconds(5))).Status).IsEqualTo(SecretStatus.Unknown);
         await Assert.That(session.LastRenewal!.Evidence).IsEqualTo(InfisicalRenewalEvidence.PossiblyDispatched);
     }
 
@@ -570,7 +576,7 @@ public sealed class TokenMaintenanceTests
         await using var session = Session(time, new Wire((_, _) =>
             Task.FromResult(Json(new string('x', 1024 * 1024)))));
 
-        await Assert.That(await session.RenewAsync()).IsEqualTo(SecretStatus.RecoveryRequired);
+        await Assert.That((await session.RenewAsync()).Status).IsEqualTo(SecretStatus.Unknown);
 
         await Assert.That(session.State).IsEqualTo(InfisicalTokenSessionState.RecoveryRequired);
     }
@@ -591,7 +597,7 @@ public sealed class TokenMaintenanceTests
             }, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(5), new InfisicalNetworkOptions(), time,
             new Wire((_, _) => Task.FromResult(Json("replacement"))), false);
 
-        await Assert.That(await session.RenewAsync()).IsEqualTo(SecretStatus.Success);
+        await Assert.That((await session.RenewAsync()).Status).IsEqualTo(SecretStatus.Success);
 
         using var token = (await session.GetTokenAsync(CancellationToken.None)).Value;
         await Assert.That(token.ExpiresAt).IsEqualTo(Epoch.AddSeconds(210));
@@ -605,7 +611,7 @@ public sealed class TokenMaintenanceTests
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
 
-        await Assert.That(async () => await session.RenewAsync(cancellation.Token)).Throws<OperationCanceledException>();
+        await Assert.That(async () => (await session.RenewAsync(cancellation.Token)).Status).Throws<OperationCanceledException>();
 
         await Assert.That(session.LastRenewal).IsNull();
         using var copy = (await session.GetTokenAsync(CancellationToken.None)).Value;
@@ -632,7 +638,7 @@ public sealed class TokenMaintenanceTests
             }, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(5), new InfisicalNetworkOptions(), time,
             new Wire((_, _) => Task.FromResult(Json("replacement", maximum: 0))), false);
 
-        await Assert.That(await session.RenewAsync()).IsEqualTo(expected);
+        await Assert.That((await session.RenewAsync()).Status).IsEqualTo(expected);
 
         var outcome = await session.GetTokenAsync(CancellationToken.None);
         await Assert.That(outcome.Status).IsEqualTo(expected);
@@ -697,18 +703,18 @@ public sealed class TokenMaintenanceTests
 
         time.Advance(TimeSpan.FromSeconds(50));
         await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        Task<SecretStatus> join = session.RenewAsync().AsTask();
+        Task<SecretOutcome<InfisicalTokenRenewal>> join = session.RenewAsync().AsTask();
         if (loseResponse) release.SetException(new HttpRequestException(canary));
         else release.SetResult(Json(canary));
-        SecretStatus outcome = await join.WaitAsync(TimeSpan.FromSeconds(5));
+        SecretStatus outcome = (await join.WaitAsync(TimeSpan.FromSeconds(5))).Status;
 
-        await Assert.That(outcome).IsEqualTo(loseResponse ? SecretStatus.RecoveryRequired : SecretStatus.Success);
+        await Assert.That(outcome).IsEqualTo(loseResponse ? SecretStatus.Unknown : SecretStatus.Success);
         var receipt = session.LastRenewal!;
         await Assert.That(receipt.Evidence).IsEqualTo(loseResponse
             ? InfisicalRenewalEvidence.PossiblyDispatched : InfisicalRenewalEvidence.Applied);
         if (loseResponse)
         {
-            await Assert.That(await session.RenewAsync()).IsEqualTo(SecretStatus.RecoveryRequired);
+            await Assert.That((await session.RenewAsync()).Status).IsEqualTo(SecretStatus.RecoveryRequired);
             await Assert.That(session.LastRenewal).IsSameReferenceAs(receipt);
         }
         else

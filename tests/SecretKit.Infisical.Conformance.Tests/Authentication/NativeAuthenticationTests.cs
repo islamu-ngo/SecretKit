@@ -61,7 +61,7 @@ public sealed class NativeAuthenticationTests
 
             if (generic)
             {
-                await Assert.That(await session.RenewAsync(cancellationToken)).IsEqualTo(SecretStatus.Success);
+                await Assert.That((await session.RenewAsync(cancellationToken)).Status).IsEqualTo(SecretStatus.Success);
                 await Assert.That(session.LastRenewal!.Evidence).IsEqualTo(InfisicalRenewalEvidence.Applied);
                 await VerifyRead();
                 using var current = (await session.GetTokenAsync(cancellationToken)).Value;

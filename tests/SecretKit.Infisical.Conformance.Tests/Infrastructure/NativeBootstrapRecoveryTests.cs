@@ -132,7 +132,7 @@ public sealed class BootstrapRecoveryChildTests
         await Assert.That(session.State).IsEqualTo(InfisicalTokenSessionState.RecoveryRequired);
         await Assert.That((await session.GetTokenAsync(CancellationToken.None)).Status)
             .IsEqualTo(SecretStatus.RecoveryRequired);
-        await Assert.That(await session.RenewAsync()).IsEqualTo(SecretStatus.RecoveryRequired);
+        await Assert.That((await session.RenewAsync()).Status).IsEqualTo(SecretStatus.RecoveryRequired);
         await Assert.That(session.LastRenewal).IsNull();
         await Console.OpenStandardOutput().WriteAsync("OWNED_CHILD_RECOVERY_REQUIRED\n"u8.ToArray());
     }

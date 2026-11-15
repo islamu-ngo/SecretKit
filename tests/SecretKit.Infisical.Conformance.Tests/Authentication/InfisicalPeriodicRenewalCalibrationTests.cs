@@ -29,12 +29,12 @@ public sealed class InfisicalPeriodicRenewalCalibrationTests
             var binding = await source.OpenAsync(root, borrowed, capability, deadline.Token);
             var arm = await source.ArmAsync(binding, deadline.Token);
             await using var original = Session();
-            await Assert.That(await original.RenewAsync(deadline.Token)).IsEqualTo(SecretStatus.Success);
+            await Assert.That((await original.RenewAsync(deadline.Token)).Status).IsEqualTo(SecretStatus.Success);
             await original.StopAsync();
             var receipt = new PeriodicRenewalReceipt(original.LastRenewal!.Evidence, SecretStatus.Success);
             if (afterFence) await source.SettleAsync(arm, receipt, deadline.Token);
             await using var foreign = Session();
-            await Assert.That(await foreign.RenewAsync(deadline.Token)).IsEqualTo(SecretStatus.Denied);
+            await Assert.That((await foreign.RenewAsync(deadline.Token)).Status).IsEqualTo(SecretStatus.Denied);
             await foreign.StopAsync();
             if (!afterFence)
             {
@@ -106,18 +106,18 @@ public sealed class InfisicalPeriodicRenewalCalibrationTests
                 {
                     Task<PeriodicRenewalArrival> arrival = source.AwaitBoundaryAsync(arm, deadline.Token).AsTask();
                     using var waiter = CancellationTokenSource.CreateLinkedTokenSource(deadline.Token);
-                    Task<SecretStatus> execution = session.RenewAsync(waiter.Token).AsTask();
+                    Task<SecretOutcome<InfisicalTokenRenewal>> execution = session.RenewAsync(waiter.Token).AsTask();
                     var signal = await arrival;
                     await Assert.That(signal.RequestId).IsEqualTo(fixture.Requests.Single().RequestId);
                     await Assert.That(signal.CredentialHandle).IsEqualTo(binding.CredentialHandle);
                     waiter.Cancel();
                     await session.StopAsync();
-                    try { status = await execution; }
+                    try { status = (await execution).Status; }
                     catch (OperationCanceledException) when (!deadline.IsCancellationRequested) { }
                 }
                 else if (renew)
                 {
-                    status = await session.RenewAsync(deadline.Token);
+                    status = (await session.RenewAsync(deadline.Token)).Status;
                     if (status == SecretStatus.Success) actual = (await session.GetTokenAsync(deadline.Token)).Value;
                 }
                 else if (boundary == "cancellation-boundary")

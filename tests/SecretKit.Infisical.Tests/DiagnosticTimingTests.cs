@@ -490,9 +490,9 @@ public sealed class DiagnosticTimingTests
             finally { exported.TrySetResult(); }
         });
         using var waiter = new CancellationTokenSource();
-        Task<SecretStatus> canceledWait = session.RenewAsync(waiter.Token).AsTask();
+        Task<SecretOutcome<InfisicalTokenRenewal>> canceledWait = session.RenewAsync(waiter.Token).AsTask();
         await wire.Entered.Task.WaitAsync(Bound);
-        Task<SecretStatus> survivingWait = session.RenewAsync().AsTask();
+        Task<SecretOutcome<InfisicalTokenRenewal>> survivingWait = session.RenewAsync().AsTask();
         waiter.Cancel();
         await Assert.That(async () => await canceledWait).Throws<OperationCanceledException>();
         Task? stopping = cause == "shutdown" ? session.StopAsync() : null;
@@ -501,8 +501,8 @@ public sealed class DiagnosticTimingTests
         if (cause == "shutdown")
             await Assert.That(async () => await survivingWait.WaitAsync(Bound)).Throws<OperationCanceledException>();
         else
-            await Assert.That(await survivingWait.WaitAsync(Bound)).IsEqualTo(
-                cause == "success" ? SecretStatus.Success : SecretStatus.RecoveryRequired);
+            await Assert.That((await survivingWait.WaitAsync(Bound)).Status).IsEqualTo(
+                cause == "success" ? SecretStatus.Success : SecretStatus.Unknown);
         await exported.Task.WaitAsync(Bound);
         if (stopping is not null) await stopping.WaitAsync(Bound);
         await Assert.That(callbackError).IsNull();

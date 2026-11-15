@@ -132,9 +132,9 @@ internal sealed class SecretWorker(InfisicalClient client, SecretReference refer
     private async Task<int> RenewSessionAsync(CancellationToken cancellationToken)
     {
         // Establish the native start/join task before the observable awaiting barrier.
-        ValueTask<SecretStatus> renewal = session.RenewAsync(cancellationToken);
+        ValueTask<SecretOutcome<InfisicalTokenRenewal>> renewal = session.RenewAsync(cancellationToken);
         DemoOutput.Write("renewal-awaiting", 0);
-        SecretStatus status = await renewal;
+        SecretStatus status = (await renewal).Status;
         return status == SecretStatus.Success
             ? DemoOutput.Write("renewed", 0)
             : DemoOutput.Write("recovery-required", 4);

@@ -10,6 +10,7 @@ public sealed class AuthenticationEnvelopeTests
     [Test]
     [Arguments("universal")]
     [Arguments("proof")]
+    [Arguments("renewal")]
     [Arguments("revocation")]
     public async Task NativeAuthenticationAttemptsRetainPrivateThrottleEvidence(string owner)
     {
@@ -36,7 +37,7 @@ public sealed class AuthenticationEnvelopeTests
             outcome = (await client.LoginAsync(proof, receipt)).ConvertFailure<object>();
             await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.Rejected);
         }
-        else
+        else if (owner == "revocation")
         {
             using var client = new InfisicalProofAuthentication(new("https://auth.test"), network, clock);
             var receipt = client.CreateRevocationReceipt();
@@ -44,6 +45,25 @@ public sealed class AuthenticationEnvelopeTests
             await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.Rejected);
             var reused = await client.RevokeTokenAsync(token, receipt);
             await Assert.That(reused.CorrelationId).IsNull();
+        }
+        else
+        {
+            await using var session = new InfisicalPeriodicTokenSession(new("https://auth.test"), token,
+                new InfisicalTokenLifetimeEvidence
+                {
+                    OriginalIssuedAt = clock.GetUtcNow(),
+                    ExpiresAt = clock.GetUtcNow().AddMinutes(2),
+                    Lifetime = InfisicalTokenLifetime.Periodic,
+                    Period = TimeSpan.FromMinutes(2),
+                    ReportedMaximumTtl = TimeSpan.Zero
+                }, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(5), network, clock);
+            outcome = (await session.RenewAsync()).ConvertFailure<object>();
+            await Assert.That(session.State).IsEqualTo(InfisicalTokenSessionState.RecoveryRequired);
+            await Assert.That(session.LastRenewal!.Evidence).IsEqualTo(InfisicalRenewalEvidence.PossiblyDispatched);
+            var terminal = await session.RenewAsync();
+            await Assert.That(terminal.Status).IsEqualTo(SecretStatus.RecoveryRequired);
+            await Assert.That(terminal.CorrelationId).IsNull();
+            await Assert.That(terminal.RetryAfter).IsNull();
         }
         await Assert.That(outcome.Status).IsEqualTo(SecretStatus.Throttled);
         await Assert.That(outcome.RetryAfter).IsEqualTo(TimeSpan.FromSeconds(42));
@@ -116,7 +136,8 @@ public sealed class AuthenticationEnvelopeTests
                     Period = TimeSpan.FromMinutes(2),
                     ReportedMaximumTtl = TimeSpan.Zero
                 }, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(5), network, clock);
-            await Assert.That(await session.RenewAsync()).IsEqualTo(SecretStatus.RecoveryRequired);
+            await Assert.That((await session.RenewAsync()).Status).IsEqualTo(SecretStatus.Unknown);
+            await Assert.That(session.State).IsEqualTo(InfisicalTokenSessionState.RecoveryRequired);
             await Assert.That(session.LastRenewal!.Evidence).IsEqualTo(InfisicalRenewalEvidence.PossiblyDispatched);
         }
         await Assert.That(wire.Requests).IsEqualTo(1);
@@ -144,8 +165,8 @@ public sealed class AuthenticationEnvelopeTests
                 ReportedMaximumTtl = TimeSpan.Zero
             }, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(5),
             new InfisicalNetworkOptions { Transport = InfisicalTransportOptions.HostControlled(wire) }, clock);
-        var status = await session.RenewAsync();
-        await Assert.That(status).IsEqualTo(duplicate ? SecretStatus.RecoveryRequired : SecretStatus.Success);
+        var status = (await session.RenewAsync()).Status;
+        await Assert.That(status).IsEqualTo(duplicate ? SecretStatus.Unknown : SecretStatus.Success);
         await Assert.That(session.LastRenewal!.Evidence).IsEqualTo(duplicate
             ? InfisicalRenewalEvidence.PossiblyDispatched : InfisicalRenewalEvidence.Applied);
     }

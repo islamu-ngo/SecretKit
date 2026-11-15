@@ -270,9 +270,14 @@ Endpoints would use HTTPS and normal certificate validation. Approved secure pro
 
 ## Authentication And Optional Host Maintenance
 
-RevokeTokenAsync returns SecretOutcome<InfisicalTokenRevocationReceipt>.
-Success reuses the native receipt; failed outcomes retain no successful value.
-The original revocation receipt preserves evidence across failure and cancellation.
+RenewAsync returns SecretOutcome<InfisicalTokenRenewal> and RevokeTokenAsync
+returns SecretOutcome<InfisicalTokenRevocationReceipt>. Success reuses the native
+receipt; failed outcomes retain no successful value. LastRenewal and the original
+revocation receipt preserve evidence across failure and cancellation. Attempt
+classification is independent of session usability: 429 is Throttled while the
+session remains RecoveryRequired. Terminal calls invent no new attempt or ID.
+Shared waiters receive the same outcome; one waiter's cancellation remains local.
+Hosting exports closed reason/status only and stops maintenance after recovery.
 
 The adapter would consume explicit credential/token/proof sources. Azure would accept caller-selected `TokenCredential`, not choose a hidden default credential chain. Infisical auth methods would be admitted individually; cloud proof creation and external federation would remain explicit host or approved integration responsibilities.
 

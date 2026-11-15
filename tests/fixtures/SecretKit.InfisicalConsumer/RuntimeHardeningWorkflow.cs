@@ -479,18 +479,18 @@ internal static class RuntimeHardeningWorkflow
         Observe("RH03");
 #endif
         clock.Advance(TimeSpan.FromSeconds(20));
-        Require(await wire.Exchange(() => session.RenewAsync(deadline.Token).AsTask(),
+        Require((await wire.Exchange(() => session.RenewAsync(deadline.Token).AsTask(),
             "POST", "/api/v1/auth/token/renew", 200, TokenBody("renewed-canary"), null,
-            body => body.GetProperty("accessToken").GetString() == Token) == SecretStatus.Success);
+            body => body.GetProperty("accessToken").GetString() == Token)).Status == SecretStatus.Success);
         Require(session.LastRenewal?.Evidence == InfisicalRenewalEvidence.Applied);
         using (InfisicalAccessToken renewed = (await session.GetTokenAsync(deadline.Token)).Value)
             Require(renewed.Material.Reveal() == "renewed-canary");
         Observe("RH05");
         clock.Advance(TimeSpan.FromSeconds(20));
-        Require(await wire.Exchange(() => session.RenewAsync(deadline.Token).AsTask(),
+        Require((await wire.Exchange(() => session.RenewAsync(deadline.Token).AsTask(),
             "POST", "/api/v1/auth/token/renew", 200, "{}", null,
             body => body.GetProperty("accessToken").GetString() == "renewed-canary",
-            loseResponse: true) == SecretStatus.RecoveryRequired);
+            loseResponse: true)).Status == SecretStatus.Unknown);
         Require(session.LastRenewal?.Evidence == InfisicalRenewalEvidence.PossiblyDispatched &&
             (await session.GetTokenAsync(deadline.Token)).Status == SecretStatus.RecoveryRequired);
         // Recovery is a new explicit login, never replay of the uncertain renewal.
@@ -748,7 +748,7 @@ internal sealed class NativeRuntimeHardening
             _current = "RH05";
             await RenewalWindow(session, token);
             SecretStatus renewedStatus;
-            try { renewedStatus = await session.RenewAsync(token); }
+            try { renewedStatus = (await session.RenewAsync(token)).Status; }
             finally
             {
                 _report = _report with { RenewalEvidence = RenewalEvidence(session.LastRenewal) };
@@ -778,8 +778,8 @@ internal sealed class NativeRuntimeHardening
             await runtime.StopAsync().WaitAsync(token);
             await RenewalWindow(lossSession, token);
             lossPipeline.ArmLoss();
-            SecretStatus lossStatus;
-            try { lossStatus = await lossSession.RenewAsync(token); }
+            SecretOutcome<InfisicalTokenRenewal> lossAttempt;
+            try { lossAttempt = await lossSession.RenewAsync(token); }
             finally
             {
                 _report = _report with
@@ -789,7 +789,9 @@ internal sealed class NativeRuntimeHardening
                 };
                 await Persist();
             }
-            Require(lossStatus == SecretStatus.RecoveryRequired &&
+            Require(lossAttempt.Status == SecretStatus.Unknown &&
+                lossAttempt.Reason == SecretFailureReason.TransportFailure &&
+                lossSession.State == InfisicalTokenSessionState.RecoveryRequired &&
                 lossPipeline.Dropped && lossSession.LastRenewal?.Evidence == InfisicalRenewalEvidence.PossiblyDispatched &&
                 (await lossSession.GetTokenAsync(token)).Status == SecretStatus.RecoveryRequired);
             _report = _report with { RecoveryRequiredObserved = true };

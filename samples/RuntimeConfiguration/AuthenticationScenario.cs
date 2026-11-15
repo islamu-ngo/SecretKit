@@ -36,14 +36,15 @@ public static class AuthenticationScenario
                 throw new InvalidOperationException("The selected login was not handed off.");
 
             // Renewal is explicitly invoked here; construction and token reads start no worker.
-            if (await session.RenewAsync(deadline.Token) != SecretStatus.Success)
+            if ((await session.RenewAsync(deadline.Token)).Status != SecretStatus.Success)
                 throw new InvalidOperationException("The explicit renewal failed.");
             using var renewed = (await session.GetTokenAsync(deadline.Token)).Value;
             if (renewed.Material.Reveal() != "offline-renewed")
                 throw new InvalidOperationException("The renewed generation was not published.");
 
-            // A lost/uncertain renewal is not retried, and cannot replay consumed bootstrap.
-            if (await session.RenewAsync(deadline.Token) != SecretStatus.RecoveryRequired ||
+            // An observed 503 remains Unavailable; its uncertain effect still requires recovery.
+            if ((await session.RenewAsync(deadline.Token)).Status != SecretStatus.Unavailable ||
+                session.State != InfisicalTokenSessionState.RecoveryRequired ||
                 session.LastRenewal?.Evidence != InfisicalRenewalEvidence.PossiblyDispatched)
                 throw new InvalidOperationException("Uncertain renewal did not require recovery.");
             await runtime.StopAsync().WaitAsync(deadline.Token);

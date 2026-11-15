@@ -409,7 +409,7 @@ internal static class NativeWorkflow
                     });
                     if (!auth.ObserveExpiry)
                         await Observe("renew-token", async () =>
-                            await session.RenewAsync(token) == SecretStatus.Success &&
+                            (await session.RenewAsync(token)).Status == SecretStatus.Success &&
                             session.LastRenewal?.Evidence == InfisicalRenewalEvidence.Applied);
                     else if (login.ExpiresIn <= TimeSpan.FromSeconds(45))
                         await Observe("expired-token", async () =>
@@ -455,7 +455,7 @@ internal static class NativeWorkflow
                             await using var recoveredSession = new InfisicalPeriodicTokenSession(recovered, evidence,
                                 TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(10), network);
                             await Observe("renew-token", async () =>
-                                await recoveredSession.RenewAsync(token) == SecretStatus.Success &&
+                                (await recoveredSession.RenewAsync(token)).Status == SecretStatus.Success &&
                                 recoveredSession.LastRenewal?.Evidence == InfisicalRenewalEvidence.Applied);
                         }
                         return true;

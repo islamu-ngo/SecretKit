@@ -84,7 +84,7 @@ internal static class NativeLifetimeTrials
                         if (local.IsSuccess) local.Value.Dispose();
                         passed = local.Status == SecretStatus.RecoveryRequired &&
                             await Read(renewed.Material) == SecretStatus.Denied &&
-                            await session.RenewAsync(token) == SecretStatus.RecoveryRequired;
+                            (await session.RenewAsync(token)).Status == SecretStatus.RecoveryRequired;
                     }
                     break;
                 case "Q02":
@@ -128,7 +128,7 @@ internal static class NativeLifetimeTrials
                         var absent = await lost.GetTokenAsync(token);
                         if (absent.IsSuccess) absent.Value.Dispose();
                         if (absent.Status != SecretStatus.RecoveryRequired ||
-                            await lost.RenewAsync(token) != SecretStatus.RecoveryRequired ||
+                            (await lost.RenewAsync(token)).Status != SecretStatus.RecoveryRequired ||
                             lost.LastRenewal is not null) return Failed();
                     }
                     LocalTrialExchange recovered = await exchange("explicit-recovery", token);
@@ -152,7 +152,7 @@ internal static class NativeLifetimeTrials
                         await using var recoveredSession = new InfisicalPeriodicTokenSession(origin, material,
                             replacementEvidence, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(5), network, time);
                         await renewalObservation(null, DispatchEvidence.PossiblyDispatched, token);
-                        SecretStatus renewed = await recoveredSession.RenewAsync(token);
+                        SecretStatus renewed = (await recoveredSession.RenewAsync(token)).Status;
                         NativeWorkflow.Require(renewed is SecretStatus.Success or SecretStatus.Denied);
                         if (renewed != SecretStatus.Success)
                         {
@@ -183,7 +183,7 @@ internal static class NativeLifetimeTrials
             async Task<bool> Renew()
             {
                 await renewalObservation(null, DispatchEvidence.PossiblyDispatched, token);
-                SecretStatus status = await session.RenewAsync(token);
+                SecretStatus status = (await session.RenewAsync(token)).Status;
                 if (status != SecretStatus.Success ||
                     session.LastRenewal?.Evidence != InfisicalRenewalEvidence.Applied)
                 {

@@ -108,7 +108,7 @@ public sealed class InfisicalPeriodicTokenSession : IInfisicalTokenSource, IAsyn
     private SecretMaterial? _token;
     private DateTimeOffset _expiresAt;
     private InfisicalTokenSessionState _state;
-    private Task<SecretStatus>? _renewalTask;
+    private Task<SecretOutcome<InfisicalTokenRenewal>>? _renewalTask;
     private InfisicalTokenRenewal? _lastRenewal;
     private Task? _stopTask;
 
@@ -289,13 +289,13 @@ public sealed class InfisicalPeriodicTokenSession : IInfisicalTokenSource, IAsyn
     /// the admitted operation establishes no safe replay, including after 429 or transport loss.
     /// LastRenewal is established before the send boundary and survives cancellation/shutdown.
     /// </summary>
-    public async ValueTask<SecretStatus> RenewAsync(CancellationToken cancellationToken = default)
+    public async ValueTask<SecretOutcome<InfisicalTokenRenewal>> RenewAsync(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         InfisicalDiagnosticStart? started = InfisicalDiagnostics.Capture(_time);
         DateTimeOffset now = _time.GetUtcNow();
-        Task<SecretStatus> task;
-        TaskCompletionSource<SecretStatus>? completion = null;
+        Task<SecretOutcome<InfisicalTokenRenewal>> task;
+        TaskCompletionSource<SecretOutcome<InfisicalTokenRenewal>>? completion = null;
         SecretMaterial? ownedToken = null;
         DateTimeOffset expiresAt = default;
         InfisicalTokenRenewal? receipt = null;
@@ -303,12 +303,12 @@ public sealed class InfisicalPeriodicTokenSession : IInfisicalTokenSource, IAsyn
         {
             ObjectDisposedException.ThrowIf(_state == InfisicalTokenSessionState.Stopped, this);
             UpdateDeadline(now);
-            if (_state is InfisicalTokenSessionState.Expired or InfisicalTokenSessionState.RecoveryRequired)
-                return SecretStatus.RecoveryRequired;
             if (_renewalTask is { IsCompleted: false })
                 task = _renewalTask;
             else
             {
+                if (_state is InfisicalTokenSessionState.Expired or InfisicalTokenSessionState.RecoveryRequired)
+                    return SecretOutcome<InfisicalTokenRenewal>.Failure(SecretStatus.RecoveryRequired);
                 receipt = _lastRenewal = new InfisicalTokenRenewal();
                 ownedToken = _token!.Copy();
                 expiresAt = _expiresAt;
@@ -322,13 +322,13 @@ public sealed class InfisicalPeriodicTokenSession : IInfisicalTokenSource, IAsyn
         return await task.WaitAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    private async Task CompleteRenewalAsync(TaskCompletionSource<SecretStatus> completion,
+    private async Task CompleteRenewalAsync(TaskCompletionSource<SecretOutcome<InfisicalTokenRenewal>> completion,
         InfisicalTokenRenewal receipt, SecretMaterial ownedToken, DateTimeOffset expiresAt,
         InfisicalDiagnosticStart? started)
     {
         using var deferred = InfisicalDiagnostics.Defer();
         var observation = new InfisicalOperationObservation();
-        SecretStatus result = SecretStatus.RecoveryRequired;
+        SecretOutcome<InfisicalTokenRenewal> result = SecretOutcome<InfisicalTokenRenewal>.Failure(SecretStatus.Unknown);
         CancellationToken canceled = default;
         bool wasCanceled = false;
         bool faulted = false;
@@ -340,11 +340,11 @@ public sealed class InfisicalPeriodicTokenSession : IInfisicalTokenSource, IAsyn
         }
         InfisicalTermination termination = faulted ? InfisicalTermination.Faulted :
             observation.Cancellation ?? InfisicalTermination.Completed;
-        var diagnostic = new InfisicalOperationCompletion(result, termination switch
+        var diagnostic = new InfisicalOperationCompletion(result.Status, termination switch
         {
             InfisicalTermination.DeadlineExceeded => SecretFailureReason.DeadlineExceeded,
             InfisicalTermination.DependencyCanceled => SecretFailureReason.TransportFailure,
-            _ => SecretFailureReason.None
+            _ => result.Reason
         }, receipt.Evidence switch
         {
             InfisicalRenewalEvidence.Applied => DispatchEvidence.Applied,
@@ -364,12 +364,12 @@ public sealed class InfisicalPeriodicTokenSession : IInfisicalTokenSource, IAsyn
         InfisicalDiagnostics.Emit(InfisicalOperation.Renewal, diagnostic, interval);
     }
 
-    private async Task<SecretStatus> RenewCoreAsync(InfisicalTokenRenewal receipt,
+    private async Task<SecretOutcome<InfisicalTokenRenewal>> RenewCoreAsync(InfisicalTokenRenewal receipt,
         SecretMaterial ownedToken, DateTimeOffset expiresAt, InfisicalOperationObservation observation)
     {
         DateTimeOffset sentAt = _time.GetUtcNow();
         TimeSpan remaining = expiresAt - sentAt;
-        if (remaining <= TimeSpan.Zero) return FailRecovery();
+        if (remaining <= TimeSpan.Zero) return FailRecovery(SecretStatus.Expired, SecretFailureReason.None);
         TimeSpan timeout = remaining < _requestTimeout ? remaining : _requestTimeout;
         if (_operationTimeout < timeout) timeout = _operationTimeout;
         using var linked = new InfisicalOperationBudget(timeout, _time, CancellationToken.None,
@@ -383,7 +383,7 @@ public sealed class InfisicalPeriodicTokenSession : IInfisicalTokenSource, IAsyn
             try
             {
                 if (characters.Length is < 1 or > 16384 || characters.Any(char.IsControl))
-                    return FailRecovery();
+                    return FailRecovery(SecretStatus.Invalid, SecretFailureReason.CredentialUnavailable);
                 using (var writer = new Utf8JsonWriter(payload))
                 {
                     writer.WriteStartObject();
@@ -405,9 +405,20 @@ public sealed class InfisicalPeriodicTokenSession : IInfisicalTokenSource, IAsyn
                     if (response.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.Unauthorized or
                         HttpStatusCode.Forbidden or HttpStatusCode.NotFound or HttpStatusCode.UnprocessableEntity)
                         receipt.Record(InfisicalRenewalEvidence.Rejected);
-                    SecretStatus result = response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden
-                        ? SecretStatus.Denied : SecretStatus.RecoveryRequired;
-                    return FailRecovery(result);
+                    SecretStatus status = response.StatusCode switch
+                    {
+                        HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => SecretStatus.Denied,
+                        HttpStatusCode.BadRequest or HttpStatusCode.UnprocessableEntity => SecretStatus.Invalid,
+                        HttpStatusCode.TooManyRequests => SecretStatus.Throttled,
+                        HttpStatusCode.ServiceUnavailable => SecretStatus.Unavailable,
+                        _ => SecretStatus.Unknown
+                    };
+                    FailRecovery();
+                    var failure = await InfisicalFailureResponse.ReadAsync<InfisicalTokenRenewal>(response,
+                        _responseLimit, _time, status, resource: false, cancellationToken: linked.Token).ConfigureAwait(false);
+                    _shutdown.Token.ThrowIfCancellationRequested();
+                    if (linked.Expired) observation.ObserveCancellation(InfisicalTermination.DeadlineExceeded);
+                    return failure;
                 }
                 byte[] buffer = new byte[_responseLimit + 1];
                 try
@@ -420,7 +431,7 @@ public sealed class InfisicalPeriodicTokenSession : IInfisicalTokenSource, IAsyn
                         if (read == 0) break;
                         length += read;
                     }
-                    if (length > _responseLimit) return FailRecovery();
+                    if (length > _responseLimit) return FailRecovery(SecretStatus.Unknown, SecretFailureReason.ResponseTooLarge);
                     using JsonDocument document = JsonDocument.Parse(buffer.AsMemory(0, length),
                         new JsonDocumentOptions { MaxDepth = 8 });
                     JsonElement json = document.RootElement;
@@ -462,7 +473,7 @@ public sealed class InfisicalPeriodicTokenSession : IInfisicalTokenSource, IAsyn
                         receipt.Record(InfisicalRenewalEvidence.Applied);
                         _state = InfisicalTokenSessionState.Ready;
                     }
-                    return SecretStatus.Success;
+                    return SecretOutcome<InfisicalTokenRenewal>.Success(receipt);
                 }
                 finally { Array.Clear(buffer); }
             }
@@ -477,17 +488,21 @@ public sealed class InfisicalPeriodicTokenSession : IInfisicalTokenSource, IAsyn
             FailRecovery();
             observation.ObserveCancellation(linked.CancellationTermination());
             if (_shutdown.IsCancellationRequested) throw new OperationCanceledException(_shutdown.Token);
-            return SecretStatus.RecoveryRequired;
+            return SecretOutcome<InfisicalTokenRenewal>.Failure(
+                receipt.Evidence == InfisicalRenewalEvidence.NotDispatched ? SecretStatus.Unavailable : SecretStatus.Unknown,
+                reason: linked.CancellationReason());
         }
         catch (Exception exception) when (exception is HttpRequestException or IOException or JsonException or
             ArgumentOutOfRangeException or InvalidOperationException or NotSupportedException)
         {
-            return FailRecovery();
+            return FailRecovery(SecretStatus.Unknown,
+                exception is HttpRequestException or IOException ? SecretFailureReason.TransportFailure : SecretFailureReason.InvalidResponse);
         }
         finally { candidate?.Dispose(); }
     }
 
-    private SecretStatus FailRecovery(SecretStatus status = SecretStatus.RecoveryRequired)
+    private SecretOutcome<InfisicalTokenRenewal> FailRecovery(SecretStatus status = SecretStatus.Unknown,
+        SecretFailureReason reason = SecretFailureReason.InvalidResponse)
     {
         lock (_gate)
         {
@@ -496,7 +511,7 @@ public sealed class InfisicalPeriodicTokenSession : IInfisicalTokenSource, IAsyn
             if (_state != InfisicalTokenSessionState.Stopped)
                 _state = InfisicalTokenSessionState.RecoveryRequired;
         }
-        return status;
+        return SecretOutcome<InfisicalTokenRenewal>.Failure(status, reason: reason);
     }
 
     /// <summary>Joins the same bounded stop result as StopAsync; does not revoke the remote token.</summary>

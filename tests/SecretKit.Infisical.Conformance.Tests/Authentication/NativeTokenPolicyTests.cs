@@ -56,7 +56,7 @@ public sealed class NativeTokenPolicyTests
                     Period = periodic ? TimeSpan.FromSeconds(60) : null
                 }, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(10), network);
             await Assert.That(session.State).IsEqualTo(InfisicalTokenSessionState.Ready);
-            await Assert.That(await session.RenewAsync(cancellationToken)).IsEqualTo(SecretStatus.Success);
+            await Assert.That((await session.RenewAsync(cancellationToken)).Status).IsEqualTo(SecretStatus.Success);
             await Assert.That(session.LastRenewal!.Evidence).IsEqualTo(InfisicalRenewalEvidence.Applied);
             await using var reader = new InfisicalClient(origin, session, network);
             var result = await reader.ReadAsync(new SecretReference(reader.Authority,

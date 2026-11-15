@@ -234,9 +234,9 @@ internal static class InstalledWorkflow
 #endif
 
         clock.Advance(TimeSpan.FromSeconds(20));
-        Require(await wire.Exchange(() => session.RenewAsync(deadline.Token).AsTask(),
+        Require((await wire.Exchange(() => session.RenewAsync(deadline.Token).AsTask(),
             "POST", "/api/v1/auth/token/renew", 200, TokenBody("installed-renewed-canary"), null,
-            body => body.GetProperty("accessToken").GetString() == Token) == SecretStatus.Success);
+            body => body.GetProperty("accessToken").GetString() == Token)).Status == SecretStatus.Success);
         Require(session.LastRenewal?.Evidence == InfisicalRenewalEvidence.Applied);
         using (InfisicalAccessToken renewed = (await session.GetTokenAsync(deadline.Token)).Value)
             Require(renewed.Material.Reveal() == "installed-renewed-canary" &&
@@ -244,7 +244,7 @@ internal static class InstalledWorkflow
         clock.Advance(TimeSpan.FromSeconds(61));
         Require((await session.GetTokenAsync(deadline.Token)).Status == SecretStatus.RecoveryRequired);
         Require(session.State == InfisicalTokenSessionState.Expired);
-        Require(await session.RenewAsync(deadline.Token) == SecretStatus.RecoveryRequired);
+        Require((await session.RenewAsync(deadline.Token)).Status == SecretStatus.RecoveryRequired);
         scenarios.Add(new { id = "S07", subset = "login-bound-finite-lifetime-and-explicit-renewal", status = "passed" });
         scenarios.Add(new { id = "S08", subset = "expiry-requires-recovery-without-login-or-renewal", status = "passed" });
 #if HOSTING

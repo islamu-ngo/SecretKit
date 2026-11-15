@@ -86,13 +86,13 @@ internal static class PeriodicRenewalEffects
                 // The private source subscription identifies this exact request.
                 // No System.Net.Http global event can cancel another request.
                 Task arrival = trial.AwaitBoundaryAsync(token);
-                Task<SecretStatus> execution = session.RenewAsync(waiter.Token).AsTask();
+                Task<SecretOutcome<InfisicalTokenRenewal>> execution = session.RenewAsync(waiter.Token).AsTask();
                 try
                 {
                     await arrival;
                     waiter.Cancel();
                     await session.StopAsync();
-                    try { status = await execution; }
+                    try { status = (await execution).Status; }
                     catch (OperationCanceledException) when (!token.IsCancellationRequested) { }
                 }
                 finally
@@ -106,7 +106,7 @@ internal static class PeriodicRenewalEffects
             }
             else if (renew)
             {
-                status = await session.RenewAsync(token);
+                status = (await session.RenewAsync(token)).Status;
                 probe.Contract(status == (recovery || expired ? SecretStatus.RecoveryRequired :
                     denied ? SecretStatus.Denied : SecretStatus.Success), NativeFailure.ContractMismatch);
                 if (status == SecretStatus.Success) actual = (await session.GetTokenAsync(token)).Value;

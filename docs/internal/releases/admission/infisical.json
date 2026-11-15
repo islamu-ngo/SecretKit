@@ -266,7 +266,7 @@
     },
     {
       "file": "src/SecretKit.Infisical/Authentication/InfisicalPeriodicTokenSession.cs",
-      "sha256": "8f7e010093a868444486b579cd577d587246730bc1643ebaf42a52703b3a1bd6"
+      "sha256": "b1e299a9c1f014f0d309d3fbb35170e716251163958f6a4b2826f7f0a6add92e"
     },
     {
       "file": "src/SecretKit.Infisical/Authentication/InfisicalProofAuthentication.cs",

@@ -103,7 +103,7 @@ internal static class InfisicalPeriodicTokenSessionEffects
 
         if (recovery || expired)
         {
-            var result = await session.RenewAsync(token);
+            var result = (await session.RenewAsync(token)).Status;
             probe.Contract(result == SecretStatus.RecoveryRequired && session.LastRenewal is null &&
                 !(await session.GetTokenAsync(token)).IsSuccess, NativeFailure.ContractMismatch);
             probe.Effect(NativeObservation.Matched);
@@ -115,8 +115,8 @@ internal static class InfisicalPeriodicTokenSessionEffects
             () => stop = session.StopAsync()) : null;
         Task? reached = boundary?.Reached.Task; // subscribed before SDK renewal
         SecretStatus status = SecretStatus.Unknown;
-        Task<SecretStatus> execution = session.RenewAsync(waiter.Token).AsTask();
-        try { status = await execution; }
+        Task<SecretOutcome<InfisicalTokenRenewal>> execution = session.RenewAsync(waiter.Token).AsTask();
+        try { status = (await execution).Status; }
         catch (OperationCanceledException) when (waiter.IsCancellationRequested && !token.IsCancellationRequested) { }
         InfisicalTokenRenewal? receipt = session.LastRenewal;
         if (cancelled || lost)

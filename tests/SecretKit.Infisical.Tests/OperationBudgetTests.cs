@@ -142,7 +142,7 @@ public sealed class OperationBudgetTests
     [Arguments("universal", SecretStatus.Unknown)]
     [Arguments("proof", SecretStatus.Unknown)]
     [Arguments("revocation", SecretStatus.Unknown)]
-    [Arguments("renewal", SecretStatus.RecoveryRequired)]
+    [Arguments("renewal", SecretStatus.Unknown)]
     public async Task EveryDispatchOwnerBoundsStreamingAndSettlesOwnedBody(string owner, SecretStatus expected)
     {
         var clock = new InfisicalTransportOwnershipTests.ShutdownClock();
@@ -199,7 +199,7 @@ public sealed class OperationBudgetTests
                             Period = TimeSpan.FromMinutes(2),
                             ReportedMaximumTtl = TimeSpan.Zero
                         }, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(5), network, clock))
-                        return await session.RenewAsync();
+                        return (await session.RenewAsync()).Status;
                 default: throw new InvalidOperationException("Unexpected dispatch owner.");
             }
         }

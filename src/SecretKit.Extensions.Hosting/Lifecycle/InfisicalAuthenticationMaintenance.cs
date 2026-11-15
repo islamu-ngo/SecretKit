@@ -171,9 +171,9 @@ public sealed class InfisicalAuthenticationMaintenance : IHostedService, IHealth
                         _session.TimeProvider, _stop.Token).ConfigureAwait(false);
                     continue;
                 }
-                SecretStatus outcome = await _session.RenewAsync(_stop.Token).ConfigureAwait(false);
-                if (outcome != SecretStatus.Success)
-                    return new(outcome, SecretFailureReason.None,
+                SecretOutcome<InfisicalTokenRenewal> outcome = await _session.RenewAsync(_stop.Token).ConfigureAwait(false);
+                if (!outcome.IsSuccess)
+                    return new(outcome.Status, outcome.Reason,
                         HostingTermination.Completed, HostingLifecycleState.RecoveryRequired);
             }
         }

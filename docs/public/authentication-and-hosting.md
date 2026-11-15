@@ -320,11 +320,19 @@ copy; it does not renew. A valid token inside its renewal window remains usable
 in `RenewalDue`. Expiry or recovery-required returns `SecretStatus.RecoveryRequired`;
 a stopped session rejects further use.
 
-`RenewAsync(CancellationToken)` explicitly starts or joins one shared renewal.
+`RenewAsync(CancellationToken)` returns `SecretOutcome<InfisicalTokenRenewal>`
+and explicitly starts or joins one shared renewal.
 Cancelling one waiter does not cancel that operation or other waiters. The actual
 request deadline is bounded by `requestTimeout` and remaining token lifetime;
 session stop cancels the shared operation. Successful renewal publishes a new
 owned token, leaving previously returned copies independently owned.
+
+The attempt outcome is separate from session `State`. A 429 attempt is
+`Throttled`, optionally carrying bounded retry advice and protected correlation,
+while the session becomes `RecoveryRequired`. Malformed or uncertain dispatched
+attempts are `Unknown`; they do not make the session usable. A later terminal
+call returns `RecoveryRequired` without a new request or a reused request ID.
+Concurrent waiters share the same outcome and successful receipt.
 
 `InfisicalProofAuthentication.RevokeTokenAsync` returns
 `SecretOutcome<InfisicalTokenRevocationReceipt>`. On success its value is the
@@ -380,6 +388,8 @@ starts scheduling at `session.RenewalDueAt`; it does not await application
 admission or prove a remote read succeeds. Its token cancels startup admission to
 the helper, not its entire running lifetime. Scheduling ends after a failed
 renewal or terminal session state.
+Its completion carries the attempt's closed failure reason and never exports
+correlation or schedules another attempt from retry advice.
 
 `CheckHealthAsync` performs no provider probe:
 
