@@ -8,6 +8,41 @@ namespace SecretKit.Release.Tests;
 public sealed class WorkflowTests
 {
     [Test]
+    [Arguments("missing-macos")]
+    [Arguments("secret")]
+    [Arguments("environment")]
+    [Arguments("skip")]
+    [Arguments("replay")]
+    [Arguments("zero-discovery")]
+    [Arguments("ambient-sdk")]
+    public async Task OperatorSourceLaneRejectsMissingCoverageOrAdditionalAuthority(string fault)
+    {
+        JsonNode root = JsonNode.Parse(File.ReadAllBytes(
+            Path.Combine(RepositoryRoot(), ".github", "workflows", "verify.yml")))!;
+        JsonNode job = root["jobs"]!["operator"]!;
+        switch (fault)
+        {
+            case "missing-macos": job["strategy"]!["matrix"]!["include"]!.AsArray().RemoveAt(2); break;
+            case "secret": job["env"] = new JsonObject { ["TOKEN"] = "${{ secrets.TOKEN }}" }; break;
+            case "environment": job["environment"] = "production"; break;
+            case "skip": job["if"] = "${{ false }}"; break;
+            case "ambient-sdk":
+                job["steps"]!.AsArray().Single(s => s!["id"]?.GetValue<string>() == "sdk")!.AsObject().Remove("env");
+                break;
+            case "replay":
+                job["steps"]!.AsArray().Single(s => s!["id"]?.GetValue<string>() == "sample")!["run"] += "\ntrue";
+                break;
+            case "zero-discovery":
+                JsonNode step = job["steps"]!.AsArray().Single(s => s!["id"]?.GetValue<string>() == "tests")!;
+                step["run"] = step["run"]!.GetValue<string>().Replace("--minimum-expected-tests 1", "--minimum-expected-tests 0", StringComparison.Ordinal);
+                break;
+        }
+
+        await Assert.That(() => WorkflowPolicy.ValidateRoutine(
+            JsonSerializer.SerializeToUtf8Bytes(root), OfflineHosts())).Throws<ReleaseException>();
+    }
+
+    [Test]
     [Arguments("offline", "dependency_audit", false)]
     [Arguments("offline", "dependency_audit", true)]
     [Arguments("offline", "dependency_audit_installed", false)]

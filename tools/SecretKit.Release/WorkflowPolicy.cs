@@ -18,15 +18,15 @@ public static class WorkflowPolicy
             "routine-permissions");
         JsonElement jobs = root.GetProperty("jobs");
         Manifest.ExactSet(jobs.EnumerateObject().Select(p => p.Name),
-            ["format", "offline", "install", "demos", "prerequisites", "native", "compatibility", "archive_evidence", "candidate"],
+            ["format", "operator", "offline", "install", "demos", "prerequisites", "native", "compatibility", "archive_evidence", "candidate"],
             "routine-jobs");
-        ValidateExecutableSteps(root, ["format", "offline", "install", "demos"]);
-        foreach (JsonProperty job in jobs.EnumerateObject().Where(p => p.Name is "format" or "offline" or "install" or "demos"))
+        ValidateExecutableSteps(root, ["format", "operator", "offline", "install", "demos"]);
+        foreach (JsonProperty job in jobs.EnumerateObject().Where(p => p.Name is "format" or "operator" or "offline" or "install" or "demos"))
         {
             Guard.Require(!job.Value.GetRawText().Contains("secrets.", StringComparison.Ordinal) &&
                 !job.Value.GetRawText().Contains("github.token", StringComparison.Ordinal), "routine-credentials");
             Guard.Require(job.Value.GetProperty("runs-on").GetString() ==
-                (job.Name is "install" or "demos" ? "${{ matrix.runner }}" : "ubuntu-24.04") &&
+                (job.Name is "operator" or "install" or "demos" ? "${{ matrix.runner }}" : "ubuntu-24.04") &&
                 job.Value.GetProperty("timeout-minutes").GetInt32() is > 0 and <= 45 &&
                 !job.Value.TryGetProperty("permissions", out _) &&
                 !job.Value.TryGetProperty("environment", out _) &&
@@ -49,6 +49,16 @@ public static class WorkflowPolicy
                         "routine-checkout");
             }
         }
+
+        JsonElement operatorJob = jobs.GetProperty("operator");
+        Guard.Require(!operatorJob.GetProperty("strategy").GetProperty("fail-fast").GetBoolean() &&
+            !operatorJob.TryGetProperty("if", out _) &&
+            !operatorJob.TryGetProperty("env", out _) &&
+            !operatorJob.TryGetProperty("outputs", out _), "operator-source-authority");
+        Manifest.ExactSet(operatorJob.GetProperty("strategy").GetProperty("matrix").GetProperty("include")
+            .EnumerateArray().Select(p => $"{p.GetProperty("runner").GetString()}/{p.GetProperty("platform").GetString()}"),
+            ["ubuntu-24.04/linux-x64-net10.0", "windows-2025/windows-x64-net10.0",
+                "macos-15/osx-arm64-net10.0"], "operator-platforms");
 
         JsonElement offline = jobs.GetProperty("offline");
         JsonElement environment = offline.GetProperty("env");
@@ -506,6 +516,17 @@ public static class WorkflowPolicy
     // indentation, blank lines and comments cannot add or remove an executable step.
     private static readonly IReadOnlyDictionary<string, string> Commands = new Dictionary<string, string>(StringComparer.Ordinal)
     {
+        ["operator/platform"] = "dotnet --info",
+        ["operator/restore"] = "dotnet restore SecretKit.slnx --locked-mode",
+        ["operator/build"] = """
+            dotnet build tests/SecretKit.Consumer.Tests/SecretKit.Consumer.Tests.csproj -c Release --no-restore
+            dotnet build tests/SecretKit.Infisical.Tests/SecretKit.Infisical.Tests.csproj -c Release --no-restore
+            """,
+        ["operator/tests"] = """
+            dotnet test --project tests/SecretKit.Consumer.Tests/SecretKit.Consumer.Tests.csproj -c Release --no-build --minimum-expected-tests 1 --zero-tests-policy strict
+            dotnet test --project tests/SecretKit.Infisical.Tests/SecretKit.Infisical.Tests.csproj -c Release --no-build --minimum-expected-tests 1 --zero-tests-policy strict
+            """,
+        ["operator/sample"] = "dotnet run --project samples/Infisical.OperatorWorkflow/Infisical.OperatorWorkflow.csproj -c Release --no-build",
         ["format/format"] = """
             dotnet restore SecretKit.slnx --locked-mode
             dotnet format SecretKit.slnx --verify-no-changes --no-restore --verbosity quiet
@@ -680,6 +701,7 @@ public static class WorkflowPolicy
 
     private static readonly IReadOnlyDictionary<string, string[]> StepOrder = new Dictionary<string, string[]>(StringComparer.Ordinal)
     {
+        ["operator"] = ["checkout", "sdk", "run/platform", "run/restore", "run/build", "run/tests", "run/sample"],
         ["format"] = ["checkout", "sdk", "run/format"],
         ["offline"] = ["checkout", "sdk", "run/proposal", "run/restore", "run/build", "run/offline_conformance_guards", "run/dependency_audit", "run/pack", "upload/offline-originals-${{ github.run_id }}-${{ github.run_attempt }}", "run/tests", "run/candidate_inputs", "upload/candidate-inputs-${{ github.run_id }}-${{ github.run_attempt }}", "run/local_directory", "run/local_install", "run/demo_inputs", "upload/local-cohort-${{ github.run_id }}-${{ github.run_attempt }}", "run/demo_tests", "run/dependency_audit_installed", "run/metadata", "upload/offline-verification-${{ github.run_id }}-${{ github.run_attempt }}"],
         ["install"] = ["checkout", "sdk", "download/artifacts/local-cohort", "run/restore", "run/build", "run/test", "run/dependency_audit_installed", "upload/offline-install-${{ matrix.platform }}-${{ github.run_id }}-${{ github.run_attempt }}"],
@@ -694,6 +716,10 @@ public static class WorkflowPolicy
     private static readonly IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> Environments =
         new Dictionary<string, IReadOnlyDictionary<string, string>>(StringComparer.Ordinal)
         {
+            ["operator/sdk"] = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["DOTNET_INSTALL_DIR"] = "${{ runner.temp }}/secretkit-operator-dotnet",
+            },
             ["offline"] = new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 ["SECRETKIT_CANDIDATE_VERSION"] = "0.1.0-preview.1",
