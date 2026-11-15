@@ -8,6 +8,30 @@ namespace SecretKit.Infisical.Tests;
 public sealed class BulkReceiptTests
 {
     [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task CaseCollidingBulkTargetsAreRejectedBeforeAnyEffect(bool destinationOnly)
+    {
+        using var wire = new BulkWire(
+            """{"secrets":[{"secretKey":"KEY","type":"shared","workspace":"project","environment":"dev","version":1}]}""");
+        await using var client = Phase5TestSupport.Client(wire);
+        var target = new SecretReference(client.Authority, new InfisicalBulkAddress("project", "dev", "/"));
+        using var first = SecretMaterial.FromText("first-intent");
+        using var second = SecretMaterial.FromText("second-intent");
+        InfisicalBulkSecret[] inputs = destinationOnly
+            ? [new("first", first, newName: "key"), new("second", second, newName: "KEY")]
+            : [new("key", first), new("KEY", second)];
+        var receipt = new InfisicalBulkReceipt(client, target, inputs, InfisicalBulkOperation.Update);
+
+        var result = await client.UpdateSecretsAsync(target, inputs, Phase5TestSupport.Admin(client), receipt);
+
+        await Assert.That(result.Status).IsEqualTo(SecretStatus.Invalid);
+        await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.NotDispatched);
+        await Assert.That(receipt.Items.All(item => item.Evidence == DispatchEvidence.NotDispatched)).IsTrue();
+        await Assert.That(wire.Values.Count).IsEqualTo(0);
+    }
+
+    [Test]
     [Arguments("foreign")]
     [Arguments("duplicate-row")]
     [Arguments("duplicate-field")]

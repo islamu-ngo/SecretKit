@@ -466,7 +466,7 @@
     },
     {
       "file": "src/SecretKit.Infisical/Secrets/NativeBulk.cs",
-      "sha256": "8005144dd7e31f9959cf7d6f376cd96a223bd6c291cc22ff4445a96aa6619ef0"
+      "sha256": "d3f5f62c906619b0780762059f2926e1985f9d15a903016197741adc4bc6d8b9"
     },
     {
       "file": "src/SecretKit.Infisical/Transport/InfisicalNativeRequestIntent.cs",

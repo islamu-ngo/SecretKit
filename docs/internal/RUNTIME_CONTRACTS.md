@@ -174,6 +174,8 @@ After dispatch, single or bulk acknowledgements with mismatched coordinates,
 case-changed keys or malformed correlation return Unknown. Valid earlier bulk
 rows retain their established per-item evidence. Pending is never promoted to
 Applied and uncertain writes are not replayed.
+Bulk source/destination selectors that collide under invariant capitalization
+are rejected before dispatch to prevent ambiguous item attribution.
 
 Expected provider outcomes would use bounded material-free states rather than arbitrary provider exception text. Success, absence, denied, unavailable, invalid, throttled, conflict, pending and unknown would be distinguishable where supported. Programming misuse would remain an argument/disposal error. Provider payloads, raw responses, credentials, sensitive addresses and vendor inner exceptions would not enter ordinary diagnostics.
 

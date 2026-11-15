@@ -153,6 +153,8 @@ PossiblyDispatched at envelope handoff, not Applied. Approval is Pending and
 empty items cannot establish AllApplied. Receipts contain no values/value hashes
 and cannot be reused after admission. See
 [bulk evidence](../../internal/NATIVE_VALIDATION_BULK.md).
+Case-colliding destination keys are rejected before dispatch so capitalization
+cannot attribute one input's acknowledgement to another.
 
 ## Native API owner map
 

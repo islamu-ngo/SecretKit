@@ -325,7 +325,8 @@ public sealed partial class InfisicalClient
                 return SecretOutcome<InfisicalBulkObservation>.Failure(SecretStatus.Invalid);
             }
             InfisicalBulkSecret[] owned = inputs.ToArray();
-            if (owned.Select(input => (input.NewName ?? input.Key, input.Type)).Distinct().Count() != owned.Length)
+            if (owned.Select(input => (input.Key.ToUpperInvariant(), input.Type)).Distinct().Count() != owned.Length ||
+                owned.Select(input => ((input.NewName ?? input.Key).ToUpperInvariant(), input.Type)).Distinct().Count() != owned.Length)
             {
                 return SecretOutcome<InfisicalBulkObservation>.Failure(SecretStatus.Invalid);
             }
