@@ -10,6 +10,18 @@ public static class Program
     {
         try
         {
+            if (args is ["operator-contract-check", string specification])
+            {
+                OperatorContractReport report = OperatorContractCheck.Check(Directory.GetCurrentDirectory(), specification);
+                Console.WriteLine($"operator-spec-sha256:{report.SpecSha256}");
+                foreach (OperatorContractFinding finding in report.Findings)
+                    Console.WriteLine($"operator-contract:{finding.Operation}:{finding.Code}:{finding.Location}");
+                Console.WriteLine($"operator-contract-checked:{report.CheckedOperations}:findings:{report.Findings.Count}");
+                if (report.Findings.Count == 0)
+                    Console.WriteLine("operator-contract-matched-not-native-qualified");
+                return report.Findings.Count == 0 ? 0 : 1;
+            }
+
             if (args is ["verification", "ordinary" or "offline-conformance" or "public-install"])
                 return await Verification.RunAsync(Directory.GetCurrentDirectory(), args[1]);
 

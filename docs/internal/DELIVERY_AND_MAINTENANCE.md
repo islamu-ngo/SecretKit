@@ -38,6 +38,107 @@ rotation configuration/runtime features and existing gateway/proxy administratio
 remain. Local removal checks passed; live-provider and release gates remain separate. The earlier broad delivery plan is
 historical where it conflicts with that boundary.
 
+## Offline operator contract maintenance
+
+The nonpackable Release tool compares selected implemented Infisical operator
+wire facts with a maintainer-supplied local OpenAPI JSON document:
+
+```sh
+dotnet build tools/SecretKit.Release/SecretKit.Release.csproj -c Release --no-restore
+dotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll operator-contract-check /absolute/path/to/openapi.json
+```
+
+Run from the SecretKit root. The command reads
+[`infisical-operator-contracts.json`](infisical-operator-contracts.json), prints
+the supplied document's SHA-256, closed findings and operation count, and exits
+0 only when every selected comparison matches. Exit 1 means drift, invalid
+input or an unestablished construct. It never opens a publication journal,
+reads publishing credentials, fetches references, changes a manifest or calls
+a provider. This command grants no release authority.
+
+The hand-authored manifest follows actual request builders and response readers:
+Universal Auth/token lifecycle, value-free inventory and import groups, qualified
+secret reads, static create/update, bulk delete, folder list/get/create, import
+configuration listing and project capitalization metadata. Its provenance and
+exclusions are part of the review. Exact wire names are interoperability facts;
+the vendor document, expressive schemas, implementation and examples are not
+copied into the repository. The manifest is a narrow consumer projection,
+not a replacement for admission inventories or a full API catalog.
+
+Request `required` lists mean the SDK always sends those members. A newly
+required member is incompatible when the selected request does not always
+supply it. Response `required` lists mean the reader needs the member.
+Request restrictions must accept the SDK's declared inputs; response schemas
+must fit its declared accepted types, enums, nullability and bounds. Relevant
+optional fields are checked too. Added unrelated operations and extra response
+members do not fail; making a required response member optional does.
+Path-template labels are mapped by position, while literal segments and
+parameter locations must match. Path-level parameters are inherited and
+operation-level parameters override them by location and name.
+
+The admitted subset is OpenAPI 3.0.0 through 3.0.3, JSON request/response content,
+scalar parameters, object properties, arrays, required members, primitive types,
+nullability, primitive enums, selected formats and inclusive numeric/length/item
+bounds. Formats are `uuid`, `date-time`, `date`, `password`, `int32`, `int64`,
+`float` and `double`. Descriptions, defaults and examples are annotations, never
+evidence of runtime behavior. Compositions, conditional schemas, executable
+patterns, schema-valued additional properties and other relevant unknown
+constructs yield an explicit `unestablished-*` finding. Such a finding stops
+that operation's remaining comparisons; other operations continue. The count
+reports operations attempted, not all assertions proven.
+
+Each input is limited to 32 MiB and JSON nesting to 64. Each document's resolver
+allows at most 4,096 reference resolutions and 32 active references, rejecting
+cycles and sibling definitions on `$ref`. Only same-document `#/...` JSON
+pointers with `~0`/`~1` escaping are supported; percent-encoded fragments,
+external URLs and other files fail closed. Expanded schema traversal is also
+bounded to 64. Duplicate JSON members, duplicate parameter definitions and
+ambiguous matching method/path definitions cannot silently select a winner.
+Unselected response fields and unrelated operations are outside the check.
+
+For a future comparison, obtain the public specification through a separately
+authorized process, retain its source identity/date/hash, and supply its local
+path. Review each finding against the implementation and current public
+interface facts. Update a manifest fact only after its owning wire behavior and
+tests justify the change; never regenerate expectations from the supplied
+document to turn drift green. Keep the specification outside this repository.
+OAuth/prose-only contracts, approval follow-up, native effects, authorization,
+server versions and platform qualification remain outside this evidence.
+
+### Supplied snapshot observation, November 15, 2026
+
+The actual comparison used a read-only public OpenAPI snapshot, whose SHA-256
+matched `c3283ae46b216a6c30d28cd82011cf1fa9182dc645bc1076d3b7f49489509571`.
+The command attempted all 13 manifest operations and exited **1**, reporting
+12 findings: eight selected schema mismatches and four unestablished constructs.
+Expectations were retained rather than changed to make this snapshot pass.
+
+| Selected operation | Actual finding |
+| --- | --- |
+| Metadata inventory | Direct and imported `type` enums are broader than the reader's accepted `shared` value; imported rows do not document the selected `updatedAt` and `tags` fields (four findings) |
+| Qualified secret read | Broader `type` enum; `version` is declared as a number rather than the integer required for a revision (two findings) |
+| Static create, static update, bulk delete | Each success response uses `anyOf`; the narrow checker does not establish these composed contracts (three findings) |
+| Folder list | The `recursive` parameter uses `anyOf`, outside the admitted subset (one finding) |
+| Project policy | The root does not require `project`; project `type` permits more than the selected secret-manager reader (two findings) |
+| Universal login, token renewal/revocation, folder create/get, import list | Selected facts matched (six operations) |
+
+These are mismatches between a consumer projection and one public document,
+not evidence of new server regressions. For example, a broad enum may not
+express a query-specific server restriction, and an undocumented optional
+metadata field leaves an observation unknown. The four unestablished results
+leave the remaining comparisons for those operations unproven. No native
+provider, publication or minimum-version conclusion follows.
+
+Controlled verification on Linux x64 with SDK **10.0.403** and runtime
+**10.0.14** passed all **72 focused checker tests**, the project-reference
+build and scoped formatting. The tests exercise the actual command, request
+and response compatibility direction, parameter inheritance, ambiguity, local
+references, the actual revocation manifest's closed response envelope and exact
+resource boundaries. Deliberately removing required-member
+enforcement and relaxing reference depth produced the intended failures before
+the original implementation was restored. These observations establish offline
+checker behavior only.
+
 ## Admission Policy Is Not A Populated Registry
 
 After building the affected provider projects in Release, refresh their owned
