@@ -289,6 +289,10 @@
       "sha256": "60dc4fc5ff9ee1df772551e08bd671281432d4eb85db8ab4be82d455c4402bf1"
     },
     {
+      "file": "src/SecretKit.Infisical/Authentication/InfisicalSuppliedTokenSource.cs",
+      "sha256": "7be732e0a99ed5411d8585d9fa08ecda516b5e684f56ffb088d9343ec12b4005"
+    },
+    {
       "file": "src/SecretKit.Infisical/Authentication/InfisicalTokenRevocation.cs",
       "sha256": "662b81b1ba5a55886fa88359fa39c4cbae97eb680308b2a967b803e7bfdae3c2"
     },
@@ -2775,6 +2779,31 @@
         "dynamic-secrets-entitlement",
         "profile-backend-authority",
         "profile-backend-observer"
+      ]
+    },
+    {
+      "id": "i.runtime.InfisicalSuppliedTokenSource.GetTokenAsync",
+      "member": "SecretKit.Infisical.InfisicalSuppliedTokenSource.GetTokenAsync(System.Threading.CancellationToken)",
+      "variants": [
+        "copy.independent-ownership",
+        "expiry.supplied",
+        "expiry.unobserved",
+        "source.disposed"
+      ],
+      "contract": "implemented-subset",
+      "effect": "Return an independently owned copy of the explicitly supplied credential without network activity or renewal. Local copy success proves no provider identity or permission; intended-identity delivery requires a separately authorized consumer observation.",
+      "requiredCases": [
+        "selected-contract",
+        "denied-authority",
+        "cancellation-boundary",
+        "independent-effect"
+      ],
+      "prerequisites": [
+        "owned-origin-api-revision",
+        "selected-runtime-identity",
+        "separate-observer-identity",
+        "approved-sandbox-cleanup",
+        "intended-token-consumer"
       ]
     },
     {
