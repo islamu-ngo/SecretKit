@@ -12,7 +12,7 @@ your application. **In development. Not ready for production.**
 ## 1. Prepare a checkout
 
 Use a SecretKit checkout and the .NET SDK selected by
-[`global.json`](../../global.json): `10.0.302`, with `latestPatch` roll-forward.
+[`global.json`](../../global.json): `10.0.403`, with `latestPatch` roll-forward.
 Run the following commands from the SecretKit repository root:
 
 ```sh

@@ -280,7 +280,7 @@ public sealed class EnterpriseHardeningProfileTests
             byte[] evidence = "observed-source-test"u8.ToArray();
             File.WriteAllBytes(Path.Combine(Root, "evidence.json"), evidence);
             Selection = new(1, "enterprise-hardening", "source-offline", ["S24"], "infisical-runtime",
-                Manifest.Hash("selected-revision"u8.ToArray())[..40], "selected-run", "10.0.302", "10.0.10", "linux-x64",
+                Manifest.Hash("selected-revision"u8.ToArray())[..40], "selected-run", "10.0.403", "10.0.10", "linux-x64",
                 new(new("evidence.json", Manifest.Hash(evidence))));
             WriteSelection();
         }
@@ -306,7 +306,7 @@ public sealed class EnterpriseHardeningProfileTests
             System.IO.Directory.CreateDirectory(Directory);
             string Hash(string label) => Manifest.Hash(System.Text.Encoding.UTF8.GetBytes(label));
             var binding = new EnterpriseHardeningBinding(Hash("profile"), Hash("source")[..40], Hash("content"),
-                "selected-run", "10.0.302", "10.0.10", "linux-x64", Hash("independent-evidence"))
+                "selected-run", "10.0.403", "10.0.10", "linux-x64", Hash("independent-evidence"))
             {
                 Archives = [new("SecretKit.Core", "0.2.0-test.1", Hash("original-archive"))],
                 CohortSha256 = Hash("cohort"),
