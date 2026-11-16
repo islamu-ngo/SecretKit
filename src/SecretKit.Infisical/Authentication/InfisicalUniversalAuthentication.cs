@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Refit;
@@ -85,23 +86,12 @@ public sealed class InfisicalUniversalAuthentication : IDisposable
                     organizationSlug.AsSpan().ContainsAny(InfisicalOperationBudget.ControlCharacters)))
                 throw new ArgumentException("Invalid protected login selection.");
 
-            byte[] payload = new byte[Math.Min(64 * 1024, _requestLimit)];
-            char[] characters = clientSecret.ExportCharacters();
+            byte[] payload = InfisicalOperationBudget.SerializeUniversalLogin(clientId, clientSecret, organizationSlug, _requestLimit);
             try
             {
-                if (characters.Length is < 1 or > 16384 ||
-                    characters.AsSpan().ContainsAny(InfisicalOperationBudget.ControlCharacters))
-                    throw new ArgumentException("Invalid bootstrap credential.");
-                using var stream = new MemoryStream(payload, writable: true);
-                using (var writer = new Utf8JsonWriter(stream))
-                {
-                    writer.WriteStartObject();
-                    writer.WriteString("clientId", clientId);
-                    writer.WriteString("clientSecret", characters.AsSpan());
-                    if (organizationSlug is not null) writer.WriteString("organizationSlug", organizationSlug);
-                    writer.WriteEndObject();
-                }
-                using var content = new ByteArrayContent(payload, 0, checked((int)stream.Position));
+                if (payload.Length == 0)
+                    return SecretOutcome<InfisicalUniversalLogin>.Failure(SecretStatus.Invalid, reason: SecretFailureReason.RequestTooLarge);
+                using var content = new ByteArrayContent(payload);
                 content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
                 using HttpRequestMessage request = await _api.Login(content, operationToken).ConfigureAwait(false);
                 if (request.RequestUri is { IsAbsoluteUri: false } relative)
@@ -174,8 +164,7 @@ public sealed class InfisicalUniversalAuthentication : IDisposable
             }
             finally
             {
-                Array.Clear(characters);
-                Array.Clear(payload);
+                CryptographicOperations.ZeroMemory(payload);
             }
         }
     }

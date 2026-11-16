@@ -199,7 +199,7 @@ public abstract class InfisicalDynamicProfile : IDisposable
         {
             if (name.StartsWith(prefix, StringComparison.Ordinal) && !name[prefix.Length..].Contains('.'))
             {
-                writer.WriteString(name[prefix.Length..], value.Reveal());
+                value.Use((writer, key: name[prefix.Length..]), static (chars, s) => s.writer.WriteString(s.key, chars));
             }
         }
         foreach ((string name, decimal value) in _numbers)
@@ -223,7 +223,7 @@ public abstract class InfisicalDynamicProfile : IDisposable
                 writer.WriteStartArray(name[prefix.Length..]);
                 foreach (SecretMaterial value in values)
                 {
-                    writer.WriteStringValue(value.Reveal());
+                    value.Use(writer, static (chars, w) => w.WriteStringValue(chars));
                 }
                 writer.WriteEndArray();
             }

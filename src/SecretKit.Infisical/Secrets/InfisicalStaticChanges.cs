@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using SecretKit.Core;
@@ -41,7 +42,6 @@ public sealed partial class InfisicalClient
     /// <remarks>Copies borrowed material before awaiting. Retain the receipt across cancellation or Unknown:
     /// dispatch may have occurred. Missing response evidence is Unknown; contradictory scope is Invalid.
     /// Neither result authorizes replay.</remarks>
-    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode(InfisicalOperationBudget.PayloadTrimmingMessage)]
     public ValueTask<SecretOutcome<InfisicalStaticChange>> CreateAsync(SecretReference target,
         SecretMaterial material, MutationReceipt receipt, CancellationToken cancellationToken = default) =>
         ChangeValueAsync(target, material, receipt, HttpMethod.Post, cancellationToken);
@@ -49,12 +49,10 @@ public sealed partial class InfisicalClient
     /// <summary>Updates a selected shared secret without pretending to provide compare-and-swap.</summary>
     /// <remarks>The caller retains its input material and receipt. Approval is not application;
     /// a lost response or cancellation does not undo a possibly dispatched write.</remarks>
-    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode(InfisicalOperationBudget.PayloadTrimmingMessage)]
     public ValueTask<SecretOutcome<InfisicalStaticChange>> UpdateValueAsync(SecretReference target,
         SecretMaterial material, MutationReceipt receipt, CancellationToken cancellationToken = default) =>
         ChangeValueAsync(target, material, receipt, HttpMethod.Patch, cancellationToken);
 
-    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode(InfisicalOperationBudget.PayloadTrimmingMessage)]
     private async ValueTask<SecretOutcome<InfisicalStaticChange>> ChangeValueAsync(SecretReference target,
         SecretMaterial material, MutationReceipt receipt, HttpMethod method, CancellationToken cancellationToken)
     {
@@ -84,19 +82,24 @@ public sealed partial class InfisicalClient
             if (material.GetUtf8ByteCount() > _requestLimit)
                 return SecretOutcome<InfisicalStaticChange>.Failure(SecretStatus.Invalid,
                     reason: SecretFailureReason.RequestTooLarge);
-            using SecretMaterial owned = material.Copy();
-            byte[] payload = InfisicalOperationBudget.Payload(new
+            byte[] payload;
+            using (SecretMaterial owned = material.Copy())
             {
-                projectId = address.ProjectId,
-                environment = address.Environment,
-                secretPath = address.Folder,
-                secretValue = owned.Reveal(),
-                type = "shared",
-                skipMultilineEncoding = true
-            })(_requestLimit);
+                payload = InfisicalOperationBudget.Serialize(writer =>
+                {
+                    writer.WriteStartObject();
+                    writer.WriteString("projectId", address.ProjectId);
+                    writer.WriteString("environment", address.Environment);
+                    writer.WriteString("secretPath", address.Folder);
+                    owned.Use(writer, static (chars, w) => w.WriteString("secretValue", chars));
+                    writer.WriteString("type", "shared");
+                    writer.WriteBoolean("skipMultilineEncoding", true);
+                    writer.WriteEndObject();
+                }, _requestLimit);
+            }
             if (payload.Length == 0)
             {
-                Array.Clear(payload);
+                CryptographicOperations.ZeroMemory(payload);
                 return SecretOutcome<InfisicalStaticChange>.Failure(SecretStatus.Invalid, reason: SecretFailureReason.RequestTooLarge);
             }
 
@@ -106,7 +109,7 @@ public sealed partial class InfisicalClient
             }
             catch
             {
-                Array.Clear(payload);
+                CryptographicOperations.ZeroMemory(payload);
                 throw;
             }
 
@@ -179,7 +182,7 @@ public sealed partial class InfisicalClient
             }
             finally
             {
-                Array.Clear(payload);
+                CryptographicOperations.ZeroMemory(payload);
                 EndOperation();
             }
         }

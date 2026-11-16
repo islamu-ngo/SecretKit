@@ -48,32 +48,31 @@ public sealed class ProxiedServiceCredentialInput : IDisposable
             _ => throw new ArgumentException("Invalid proxied service substitution surface.")
         }).ToArray();
         if (surfaces?.Length is 0 or > 1000) throw new ArgumentException("Invalid proxied service substitution count.");
-        char[]? placeholder = placeholderValue?.ExportCharacters();
-        try
+        using SecretMaterial? ownedPlaceholder = placeholderValue?.Copy();
+        ownedPlaceholder?.Use(static characters =>
         {
-            if (placeholder?.Length is 0 or > 255) throw new ArgumentException("Invalid proxied service placeholder budget.");
-            _body = GatewayJson.Serialize(writer =>
+            if (characters.Length is 0 or > 255) throw new ArgumentException("Invalid proxied service placeholder budget.");
+        });
+        _body = GatewayJson.Serialize(writer =>
+        {
+            writer.WriteStartObject();
+            writer.WriteString("role", wireRole);
+            if (dynamicSecretField is not null) writer.WriteString("dynamicSecretField", dynamicSecretField);
+            if (dynamicSecretName is not null) writer.WriteString("dynamicSecretName", dynamicSecretName);
+            if (headerName is not null) writer.WriteString("headerName", headerName);
+            if (headerPrefix is not null) writer.WriteString("headerPrefix", headerPrefix);
+            if (purpose is not null) writer.WriteString("headerPurpose", purpose);
+            if (placeholderKey is not null) writer.WriteString("placeholderKey", placeholderKey);
+            ownedPlaceholder?.Use(writer, static (characters, w) => w.WriteString("placeholderValue", characters));
+            if (secretKey is not null) writer.WriteString("secretKey", secretKey);
+            if (surfaces is not null)
             {
-                writer.WriteStartObject();
-                writer.WriteString("role", wireRole);
-                if (dynamicSecretField is not null) writer.WriteString("dynamicSecretField", dynamicSecretField);
-                if (dynamicSecretName is not null) writer.WriteString("dynamicSecretName", dynamicSecretName);
-                if (headerName is not null) writer.WriteString("headerName", headerName);
-                if (headerPrefix is not null) writer.WriteString("headerPrefix", headerPrefix);
-                if (purpose is not null) writer.WriteString("headerPurpose", purpose);
-                if (placeholderKey is not null) writer.WriteString("placeholderKey", placeholderKey);
-                if (placeholder is not null) writer.WriteString("placeholderValue", placeholder.AsSpan());
-                if (secretKey is not null) writer.WriteString("secretKey", secretKey);
-                if (surfaces is not null)
-                {
-                    writer.WriteStartArray("substitutionSurfaces");
-                    foreach (string surface in surfaces) writer.WriteStringValue(surface);
-                    writer.WriteEndArray();
-                }
-                writer.WriteEndObject();
-            });
-        }
-        finally { if (placeholder is not null) Array.Clear(placeholder); }
+                writer.WriteStartArray("substitutionSurfaces");
+                foreach (string surface in surfaces) writer.WriteStringValue(surface);
+                writer.WriteEndArray();
+            }
+            writer.WriteEndObject();
+        });
     }
     internal void Write(Utf8JsonWriter writer)
     {

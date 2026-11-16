@@ -268,18 +268,12 @@ public sealed class InfisicalFolderMove
 
 public sealed partial class InfisicalClient
 {
-    private static readonly JsonSerializerOptions NativePayloadOptions = new()
-    {
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
-    };
-
     /// <summary>Inspects an environment using this client's selected identity; unvalidated correspondence yields Unknown.</summary>
     public ValueTask<SecretOutcome<InfisicalEnvironment>> GetEnvironmentAsync(SecretReference target,
         CancellationToken cancellationToken = default) =>
         EnvironmentOperationAsync(target, HttpMethod.Get, null, null, null, false, false, cancellationToken);
 
     /// <summary>Creates an environment selected by slug under explicit native authority and retained dispatch evidence.</summary>
-    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode(InfisicalOperationBudget.PayloadTrimmingMessage)]
     public ValueTask<SecretOutcome<InfisicalEnvironment>> CreateEnvironmentAsync(SecretReference target,
         string name, InfisicalNativeAuthority authority, MutationReceipt receipt, double? position = null,
         CancellationToken cancellationToken = default)
@@ -295,12 +289,18 @@ public sealed partial class InfisicalClient
             return ValueTask.FromResult(SecretOutcome<InfisicalEnvironment>.Failure(SecretStatus.Invalid));
         }
         return EnvironmentOperationAsync(target, HttpMethod.Post,
-            InfisicalOperationBudget.Payload(new { name, slug = address.Selector, position }, NativePayloadOptions),
+            maximum => InfisicalOperationBudget.Serialize(writer =>
+            {
+                writer.WriteStartObject();
+                writer.WriteString("name", name);
+                InfisicalOperationBudget.WriteStringIfNotNull(writer, "slug", address.Selector);
+                InfisicalOperationBudget.WriteOptionalNumber(writer, "position", position);
+                writer.WriteEndObject();
+            }, maximum),
             authority, receipt, false, false, cancellationToken);
     }
 
     /// <summary>Updates supplied environment fields by native ID; cancellation does not undo a dispatched change.</summary>
-    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode(InfisicalOperationBudget.PayloadTrimmingMessage)]
     public ValueTask<SecretOutcome<InfisicalEnvironment>> UpdateEnvironmentAsync(SecretReference target,
         InfisicalNativeAuthority authority, MutationReceipt receipt, string? name = null, string? slug = null,
         double? position = null, CancellationToken cancellationToken = default)
@@ -313,7 +313,14 @@ public sealed partial class InfisicalClient
             throw new ArgumentException("Invalid environment position.");
         }
         return EnvironmentOperationAsync(target, HttpMethod.Patch,
-            InfisicalOperationBudget.Payload(new { name, slug, position }, NativePayloadOptions),
+            maximum => InfisicalOperationBudget.Serialize(writer =>
+            {
+                writer.WriteStartObject();
+                InfisicalOperationBudget.WriteStringIfNotNull(writer, "name", name);
+                InfisicalOperationBudget.WriteStringIfNotNull(writer, "slug", slug);
+                InfisicalOperationBudget.WriteOptionalNumber(writer, "position", position);
+                writer.WriteEndObject();
+            }, maximum),
             authority, receipt, false, false, cancellationToken);
     }
 
@@ -372,7 +379,6 @@ public sealed partial class InfisicalClient
         TagOperationAsync(target, HttpMethod.Get, null, null, null, cancellationToken);
 
     /// <summary>Creates a slug-selected tag using explicit native authority and a caller-held mutation receipt.</summary>
-    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode(InfisicalOperationBudget.PayloadTrimmingMessage)]
     public ValueTask<SecretOutcome<InfisicalTag>> CreateTagAsync(SecretReference target, string color,
         InfisicalNativeAuthority authority, MutationReceipt receipt, CancellationToken cancellationToken = default)
     {
@@ -382,20 +388,29 @@ public sealed partial class InfisicalClient
         {
             return ValueTask.FromResult(SecretOutcome<InfisicalTag>.Failure(SecretStatus.Invalid));
         }
-        return TagOperationAsync(target, HttpMethod.Post, InfisicalOperationBudget.Payload(new { slug = address.Selector, color }),
-            authority, receipt, cancellationToken);
+        return TagOperationAsync(target, HttpMethod.Post, maximum => InfisicalOperationBudget.Serialize(writer =>
+        {
+            writer.WriteStartObject();
+            writer.WriteString("slug", address.Selector);
+            writer.WriteString("color", color);
+            writer.WriteEndObject();
+        }, maximum), authority, receipt, cancellationToken);
     }
 
     /// <summary>Updates an ID-selected tag; a missing or mismatched response leaves the outcome Unknown.</summary>
-    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode(InfisicalOperationBudget.PayloadTrimmingMessage)]
     public ValueTask<SecretOutcome<InfisicalTag>> UpdateTagAsync(SecretReference target, string slug, string color,
         InfisicalNativeAuthority authority, MutationReceipt receipt, CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed(cancellationToken);
         InfisicalNativeAddress.NativeText(slug, 64);
         InfisicalNativeAddress.NativeText(color);
-        return TagOperationAsync(target, HttpMethod.Patch, InfisicalOperationBudget.Payload(new { slug, color }),
-            authority, receipt, cancellationToken);
+        return TagOperationAsync(target, HttpMethod.Patch, maximum => InfisicalOperationBudget.Serialize(writer =>
+        {
+            writer.WriteStartObject();
+            writer.WriteString("slug", slug);
+            writer.WriteString("color", color);
+            writer.WriteEndObject();
+        }, maximum), authority, receipt, cancellationToken);
     }
 
     /// <summary>Deletes an ID-selected tag; retain the receipt across cancellation and uncertain responses.</summary>
@@ -549,20 +564,17 @@ public sealed partial class InfisicalClient
         FolderOperationAsync(target, HttpMethod.Get, null, null, null, cancellationToken);
 
     /// <summary>Creates a named child under explicit scope and native authority; receipt evidence is retained on failure.</summary>
-    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode(InfisicalOperationBudget.PayloadTrimmingMessage)]
     public ValueTask<SecretOutcome<InfisicalFolder>> CreateFolderAsync(SecretReference target,
         InfisicalNativeAuthority authority, MutationReceipt receipt, string? description = null,
         CancellationToken cancellationToken = default) =>
         ChangeFolderAsync(target, authority, receipt, HttpMethod.Post, description, false, cancellationToken);
 
     /// <summary>Updates an ID-selected named folder, distinguishing omitted and explicitly cleared description.</summary>
-    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode(InfisicalOperationBudget.PayloadTrimmingMessage)]
     public ValueTask<SecretOutcome<InfisicalFolder>> UpdateFolderAsync(SecretReference target,
         InfisicalNativeAuthority authority, MutationReceipt receipt, string? description = null,
         bool clearDescription = false, CancellationToken cancellationToken = default) =>
         ChangeFolderAsync(target, authority, receipt, HttpMethod.Patch, description, clearDescription, cancellationToken);
 
-    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode(InfisicalOperationBudget.PayloadTrimmingMessage)]
     private ValueTask<SecretOutcome<InfisicalFolder>> ChangeFolderAsync(SecretReference target,
         InfisicalNativeAuthority authority, MutationReceipt receipt, HttpMethod method, string? description,
         bool clearDescription, CancellationToken cancellationToken)
@@ -576,20 +588,19 @@ public sealed partial class InfisicalClient
         {
             return ValueTask.FromResult(SecretOutcome<InfisicalFolder>.Failure(SecretStatus.Invalid));
         }
-        var body = new Dictionary<string, object?>
+        return FolderOperationAsync(target, method, maximum => InfisicalOperationBudget.Serialize(writer =>
         {
-            ["projectId"] = address.ProjectId,
-            ["environment"] = address.Environment,
-            ["path"] = address.Folder,
-            ["name"] = address.Name
-        };
-        if (description is not null || clearDescription) { body["description"] = description; }
-        return FolderOperationAsync(target, method, InfisicalOperationBudget.Payload(body),
-            authority, receipt, cancellationToken);
+            writer.WriteStartObject();
+            writer.WriteString("projectId", address.ProjectId);
+            writer.WriteString("environment", address.Environment);
+            writer.WriteString("path", address.Folder);
+            writer.WriteString("name", address.Name);
+            if (description is not null || clearDescription) writer.WriteString("description", description);
+            writer.WriteEndObject();
+        }, maximum), authority, receipt, cancellationToken);
     }
 
     /// <summary>Deletes a selected folder with explicit optional force; cancellation is not remote rollback.</summary>
-    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode(InfisicalOperationBudget.PayloadTrimmingMessage)]
     public ValueTask<SecretOutcome<InfisicalFolder>> DeleteFolderAsync(SecretReference target,
         InfisicalNativeAuthority authority, MutationReceipt receipt, bool forceDelete = false,
         CancellationToken cancellationToken = default)
@@ -599,13 +610,15 @@ public sealed partial class InfisicalClient
         {
             return ValueTask.FromResult(SecretOutcome<InfisicalFolder>.Failure(SecretStatus.Invalid));
         }
-        return FolderOperationAsync(target, HttpMethod.Delete, InfisicalOperationBudget.Payload(new
+        return FolderOperationAsync(target, HttpMethod.Delete, maximum => InfisicalOperationBudget.Serialize(writer =>
         {
-            projectId = address.ProjectId,
-            environment = address.Environment,
-            path = address.Folder,
-            forceDelete
-        }), authority, receipt, cancellationToken);
+            writer.WriteStartObject();
+            writer.WriteString("projectId", address.ProjectId);
+            writer.WriteString("environment", address.Environment);
+            writer.WriteString("path", address.Folder);
+            writer.WriteBoolean("forceDelete", forceDelete);
+            writer.WriteEndObject();
+        }, maximum), authority, receipt, cancellationToken);
     }
 
     private async ValueTask<SecretOutcome<InfisicalFolder>> FolderOperationAsync(SecretReference target, HttpMethod method,
@@ -644,7 +657,6 @@ public sealed partial class InfisicalClient
     /// <summary>Updates bounded distinct folder IDs while retaining partial response coverage.</summary>
     /// <remarks>A successful list can be incomplete; only complete correspondence marks the envelope Applied.
     /// Retain the receipt after Unknown or cancellation; this is not an atomic batch or a replay guarantee.</remarks>
-    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode(InfisicalOperationBudget.PayloadTrimmingMessage)]
     public async ValueTask<SecretOutcome<InfisicalNativeList<InfisicalFolder>>> UpdateFoldersAsync(SecretReference target,
         IReadOnlyList<InfisicalFolderUpdate> updates, InfisicalNativeAuthority authority, MutationReceipt receipt,
         CancellationToken cancellationToken = default)
@@ -663,20 +675,27 @@ public sealed partial class InfisicalClient
                 return SecretOutcome<InfisicalNativeList<InfisicalFolder>>.Failure(SecretStatus.Invalid);
             }
             InfisicalFolderUpdate[] owned = updates.ToArray();
-            var bodies = owned.Select(update =>
-            {
-                var body = new Dictionary<string, object?>
-                {
-                    ["id"] = update.Id,
-                    ["name"] = update.Name,
-                    ["environment"] = address.Environment,
-                    ["path"] = address.Folder
-                };
-                if (update.Description is not null || update.ClearDescription) { body["description"] = update.Description; }
-                return body;
-            }).ToArray();
             SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target,
-                new(HttpMethod.Patch, InfisicalNativeOperationKind.UpdateFolders), InfisicalOperationBudget.Payload(new { projectId = address.ProjectId, folders = bodies }),
+                new(HttpMethod.Patch, InfisicalNativeOperationKind.UpdateFolders),
+                maximum => InfisicalOperationBudget.Serialize(writer =>
+                {
+                    writer.WriteStartObject();
+                    writer.WriteString("projectId", address.ProjectId);
+                    writer.WriteStartArray("folders");
+                    foreach (InfisicalFolderUpdate update in owned)
+                    {
+                        writer.WriteStartObject();
+                        writer.WriteString("id", update.Id);
+                        writer.WriteString("name", update.Name);
+                        writer.WriteString("environment", address.Environment);
+                        writer.WriteString("path", address.Folder);
+                        if (update.Description is not null || update.ClearDescription)
+                            writer.WriteString("description", update.Description);
+                        writer.WriteEndObject();
+                    }
+                    writer.WriteEndArray();
+                    writer.WriteEndObject();
+                }, maximum),
                 authority, receipt, operationToken).ConfigureAwait(false);
             if (!outcome.IsSuccess) { return outcome.ConvertFailure<InfisicalNativeList<InfisicalFolder>>(); }
             using JsonDocument document = outcome.Value;
@@ -703,7 +722,6 @@ public sealed partial class InfisicalClient
 
     /// <summary>Moves a selected folder only within the explicit authority's source and destination scope.</summary>
     /// <remarks>Applied evidence requires a correlated response; a lost response remains uncertain without replay.</remarks>
-    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode(InfisicalOperationBudget.PayloadTrimmingMessage)]
     public async ValueTask<SecretOutcome<InfisicalFolderMove>> MoveFolderAsync(SecretReference target,
         InfisicalFolderAddress destination, InfisicalNativeAuthority authority, MutationReceipt receipt,
         CancellationToken cancellationToken = default)
@@ -721,13 +739,17 @@ public sealed partial class InfisicalClient
                 return SecretOutcome<InfisicalFolderMove>.Failure(SecretStatus.Invalid);
             }
             SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target,
-                new(HttpMethod.Post, InfisicalNativeOperationKind.MoveFolder), InfisicalOperationBudget.Payload(new
+                new(HttpMethod.Post, InfisicalNativeOperationKind.MoveFolder),
+                maximum => InfisicalOperationBudget.Serialize(writer =>
                 {
-                    projectId = address.ProjectId,
-                    folderId = address.Id,
-                    destinationEnvironment = destination.Environment,
-                    destinationPath = destination.Folder
-                }), authority, receipt, operationToken).ConfigureAwait(false);
+                    writer.WriteStartObject();
+                    writer.WriteString("projectId", address.ProjectId);
+                    writer.WriteString("folderId", address.Id);
+                    writer.WriteString("destinationEnvironment", destination.Environment);
+                    writer.WriteString("destinationPath", destination.Folder);
+                    writer.WriteEndObject();
+                }, maximum),
+                authority, receipt, operationToken).ConfigureAwait(false);
             if (!outcome.IsSuccess) { return outcome.ConvertFailure<InfisicalFolderMove>(); }
             using JsonDocument document = outcome.Value;
             JsonElement item = document.RootElement;

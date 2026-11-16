@@ -93,28 +93,27 @@ public sealed class GatewayAuthenticationInput : IDisposable
             GatewayTokenReviewMode.Gateway => "gateway",
             _ => throw new ArgumentException("Invalid gateway token review mode.")
         };
-        char[]? jwt = tokenReviewerJwt?.ExportCharacters();
-        try
+        using SecretMaterial? ownedJwt = tokenReviewerJwt?.Copy();
+        ownedJwt?.Use(static characters =>
         {
-            if (jwt?.Length > 8192) throw new ArgumentException("Invalid gateway JWT budget.");
-            return new(writer =>
-            {
-                writer.WriteStartObject();
-                writer.WriteString("method", "kubernetes");
-                writer.WriteString("allowedNames", allowedNames);
-                writer.WriteString("allowedNamespaces", allowedNamespaces);
-                if (allowedAudience is not null) writer.WriteString("allowedAudience", allowedAudience);
-                if (caCertificate is not null) writer.WriteString("caCertificate", caCertificate);
-                if (gatewayId is not null) writer.WriteString("gatewayId", gatewayId.Value);
-                if (gatewayPoolId is not null) writer.WriteString("gatewayPoolId", gatewayPoolId.Value);
-                if (kubernetesHost is not null) writer.WriteString("kubernetesHost", kubernetesHost);
-                if (jwt is not null) writer.WriteString("tokenReviewerJwt", jwt.AsSpan());
-                if (mode is not null) writer.WriteString("tokenReviewMode", mode);
-                if (verifyTlsCertificate is { } verify) writer.WriteBoolean("verifyTlsCertificate", verify);
-                writer.WriteEndObject();
-            });
-        }
-        finally { if (jwt is not null) Array.Clear(jwt); }
+            if (characters.Length > 8192) throw new ArgumentException("Invalid gateway JWT budget.");
+        });
+        return new(writer =>
+        {
+            writer.WriteStartObject();
+            writer.WriteString("method", "kubernetes");
+            writer.WriteString("allowedNames", allowedNames);
+            writer.WriteString("allowedNamespaces", allowedNamespaces);
+            if (allowedAudience is not null) writer.WriteString("allowedAudience", allowedAudience);
+            if (caCertificate is not null) writer.WriteString("caCertificate", caCertificate);
+            if (gatewayId is not null) writer.WriteString("gatewayId", gatewayId.Value);
+            if (gatewayPoolId is not null) writer.WriteString("gatewayPoolId", gatewayPoolId.Value);
+            if (kubernetesHost is not null) writer.WriteString("kubernetesHost", kubernetesHost);
+            ownedJwt?.Use(writer, static (characters, w) => w.WriteString("tokenReviewerJwt", characters));
+            if (mode is not null) writer.WriteString("tokenReviewMode", mode);
+            if (verifyTlsCertificate is { } verify) writer.WriteBoolean("verifyTlsCertificate", verify);
+            writer.WriteEndObject();
+        });
     }
 
     /// <summary>Selects native token authentication without issuing an enrollment token.</summary>

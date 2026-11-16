@@ -289,20 +289,15 @@ internal static class IdentityTemplateWire
     }
     internal static void ValidateSecret(SecretMaterial material, int maximum, bool allowEmpty)
     {
-        char[] characters = material.ExportCharacters();
-        try
+        material.Use((maximum, allowEmpty), static (characters, state) =>
         {
-            if (characters.Length > maximum || !allowEmpty && characters.Length == 0)
+            if (characters.Length > state.maximum || !state.allowEmpty && characters.Length == 0)
                 throw new ArgumentException("Invalid identity template credential length.");
-        }
-        finally { Array.Clear(characters); }
+        });
     }
     internal static void Secret(Utf8JsonWriter writer, string name, SecretMaterial? material)
     {
-        if (material is null) return;
-        char[] characters = material.ExportCharacters();
-        try { writer.WriteString(name, characters.AsSpan()); }
-        finally { Array.Clear(characters); }
+        material?.Use((writer, name), static (characters, state) => state.writer.WriteString(state.name, characters));
     }
     internal static ManagementTarget Intent(string organizationId, string resourceId, string? method, Action<Utf8JsonWriter> write)
     {

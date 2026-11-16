@@ -443,46 +443,41 @@ public static class SharingOperations
             email is null || email.Length > 1024 || !System.Net.Mail.MailAddress.TryCreate(email, out var address) ||
             address.Address != email)))
             throw new ArgumentException("Invalid sharing email selectors.");
-        char[] value = material.ExportCharacters();
-        char[]? proof = null;
-        try
+        using SecretMaterial ownedValue = material.Copy();
+        using SecretMaterial? ownedProof = password?.Copy();
+        ownedValue.Use(static characters =>
         {
-            proof = password?.ExportCharacters();
-            if (value.Length > 10000 || proof?.Length > 4096)
-            {
-                throw new ArgumentException("Sharing material exceeds its input budget.");
-            }
-            void Write(Utf8JsonWriter writer)
-            {
-                writer.WriteStartObject();
-                writer.WriteString("name", name);
-                writer.WriteString("secretValue", value.AsSpan());
-                if (proof is not null) writer.WriteString("password", proof.AsSpan());
-                writer.WriteString("expiresIn", lifetimeMinutes.ToString(CultureInfo.InvariantCulture) + "m");
-                writer.WriteString("accessType", audience == ShareAudience.Organization ? "organization" : "anyone");
-                if (maximumViews is { } count) writer.WriteNumber("maxViews", count);
-                if (allowExternalEmails is { } external) writer.WriteBoolean("allowExternalEmails", external);
-                if (emails is not null)
-                {
-                    writer.WriteStartArray("authorizedEmails");
-                    foreach (string email in emails) writer.WriteStringValue(email);
-                    writer.WriteEndArray();
-                }
-                writer.WriteEndObject();
-            }
-            return new("infisical.post.v1.shared.secrets",
-                static (apis, body, token) => apis.Governance.CreateShare(body!, token), HttpMethod.Post, "/api/v1/shared-secrets",
-                ProjectWire.Intent(organizationId, null, name, Write), Write, root =>
-                {
-                    var metadata = new SharedSecretMetadata(root, organizationId);
-                    return new(metadata, SecretMaterial.FromText(ManagementJson.Required(root, "sharedSecretLink")));
-                });
-        }
-        finally
+            if (characters.Length > 10000) throw new ArgumentException("Sharing material exceeds its input budget.");
+        });
+        ownedProof?.Use(static characters =>
         {
-            Array.Clear(value);
-            if (proof is not null) Array.Clear(proof);
+            if (characters.Length > 4096) throw new ArgumentException("Sharing material exceeds its input budget.");
+        });
+        void Write(Utf8JsonWriter writer)
+        {
+            writer.WriteStartObject();
+            writer.WriteString("name", name);
+            ownedValue.Use(writer, static (characters, w) => w.WriteString("secretValue", characters));
+            ownedProof?.Use(writer, static (characters, w) => w.WriteString("password", characters));
+            writer.WriteString("expiresIn", lifetimeMinutes.ToString(CultureInfo.InvariantCulture) + "m");
+            writer.WriteString("accessType", audience == ShareAudience.Organization ? "organization" : "anyone");
+            if (maximumViews is { } count) writer.WriteNumber("maxViews", count);
+            if (allowExternalEmails is { } external) writer.WriteBoolean("allowExternalEmails", external);
+            if (emails is not null)
+            {
+                writer.WriteStartArray("authorizedEmails");
+                foreach (string email in emails) writer.WriteStringValue(email);
+                writer.WriteEndArray();
+            }
+            writer.WriteEndObject();
         }
+        return new("infisical.post.v1.shared.secrets",
+            static (apis, body, token) => apis.Governance.CreateShare(body!, token), HttpMethod.Post, "/api/v1/shared-secrets",
+            ProjectWire.Intent(organizationId, null, name, Write), Write, root =>
+            {
+                var metadata = new SharedSecretMetadata(root, organizationId);
+                return new(metadata, SecretMaterial.FromText(ManagementJson.Required(root, "sharedSecretLink")));
+            });
     }
 
     /// <summary>Independently select every sharing input for the host's exact grant.</summary>
@@ -500,31 +495,27 @@ public static class SharingOperations
     public static ManagementRequest<SharedValue> AccessShare(string organizationId, string shareId,
         SecretMaterial? password = null)
     {
-        char[]? proof = password?.ExportCharacters();
-        try
+        using SecretMaterial? ownedProof = password?.Copy();
+        ownedProof?.Use(static characters =>
         {
-            if (proof?.Length > 4096) throw new ArgumentException("Sharing proof exceeds its input budget.");
-            void Write(Utf8JsonWriter writer)
+            if (characters.Length > 4096) throw new ArgumentException("Sharing proof exceeds its input budget.");
+        });
+        void Write(Utf8JsonWriter writer)
+        {
+            writer.WriteStartObject();
+            ownedProof?.Use(writer, static (characters, w) => w.WriteString("password", characters));
+            writer.WriteEndObject();
+        }
+        return new("infisical.post.v1.shared.secrets.by.id.access",
+            (apis, body, token) => apis.Governance.AccessShare(shareId, body!, token), HttpMethod.Post,
+            "/api/v1/shared-secrets/" + ManagementJson.Escape(shareId) + "/access",
+            ProjectWire.Intent(organizationId, null, shareId, Write), Write, root =>
             {
-                writer.WriteStartObject();
-                if (proof is not null) writer.WriteString("password", proof.AsSpan());
-                writer.WriteEndObject();
-            }
-            return new("infisical.post.v1.shared.secrets.by.id.access",
-                (apis, body, token) => apis.Governance.AccessShare(shareId, body!, token), HttpMethod.Post,
-                "/api/v1/shared-secrets/" + ManagementJson.Escape(shareId) + "/access",
-                ProjectWire.Intent(organizationId, null, shareId, Write), Write, root =>
-                {
-                    var metadata = new SharedSecretMetadata(root, organizationId, shareId);
-                    string value = ManagementJson.Optional(root, "secretValue") ??
-                        throw new ManagementContractException(SecretStatus.Denied);
-                    return new(metadata, SecretMaterial.FromText(value));
-                });
-        }
-        finally
-        {
-            if (proof is not null) Array.Clear(proof);
-        }
+                var metadata = new SharedSecretMetadata(root, organizationId, shareId);
+                string value = ManagementJson.Optional(root, "secretValue") ??
+                    throw new ManagementContractException(SecretStatus.Denied);
+                return new(metadata, SecretMaterial.FromText(value));
+            });
     }
 
     /// <summary>Builds independent approval intent for exact share access and optional password; construction does not consume a view.</summary>

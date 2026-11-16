@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Security.Cryptography;
 using System.Text.Json;
 using SecretKit.Core;
 
@@ -40,21 +41,14 @@ public sealed partial class InfisicalProofAuthentication
             operationToken.ThrowIfCancellationRequested();
             if (!ReferenceEquals(receipt.Owner, this) || receipt.Evidence != DispatchEvidence.NotDispatched)
                 return SecretOutcome<InfisicalTokenRevocationReceipt>.Failure(SecretStatus.Invalid);
-            char[] characters = token.ExportCharacters();
-            byte[] payload = new byte[Math.Min(128 * 1024, _requestLimit)];
+            byte[]? payload = InfisicalOperationBudget.SerializeAccessToken(token, _requestLimit);
             try
             {
-                if (characters.Length is < 1 or > 16384 ||
-                    characters.AsSpan().ContainsAny(InfisicalOperationBudget.ControlCharacters))
+                if (payload is null)
                     return SecretOutcome<InfisicalTokenRevocationReceipt>.Failure(SecretStatus.Invalid);
-                using var stream = new MemoryStream(payload, writable: true);
-                using (var writer = new Utf8JsonWriter(stream))
-                {
-                    writer.WriteStartObject();
-                    writer.WriteString("accessToken", characters.AsSpan());
-                    writer.WriteEndObject();
-                }
-                using var content = new ByteArrayContent(payload, 0, checked((int)stream.Position));
+                if (payload.Length == 0)
+                    return SecretOutcome<InfisicalTokenRevocationReceipt>.Failure(SecretStatus.Invalid, reason: SecretFailureReason.RequestTooLarge);
+                using var content = new ByteArrayContent(payload);
                 content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
                 using var request = await _wire.RevokeTokenAsync(content, operationToken).ConfigureAwait(false);
                 if (request.RequestUri is { IsAbsoluteUri: false } relative) request.RequestUri = new(_origin, relative);
@@ -99,8 +93,7 @@ public sealed partial class InfisicalProofAuthentication
             }
             finally
             {
-                Array.Clear(characters);
-                Array.Clear(payload);
+                if (payload is not null) CryptographicOperations.ZeroMemory(payload);
             }
         }
     }

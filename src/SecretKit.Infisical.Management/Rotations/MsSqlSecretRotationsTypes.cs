@@ -74,13 +74,20 @@ public sealed class MsSqlRotationParameters : IDisposable
         PasswordRequirements = passwordRequirements;
         if (rotationStatement is not null)
         {
-            char[] copy = rotationStatement.ExportCharacters();
+            SecretMaterial copy = rotationStatement.Copy();
             try
             {
-                if (copy.Length is 0 or > 16384) throw new ArgumentException("Invalid rotation statement budget.");
-                _statement = SecretMaterial.FromText(copy);
+                copy.Use(static characters =>
+                {
+                    if (characters.Length is 0 or > 16384) throw new ArgumentException("Invalid rotation statement budget.");
+                });
+                _statement = copy;
             }
-            finally { Array.Clear(copy); }
+            catch
+            {
+                copy.Dispose();
+                throw;
+            }
         }
     }
     internal MsSqlRotationParameters(JsonElement value)
@@ -118,12 +125,7 @@ public sealed class MsSqlRotationParameters : IDisposable
             writer.WriteString("username1", Username1);
             writer.WriteString("username2", Username2);
             PasswordRequirements?.Write(writer);
-            if (_statement is not null)
-            {
-                char[] copy = _statement.ExportCharacters();
-                try { writer.WriteString("rotationStatement", copy.AsSpan()); }
-                finally { Array.Clear(copy); }
-            }
+            _statement?.Use(writer, static (characters, w) => w.WriteString("rotationStatement", characters));
             writer.WriteEndObject();
         }
     }

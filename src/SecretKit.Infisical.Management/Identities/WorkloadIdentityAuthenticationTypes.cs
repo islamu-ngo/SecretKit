@@ -218,7 +218,7 @@ public sealed class KubernetesAuthConfigurationInput : IDisposable
         WorkloadAuthJson.Uuid(templateId);
         if (tokenReviewMode is { } mode && !Enum.IsDefined(mode)) throw new ArgumentException("Invalid review mode.");
         if (clearTokenReviewerJwt && tokenReviewerJwt is not null) throw new ArgumentException("Conflicting reviewer inputs.");
-        if (tokenReviewerJwt is not null) WorkloadAuthJson.Text(tokenReviewerJwt.Reveal());
+        WorkloadAuthJson.Secret(tokenReviewerJwt);
         AllowedNames = allowedNames;
         AllowedNamespaces = allowedNamespaces;
         AllowedAudience = allowedAudience;
@@ -275,8 +275,8 @@ public sealed class KubernetesAuthConfigurationInput : IDisposable
         WorkloadAuthJson.Nullable(writer, "gatewayId", GatewayId);
         WorkloadAuthJson.Nullable(writer, "gatewayPoolId", GatewayPoolId);
         WorkloadAuthJson.Nullable(writer, "templateId", TemplateId);
-        if (_reviewer is not null) writer.WriteString("tokenReviewerJwt", _reviewer.Reveal());
-        else if (ClearTokenReviewerJwt) writer.WriteNull("tokenReviewerJwt");
+        WorkloadAuthJson.WriteSecret(writer, "tokenReviewerJwt", _reviewer);
+        if (_reviewer is null && ClearTokenReviewerJwt) writer.WriteNull("tokenReviewerJwt");
         if (TokenReviewMode is { } mode) writer.WriteString("tokenReviewMode", mode == KubernetesTokenReviewMode.Api ? "api" : "gateway");
         if (VerifyTlsCertificate is { } verify) writer.WriteBoolean("verifyTlsCertificate", verify);
         Policy.Write(writer);
@@ -477,6 +477,17 @@ internal static class WorkloadAuthJson
     internal static void Text(string? value, int maximum = 16384)
     {
         if (value is not null && value.Length > maximum) throw new ArgumentException("Workload input exceeds its text budget.");
+    }
+    internal static void Secret(SecretMaterial? material, int maximum = 16384)
+    {
+        material?.Use(maximum, static (characters, max) =>
+        {
+            if (characters.Length > max) throw new ArgumentException("Workload input exceeds its text budget.");
+        });
+    }
+    internal static void WriteSecret(Utf8JsonWriter writer, string field, SecretMaterial? material)
+    {
+        material?.Use((writer, field), static (characters, state) => state.writer.WriteString(state.field, characters));
     }
     internal static void Uri(string? value)
     {

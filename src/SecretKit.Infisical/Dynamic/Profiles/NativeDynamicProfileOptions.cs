@@ -25,12 +25,13 @@ internal sealed class NativeProfileOptionData : IDisposable
     internal void Write(Utf8JsonWriter writer)
     {
         foreach (var (key, value) in Text)
-            if (value is null) writer.WriteNull(key); else writer.WriteString(key, value.Reveal());
+            if (value is null) writer.WriteNull(key);
+            else value.Use((writer, key), static (chars, state) => state.writer.WriteString(state.key, chars));
         foreach (var (key, value) in Flags) writer.WriteBoolean(key, value);
         foreach (var (key, values) in Strings)
         {
             writer.WriteStartArray(key);
-            foreach (var value in values) writer.WriteStringValue(value.Reveal());
+            foreach (var value in values) value.Use(writer, static (chars, w) => w.WriteStringValue(chars));
             writer.WriteEndArray();
         }
         foreach (var (key, values) in Objects)

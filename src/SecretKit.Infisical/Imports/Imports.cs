@@ -203,7 +203,6 @@ public sealed partial class InfisicalClient
     /// <summary>Creates import configuration under explicit native authority and caller-held dispatch evidence.</summary>
     /// <remarks>Applied receipt evidence concerns configuration only, not replication, approval or intended delivery.
     /// Cancellation and uncertain responses do not authorize replay.</remarks>
-    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode(InfisicalOperationBudget.PayloadTrimmingMessage)]
     public ValueTask<SecretOutcome<InfisicalImport>> CreateImportAsync(SecretReference target,
         InfisicalImportSource source, bool replication, InfisicalNativeAuthority authority, MutationReceipt receipt,
         CancellationToken cancellationToken = default)
@@ -214,21 +213,26 @@ public sealed partial class InfisicalClient
         {
             return ValueTask.FromResult(SecretOutcome<InfisicalImport>.Failure(SecretStatus.Invalid));
         }
-        Func<int, byte[]> payload = InfisicalOperationBudget.Payload(new
+        Func<int, byte[]> payload = maximum => InfisicalOperationBudget.Serialize(writer =>
         {
-            projectId = address.ProjectId,
-            environment = address.Environment,
-            path = address.Folder,
-            import = new { environment = source.Environment, path = source.Path, sourceProjectId = source.ProjectId },
-            isReplication = replication
-        }, NativePayloadOptions);
+            writer.WriteStartObject();
+            InfisicalOperationBudget.WriteStringIfNotNull(writer, "projectId", address.ProjectId);
+            InfisicalOperationBudget.WriteStringIfNotNull(writer, "environment", address.Environment);
+            InfisicalOperationBudget.WriteStringIfNotNull(writer, "path", address.Folder);
+            writer.WriteStartObject("import");
+            InfisicalOperationBudget.WriteStringIfNotNull(writer, "environment", source.Environment);
+            InfisicalOperationBudget.WriteStringIfNotNull(writer, "path", source.Path);
+            InfisicalOperationBudget.WriteStringIfNotNull(writer, "sourceProjectId", source.ProjectId);
+            writer.WriteEndObject();
+            writer.WriteBoolean("isReplication", replication);
+            writer.WriteEndObject();
+        }, maximum);
         return ImportOperationAsync(target, HttpMethod.Post, payload, authority, receipt,
             source.Environment, source.Path, replication, cancellationToken);
     }
 
     /// <summary>Updates explicitly supplied source/order fields; omitted fields remain unspecified.</summary>
     /// <remarks>Retain the receipt after failure or cancellation. Configuration success does not prove destination application.</remarks>
-    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode(InfisicalOperationBudget.PayloadTrimmingMessage)]
     public ValueTask<SecretOutcome<InfisicalImport>> UpdateImportAsync(SecretReference target,
         InfisicalNativeAuthority authority, MutationReceipt receipt, string? sourceEnvironment = null,
         string? sourcePath = null, double? position = null, CancellationToken cancellationToken = default)
@@ -241,19 +245,24 @@ public sealed partial class InfisicalClient
         {
             return ValueTask.FromResult(SecretOutcome<InfisicalImport>.Failure(SecretStatus.Invalid));
         }
-        Func<int, byte[]> payload = InfisicalOperationBudget.Payload(new
+        Func<int, byte[]> payload = maximum => InfisicalOperationBudget.Serialize(writer =>
         {
-            projectId = address.ProjectId,
-            environment = address.Environment,
-            path = address.Folder,
-            import = new { environment = sourceEnvironment, path = sourcePath, position }
-        }, NativePayloadOptions);
+            writer.WriteStartObject();
+            InfisicalOperationBudget.WriteStringIfNotNull(writer, "projectId", address.ProjectId);
+            InfisicalOperationBudget.WriteStringIfNotNull(writer, "environment", address.Environment);
+            InfisicalOperationBudget.WriteStringIfNotNull(writer, "path", address.Folder);
+            writer.WriteStartObject("import");
+            InfisicalOperationBudget.WriteStringIfNotNull(writer, "environment", sourceEnvironment);
+            InfisicalOperationBudget.WriteStringIfNotNull(writer, "path", sourcePath);
+            InfisicalOperationBudget.WriteOptionalNumber(writer, "position", position);
+            writer.WriteEndObject();
+            writer.WriteEndObject();
+        }, maximum);
         return ImportOperationAsync(target, HttpMethod.Patch, payload, authority, receipt,
             sourceEnvironment, sourcePath, null, cancellationToken);
     }
 
     /// <summary>Deletes selected import configuration with explicit authority and retained receipt; no remote rollback is implied.</summary>
-    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode(InfisicalOperationBudget.PayloadTrimmingMessage)]
     public ValueTask<SecretOutcome<InfisicalImport>> DeleteImportAsync(SecretReference target,
         InfisicalNativeAuthority authority, MutationReceipt receipt, CancellationToken cancellationToken = default)
     {
@@ -262,12 +271,14 @@ public sealed partial class InfisicalClient
         {
             return ValueTask.FromResult(SecretOutcome<InfisicalImport>.Failure(SecretStatus.Invalid));
         }
-        return ImportOperationAsync(target, HttpMethod.Delete, InfisicalOperationBudget.Payload(new
+        return ImportOperationAsync(target, HttpMethod.Delete, maximum => InfisicalOperationBudget.Serialize(writer =>
         {
-            projectId = address.ProjectId,
-            environment = address.Environment,
-            path = address.Folder
-        }), authority, receipt, null, null, null, cancellationToken);
+            writer.WriteStartObject();
+            writer.WriteString("projectId", address.ProjectId);
+            writer.WriteString("environment", address.Environment);
+            writer.WriteString("path", address.Folder);
+            writer.WriteEndObject();
+        }, maximum), authority, receipt, null, null, null, cancellationToken);
     }
 
     private async ValueTask<SecretOutcome<InfisicalImport>> ImportOperationAsync(SecretReference target,

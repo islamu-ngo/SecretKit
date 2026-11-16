@@ -145,15 +145,13 @@ public sealed class InfisicalLoginProof : IDisposable
     private static void WriteMaterial(Utf8JsonWriter writer, string name, SecretMaterial material, int maximum = 16384)
     {
         ArgumentNullException.ThrowIfNull(material);
-        char[] characters = material.ExportCharacters();
-        try
+        material.Use((writer, name, maximum), static (characters, state) =>
         {
-            if (characters.Length < 1 || characters.Length > maximum ||
-                characters.AsSpan().ContainsAny(InfisicalOperationBudget.ControlCharacters))
+            if (characters.Length < 1 || characters.Length > state.maximum ||
+                characters.ContainsAny(InfisicalOperationBudget.ControlCharacters))
                 throw new ArgumentException("Invalid host proof material.");
-            writer.WriteString(name, characters.AsSpan());
-        }
-        finally { Array.Clear(characters); }
+            state.writer.WriteString(state.name, characters);
+        });
     }
 
     internal byte[] CopyPayload()

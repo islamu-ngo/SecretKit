@@ -400,4 +400,28 @@ public sealed class NotificationAdministrationTests
         await Assert.That(result.Status).IsEqualTo(SecretStatus.Invalid);
         await Assert.That(result.Items.Count).IsEqualTo(0);
     }
+
+    [Test]
+    public async Task NotificationConfigurationCopiesAttributesWithoutLeavingOrphanedMaterial()
+    {
+        using var first = new NotificationDeliveryAttribute("x-first", NotificationAttributeKind.Static, "first-secret");
+        var disposedSecond = new NotificationDeliveryAttribute("x-second", NotificationAttributeKind.Static, "second-secret");
+        disposedSecond.Dispose();
+
+        await Assert.That(() => new NotificationConfiguration(Endpoint,
+            [VaultNotificationEvent.SecretNewVersionCreated], [first, disposedSecond])).Throws<ObjectDisposedException>();
+
+        // Original intact attribute remains usable; successful construction owns independent copies.
+        using var third = new NotificationDeliveryAttribute("x-dynamic", NotificationAttributeKind.Dynamic, "data.ObjectName");
+        using var config = new NotificationConfiguration(Endpoint,
+            [VaultNotificationEvent.SecretNewVersionCreated], [first, third]);
+        first.Dispose();
+        third.Dispose();
+
+        await Assert.That(config.DeliveryAttributes.Count).IsEqualTo(2);
+        await Assert.That(config.DeliveryAttributes[0].Value.Use(chars => new string(chars))).IsEqualTo("first-secret");
+        await Assert.That(config.DeliveryAttributes[1].Value.Use(chars => new string(chars))).IsEqualTo("data.ObjectName");
+        config.Dispose();
+        await Assert.That(() => config.DeliveryAttributes[0].Value.Use(_ => { })).Throws<ObjectDisposedException>();
+    }
 }

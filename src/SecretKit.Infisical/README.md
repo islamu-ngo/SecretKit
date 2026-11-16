@@ -453,10 +453,12 @@ beside authentication, secrets, imports and organization capabilities.
 modules keep their protected inputs and response observations. Dynamic profile
 implementations are grouped under `Dynamic/Profiles/` by responsibility.
 
-Request construction uses Refit's generated-only binding. Mutation APIs that
-still serialize reflection-based payloads declare `RequiresUnreferencedCode`;
-their callers need an untrimmed runtime. Analyzer-enabled builds do not establish
-trimming or Native AOT support for this package or its dependencies.
+Request construction uses Refit's generated-only binding. Static mutation, bulk,
+import, organization and validation request bodies serialize directly through
+`Utf8JsonWriter` and `SecretMaterial.Use` without reflection serialization or
+`RequiresUnreferencedCode` / `RequiresDynamicCode` annotations. The package builds
+with `IsAotCompatible` enabled; analyzer-clean builds do not substitute for testing a
+downstream self-contained trimmed or Native AOT application binary.
 
 Only public interface facts were used; implementation and tests were independently
 authored. No Infisical vendor source or implementation structure was reused.

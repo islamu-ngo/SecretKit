@@ -93,16 +93,18 @@ public sealed class InfisicalTextConstraints
             (MinimumLength is not > 2048 && MaximumLength is not > 2048 &&
                 UniqueAcrossLastVersions is null && UniqueWithinScope is null));
 
-    internal object Wire() => new
+    internal void WriteTo(Utf8JsonWriter writer)
     {
-        minLength = MinimumLength,
-        maxLength = MaximumLength,
-        regexPattern = RegexPattern,
-        requiredPrefix = RequiredPrefix,
-        requiredSuffix = RequiredSuffix,
-        uniqueAcrossLastVersions = UniqueAcrossLastVersions,
-        uniqueWithinScope = UniqueWithinScope
-    };
+        writer.WriteStartObject();
+        if (MinimumLength is { } minLength) writer.WriteNumber("minLength", minLength);
+        if (MaximumLength is { } maxLength) writer.WriteNumber("maxLength", maxLength);
+        InfisicalOperationBudget.WriteStringIfNotNull(writer, "regexPattern", RegexPattern);
+        InfisicalOperationBudget.WriteStringIfNotNull(writer, "requiredPrefix", RequiredPrefix);
+        InfisicalOperationBudget.WriteStringIfNotNull(writer, "requiredSuffix", RequiredSuffix);
+        if (UniqueAcrossLastVersions is { } uniqueVersions) writer.WriteNumber("uniqueAcrossLastVersions", uniqueVersions);
+        if (UniqueWithinScope is { } uniqueScope) writer.WriteBoolean("uniqueWithinScope", uniqueScope);
+        writer.WriteEndObject();
+    }
     /// <summary>Returns a fixed label without protected constraint text.</summary>
     public override string ToString() => "[InfisicalTextConstraints]";
 }
@@ -252,14 +254,12 @@ public sealed partial class InfisicalClient
     /// <summary>Creates a family-valid rule under explicit native authority with caller-held dispatch evidence.</summary>
     /// <remarks>Invalid selection is rejected locally; missing or unvalidated response evidence is Unknown.
     /// Retain the receipt after cancellation or uncertainty; no mutation replay occurs.</remarks>
-    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode(InfisicalOperationBudget.PayloadTrimmingMessage)]
     public ValueTask<SecretOutcome<InfisicalValidationRule>> CreateValidationRuleAsync(SecretReference target,
         InfisicalValidationInput input, InfisicalNativeAuthority authority, MutationReceipt receipt,
         CancellationToken cancellationToken = default) =>
         ChangeValidationRuleAsync(target, input, authority, receipt, false, cancellationToken);
 
     /// <summary>Applies explicit rule changes and validates resulting scope against the selected authority.</summary>
-    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode(InfisicalOperationBudget.PayloadTrimmingMessage)]
     public ValueTask<SecretOutcome<InfisicalValidationRule>> UpdateValidationRuleAsync(SecretReference target,
         InfisicalValidationInput input, InfisicalNativeAuthority authority, MutationReceipt receipt,
         CancellationToken cancellationToken = default) =>
@@ -270,7 +270,6 @@ public sealed partial class InfisicalClient
         InfisicalNativeAuthority authority, MutationReceipt receipt, CancellationToken cancellationToken = default) =>
         ValidationOperationAsync(target, HttpMethod.Delete, null, authority, receipt, cancellationToken);
 
-    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode(InfisicalOperationBudget.PayloadTrimmingMessage)]
     private ValueTask<SecretOutcome<InfisicalValidationRule>> ChangeValidationRuleAsync(SecretReference target,
         InfisicalValidationInput input, InfisicalNativeAuthority authority, MutationReceipt receipt, bool update,
         CancellationToken cancellationToken)
@@ -294,31 +293,49 @@ public sealed partial class InfisicalClient
         {
             return ValueTask.FromResult(SecretOutcome<InfisicalValidationRule>.Failure(SecretStatus.Invalid));
         }
-        var body = new Dictionary<string, object?>();
-        if (!update) { body["projectId"] = address.ProjectId; body["secretPath"] = address.Folder; }
-        if (!update && address.Environment is not null) { body["environment"] = address.Environment; }
-        if (input.Name is not null) { body["name"] = input.Name; }
-        if (input.Description is not null || input.ClearDescription) { body["description"] = input.Description; }
-        if (input.Environment is not null || input.ClearEnvironment) { body["environment"] = input.Environment; }
-        if (input.SecretPath is not null) { body["secretPath"] = input.SecretPath; }
-        if (input.IsActive is not null) { body["isActive"] = input.IsActive; }
-        if (input.KeyConstraints is not null || input.ClearKeyConstraints) { body["keyConstraints"] = input.KeyConstraints?.Wire(); }
-        if (input.ValueConstraints is not null || input.ClearValueConstraints) { body["valueConstraints"] = input.ValueConstraints?.Wire(); }
-        if (input.PasswordConstraints is not null) { body["passwordConstraints"] = input.PasswordConstraints.Wire(); }
-        if (input.Providers is not null) { body["providers"] = input.Providers.Select(ValidationProviderWire).ToArray(); }
         return ValidationOperationAsync(target, update ? HttpMethod.Patch : HttpMethod.Post,
             maximum => InfisicalOperationBudget.Serialize(writer =>
             {
                 writer.WriteStartObject();
-                foreach ((string key, object? value) in body)
+                string? secretPath = input.SecretPath ?? (!update ? address.Folder : null);
+                bool writeEnvironment = input.Environment is not null || input.ClearEnvironment || (!update && address.Environment is not null);
+                string? environment = input.ClearEnvironment ? null : input.Environment ?? address.Environment;
+                if (!update) writer.WriteString("projectId", address.ProjectId);
+                if (secretPath is not null) writer.WriteString("secretPath", secretPath);
+                if (writeEnvironment) writer.WriteString("environment", environment);
+                if (input.Name is not null) writer.WriteString("name", input.Name);
+                if (input.Description is not null || input.ClearDescription) writer.WriteString("description", input.Description);
+                if (input.IsActive is { } isActive) writer.WriteBoolean("isActive", isActive);
+                WriteConstraintsProperty(writer, "keyConstraints", input.KeyConstraints, input.ClearKeyConstraints);
+                WriteConstraintsProperty(writer, "valueConstraints", input.ValueConstraints, input.ClearValueConstraints);
+                if (input.PasswordConstraints is not null)
                 {
-                    writer.WritePropertyName(key);
-                    // Explicit root clears remain null; nested absent fields are omitted.
-                    JsonSerializer.Serialize(writer, value, key is "keyConstraints" or "valueConstraints" or
-                        "passwordConstraints" ? NativePayloadOptions : null);
+                    writer.WritePropertyName("passwordConstraints");
+                    input.PasswordConstraints.WriteTo(writer);
+                }
+                if (input.Providers is not null)
+                {
+                    writer.WriteStartArray("providers");
+                    foreach (InfisicalValidationProvider provider in input.Providers)
+                        writer.WriteStringValue(ValidationProviderWire(provider));
+                    writer.WriteEndArray();
                 }
                 writer.WriteEndObject();
             }, maximum), authority, receipt, cancellationToken);
+    }
+
+    private static void WriteConstraintsProperty(Utf8JsonWriter writer, string propertyName,
+        InfisicalTextConstraints? constraints, bool clear)
+    {
+        if (constraints is not null)
+        {
+            writer.WritePropertyName(propertyName);
+            constraints.WriteTo(writer);
+        }
+        else if (clear)
+        {
+            writer.WriteNull(propertyName);
+        }
     }
 
     private static bool ValidationInputValid(InfisicalValidationInput input, InfisicalValidationKind kind, bool update)

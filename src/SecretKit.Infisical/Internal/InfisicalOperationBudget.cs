@@ -158,11 +158,56 @@ internal sealed class InfisicalOperationBudget : IDisposable
         catch (NotSupportedException) { return []; }
     }
 
-    internal const string PayloadTrimmingMessage = "Native mutation payloads use reflection-based JSON serialization. Trimming is not supported for these operations.";
+    internal static byte[]? SerializeAccessToken(SecretMaterial token, int maximum) =>
+        token.Use(maximum, static (chars, limit) =>
+        {
+            if (chars.Length is < 1 or > 16384 || chars.ContainsAny(ControlCharacters))
+                return null;
+            using var buffer = new RequestBuffer(limit);
+            try
+            {
+                using (var writer = new Utf8JsonWriter(buffer))
+                {
+                    writer.WriteStartObject();
+                    writer.WriteString("accessToken", chars);
+                    writer.WriteEndObject();
+                }
+                return buffer.ToArray();
+            }
+            catch (NotSupportedException) { return []; }
+        });
 
-    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode(PayloadTrimmingMessage)]
-    internal static Func<int, byte[]> Payload<T>(T value, JsonSerializerOptions? options = null) =>
-        maximum => Serialize(writer => JsonSerializer.Serialize(writer, value, options), maximum);
+    internal static byte[] SerializeUniversalLogin(string clientId, SecretMaterial clientSecret,
+        string? organizationSlug, int maximum) =>
+        clientSecret.Use((clientId, organizationSlug, maximum), static (chars, state) =>
+        {
+            if (chars.Length is < 1 or > 16384 || chars.ContainsAny(ControlCharacters))
+                throw new ArgumentException("Invalid bootstrap credential.");
+            using var buffer = new RequestBuffer(state.maximum);
+            try
+            {
+                using (var writer = new Utf8JsonWriter(buffer))
+                {
+                    writer.WriteStartObject();
+                    writer.WriteString("clientId", state.clientId);
+                    writer.WriteString("clientSecret", chars);
+                    if (state.organizationSlug is not null) writer.WriteString("organizationSlug", state.organizationSlug);
+                    writer.WriteEndObject();
+                }
+                return buffer.ToArray();
+            }
+            catch (NotSupportedException) { return []; }
+        });
+
+    internal static void WriteStringIfNotNull(Utf8JsonWriter writer, string propertyName, string? value)
+    {
+        if (value is not null) writer.WriteString(propertyName, value);
+    }
+
+    internal static void WriteOptionalNumber(Utf8JsonWriter writer, string propertyName, double? value)
+    {
+        if (value is { } number) writer.WriteNumber(propertyName, number);
+    }
 
     internal sealed class RequestBuffer(int maximum) : IBufferWriter<byte>, IDisposable
     {

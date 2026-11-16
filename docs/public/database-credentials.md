@@ -20,8 +20,12 @@ contracts, but Core does not interpret them as a database connection, open a
 connection, execute SQL or validate a database login. Core remains BCL-only.
 
 The application owns its database client, driver and connection lifecycle.
-It decides how to use the returned material. Explicit plaintext exports have
-their own lifetime; disposing `SecretMaterial` does not erase an exported string.
+It decides how to use the returned material. For Infisical database leases,
+`InfisicalDatabaseCredentials` also exposes span-scoped `UseUsername*`/`UsePassword*`
+and UTF-8 `UseUsernameUtf8*`/`UsePasswordUtf8*` callbacks alongside
+`RevealUsername()`/`RevealPassword()`. Explicit plaintext exports have
+their own lifetime; disposing `SecretMaterial` or credentials does not erase an
+exported string.
 
 ## Infisical adapter: typed provider APIs
 

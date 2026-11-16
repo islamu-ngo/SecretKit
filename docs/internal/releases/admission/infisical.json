@@ -50,7 +50,7 @@
     },
     {
       "file": "src/SecretKit.Infisical.Management/Audit/Governance.cs",
-      "sha256": "2f81b820b162ed4f1046100785da84d1a5d5a5a5754aa45ea018f943190542c2"
+      "sha256": "d61faa84b8ff95c3a749c980dbd2c2cafabe35795eaf66b5135d5d11882ed0ff"
     },
     {
       "file": "src/SecretKit.Infisical.Management/Gateways/GatewayAdministration.cs",
@@ -62,7 +62,7 @@
     },
     {
       "file": "src/SecretKit.Infisical.Management/Gateways/GatewayAdministrationTypes.cs",
-      "sha256": "51a686ce0563a07ed308eb06ccb719fd819ab1754311991e1b54c4170955c7af"
+      "sha256": "52ca65c5b5d3407c9876cd599ae359e17bc6d0a9b8b4e1e30b2adb50144946b6"
     },
     {
       "file": "src/SecretKit.Infisical.Management/Gateways/ProxiedServiceAdministration.cs",
@@ -74,7 +74,7 @@
     },
     {
       "file": "src/SecretKit.Infisical.Management/Gateways/ProxiedServiceAdministrationTypes.cs",
-      "sha256": "5f32d723db8efa756717f6f018f665a1acb1782730947e60187182154a11ca03"
+      "sha256": "4fbe748fccbf8e580c1f2265d8e7e814c3f005ca53924d596646df7c1510637a"
     },
     {
       "file": "src/SecretKit.Infisical.Management/Identities/CloudIdentityAuthentication.cs",
@@ -98,7 +98,7 @@
     },
     {
       "file": "src/SecretKit.Infisical.Management/Identities/ExternalIdentityAuthenticationTypes.cs",
-      "sha256": "b5f56a64e2aaf310b71bd8d5871c69d9e77ec2e034093515b47483727daf5e1c"
+      "sha256": "37b17c83b797ac3e0a663fcd18bed7b25f15d65133add9b9880687ef99436173"
     },
     {
       "file": "src/SecretKit.Infisical.Management/Identities/Identities.cs",
@@ -134,7 +134,7 @@
     },
     {
       "file": "src/SecretKit.Infisical.Management/Identities/IdentityTemplateVariants.cs",
-      "sha256": "3a618b948b3bdbc669fd31b6d457acc9a77d99d42d9b92953d7d43c720b460d6"
+      "sha256": "3be87a4c7e3a128ab2acbef5f5ecbc06f702cd0d1d79502a01335ab7d154b4e6"
     },
     {
       "file": "src/SecretKit.Infisical.Management/Identities/IdentityTemplates.cs",
@@ -158,7 +158,7 @@
     },
     {
       "file": "src/SecretKit.Infisical.Management/Identities/WorkloadIdentityAuthenticationTypes.cs",
-      "sha256": "e0675c233b4d1c5b2be4240cf8ffdf9a20121d892f8f5e8457d9e7a1f7179436"
+      "sha256": "73454d31fe6bb8a7cfcbdac432e030029b30befa10b4f94ac67585b16b4e3f1e"
     },
     {
       "file": "src/SecretKit.Infisical.Management/Projects/ProjectConnections.cs",
@@ -194,7 +194,7 @@
     },
     {
       "file": "src/SecretKit.Infisical.Management/Rotations/MsSqlSecretRotationsTypes.cs",
-      "sha256": "357093fe58544120e740ebf15c213926b260deadac103fd900bdb9abd366c129"
+      "sha256": "9d0830670f33bd0776f1339d416e301980b8251012c6169d8906319327bb277c"
     },
     {
       "file": "src/SecretKit.Infisical.Management/Rotations/MySqlSecretRotations.cs",
@@ -206,7 +206,7 @@
     },
     {
       "file": "src/SecretKit.Infisical.Management/Rotations/MySqlSecretRotationsTypes.cs",
-      "sha256": "e9f7c9af1ad5d22580d999f22c5707decc98b6bf5bfdec049d1095067663b3f8"
+      "sha256": "5ce82950037a59d2efe3f311e58a50b6c9d69f7825a27e1d87191879e0f294a0"
     },
     {
       "file": "src/SecretKit.Infisical.Management/Rotations/PostgresSecretRotations.cs",
@@ -218,7 +218,7 @@
     },
     {
       "file": "src/SecretKit.Infisical.Management/Rotations/PostgresSecretRotationsTypes.cs",
-      "sha256": "6196ea277ae24a6e81fb3d5897bd164ad1cc50b60a17a7d00032de42439eecb9"
+      "sha256": "cb150390d9863edefc7230a4369f0429ec62b60287e7be6817fc2295d13db74e"
     },
     {
       "file": "src/SecretKit.Infisical.Management/Rotations/SqlSecretRotationShared.cs",
@@ -266,11 +266,11 @@
     },
     {
       "file": "src/SecretKit.Infisical/Authentication/InfisicalPeriodicTokenSession.cs",
-      "sha256": "5135d3392696bea18f85595731b0f3739b356da951a710ca0daa474d438e8358"
+      "sha256": "71a0db5c540880c9e546c132f1d8de239f24854a8eefbba0d277b2211b620e8c"
     },
     {
       "file": "src/SecretKit.Infisical/Authentication/InfisicalProofAuthentication.cs",
-      "sha256": "67e8c0f1348a5058be437f1c33f4295e71466b4a5796c37cdd5510c6578182cb"
+      "sha256": "fc8effa653be72f40688671db25584205c7dcae87c8487f694f711fb6849bbe1"
     },
     {
       "file": "src/SecretKit.Infisical/Authentication/InfisicalProofAuthenticationWire.cs",
@@ -294,11 +294,11 @@
     },
     {
       "file": "src/SecretKit.Infisical/Authentication/InfisicalTokenRevocation.cs",
-      "sha256": "84e8ce253bb16dae55c7ae30f68d0f136b25c2c51737c8d1f483f4ed50ff05aa"
+      "sha256": "362721bd71450275a966934ec570f6300e3dafec79f00e4fcfd48efbddb3b9bf"
     },
     {
       "file": "src/SecretKit.Infisical/Authentication/InfisicalUniversalAuthentication.cs",
-      "sha256": "968a93885a32ae6e850c04c265320400d82d4a0cf3ec6d090b075a3e070a4a79"
+      "sha256": "153eb9569329e5ada18cee99b91f8b9069a890d22549220655f8dffe2b979e55"
     },
     {
       "file": "src/SecretKit.Infisical/Authentication/NativeAuthority.cs",
@@ -326,11 +326,11 @@
     },
     {
       "file": "src/SecretKit.Infisical/Dynamic/InfisicalLeaseTypes.cs",
-      "sha256": "87638e8430e4fcd414aa29275a5c14e497effa36954c7f4827805cf00877be60"
+      "sha256": "38d1298b4d6ae8a827bcba0d2e4bd12ddf00ed0dcb399c0784ecdff551981785"
     },
     {
       "file": "src/SecretKit.Infisical/Dynamic/Profiles/InfisicalDynamicProfile.cs",
-      "sha256": "57e7795ce05bab372cd536961fcc22689332345e3d78b3f01a13e62efefe8e64"
+      "sha256": "d0db229ea4d552672fadb1c92d2c2fb958986d575dc43370ed161cdcd2d2e422"
     },
     {
       "file": "src/SecretKit.Infisical/Dynamic/Profiles/NativeCloudProfiles.cs",
@@ -346,7 +346,7 @@
     },
     {
       "file": "src/SecretKit.Infisical/Dynamic/Profiles/NativeDynamicProfileOptions.cs",
-      "sha256": "e0e5d80ba9fd6d23bd7bf25385fb70890f76bedc6059fa72e77147fa1127b57f"
+      "sha256": "1169a6542fd30f19332d7c69b83297670c75717189583bbb46fd5ff9b9bd4b20"
     },
     {
       "file": "src/SecretKit.Infisical/Dynamic/Profiles/NativeIdentityProfiles.cs",
@@ -366,7 +366,7 @@
     },
     {
       "file": "src/SecretKit.Infisical/Imports/Imports.cs",
-      "sha256": "944daaeda80bc0983cb885f5b1dba49922f238112e6b22491d2d4c369924e0fa"
+      "sha256": "166a751c02ab6d48bca7d0ed54760af036ef22e7ff2411a9201a80577bb24613"
     },
     {
       "file": "src/SecretKit.Infisical/Imports/InfisicalImportWire.cs",
@@ -390,7 +390,7 @@
     },
     {
       "file": "src/SecretKit.Infisical/Internal/InfisicalOperationBudget.cs",
-      "sha256": "42cec232d0a5ee6596932c7f88dae92b6b035a5516804ea90e4887777a11a08e"
+      "sha256": "e3175774ed78fc3e185c59ff6c37f4f61b047dd4e6be82e347b93c1a0c0a0eb9"
     },
     {
       "file": "src/SecretKit.Infisical/Internal/NativeWireBindings.cs",
@@ -406,11 +406,11 @@
     },
     {
       "file": "src/SecretKit.Infisical/Organization/Organization.cs",
-      "sha256": "66a41c1e3df659073ca5c4499b46923d80565fbc8eae129ece93cc8b0840f267"
+      "sha256": "54b949e5cbdd0171864073f8b9fe35fd831a724677fc2e488c12ca93cee16c67"
     },
     {
       "file": "src/SecretKit.Infisical/Organization/ValidationPolicies.cs",
-      "sha256": "9df497e311cb96f537b7d1f38039cf336a92f8605e025be1f11073b01072f797"
+      "sha256": "c02d8dae87ef175a49d9c8552ce73f28d5940c71c2a51b282777b1198b129293"
     },
     {
       "file": "src/SecretKit.Infisical/Rotation/InfisicalRotationApi.cs",
@@ -438,7 +438,7 @@
     },
     {
       "file": "src/SecretKit.Infisical/Secrets/InfisicalMutationOperation.cs",
-      "sha256": "7a9e732d70198f1d757be542ab98aa6b74b8648a1450da10105cc43ebf0a77cf"
+      "sha256": "ff4328ef4c8c76aee90c2e60527c8f0a171800cdef5544d887faccbc82042bb6"
     },
     {
       "file": "src/SecretKit.Infisical/Secrets/InfisicalSecretAddress.cs",
@@ -458,7 +458,7 @@
     },
     {
       "file": "src/SecretKit.Infisical/Secrets/InfisicalStaticChanges.cs",
-      "sha256": "8915c600f27f89c0da14313af6df2c21ac38dcd3c32a6aba84574540acebb907"
+      "sha256": "5060cccae20ea8b500750282352f81bb6f0f04b48adf31241394c3bf3adbf445"
     },
     {
       "file": "src/SecretKit.Infisical/Secrets/InfisicalStaticWire.cs",
@@ -466,7 +466,7 @@
     },
     {
       "file": "src/SecretKit.Infisical/Secrets/NativeBulk.cs",
-      "sha256": "541165701e5da100444bd43ceb9dccfa0335cadde3ad3c454de6f4a17fa2edcf"
+      "sha256": "ed160258abf75c49aca0a27ee23e0060f72be9ecc35d6acf068d28c3131f6c6f"
     },
     {
       "file": "src/SecretKit.Infisical/Transport/InfisicalNativeRequestIntent.cs",

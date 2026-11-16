@@ -96,6 +96,128 @@ public sealed class InfisicalDatabaseCredentials : IDisposable
                 lock (_gate) { return _password.Reveal(); }
             }
     }
+    /// <summary>Consumes a temporary character snapshot of the username outside lifecycle and material locks.</summary>
+    public void UseUsername(SecretSpanAction action)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+        using SecretMaterial copy = CopyField(password: false);
+        copy.Use(action);
+    }
+    /// <summary>Consumes a temporary character snapshot of the username with caller-supplied state outside locks.</summary>
+    public void UseUsername<TState>(TState state, SecretSpanAction<TState> action)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+        using SecretMaterial copy = CopyField(password: false);
+        copy.Use(state, action);
+    }
+    /// <summary>Projects a temporary character snapshot of the username outside lifecycle and material locks.</summary>
+    public TResult UseUsername<TResult>(SecretSpanFunc<TResult> function)
+    {
+        ArgumentNullException.ThrowIfNull(function);
+        using SecretMaterial copy = CopyField(password: false);
+        return copy.Use(function);
+    }
+    /// <summary>Projects a temporary character snapshot of the username with caller-supplied state outside locks.</summary>
+    public TResult UseUsername<TState, TResult>(TState state, SecretSpanFunc<TState, TResult> function)
+    {
+        ArgumentNullException.ThrowIfNull(function);
+        using SecretMaterial copy = CopyField(password: false);
+        return copy.Use(state, function);
+    }
+    /// <summary>Consumes a temporary character snapshot of the password outside lifecycle and material locks.</summary>
+    public void UsePassword(SecretSpanAction action)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+        using SecretMaterial copy = CopyField(password: true);
+        copy.Use(action);
+    }
+    /// <summary>Consumes a temporary character snapshot of the password with caller-supplied state outside locks.</summary>
+    public void UsePassword<TState>(TState state, SecretSpanAction<TState> action)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+        using SecretMaterial copy = CopyField(password: true);
+        copy.Use(state, action);
+    }
+    /// <summary>Projects a temporary character snapshot of the password outside lifecycle and material locks.</summary>
+    public TResult UsePassword<TResult>(SecretSpanFunc<TResult> function)
+    {
+        ArgumentNullException.ThrowIfNull(function);
+        using SecretMaterial copy = CopyField(password: true);
+        return copy.Use(function);
+    }
+    /// <summary>Projects a temporary character snapshot of the password with caller-supplied state outside locks.</summary>
+    public TResult UsePassword<TState, TResult>(TState state, SecretSpanFunc<TState, TResult> function)
+    {
+        ArgumentNullException.ThrowIfNull(function);
+        using SecretMaterial copy = CopyField(password: true);
+        return copy.Use(state, function);
+    }
+    /// <summary>Consumes a temporary UTF-8 byte snapshot of the username outside lifecycle and material locks.</summary>
+    public void UseUsernameUtf8(SecretUtf8SpanAction action)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+        using SecretMaterial copy = CopyField(password: false);
+        copy.UseUtf8(action);
+    }
+    /// <summary>Consumes a temporary UTF-8 byte snapshot of the username with caller-supplied state outside locks.</summary>
+    public void UseUsernameUtf8<TState>(TState state, SecretUtf8SpanAction<TState> action)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+        using SecretMaterial copy = CopyField(password: false);
+        copy.UseUtf8(state, action);
+    }
+    /// <summary>Projects a temporary UTF-8 byte snapshot of the username outside lifecycle and material locks.</summary>
+    public TResult UseUsernameUtf8<TResult>(SecretUtf8SpanFunc<TResult> function)
+    {
+        ArgumentNullException.ThrowIfNull(function);
+        using SecretMaterial copy = CopyField(password: false);
+        return copy.UseUtf8(function);
+    }
+    /// <summary>Projects a temporary UTF-8 byte snapshot of the username with caller-supplied state outside locks.</summary>
+    public TResult UseUsernameUtf8<TState, TResult>(TState state, SecretUtf8SpanFunc<TState, TResult> function)
+    {
+        ArgumentNullException.ThrowIfNull(function);
+        using SecretMaterial copy = CopyField(password: false);
+        return copy.UseUtf8(state, function);
+    }
+    /// <summary>Consumes a temporary UTF-8 byte snapshot of the password outside lifecycle and material locks.</summary>
+    public void UsePasswordUtf8(SecretUtf8SpanAction action)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+        using SecretMaterial copy = CopyField(password: true);
+        copy.UseUtf8(action);
+    }
+    /// <summary>Consumes a temporary UTF-8 byte snapshot of the password with caller-supplied state outside locks.</summary>
+    public void UsePasswordUtf8<TState>(TState state, SecretUtf8SpanAction<TState> action)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+        using SecretMaterial copy = CopyField(password: true);
+        copy.UseUtf8(state, action);
+    }
+    /// <summary>Projects a temporary UTF-8 byte snapshot of the password outside lifecycle and material locks.</summary>
+    public TResult UsePasswordUtf8<TResult>(SecretUtf8SpanFunc<TResult> function)
+    {
+        ArgumentNullException.ThrowIfNull(function);
+        using SecretMaterial copy = CopyField(password: true);
+        return copy.UseUtf8(function);
+    }
+    /// <summary>Projects a temporary UTF-8 byte snapshot of the password with caller-supplied state outside locks.</summary>
+    public TResult UsePasswordUtf8<TState, TResult>(TState state, SecretUtf8SpanFunc<TState, TResult> function)
+    {
+        ArgumentNullException.ThrowIfNull(function);
+        using SecretMaterial copy = CopyField(password: true);
+        return copy.UseUtf8(state, function);
+    }
+    private SecretMaterial CopyField(bool password)
+    {
+        DateTimeOffset now = _lifecycle.Time.GetUtcNow();
+        lock (_lifecycle.Parent.Gate)
+            lock (_lifecycle.Gate)
+            {
+                CheckValidity(now);
+                lock (_gate) { return (password ? _password : _username).Copy(); }
+            }
+    }
     private void CheckValidity(DateTimeOffset now)
     {
         if (!_lifecycle.CanUse(now))

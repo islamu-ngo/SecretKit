@@ -73,6 +73,14 @@ public sealed class NotificationDeliveryAttribute : IDisposable
         IsSecret = kind == NotificationAttributeKind.Static && isSecret;
     }
 
+    internal NotificationDeliveryAttribute(string name, NotificationAttributeKind kind, SecretMaterial copiedValue, bool isSecret)
+    {
+        Name = name;
+        Kind = kind;
+        Value = copiedValue;
+        IsSecret = kind == NotificationAttributeKind.Static && isSecret;
+    }
+
     /// <summary>Gets the protected header name.</summary>
     [JsonIgnore] public string Name { get; }
     /// <summary>Gets whether this attribute is static or derived from the event.</summary>
@@ -116,12 +124,25 @@ public sealed class NotificationConfiguration : IDisposable
         if (attributes.Length > 10 || attributes.Any(a => a is null) ||
             attributes.Select(a => a.Name).Distinct(StringComparer.OrdinalIgnoreCase).Count() != attributes.Length)
             throw new ArgumentException("Invalid delivery attributes.");
-        // Validate all values before acquiring owned copies.
-        var values = attributes.Select(a => a.Value.Reveal()).ToArray();
-        Endpoint = SecretMaterial.FromText(endpointUrl);
-        EventTypes = Array.AsReadOnly(events);
-        DeliveryAttributes = Array.AsReadOnly(attributes.Select((a, i) =>
-            new NotificationDeliveryAttribute(a.Name, a.Kind, values[i], a.IsSecret)).ToArray());
+        // Copy attribute material before assigning owned properties; dispose partial copies if a later input is already disposed.
+        var copies = new NotificationDeliveryAttribute?[attributes.Length];
+        try
+        {
+            for (int index = 0; index < attributes.Length; index++)
+            {
+                NotificationDeliveryAttribute attribute = attributes[index];
+                SecretMaterial copiedValue = attribute.Value.Copy();
+                copies[index] = new NotificationDeliveryAttribute(attribute.Name, attribute.Kind, copiedValue, attribute.IsSecret);
+            }
+            Endpoint = SecretMaterial.FromText(endpointUrl);
+            EventTypes = Array.AsReadOnly(events);
+            DeliveryAttributes = Array.AsReadOnly(Array.ConvertAll(copies, static copy => copy!));
+        }
+        catch
+        {
+            foreach (NotificationDeliveryAttribute? item in copies) item?.Dispose();
+            throw;
+        }
     }
 
     /// <summary>Gets protected endpoint material owned by this configuration.</summary>

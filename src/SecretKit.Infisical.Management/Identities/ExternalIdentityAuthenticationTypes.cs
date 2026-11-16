@@ -98,8 +98,8 @@ public sealed class LdapAuthConfigurationInput : IDisposable
     {
         ExternalAuthJson.Text(templateId);
         foreach (var text in new[] { url, bindDN, searchBase }) ExternalAuthJson.Text(text, update ? 1 : 0);
-        if (ldapCaCertificate is not null) ExternalAuthJson.Text(ldapCaCertificate.Reveal());
-        if (bindPass is not null) ExternalAuthJson.Text(bindPass.Reveal(), update ? 1 : 0);
+        ExternalAuthJson.Secret(ldapCaCertificate);
+        ExternalAuthJson.Secret(bindPass, update ? 1 : 0);
         TemplateId = templateId;
         Url = url;
         BindDN = bindDN;
@@ -150,9 +150,9 @@ public sealed class LdapAuthConfigurationInput : IDisposable
         WorkloadAuthJson.String(writer, "templateId", TemplateId);
         WorkloadAuthJson.String(writer, "url", Url);
         WorkloadAuthJson.String(writer, "bindDN", BindDN);
-        if (_bindPass is not null) writer.WriteString("bindPass", _bindPass.Reveal());
+        WorkloadAuthJson.WriteSecret(writer, "bindPass", _bindPass);
         WorkloadAuthJson.String(writer, "searchBase", SearchBase);
-        if (_certificate is not null) writer.WriteString("ldapCaCertificate", _certificate.Reveal());
+        WorkloadAuthJson.WriteSecret(writer, "ldapCaCertificate", _certificate);
         Settings.Write(writer);
     }
     /// <summary>Disposes owned bind-password and certificate copies and prevents further serialization.</summary>
@@ -205,9 +205,9 @@ public sealed class SpiffeTrustBundleInput : IDisposable
     private SpiffeTrustBundleInput(SecretMaterial? bundle, string? endpointUrl, SecretMaterial? caCert,
         long? refreshHintSeconds)
     {
-        if (bundle is not null) ExternalAuthJson.Text(bundle.Reveal(), 1);
+        ExternalAuthJson.Secret(bundle, 1);
         if (endpointUrl is not null) WorkloadAuthJson.Uri(endpointUrl);
-        if (caCert is not null) ExternalAuthJson.Text(caCert.Reveal());
+        ExternalAuthJson.Secret(caCert);
         if (refreshHintSeconds < 0) throw new ArgumentException("Invalid bundle refresh hint.");
         EndpointUrl = endpointUrl;
         RefreshHintSeconds = refreshHintSeconds;
@@ -242,9 +242,9 @@ public sealed class SpiffeTrustBundleInput : IDisposable
         ObjectDisposedException.ThrowIf(_disposed, this);
         writer.WriteStartObject("trustBundleDistribution");
         writer.WriteString("profile", EndpointUrl is null ? "static" : "https_web_bundle");
-        if (_bundle is not null) writer.WriteString("bundle", _bundle.Reveal());
+        WorkloadAuthJson.WriteSecret(writer, "bundle", _bundle);
         WorkloadAuthJson.String(writer, "endpointUrl", EndpointUrl);
-        if (_caCert is not null) writer.WriteString("caCert", _caCert.Reveal());
+        WorkloadAuthJson.WriteSecret(writer, "caCert", _caCert);
         if (RefreshHintSeconds is { } hint) writer.WriteNumber("refreshHintSeconds", hint);
         writer.WriteEndObject();
     }
@@ -336,7 +336,7 @@ public sealed class TlsCertAuthConfigurationInput : IDisposable
         WorkloadAuthNullableText? allowedCommonNames = null, TlsAuthSubjectAltNames? allowedSubjectAltNames = null,
         bool? verifyClientCertificateChain = null, WorkloadAuthTokenPolicy? policy = null)
     {
-        if (caCertificate is not null) ExternalAuthJson.Text(caCertificate.Reveal(), 1, 10240);
+        ExternalAuthJson.Secret(caCertificate, 1, 10240);
         ExternalAuthJson.Text(allowedCommonNames?.Value, 1);
         AllowedCommonNames = allowedCommonNames;
         AllowedSubjectAltNames = allowedSubjectAltNames;
@@ -361,7 +361,7 @@ public sealed class TlsCertAuthConfigurationInput : IDisposable
     internal void Write(Utf8JsonWriter writer)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        if (_certificate is not null) writer.WriteString("caCertificate", _certificate.Reveal());
+        WorkloadAuthJson.WriteSecret(writer, "caCertificate", _certificate);
         WorkloadAuthJson.Nullable(writer, "allowedCommonNames", AllowedCommonNames);
         if (AllowedSubjectAltNames is not null)
         {
@@ -592,6 +592,14 @@ internal static class ExternalAuthJson
     {
         if (value is not null && (value.Length < minimum || value.Length > maximum))
             throw new ArgumentException("Invalid external authentication input budget.");
+    }
+    internal static void Secret(SecretMaterial? material, int minimum = 0, int maximum = 16384)
+    {
+        material?.Use((minimum, maximum), static (characters, bounds) =>
+        {
+            if (characters.Length < bounds.minimum || characters.Length > bounds.maximum)
+                throw new ArgumentException("Invalid external authentication input budget.");
+        });
     }
     internal static void Range(double? value, double minimum, double maximum)
     {

@@ -43,7 +43,6 @@ public sealed class InfisicalMutationOperation
 public sealed partial class InfisicalClient
 {
     /// <summary>Prepares a create without I/O; keep the borrowed material alive until execution completes.</summary>
-    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode(InfisicalOperationBudget.PayloadTrimmingMessage)]
     public InfisicalMutationOperation PrepareCreate(SecretReference target, SecretMaterial material)
     {
         ArgumentNullException.ThrowIfNull(target);
@@ -52,7 +51,6 @@ public sealed partial class InfisicalClient
     }
 
     /// <summary>Prepares an update without I/O; keep the borrowed material alive until execution completes.</summary>
-    [System.Diagnostics.CodeAnalysis.RequiresUnreferencedCode(InfisicalOperationBudget.PayloadTrimmingMessage)]
     public InfisicalMutationOperation PrepareUpdateValue(SecretReference target, SecretMaterial material)
     {
         ArgumentNullException.ThrowIfNull(target);

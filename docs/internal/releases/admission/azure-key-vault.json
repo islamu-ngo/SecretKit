@@ -38,7 +38,7 @@
     },
     {
       "file": "src/SecretKit.AzureKeyVault.Management/Notifications/NotificationModels.cs",
-      "sha256": "41f27a00f4ea302f3773b9557d83f268458f34aa9b46f58d506a9385f1483a16"
+      "sha256": "d25e4a15b67b1b898db53c51837fd1e5bfd8cfc8eefe59c6839986eb982440ed"
     },
     {
       "file": "src/SecretKit.AzureKeyVault.Management/Vaults/NativeModels.cs",

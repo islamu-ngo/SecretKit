@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Runtime.CompilerServices;
+using System.Security.Cryptography;
 using System.Text.Json;
 using Refit;
 using SecretKit.Core;
@@ -375,23 +376,17 @@ public sealed class InfisicalPeriodicTokenSession : IInfisicalTokenSource, IAsyn
         using var linked = new InfisicalOperationBudget(timeout, _time, CancellationToken.None,
             _shutdown.Token);
         SecretMaterial? candidate = null;
+        byte[]? payloadBytes = null;
         try
         {
-            byte[] payloadBytes = new byte[Math.Min(_requestLimit, 128 * 1024)];
-            using var payload = new MemoryStream(payloadBytes, writable: true);
-            char[] characters = ownedToken.ExportCharacters();
+            payloadBytes = InfisicalOperationBudget.SerializeAccessToken(ownedToken, _requestLimit);
             try
             {
-                if (characters.Length is < 1 or > 16384 ||
-                    characters.AsSpan().ContainsAny(InfisicalOperationBudget.ControlCharacters))
+                if (payloadBytes is null)
                     return FailRecovery(SecretStatus.Invalid, SecretFailureReason.CredentialUnavailable);
-                using (var writer = new Utf8JsonWriter(payload))
-                {
-                    writer.WriteStartObject();
-                    writer.WriteString("accessToken", characters.AsSpan());
-                    writer.WriteEndObject();
-                }
-                using var content = new ByteArrayContent(payloadBytes, 0, checked((int)payload.Position));
+                if (payloadBytes.Length == 0)
+                    return FailRecovery(SecretStatus.Unknown, SecretFailureReason.InvalidResponse);
+                using var content = new ByteArrayContent(payloadBytes);
                 content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
                 using HttpRequestMessage request = await _wire.BuildRenewalAsync(content, linked.Token)
                     .ConfigureAwait(false);
@@ -466,8 +461,7 @@ public sealed class InfisicalPeriodicTokenSession : IInfisicalTokenSource, IAsyn
             }
             finally
             {
-                Array.Clear(characters);
-                Array.Clear(payloadBytes);
+                if (payloadBytes is not null) CryptographicOperations.ZeroMemory(payloadBytes);
             }
         }
         catch (OperationCanceledException)

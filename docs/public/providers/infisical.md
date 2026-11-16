@@ -231,7 +231,12 @@ or downstream qualification for every profile. `AcquireDatabaseAsync` accepts
 only `SqlDatabase` and the exact `DB_USERNAME`/`DB_PASSWORD` result shape; other
 provider result contracts return `ContractNotEstablished`.
 
-Dispose `InfisicalDatabaseLease` and each `CopyCredentials()` result. Renewal uses
+Dispose `InfisicalDatabaseLease` and each `CopyCredentials()` result. Prefer
+`UseUsername*`/`UsePassword*` or UTF-8 `UseUsernameUtf8*`/`UsePasswordUtf8*`
+span callbacks on `InfisicalDatabaseCredentials` when integrating with APIs that
+accept spans (callbacks run outside lifecycle/material locks against a short-lived
+scrubbed copy), reserving `RevealUsername()`/`RevealPassword()` for APIs that
+require ordinary strings. Renewal uses
 returned expiry, not an invented extension. Expiry/explicit revocation prevents
 further credential consumption through governed copies; disposal alone releases
 local material and does not revoke remotely. Retain `lease.Reference` if explicit

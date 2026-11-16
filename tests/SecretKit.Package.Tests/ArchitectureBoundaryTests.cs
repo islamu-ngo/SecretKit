@@ -95,12 +95,14 @@ public sealed class ArchitectureBoundaryTests
         await Assert.That(friends.SequenceEqual(expected.Order(StringComparer.Ordinal), StringComparer.Ordinal)).IsTrue();
         if (package == "SecretKit.Infisical.Management")
             await Assert.That(RuntimeManagementDependencyTests.UnapprovedRuntimeReferences(metadata)).IsEmpty();
-        if (package is "SecretKit.Core" or "SecretKit.Extensions.Configuration" or "SecretKit.Extensions.Hosting")
+        if (package is "SecretKit.Core" or "SecretKit.Extensions.Configuration" or "SecretKit.Extensions.Hosting" or
+            "SecretKit.Infisical" or "SecretKit.Infisical.Management")
         {
             bool trimmable = metadata.GetAssemblyDefinition().GetCustomAttributes()
                 .Select(handle => metadata.GetCustomAttribute(handle))
                 .Any(attribute => IsAssemblyMetadata(metadata, attribute, "IsTrimmable", "True"));
             await Assert.That(trimmable).IsTrue();
+            await Assert.That(HasTrimmingIncompatibleAttribute(metadata)).IsFalse();
         }
         bool hasLegacyObjectLock = metadata.FieldDefinitions
             .Select(handle => metadata.GetFieldDefinition(handle))
@@ -113,6 +115,24 @@ public sealed class ArchitectureBoundaryTests
                     signature.ReadByte() == (byte)SignatureTypeCode.Object;
             });
         await Assert.That(hasLegacyObjectLock).IsFalse();
+    }
+
+    private static bool HasTrimmingIncompatibleAttribute(MetadataReader metadata)
+    {
+        foreach (CustomAttributeHandle handle in metadata.CustomAttributes)
+        {
+            CustomAttribute attribute = metadata.GetCustomAttribute(handle);
+            if (attribute.Constructor.Kind != HandleKind.MemberReference) continue;
+            MemberReference constructor = metadata.GetMemberReference((MemberReferenceHandle)attribute.Constructor);
+            if (constructor.Parent.Kind != HandleKind.TypeReference) continue;
+            TypeReference type = metadata.GetTypeReference((TypeReferenceHandle)constructor.Parent);
+            if (metadata.GetString(type.Namespace) == "System.Diagnostics.CodeAnalysis" &&
+                metadata.GetString(type.Name) is "RequiresUnreferencedCodeAttribute" or "RequiresDynamicCodeAttribute")
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static bool IsAssemblyMetadata(MetadataReader metadata, CustomAttribute attribute, string expectedKey, string expectedValue)
