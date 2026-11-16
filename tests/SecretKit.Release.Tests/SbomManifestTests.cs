@@ -49,28 +49,56 @@ public sealed class SbomManifestTests
     [Arguments("non-utc-created")]
     [Arguments("extra-archive-file")]
     [Arguments("extra-manifest-file")]
+    [Arguments("extra-manifest-file-registered")]
     [Arguments("missing-file-in-sbom")]
     [Arguments("wrong-file-hash")]
     [Arguments("stale-self-version")]
+    [Arguments("stale-sibling-dependency")]
+    [Arguments("duplicate-dependency-name")]
+    [Arguments("unanchored-purl")]
+    [Arguments("build-tool-in-sbom-packages")]
     [Arguments("missing-external-dependency")]
     [Arguments("leaked-sbom-tool-dependency")]
     [Arguments("leaked-illink-dependency")]
+    [Arguments("missing-describes-relationship")]
     public async Task TamperedOrIncompleteSpdxManifestsFailClosed(string fault)
     {
-        var baseEntries = fault switch
+        (string Name, string Content)[] baseEntries = fault switch
         {
             "leaked-sbom-tool-dependency" => BaseEntries("""<dependency id="Microsoft.Sbom.Targets" version="4.1.13" />"""),
             "leaked-illink-dependency" => BaseEntries("""<dependency id="Microsoft.NET.ILLink.Tasks" version="10.0.15" />"""),
+            "stale-sibling-dependency" =>
+            [
+                (Id + ".nuspec", $"""
+                    <package><metadata><id>{Id}</id><version>{Version}</version>
+                    <license type="expression">MIT</license>
+                    <repository type="git" url="{Manifest.Repository}" commit="{TestBundle.Commit}"/>
+                    <dependencies><group targetFramework="net10.0">
+                    <dependency id="SecretKit.Core" version="0.1.0-stale.1" />
+                    <dependency id="Refit" version="16.3.0" />
+                    </group></dependencies>
+                    </metadata></package>
+                    """),
+                ("README.md", "# " + Id),
+                ("THIRD-PARTY-NOTICES.md", "controlled")
+            ],
             _ => BaseEntries()
         };
 
-        (string Name, string Version)[] declaredDeps = fault == "missing-external-dependency"
-            ? []
-            : [("Refit", "16.3.0")];
+        (string Name, string Version)[] declaredDeps = fault switch
+        {
+            "missing-external-dependency" => [],
+            "duplicate-dependency-name" => [("Refit", "16.3.0"), ("Refit", "15.0.0")],
+            "build-tool-in-sbom-packages" => [("Refit", "16.3.0"), ("Microsoft.Sbom.Targets", "4.1.13")],
+            _ => [("Refit", "16.3.0")]
+        };
 
-        var sbomEntries = fault == "missing-file-in-sbom"
-            ? baseEntries.Where(e => e.Name != "README.md").ToArray()
-            : baseEntries;
+        (string Name, string Content)[] sbomEntries = fault switch
+        {
+            "missing-file-in-sbom" => baseEntries.Where(e => e.Name != "README.md").ToArray(),
+            "extra-manifest-file-registered" => [.. baseEntries, ("_manifest/spdx_2.2/extra.bin", "trojan")],
+            _ => baseEntries
+        };
 
         byte[] rawJson = ArchiveTests.CreateSpdxJson(Id, Version, sbomEntries, declaredDeps);
         JsonObject root = JsonNode.Parse(rawJson)!.AsObject();
@@ -92,6 +120,9 @@ public sealed class SbomManifestTests
             case "wrong-file-hash":
                 root["files"]![0]!["checksums"]![0]!["checksumValue"] = new string('0', 64);
                 break;
+            case "unanchored-purl":
+                root["packages"]![0]!["externalRefs"]![0]!["referenceLocator"] = "pkg:nuget/Refit@16.3.0-tampered";
+                break;
             case "stale-self-version":
                 root["packages"]!.AsArray().Add(new JsonObject
                 {
@@ -99,6 +130,9 @@ public sealed class SbomManifestTests
                     ["name"] = Id,
                     ["versionInfo"] = "0.1.0-local.1"
                 });
+                break;
+            case "missing-describes-relationship":
+                root["relationships"] = new JsonArray();
                 break;
         }
 
@@ -114,7 +148,7 @@ public sealed class SbomManifestTests
         {
             entries.Add(("lib/net10.0/unlisted.dll", "trojan"));
         }
-        else if (fault == "extra-manifest-file")
+        else if (fault is "extra-manifest-file" or "extra-manifest-file-registered")
         {
             entries.Add(("_manifest/spdx_2.2/extra.bin", "trojan"));
         }

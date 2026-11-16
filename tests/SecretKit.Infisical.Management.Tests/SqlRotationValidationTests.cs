@@ -56,6 +56,8 @@ public sealed class SqlRotationValidationTests
     [Arguments("{\"length\":20,\"required\":null}")]
     [Arguments("{\"length\":20,\"required\":{\"digits\":0,\"lowercase\":0,\"symbols\":0,\"uppercase\":0},\"allowedSymbols\":null}")]
     [Arguments("{\"length\":20,\"required\":{\"digits\":0,\"lowercase\":0,\"symbols\":0,\"uppercase\":0},\"allowedSymbols\":\"letters\"}")]
+    [Arguments("{\"length\":20,\"required\":{\"digits\":0,\"lowercase\":0,\"symbols\":0,\"uppercase\":0},\"allowedSymbols\":\"!invalid_letters\"}")]
+    [Arguments("{\"length\":20,\"required\":{\"digits\":0,\"lowercase\":0,\"symbols\":0,\"uppercase\":0},\"allowedSymbols\":\"!invalid_letters\\0\\n\"}")]
     [Arguments("{")]
     public async Task MalformedRequirementsNeverProduceSuccessfulMaterial(string requirements)
     {

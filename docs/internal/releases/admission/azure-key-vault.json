@@ -22,11 +22,11 @@
     },
     {
       "file": "src/SecretKit.AzureKeyVault.Management/Internal/ControlledTransport.cs",
-      "sha256": "d29d4179e76881ff4ff74e6173780d180f8f1263ed82692b9d9e2945f76ca81f"
+      "sha256": "ccce448d4797c147b93bcad7f3898b772d92a75b7103d8566d6d47306b033acf"
     },
     {
       "file": "src/SecretKit.AzureKeyVault.Management/Internal/ManagementOperation.cs",
-      "sha256": "8046307bb8f4f6b7fa3a35192b1db3c7c7f60138bcd94574fc2f60fc844487c7"
+      "sha256": "bc0e0ccf64b0d8773c66ef0100a7901db4e08c865aa93fa73e35bac7ffbaf1ac"
     },
     {
       "file": "src/SecretKit.AzureKeyVault.Management/Internal/OperationSupport.cs",

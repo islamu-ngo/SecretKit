@@ -485,11 +485,13 @@ public sealed class InfisicalPeriodicTokenSession : IInfisicalTokenSource, IAsyn
     private SecretOutcome<InfisicalTokenRenewal> FailRecovery(SecretStatus status = SecretStatus.Unknown,
         SecretFailureReason reason = SecretFailureReason.InvalidResponse)
     {
+        DateTimeOffset now = _time.GetUtcNow();
         lock (_gate)
         {
+            UpdateDeadline(now);
             _token?.Dispose();
             _token = null;
-            if (_state != InfisicalTokenSessionState.Stopped)
+            if (_state is not InfisicalTokenSessionState.Stopped and not InfisicalTokenSessionState.Expired)
                 _state = InfisicalTokenSessionState.RecoveryRequired;
         }
         return SecretOutcome<InfisicalTokenRenewal>.Failure(status, reason: reason);

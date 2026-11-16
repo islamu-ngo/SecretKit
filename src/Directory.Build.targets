@@ -1,14 +1,490 @@
 <Project>
   <Import Project="../Directory.Build.targets" />
+
+  <UsingTask TaskName="FilterSecretKitSbomAssets"
+             TaskFactory="RoslynCodeTaskFactory"
+             AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
+    <Task>
+      <Code Type="Class" Language="cs">
+<![CDATA[
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
+using System.Text;
+using Microsoft.Build.Framework;
+
+public sealed class FilterSecretKitSbomAssets : Microsoft.Build.Utilities.Task
+{
+    private static readonly HashSet<string> ExcludedPackageIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "Microsoft.NET.ILLink.Tasks",
+        "Microsoft.Sbom.Targets"
+    };
+
+    private sealed class JsonPropertyNode
+    {
+        public string Name = string.Empty;
+        public string RawName = string.Empty;
+        public object Value = string.Empty;
+    }
+
+    [Required]
+    public string InputAssetsFile { get; set; } = string.Empty;
+
+    [Required]
+    public string OutputAssetsFile { get; set; } = string.Empty;
+
+    public override bool Execute()
+    {
+        string text = File.ReadAllText(InputAssetsFile, Encoding.UTF8);
+        int index = 0;
+        var root = ParseValue(text, ref index) as List<JsonPropertyNode>;
+        SkipWhitespace(text, ref index);
+        if (root is null || index != text.Length)
+        {
+            Log.LogError("Failed to parse project.assets.json at '{0}'.", InputAssetsFile);
+            return false;
+        }
+
+        if (FindProperty(root, "targets")?.Value is List<JsonPropertyNode> targets)
+        {
+            foreach (var target in targets)
+            {
+                if (target.Value is List<JsonPropertyNode> targetPackages)
+                {
+                    PrunePrefixedProperties(targetPackages);
+                }
+            }
+        }
+
+        if (FindProperty(root, "libraries")?.Value is List<JsonPropertyNode> libraries)
+        {
+            PrunePrefixedProperties(libraries);
+        }
+
+        if (FindProperty(root, "projectFileDependencyGroups")?.Value is List<JsonPropertyNode> dependencyGroups)
+        {
+            foreach (var group in dependencyGroups)
+            {
+                if (group.Value is List<object> entries)
+                {
+                    PruneDependencyGroupEntries(entries);
+                }
+            }
+        }
+
+        if (FindProperty(root, "project")?.Value is List<JsonPropertyNode> project &&
+            FindProperty(project, "frameworks")?.Value is List<JsonPropertyNode> frameworks)
+        {
+            foreach (var framework in frameworks)
+            {
+                if (framework.Value is not List<JsonPropertyNode> frameworkObject)
+                {
+                    continue;
+                }
+
+                if (FindProperty(frameworkObject, "dependencies")?.Value is List<JsonPropertyNode> dependencies)
+                {
+                    PruneExactProperties(dependencies);
+                }
+
+                if (FindProperty(frameworkObject, "centralPackageVersions")?.Value is List<JsonPropertyNode> centralVersions)
+                {
+                    PruneExactProperties(centralVersions);
+                }
+            }
+        }
+
+        string outputDirectory = Path.GetDirectoryName(OutputAssetsFile);
+        if (!string.IsNullOrEmpty(outputDirectory))
+        {
+            Directory.CreateDirectory(outputDirectory);
+        }
+
+        var builder = new StringBuilder(text.Length);
+        WriteValue(root, builder, 0);
+        builder.Append('\n');
+        File.WriteAllText(OutputAssetsFile, builder.ToString(), new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+        return true;
+    }
+
+    private static JsonPropertyNode FindProperty(List<JsonPropertyNode> properties, string name)
+    {
+        for (int i = 0; i < properties.Count; i++)
+        {
+            if (string.Equals(properties[i].Name, name, StringComparison.Ordinal))
+            {
+                return properties[i];
+            }
+        }
+
+        return null;
+    }
+
+    private static void PrunePrefixedProperties(List<JsonPropertyNode> properties)
+    {
+        for (int i = properties.Count - 1; i >= 0; i--)
+        {
+            string name = properties[i].Name;
+            int slash = name.IndexOf('/');
+            string id = slash >= 0 ? name.Substring(0, slash) : name;
+            if (ExcludedPackageIds.Contains(id))
+            {
+                properties.RemoveAt(i);
+            }
+        }
+    }
+
+    private static void PruneExactProperties(List<JsonPropertyNode> properties)
+    {
+        for (int i = properties.Count - 1; i >= 0; i--)
+        {
+            if (ExcludedPackageIds.Contains(properties[i].Name))
+            {
+                properties.RemoveAt(i);
+            }
+        }
+    }
+
+    private static void PruneDependencyGroupEntries(List<object> entries)
+    {
+        for (int i = entries.Count - 1; i >= 0; i--)
+        {
+            if (entries[i] is not string rawString || rawString.Length < 2 || rawString[0] != '"')
+            {
+                continue;
+            }
+
+            int pos = 0;
+            ReadString(rawString, ref pos, out string decoded);
+            int space = decoded.IndexOf(' ');
+            string id = space >= 0 ? decoded.Substring(0, space) : decoded;
+            if (ExcludedPackageIds.Contains(id))
+            {
+                entries.RemoveAt(i);
+            }
+        }
+    }
+
+    private static void SkipWhitespace(string s, ref int i)
+    {
+        while (i < s.Length && char.IsWhiteSpace(s[i]))
+        {
+            i++;
+        }
+    }
+
+    private static object ParseValue(string s, ref int i)
+    {
+        SkipWhitespace(s, ref i);
+        if (i >= s.Length)
+        {
+            throw new FormatException("Unexpected end of JSON input.");
+        }
+
+        return s[i] switch
+        {
+            '{' => ParseObject(s, ref i),
+            '[' => ParseArray(s, ref i),
+            '"' => ReadString(s, ref i, out _),
+            _ => ReadScalar(s, ref i)
+        };
+    }
+
+    private static List<JsonPropertyNode> ParseObject(string s, ref int i)
+    {
+        i++; // '{'
+        var properties = new List<JsonPropertyNode>();
+        SkipWhitespace(s, ref i);
+        if (i < s.Length && s[i] == '}')
+        {
+            i++;
+            return properties;
+        }
+
+        while (true)
+        {
+            SkipWhitespace(s, ref i);
+            string rawName = ReadString(s, ref i, out string name);
+            SkipWhitespace(s, ref i);
+            if (i >= s.Length || s[i] != ':')
+            {
+                throw new FormatException("Expected ':' in JSON object.");
+            }
+            i++;
+
+            object value = ParseValue(s, ref i);
+            properties.Add(new JsonPropertyNode
+            {
+                Name = name,
+                RawName = rawName,
+                Value = value
+            });
+
+            SkipWhitespace(s, ref i);
+            if (i < s.Length && s[i] == ',')
+            {
+                i++;
+                continue;
+            }
+            if (i < s.Length && s[i] == '}')
+            {
+                i++;
+                return properties;
+            }
+
+            throw new FormatException("Expected ',' or '}' in JSON object.");
+        }
+    }
+
+    private static List<object> ParseArray(string s, ref int i)
+    {
+        i++; // '['
+        var items = new List<object>();
+        SkipWhitespace(s, ref i);
+        if (i < s.Length && s[i] == ']')
+        {
+            i++;
+            return items;
+        }
+
+        while (true)
+        {
+            items.Add(ParseValue(s, ref i));
+            SkipWhitespace(s, ref i);
+            if (i < s.Length && s[i] == ',')
+            {
+                i++;
+                continue;
+            }
+            if (i < s.Length && s[i] == ']')
+            {
+                i++;
+                return items;
+            }
+
+            throw new FormatException("Expected ',' or ']' in JSON array.");
+        }
+    }
+
+    private static string ReadString(string s, ref int i, out string decoded)
+    {
+        if (i >= s.Length || s[i] != '"')
+        {
+            throw new FormatException("Expected JSON string.");
+        }
+
+        int start = i++;
+        var sb = new StringBuilder();
+        while (i < s.Length)
+        {
+            char c = s[i++];
+            if (c == '"')
+            {
+                decoded = sb.ToString();
+                return s.Substring(start, i - start);
+            }
+
+            if (c != '\\')
+            {
+                sb.Append(c);
+                continue;
+            }
+
+            if (i >= s.Length)
+            {
+                throw new FormatException("Unterminated JSON string escape.");
+            }
+
+            char esc = s[i++];
+            switch (esc)
+            {
+                case '"': sb.Append('"'); break;
+                case '\\': sb.Append('\\'); break;
+                case '/': sb.Append('/'); break;
+                case 'b': sb.Append('\b'); break;
+                case 'f': sb.Append('\f'); break;
+                case 'n': sb.Append('\n'); break;
+                case 'r': sb.Append('\r'); break;
+                case 't': sb.Append('\t'); break;
+                case 'u':
+                    if (i + 4 > s.Length)
+                    {
+                        throw new FormatException("Invalid Unicode escape in JSON string.");
+                    }
+                    sb.Append((char)ushort.Parse(s.Substring(i, 4), NumberStyles.HexNumber, CultureInfo.InvariantCulture));
+                    i += 4;
+                    break;
+                default:
+                    throw new FormatException("Invalid escape in JSON string.");
+            }
+        }
+
+        throw new FormatException("Unterminated JSON string.");
+    }
+
+    private static string ReadScalar(string s, ref int i)
+    {
+        int start = i;
+        while (i < s.Length && !char.IsWhiteSpace(s[i]) && s[i] != ',' && s[i] != '}' && s[i] != ']')
+        {
+            i++;
+        }
+
+        if (i == start)
+        {
+            throw new FormatException("Unexpected token in JSON scalar.");
+        }
+
+        return s.Substring(start, i - start);
+    }
+
+    private static void WriteValue(object value, StringBuilder sb, int indent)
+    {
+        if (value is List<JsonPropertyNode> properties)
+        {
+            if (properties.Count == 0)
+            {
+                sb.Append("{}");
+                return;
+            }
+
+            sb.Append("{\n");
+            for (int i = 0; i < properties.Count; i++)
+            {
+                AppendIndent(sb, indent + 2);
+                sb.Append(properties[i].RawName);
+                sb.Append(": ");
+                WriteValue(properties[i].Value, sb, indent + 2);
+                if (i + 1 < properties.Count)
+                {
+                    sb.Append(',');
+                }
+                sb.Append('\n');
+            }
+            AppendIndent(sb, indent);
+            sb.Append('}');
+            return;
+        }
+
+        if (value is List<object> items)
+        {
+            if (items.Count == 0)
+            {
+                sb.Append("[]");
+                return;
+            }
+
+            sb.Append("[\n");
+            for (int i = 0; i < items.Count; i++)
+            {
+                AppendIndent(sb, indent + 2);
+                WriteValue(items[i], sb, indent + 2);
+                if (i + 1 < items.Count)
+                {
+                    sb.Append(',');
+                }
+                sb.Append('\n');
+            }
+            AppendIndent(sb, indent);
+            sb.Append(']');
+            return;
+        }
+
+        sb.Append((string)value);
+    }
+
+    private static void AppendIndent(StringBuilder sb, int count)
+    {
+        sb.Append(' ', count);
+    }
+}
+]]>
+      </Code>
+    </Task>
+  </UsingTask>
+
+  <UsingTask TaskName="VerifySecretKitSbomArchive"
+             TaskFactory="RoslynCodeTaskFactory"
+             AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
+    <Task>
+      <Code Type="Class" Language="cs">
+<![CDATA[
+using System;
+using System.IO;
+using System.IO.Compression;
+using System.Security.Cryptography;
+using System.Text;
+using Microsoft.Build.Framework;
+
+public sealed class VerifySecretKitSbomArchive : Microsoft.Build.Utilities.Task
+{
+    [Required]
+    public string ArchivePath { get; set; } = string.Empty;
+
+    public override bool Execute()
+    {
+        if (!File.Exists(ArchivePath))
+        {
+            Log.LogError("Packed archive missing at '{0}'.", ArchivePath);
+            return false;
+        }
+
+        bool valid = false;
+        try
+        {
+            using var stream = File.OpenRead(ArchivePath);
+            using var archive = new ZipArchive(stream, ZipArchiveMode.Read);
+            var manifestEntry = archive.GetEntry("_manifest/spdx_2.2/manifest.spdx.json");
+            var digestEntry = archive.GetEntry("_manifest/spdx_2.2/manifest.spdx.json.sha256");
+            if (manifestEntry is not null && manifestEntry.Length > 0 && digestEntry is not null)
+            {
+                using var manifestStream = manifestEntry.Open();
+                using var sha256 = SHA256.Create();
+                byte[] hash = sha256.ComputeHash(manifestStream);
+                string computedHex = BitConverter.ToString(hash).Replace("-", string.Empty).ToLowerInvariant();
+
+                using var digestReader = new StreamReader(digestEntry.Open(), Encoding.UTF8);
+                string recordedDigest = digestReader.ReadToEnd().Trim();
+                valid = string.Equals(computedHex, recordedDigest, StringComparison.OrdinalIgnoreCase);
+            }
+        }
+        catch
+        {
+            valid = false;
+        }
+
+        if (!valid)
+        {
+            try { File.Delete(ArchivePath); } catch { }
+            Log.LogError("Embedded SPDX SBOM manifest missing or corrupted in '{0}'. Removed incomplete package archive.", ArchivePath);
+            return false;
+        }
+
+        return true;
+    }
+}
+]]>
+      </Code>
+    </Task>
+  </UsingTask>
+
   <Target Name="ConfigureSecretKitSbom" BeforeTargets="GenerateSbomTarget" Condition="'$(IsPackable)' == 'true' AND '$(GenerateSBOM)' == 'true'">
+    <Error Condition="!Exists('$(ProjectAssetsFile)')" Text="ProjectAssetsFile '$(ProjectAssetsFile)' is required for SPDX SBOM generation." />
     <PropertyGroup>
       <SbomGenerationPackageName>$(PackageId)</SbomGenerationPackageName>
       <SbomGenerationPackageVersion>$(PackageVersion)</SbomGenerationPackageVersion>
       <SbomGenerationNamespaceBaseUri>https://github.com/islamu-ngo/SecretKit/spdx</SbomGenerationNamespaceBaseUri>
-      <SbomGenerationBuildComponentPath>$(IntermediateOutputPath)sbom-components</SbomGenerationBuildComponentPath>
+      <SbomGenerationBuildComponentPath>$([System.IO.Path]::GetFullPath('$(IntermediateOutputPath)sbom-components'))</SbomGenerationBuildComponentPath>
+      <_SecretKitFilteredAssetsFile>$([System.IO.Path]::Combine('$(SbomGenerationBuildComponentPath)', 'project.assets.json'))</_SecretKitFilteredAssetsFile>
+      <_SecretKitPackedArchivePath>$([System.IO.Path]::Combine($([System.IO.Path]::GetFullPath('$(PackageOutputPath)')), '$(PackageId).$(PackageVersion).nupkg'))</_SecretKitPackedArchivePath>
     </PropertyGroup>
     <RemoveDir Directories="$(SbomGenerationBuildComponentPath)" />
-    <MakeDir Directories="$(SbomGenerationBuildComponentPath)" />
-    <Copy SourceFiles="$(ProjectAssetsFile)" DestinationFolder="$(SbomGenerationBuildComponentPath)" Condition="Exists('$(ProjectAssetsFile)')" />
+    <FilterSecretKitSbomAssets InputAssetsFile="$(ProjectAssetsFile)" OutputAssetsFile="$(_SecretKitFilteredAssetsFile)" />
+  </Target>
+
+  <Target Name="VerifySecretKitSbom" AfterTargets="GenerateSbomTarget" Condition="'$(IsPackable)' == 'true' AND '$(GenerateSBOM)' == 'true'">
+    <VerifySecretKitSbomArchive ArchivePath="$(_SecretKitPackedArchivePath)" />
   </Target>
 </Project>

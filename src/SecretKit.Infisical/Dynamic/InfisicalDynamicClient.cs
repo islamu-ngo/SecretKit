@@ -1,6 +1,7 @@
 using System.Buffers;
 using System.Globalization;
 using System.Net.Http.Headers;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Refit;
@@ -871,7 +872,7 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
         {
             if (payload is not null)
             {
-                payload.AsSpan().Clear();
+                CryptographicOperations.ZeroMemory(payload);
             }
         }
     }

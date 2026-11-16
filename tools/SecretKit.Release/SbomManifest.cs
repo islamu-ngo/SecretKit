@@ -39,8 +39,9 @@ public static class SbomManifest
         using JsonDocument document = ParseDocument(json);
         JsonElement root = document.RootElement;
         ValidateDocumentHeader(root, id, version);
-        ValidateFileHashes(root, archive.Files);
-        ValidatePackagesAndDependencies(root, archive, id, version);
+        HashSet<string> fileIds = ValidateFileHashes(root, archive.Files);
+        HashSet<string> packageIds = ValidatePackagesAndDependencies(root, archive, id, version);
+        ValidateRelationships(root, fileIds, packageIds);
     }
 
     private static JsonDocument ParseDocument(byte[] json)
@@ -92,7 +93,7 @@ public static class SbomManifest
             "sbom-describes");
     }
 
-    private static void ValidateFileHashes(JsonElement root, IReadOnlyDictionary<string, byte[]> archiveFiles)
+    private static HashSet<string> ValidateFileHashes(JsonElement root, IReadOnlyDictionary<string, byte[]> archiveFiles)
     {
         var expectedHashes = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach ((string name, byte[] content) in archiveFiles)
@@ -102,6 +103,7 @@ public static class SbomManifest
                 continue;
             }
 
+            Guard.Require(!name.StartsWith("_manifest/", StringComparison.OrdinalIgnoreCase), "sbom-unexpected-manifest-file");
             expectedHashes.Add(name, Manifest.Hash(content));
         }
 
@@ -121,14 +123,17 @@ public static class SbomManifest
         }
 
         Manifest.ExactSet(seenPaths, expectedHashes.Keys, "sbom-file-coverage");
+        return seenIds;
     }
 
-    private static void ValidatePackagesAndDependencies(JsonElement root, ArchiveContent archive, string id, string version)
+    private static HashSet<string> ValidatePackagesAndDependencies(JsonElement root, ArchiveContent archive, string id, string version)
     {
         Guard.Require(root.TryGetProperty("packages", out JsonElement packages) &&
             packages.ValueKind == JsonValueKind.Array, "sbom-packages");
 
         int rootCount = 0;
+        var seenSpdxIds = new HashSet<string>(StringComparer.Ordinal);
+        var seenNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var packageList = new List<(string Name, string Version, List<string> Purls)>();
         foreach (JsonElement pkg in packages.EnumerateArray())
         {
@@ -136,6 +141,8 @@ public static class SbomManifest
             string spdxId = RequiredString(pkg, "SPDXID");
             string name = RequiredString(pkg, "name");
             string pkgVersion = RequiredString(pkg, "versionInfo");
+            Guard.Require(seenSpdxIds.Add(spdxId), "sbom-duplicate-spdx-id");
+            Guard.Require(!BuildOnlyToolIds.Contains(name), "sbom-build-tool-package");
             if (spdxId == "SPDXRef-RootPackage")
             {
                 Guard.Require(name == id && pkgVersion == version, "sbom-root-package");
@@ -144,6 +151,7 @@ public static class SbomManifest
             else
             {
                 Guard.Require(!string.Equals(name, id, StringComparison.OrdinalIgnoreCase), "sbom-duplicate-self");
+                Guard.Require(seenNames.Add(name), "sbom-duplicate-package");
             }
 
             var purls = new List<string>();
@@ -168,10 +176,11 @@ public static class SbomManifest
         }
 
         Guard.Require(rootCount == 1, "sbom-root-package");
-        ValidateNuspecDependencies(archive, id, packageList);
+        ValidateNuspecDependencies(archive, id, version, packageList);
+        return seenSpdxIds;
     }
 
-    private static void ValidateNuspecDependencies(ArchiveContent archive, string id,
+    private static void ValidateNuspecDependencies(ArchiveContent archive, string id, string version,
         List<(string Name, string Version, List<string> Purls)> packageList)
     {
         if (!archive.Files.TryGetValue(id + ".nuspec", out byte[]? nuspecBytes))
@@ -193,18 +202,47 @@ public static class SbomManifest
             string depId = dep.Attribute("id")?.Value ?? throw new ReleaseException("sbom-nuspec-dependency");
             string rawVersion = dep.Attribute("version")?.Value ?? throw new ReleaseException("sbom-nuspec-dependency");
             Guard.Require(!BuildOnlyToolIds.Contains(depId), "sbom-build-tool-dependency");
+            string normalized = rawVersion.Trim('[', ']', '(', ')', ' ');
             if (depId.StartsWith("SecretKit.", StringComparison.OrdinalIgnoreCase))
             {
+                Guard.Require(string.Equals(normalized, version, StringComparison.Ordinal), "sbom-sibling-version");
                 continue;
             }
 
-            string normalized = rawVersion.Trim('[', ']', '(', ')', ' ');
+            string expectedPurl = $"pkg:nuget/{depId}@{normalized}";
             bool matched = packageList.Any(entry =>
                 string.Equals(entry.Name, depId, StringComparison.OrdinalIgnoreCase) &&
                 string.Equals(entry.Version, normalized, StringComparison.OrdinalIgnoreCase) &&
-                entry.Purls.Any(purl => purl.StartsWith($"pkg:nuget/{depId}@{normalized}", StringComparison.OrdinalIgnoreCase)));
+                entry.Purls.Any(purl =>
+                    purl.Equals(expectedPurl, StringComparison.OrdinalIgnoreCase) ||
+                    purl.StartsWith(expectedPurl + "?", StringComparison.OrdinalIgnoreCase) ||
+                    purl.StartsWith(expectedPurl + "#", StringComparison.OrdinalIgnoreCase)));
             Guard.Require(matched, "sbom-missing-dependency");
         }
+    }
+
+    private static void ValidateRelationships(JsonElement root, HashSet<string> fileIds, HashSet<string> packageIds)
+    {
+        Guard.Require(root.TryGetProperty("relationships", out JsonElement relationships) &&
+            relationships.ValueKind == JsonValueKind.Array, "sbom-relationships");
+        bool hasDescribesRoot = false;
+        foreach (JsonElement relationship in relationships.EnumerateArray())
+        {
+            Guard.Require(relationship.ValueKind == JsonValueKind.Object, "sbom-relationship-entry");
+            string source = RequiredString(relationship, "spdxElementId");
+            string type = RequiredString(relationship, "relationshipType");
+            string target = RequiredString(relationship, "relatedSpdxElement");
+            Guard.Require(IsKnownElement(source) && IsKnownElement(target), "sbom-relationship-target");
+            if (source == "SPDXRef-DOCUMENT" && type == "DESCRIBES" && target == "SPDXRef-RootPackage")
+            {
+                hasDescribesRoot = true;
+            }
+        }
+
+        Guard.Require(hasDescribesRoot, "sbom-describes-relationship");
+
+        bool IsKnownElement(string spdxId) =>
+            spdxId == "SPDXRef-DOCUMENT" || packageIds.Contains(spdxId) || fileIds.Contains(spdxId);
     }
 
     private static bool TryReadSha256(JsonElement file, out string? sha256)

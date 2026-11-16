@@ -222,7 +222,7 @@
     },
     {
       "file": "src/SecretKit.Infisical.Management/Rotations/SqlSecretRotationShared.cs",
-      "sha256": "29da59b061f532a5d1384ae2feac42f78b6afcac320c687a543691d80769256d"
+      "sha256": "5e54da57fa9e46581be1cd443505db81004ddcc6dac80f0e40b7fe352108fc4c"
     },
     {
       "file": "src/SecretKit.Infisical.Management/Transport/ManagementApis.cs",
@@ -266,11 +266,11 @@
     },
     {
       "file": "src/SecretKit.Infisical/Authentication/InfisicalPeriodicTokenSession.cs",
-      "sha256": "71a0db5c540880c9e546c132f1d8de239f24854a8eefbba0d277b2211b620e8c"
+      "sha256": "d13be1b23ed22c806dc898fc5bd1ab73ab208d6ff71eb2c62ae57b3b75c0610d"
     },
     {
       "file": "src/SecretKit.Infisical/Authentication/InfisicalProofAuthentication.cs",
-      "sha256": "fc8effa653be72f40688671db25584205c7dcae87c8487f694f711fb6849bbe1"
+      "sha256": "16bb4889fbbbb5da976294c3419825ac1b966e9d4852f7e8398177ab4ff8a4bd"
     },
     {
       "file": "src/SecretKit.Infisical/Authentication/InfisicalProofAuthenticationWire.cs",
@@ -310,7 +310,7 @@
     },
     {
       "file": "src/SecretKit.Infisical/Dynamic/InfisicalDynamicClient.cs",
-      "sha256": "ac2cbc777865476976ff548cdf5dc0db28b32b3af9d29841aeaf1d814d424912"
+      "sha256": "a890f0a7c7cbdda557d7c2f2cd420a6fe1c28630e8b95711eeccc45be607e3f6"
     },
     {
       "file": "src/SecretKit.Infisical/Dynamic/InfisicalDynamicTypes.cs",
@@ -414,11 +414,11 @@
     },
     {
       "file": "src/SecretKit.Infisical/Rotation/InfisicalRotationApi.cs",
-      "sha256": "ec1138f45f09dbd617df299dca3137d96b1e4d460f42d83b403b37451078f9d6"
+      "sha256": "415e1a99b1614f1b1af31cba24199465890ff03f6021e2abf796e8f5a71a2c81"
     },
     {
       "file": "src/SecretKit.Infisical/Rotation/InfisicalRotationClient.cs",
-      "sha256": "bd0b5dc03603423d15962e3e23972774ed8e3e3a4650072b300d4923d013e695"
+      "sha256": "88ecb03422e5a4378585212085da931e125e8dbc4cd08ae8e0ee79534d1efbd8"
     },
     {
       "file": "src/SecretKit.Infisical/Rotation/InfisicalRotationModels.cs",
@@ -430,7 +430,7 @@
     },
     {
       "file": "src/SecretKit.Infisical/Secrets/InfisicalClient.cs",
-      "sha256": "6d3d4191e5edee983e4302a6643cc9a4bce513ab235a6142f49f7bc12e063fa6"
+      "sha256": "19b2bcae43c073ee550df8548a7689e55fcd5b477df33845902c276d0abf9983"
     },
     {
       "file": "src/SecretKit.Infisical/Secrets/InfisicalInventory.cs",

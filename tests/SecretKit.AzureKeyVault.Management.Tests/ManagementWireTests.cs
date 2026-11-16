@@ -456,4 +456,47 @@ public sealed class ManagementWireTests
         await Assert.That(await operation.CheckStatusAsync()).IsEqualTo(SecretStatus.Success);
         await Assert.That(operation.State).IsEqualTo(NativeProvisioningState.Succeeded);
     }
+
+    [Test]
+    public async Task FinalResourceProtocolFailureAfterSucceededAsyncPollDoesNotPromoteOperationState()
+    {
+        const string operationUrl = "https://management.azure.com/subscriptions/11111111-1111-1111-1111-111111111111/providers/Microsoft.KeyVault/locations/eastus/operations/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb?api-version=2026-02-01";
+        bool failFinalGet = true;
+        var backend = new WireBackend((request, _) =>
+        {
+            if (request.Method == HttpMethod.Put)
+            {
+                var created = WireBackend.Json(201, ScopeAuthorityTests.VaultJson(ScopeAuthorityTests.Id, "Creating"));
+                created.Headers.Add("Azure-AsyncOperation", operationUrl);
+                return Task.FromResult(created);
+            }
+            if (request.RequestUri!.AbsolutePath.EndsWith("/operations/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", StringComparison.Ordinal))
+            {
+                return Task.FromResult(WireBackend.Json(200, """{"status":"Succeeded"}"""));
+            }
+            if (failFinalGet)
+            {
+                throw new HttpRequestException("Simulated transient final GET failure.");
+            }
+            return Task.FromResult(WireBackend.Json(200, ScopeAuthorityTests.VaultJson(ScopeAuthorityTests.Id)));
+        });
+
+        var client = new VaultAdministration(new Credential(), backend);
+        var scope = Scope();
+        var receipt = client.PrepareReceipt(scope, ManagementMutation.CreateOrUpdateVault);
+        var started = await client.CreateOrUpdateVaultAsync(scope, Configuration(), receipt);
+        await Assert.That(started.Status).IsEqualTo(SecretStatus.Success);
+        ManagementOperation operation = started.Value;
+        await Assert.That(operation.State).IsEqualTo(NativeProvisioningState.Pending);
+
+        // Final resource GET throws HttpRequestException (not HTTP 403 ObservationException):
+        // must return Unavailable and preserve Pending state until final validation actually succeeds.
+        SecretStatus firstCheck = await operation.CheckStatusAsync();
+        await Assert.That(firstCheck).IsEqualTo(SecretStatus.Unavailable);
+        await Assert.That(operation.State).IsEqualTo(NativeProvisioningState.Pending);
+
+        failFinalGet = false;
+        await Assert.That(await operation.CheckStatusAsync()).IsEqualTo(SecretStatus.Success);
+        await Assert.That(operation.State).IsEqualTo(NativeProvisioningState.Succeeded);
+    }
 }

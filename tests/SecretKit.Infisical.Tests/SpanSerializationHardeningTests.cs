@@ -168,4 +168,30 @@ public sealed class SpanSerializationHardeningTests
         await Assert.That(() => racingCopy.UseUsername(_ => { })).Throws<InvalidOperationException>();
         await Assert.That(() => racingCopy.UsePasswordUtf8(_ => { })).Throws<InvalidOperationException>();
     }
+
+    [Test]
+    public async Task RotationSetAutomaticUsesSpanWriterAndLoginProofAvoidsLohBuffer()
+    {
+        Assembly assembly = typeof(InfisicalClient).Assembly;
+        await Assert.That(assembly.GetType("SecretKit.Infisical.InfisicalRotationEnablementBody")).IsNull();
+        Type rotationApi = assembly.GetType("SecretKit.Infisical.IInfisicalRotationApi", throwOnError: true)!;
+        foreach (MethodInfo method in rotationApi.GetMethods())
+        {
+            foreach (ParameterInfo parameter in method.GetParameters())
+            {
+                bool hasBodyAttribute = parameter.GetCustomAttributes(inherit: false)
+                    .Any(attr => attr.GetType().FullName == "Refit.BodyAttribute");
+                if (hasBodyAttribute)
+                {
+                    await Assert.That(parameter.ParameterType == typeof(HttpContent)).IsTrue();
+                }
+            }
+        }
+
+        using var secret = SecretMaterial.FromText("proof-canary");
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        using var proof = InfisicalLoginProof.Oidc("identity-1", secret);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        await Assert.That(allocated).IsLessThan(32 * 1024L);
+    }
 }

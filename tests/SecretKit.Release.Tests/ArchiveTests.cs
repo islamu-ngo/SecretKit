@@ -263,9 +263,10 @@ public sealed class ArchiveTests
     public static byte[] Zip(params (string Name, string Content)[] entries) =>
         ZipAt(new DateTimeOffset(2020, 1, 1, 0, 0, 0, TimeSpan.Zero), entries);
 
-    public static byte[] ZipWithSbom(string id, string version, params (string Name, string Content)[] entries)
+    public static byte[] ZipWithSbom(string id, string version, (string Name, string Content)[] entries,
+        params (string Name, string Version)[] dependencies)
     {
-        byte[] json = CreateSpdxJson(id, version, entries);
+        byte[] json = CreateSpdxJson(id, version, entries, dependencies);
         string digest = Manifest.Hash(json);
         return ZipAt(
             new DateTimeOffset(2020, 1, 1, 0, 0, 0, TimeSpan.Zero),
@@ -275,6 +276,9 @@ public sealed class ArchiveTests
                 (SbomManifest.DigestPath, Encoding.ASCII.GetBytes(digest))
             ]);
     }
+
+    public static byte[] ZipWithSbom(string id, string version, params (string Name, string Content)[] entries) =>
+        ZipWithSbom(id, version, entries, []);
 
     public static byte[] CreateSpdxJson(string id, string version, IEnumerable<(string Name, string Content)> entries,
         params (string Name, string Version)[] dependencies)
@@ -334,7 +338,15 @@ public sealed class ArchiveTests
             files = fileNodes,
             packages = packageNodes,
             externalDocumentRefs = Array.Empty<object>(),
-            relationships = Array.Empty<object>()
+            relationships = new[]
+            {
+                new
+                {
+                    relationshipType = "DESCRIBES",
+                    relatedSpdxElement = "SPDXRef-RootPackage",
+                    spdxElementId = "SPDXRef-DOCUMENT"
+                }
+            }
         });
     }
 

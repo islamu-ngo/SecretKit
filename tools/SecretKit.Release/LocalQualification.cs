@@ -493,6 +493,7 @@ public static partial class LocalQualification
                     e.Attribute("version")!.Value == profile.Version) &&
                 !metadata.Descendants(ns + "frameworkReference").Any() &&
                 !metadata.Descendants(ns + "frameworkAssembly").Any(), "local-dependencies");
+            SbomManifest.Verify(archive, id, profile.Version);
             packages.Add(new(id, file, Manifest.Hash(bytes)));
         }
         observedCommit = commit!;

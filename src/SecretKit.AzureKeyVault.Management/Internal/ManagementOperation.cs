@@ -14,6 +14,7 @@ public sealed class ManagementOperation
     private readonly Func<bool>? _validateValue;
     private readonly TimeSpan _timeout;
     private readonly TimeProvider _time;
+    private int _state;
     private bool _validatedSuccess;
 
     private ManagementOperation(Func<bool> hasCompleted, Func<CancellationToken, ValueTask<Azure.Response>> update,
@@ -26,7 +27,7 @@ public sealed class ManagementOperation
         _timeout = timeout;
         _time = time;
         _validateValue = validateValue;
-        State = hasCompleted() ? NativeProvisioningState.Succeeded : NativeProvisioningState.Pending;
+        _state = (int)(hasCompleted() ? NativeProvisioningState.Succeeded : NativeProvisioningState.Pending);
         _validatedSuccess = hasCompleted() && (validateValue is null || validateValue());
     }
 
@@ -43,7 +44,11 @@ public sealed class ManagementOperation
             transport, timeout, time);
 
     /// <summary>Gets the most recent local native-operation state; reads do not initiate polling.</summary>
-    public NativeProvisioningState State { get; private set; }
+    public NativeProvisioningState State
+    {
+        get => (NativeProvisioningState)Volatile.Read(ref _state);
+        private set => Volatile.Write(ref _state, (int)value);
+    }
     /// <summary>Always false: provisioning completion does not establish intended-identity secret delivery.</summary>
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1822", Justification = "The absence of runtime-delivery proof belongs to each operation's evidence contract.")]
     public bool RuntimeDeliveryProven => false;
@@ -73,7 +78,7 @@ public sealed class ManagementOperation
             await _update(linked.Token).ConfigureAwait(false);
             NativeProvisioningState observedState = statusCheck.OperationState;
             linked.Token.ThrowIfCancellationRequested();
-            if (observedState != NativeProvisioningState.Unknown)
+            if (observedState is NativeProvisioningState.Failed or NativeProvisioningState.Canceled or NativeProvisioningState.Pending)
             {
                 State = observedState;
             }
@@ -85,6 +90,11 @@ public sealed class ManagementOperation
             if (!_hasCompleted())
             {
                 return observation.Record(SecretStatus.Pending);
+            }
+
+            if (observedState == NativeProvisioningState.Succeeded)
+            {
+                State = NativeProvisioningState.Succeeded;
             }
 
             if (_validateValue is not null && !_validateValue())
@@ -113,7 +123,9 @@ public sealed class ManagementOperation
             if (deadline.IsCancellationRequested) observation.Cancel(true);
             cancellationToken.ThrowIfCancellationRequested();
             if (!deadline.IsCancellationRequested && statusCheck is not null &&
-                statusCheck.OperationState != NativeProvisioningState.Unknown)
+                statusCheck.OperationState != NativeProvisioningState.Unknown &&
+                (statusCheck.OperationState != NativeProvisioningState.Succeeded ||
+                    exception is ControlledTransport.ObservationException))
             {
                 State = statusCheck.OperationState;
             }

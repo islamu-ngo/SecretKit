@@ -280,11 +280,12 @@ public sealed class InfisicalRotationClient : IDisposable, IAsyncDisposable
         }
     }
 
-    private ValueTask<SecretOutcome<JsonDocument>> SendAsync(InfisicalNativeAddress address,
+    private async ValueTask<SecretOutcome<JsonDocument>> SendAsync(InfisicalNativeAddress address,
         bool? enabled, SecretReference target, InfisicalRotationAction? action,
         InfisicalRotationReceipt? receipt, CancellationToken cancellationToken)
     {
-        return SendConstructedAsync(address, BuildAsync, target, action, receipt, cancellationToken);
+        using ByteArrayContent? bodyContent = enabled is { } setting ? SerializeEnablement(setting) : null;
+        return await SendConstructedAsync(address, BuildAsync, target, action, receipt, cancellationToken).ConfigureAwait(false);
 
         Task<HttpRequestMessage> BuildAsync(CancellationToken token)
         {
@@ -292,12 +293,27 @@ public sealed class InfisicalRotationClient : IDisposable, IAsyncDisposable
                 return _api.ListAsync(scope.ProjectId, token);
             var rotation = (InfisicalRotationAddress)address;
             string profile = WireProfile(rotation.Profile);
-            return enabled is { } setting
-                ? _api.SetAutomaticAsync(profile, rotation.RotationId, new(setting), token)
+            return bodyContent is not null
+                ? _api.SetAutomaticAsync(profile, rotation.RotationId, bodyContent, token)
                 : action is null
                     ? _api.GetAsync(profile, rotation.RotationId, token)
                     : _api.RotateAsync(profile, rotation.RotationId, token);
         }
+    }
+
+    private static ByteArrayContent SerializeEnablement(bool enabled)
+    {
+        var buffer = new System.Buffers.ArrayBufferWriter<byte>(32);
+        using (var writer = new Utf8JsonWriter(buffer))
+        {
+            writer.WriteStartObject();
+            writer.WriteBoolean("isAutoRotationEnabled", enabled);
+            writer.WriteEndObject();
+        }
+
+        var content = new ByteArrayContent(buffer.WrittenSpan.ToArray());
+        content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+        return content;
     }
 
     internal async ValueTask<SecretOutcome<JsonDocument>> SendConstructedAsync(InfisicalNativeAddress address,

@@ -2,6 +2,7 @@ using System.Buffers;
 using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
+using System.Security.Cryptography;
 using System.Text.Json;
 using Refit;
 using SecretKit.Core;
@@ -463,7 +464,7 @@ public sealed partial class InfisicalClient : IInfisicalSecretReader, IAsyncDisp
         {
             return DocumentFailure(SecretStatus.Unavailable, budget.CancellationReason(), receipt);
         }
-        finally { if (payload is not null) Array.Clear(payload); }
+        finally { if (payload is not null) CryptographicOperations.ZeroMemory(payload); }
     }
 
     private static string? NativeString(JsonElement element, string property) =>

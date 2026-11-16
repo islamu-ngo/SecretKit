@@ -351,6 +351,27 @@ public sealed class RuntimeSessionTests
         await Assert.That(wire.Paths.IsEmpty).IsTrue();
     }
 
+    [Test]
+    public async Task RenewalAfterTokenExpirationPreservesExpiredStateInsteadOfRecoveryRequired()
+    {
+        var clock = new Clock();
+        using var wire = new Wire { HoldRenewal = true };
+        using var bootstrap = SecretMaterial.FromText("bootstrap-canary");
+        var opened = await InfisicalRuntimeSession.OpenUniversalAsync(Options(wire, clock), bootstrap, new());
+        await Assert.That(opened.Status).IsEqualTo(SecretStatus.Success);
+        await using var runtime = opened.Value;
+
+        Task<SecretOutcome<InfisicalTokenRenewal>> renewTask = runtime.TokenSession.RenewAsync().AsTask();
+        await wire.RenewalEntered.Task.WaitAsync(Bound);
+        // Advance clock past the 600s token lifetime while renewal response is still in flight.
+        clock.Advance(TimeSpan.FromSeconds(700));
+        wire.RenewalRelease.TrySetResult();
+
+        SecretOutcome<InfisicalTokenRenewal> renewal = await renewTask;
+        await Assert.That(renewal.IsSuccess).IsFalse();
+        await Assert.That(runtime.TokenSession.State).IsEqualTo(InfisicalTokenSessionState.Expired);
+    }
+
     private static InfisicalRuntimeOptions Options(Wire wire, Clock clock,
         InfisicalTokenLifetime lifetime = InfisicalTokenLifetime.Finite, TimeSpan? period = null,
         string clientId = "client") => new()

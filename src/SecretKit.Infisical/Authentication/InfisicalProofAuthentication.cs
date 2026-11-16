@@ -1,6 +1,8 @@
+using System.Buffers;
 using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Refit;
@@ -21,10 +23,12 @@ public sealed class InfisicalLoginProof : IDisposable
         ValidateText(identityId, 1024);
         if (organizationSlug is not null) ValidateText(organizationSlug, 64);
         Strategy = strategy;
-        byte[] buffer = new byte[128 * 1024];
+        const int budget = 128 * 1024;
+        byte[] buffer = ArrayPool<byte>.Shared.Rent(budget);
+        int written = 0;
         try
         {
-            using var stream = new MemoryStream(buffer, writable: true);
+            using var stream = new MemoryStream(buffer, 0, budget, writable: true);
             using (var writer = new Utf8JsonWriter(stream))
             {
                 writer.WriteStartObject();
@@ -33,10 +37,19 @@ public sealed class InfisicalLoginProof : IDisposable
                 fields(writer);
                 writer.WriteEndObject();
             }
-            _payload = buffer.AsSpan(0, checked((int)stream.Position)).ToArray();
+            written = checked((int)stream.Position);
+            _payload = buffer.AsSpan(0, written).ToArray();
         }
-        catch (NotSupportedException) { throw new ArgumentException("Proof exceeds its byte budget."); }
-        finally { Array.Clear(buffer); }
+        catch (NotSupportedException)
+        {
+            written = budget;
+            throw new ArgumentException("Proof exceeds its byte budget.");
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(buffer.AsSpan(0, written > 0 ? written : budget));
+            ArrayPool<byte>.Shared.Return(buffer, clearArray: false);
+        }
     }
 
     /// <summary>Completed signed AliCloud GetCallerIdentity fields; no signing or key acquisition.</summary>
@@ -169,7 +182,7 @@ public sealed class InfisicalLoginProof : IDisposable
         lock (_gate)
         {
             if (_payload is null) return;
-            Array.Clear(_payload);
+            CryptographicOperations.ZeroMemory(_payload);
             _payload = null;
         }
     }
@@ -320,7 +333,7 @@ public sealed partial class InfisicalProofAuthentication : IDisposable
             }
             finally
             {
-                Array.Clear(payload);
+                CryptographicOperations.ZeroMemory(payload);
             }
         }
     }

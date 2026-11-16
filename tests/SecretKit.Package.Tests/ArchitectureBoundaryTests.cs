@@ -138,8 +138,13 @@ public sealed class ArchitectureBoundaryTests
             bool trimmable = metadata.GetAssemblyDefinition().GetCustomAttributes()
                 .Select(handle => metadata.GetCustomAttribute(handle))
                 .Any(attribute => IsAssemblyMetadata(metadata, attribute, "IsTrimmable", "True"));
+            bool aotCompatible = metadata.GetAssemblyDefinition().GetCustomAttributes()
+                .Select(handle => metadata.GetCustomAttribute(handle))
+                .Any(attribute => IsAssemblyMetadata(metadata, attribute, "IsAotCompatible", "True"));
             await Assert.That(trimmable).IsTrue();
+            await Assert.That(aotCompatible).IsTrue();
             await Assert.That(HasTrimmingIncompatibleAttribute(metadata)).IsFalse();
+            await Assert.That(HasRefitContentSerializerReference(metadata)).IsFalse();
         }
         bool hasLegacyObjectLock = metadata.FieldDefinitions
             .Select(handle => metadata.GetFieldDefinition(handle))
@@ -248,6 +253,29 @@ public sealed class ArchitectureBoundaryTests
             TypeReference type = metadata.GetTypeReference((TypeReferenceHandle)constructor.Parent);
             if (metadata.GetString(type.Namespace) == "System.Diagnostics.CodeAnalysis" &&
                 metadata.GetString(type.Name) is "RequiresUnreferencedCodeAttribute" or "RequiresDynamicCodeAttribute")
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static bool HasRefitContentSerializerReference(MetadataReader metadata)
+    {
+        foreach (MemberReferenceHandle handle in metadata.MemberReferences)
+        {
+            MemberReference member = metadata.GetMemberReference(handle);
+            if (member.Parent.Kind != HandleKind.TypeReference) continue;
+            TypeReference type = metadata.GetTypeReference((TypeReferenceHandle)member.Parent);
+            string typeNs = metadata.GetString(type.Namespace);
+            string typeName = metadata.GetString(type.Name);
+            string methodName = metadata.GetString(member.Name);
+            if (typeNs == "Refit" && typeName == "SystemTextJsonContentSerializer")
+            {
+                return true;
+            }
+            if (typeNs == "System.Text.Json" && typeName == "JsonSerializer" &&
+                methodName is "Serialize" or "SerializeToUtf8Bytes" or "Deserialize")
             {
                 return true;
             }

@@ -124,9 +124,9 @@ public sealed class SqlRotationSecretsMapping
 
 internal static partial class SqlSecretRotationShared
 {
-    private const string SymbolPattern = """[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>/?~]""";
+    private const string SymbolPattern = """\A[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>/?~]+\z""";
 
-    [GeneratedRegex(SymbolPattern, RegexOptions.CultureInvariant, matchTimeoutMilliseconds: 1000)]
+    [GeneratedRegex(SymbolPattern, RegexOptions.CultureInvariant | RegexOptions.NonBacktracking)]
     private static partial Regex SymbolRegex();
 
     internal static void InputNumber(double value, double minimum, double maximum = double.MaxValue)

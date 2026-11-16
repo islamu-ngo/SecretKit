@@ -364,7 +364,7 @@ internal sealed class ControlledTransport(HttpPipelineTransport inner, string ho
         _ => SecretKit.AzureKeyVault.AzureFailureClassification.Status(exception)
     };
 
-    private sealed class ObservationException(SecretStatus status) : IOException("Status observation failed.")
+    internal sealed class ObservationException(SecretStatus status) : IOException("Status observation failed.")
     {
         internal SecretStatus Status { get; } = status;
     }

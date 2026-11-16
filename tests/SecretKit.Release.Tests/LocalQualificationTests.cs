@@ -368,6 +368,7 @@ public sealed class LocalQualificationTests
     [Arguments("bad-notices")]
     [Arguments("dependency")]
     [Arguments("internal-version")]
+    [Arguments("missing-sbom")]
     [Arguments("traversal-archive")]
     [Arguments("symlink-file")]
     [Arguments("symlink-directory")]
@@ -382,12 +383,17 @@ public sealed class LocalQualificationTests
             case "mixed-version": fixture.WritePackage("SecretKit.Core", "0.2.0"); break;
             case "wrong-source":
             case "bad-notices":
+            case "missing-sbom":
                 ArchiveContent archive = PackageArchive.Read(File.ReadAllBytes(file));
-                var files = archive.Files.Select(p => (p.Key, System.Text.Encoding.UTF8.GetString(p.Value))).ToArray();
+                var files = archive.Files
+                    .Where(p => p.Key is not SbomManifest.ManifestPath and not SbomManifest.DigestPath)
+                    .Select(p => (p.Key, System.Text.Encoding.UTF8.GetString(p.Value))).ToArray();
                 files = files.Select(p => fault == "wrong-source"
                     ? (p.Key, p.Item2.Replace(TestBundle.Commit, new string('b', 40), StringComparison.Ordinal))
-                    : (p.Key, p.Key == "THIRD-PARTY-NOTICES.md" ? "wrong" : p.Item2)).ToArray();
-                File.WriteAllBytes(file, ArchiveTests.Zip(files));
+                    : (p.Key, fault == "bad-notices" && p.Key == "THIRD-PARTY-NOTICES.md" ? "wrong" : p.Item2)).ToArray();
+                File.WriteAllBytes(file, fault == "missing-sbom"
+                    ? ArchiveTests.Zip(files)
+                    : ArchiveTests.ZipWithSbom("SecretKit.Core", TestBundle.Version, files));
                 break;
             case "dependency":
                 fixture.WritePackage("SecretKit.Infisical", dependency:
@@ -585,14 +591,19 @@ public sealed class LocalQualificationTests
             };
             entries += string.Concat(external.Select(d => $"""<dependency id="{d}" version="1.0.0" />"""));
             if (dependency is not null) entries += dependency;
-            byte[] archive = ArchiveTests.Zip((id + ".nuspec", $"""
-                <package><metadata><id>{id}</id><version>{version}</version>
-                <license type="expression">MIT</license>
-                <repository type="git" url="{Manifest.Repository}" commit="{TestBundle.Commit}"/>
-                <dependencies><group targetFramework="net10.0">{entries}</group></dependencies>
-                </metadata></package>
-                """), ("README.md", "controlled"),
-                ("THIRD-PARTY-NOTICES.md", "controlled notices"));
+            byte[] archive = ArchiveTests.ZipWithSbom(id, version,
+                [
+                    (id + ".nuspec", $"""
+                        <package><metadata><id>{id}</id><version>{version}</version>
+                        <license type="expression">MIT</license>
+                        <repository type="git" url="{Manifest.Repository}" commit="{TestBundle.Commit}"/>
+                        <dependencies><group targetFramework="net10.0">{entries}</group></dependencies>
+                        </metadata></package>
+                        """),
+                    ("README.md", "controlled"),
+                    ("THIRD-PARTY-NOTICES.md", "controlled notices")
+                ],
+                external.Select(d => (d, "1.0.0")).ToArray());
             File.WriteAllBytes(Path.Combine(Packages, $"{id}.{TestBundle.Version}.nupkg"), archive);
         }
 
