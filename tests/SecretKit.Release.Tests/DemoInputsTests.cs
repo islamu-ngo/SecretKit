@@ -161,7 +161,7 @@ public sealed class DemoInputsTests
         byte[] baseline = File.ReadAllBytes(path);
         string output = Path.Combine(fixture.Local.Root, "new-bundle");
         await Assert.That(await Program.Main(["local-demo-prepare", fixture.Local.Source, fixture.Local.Packages,
-            qualification, output, TestBundle.Commit, "12", "1", "10.0.403"])).IsEqualTo(1);
+            qualification, output, TestBundle.Commit, "12", "1", "10.0.404"])).IsEqualTo(1);
         await Assert.That(Directory.Exists(output)).IsFalse();
         await Assert.That(File.ReadAllBytes(path).SequenceEqual(baseline)).IsTrue();
     }
@@ -267,7 +267,7 @@ public sealed class DemoInputsTests
                 workflowRunId = 12,
                 workflowRunAttempt = 1,
                 sourceCommit = TestBundle.Commit,
-                sdk = "10.0.403",
+                sdk = "10.0.404",
                 version = TestBundle.Version,
                 qualificationSha256 = Manifest.Hash(File.ReadAllBytes(Local.RecordPath)),
                 apps
@@ -275,7 +275,7 @@ public sealed class DemoInputsTests
         }
 
         internal Task<int> CheckAsync() => Program.Main(["local-demo-check", Local.Source, Bundle,
-            TestBundle.Commit, "12", "1", "10.0.403"]);
+            TestBundle.Commit, "12", "1", "10.0.404"]);
 
         internal bool SourceLocksUnchanged() => Kinds.All(kind => _locks[kind].SequenceEqual(
             File.ReadAllBytes(Path.Combine(Local.Source, $"tests/PackageQualification/Infisical.{kind}Demo/packages.lock.json"))));

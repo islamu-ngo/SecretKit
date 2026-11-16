@@ -7,7 +7,7 @@ public sealed class RuntimeHardeningAdmissionTests
 {
     internal static RuntimeHardeningSelection Selection => new(1, "runtime-hardening", "infisical-runtime",
         "selected-runtime-read-login-renew",
-        new(LocalProfileAdmissionTests.Binding, new string('a', 40), "10.0.403", "10.0.10", "linux-x64"),
+        new(LocalProfileAdmissionTests.Binding, new string('a', 40), "10.0.404", "10.0.10", "linux-x64"),
         new("owned-deployment", "1.2.3", "oss"),
         new("finite", 60, 120, null, 0, 10, 5, "provider-observed",
             RuntimeHardeningProfile.PolicyHash(new(60, 120, 0, 0))),

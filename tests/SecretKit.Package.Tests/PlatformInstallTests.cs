@@ -27,7 +27,7 @@ public sealed class PlatformInstallTests
             Environment.SetEnvironmentVariable("SECRETKIT_VERIFICATION_COHORT_DIRECTORY", cohort ? producer : null);
 
             await Assert.That(async () => await ObserveAsync(candidate, new string('a', 40),
-                DateTimeOffset.UtcNow, 0, 0, "10.0.403")).Throws<IOException>();
+                DateTimeOffset.UtcNow, 0, 0, "10.0.404")).Throws<IOException>();
 
             await Assert.That(File.Exists(destination)).IsFalse();
         }
@@ -58,7 +58,7 @@ public sealed class PlatformInstallTests
             Environment.SetEnvironmentVariable("SECRETKIT_PLATFORM_OBSERVATION", destination);
 
             await Assert.That(async () => await ObserveAsync(candidate, new string('a', 40),
-                DateTimeOffset.UtcNow, 0, 0, "10.0.403")).Throws<IOException>();
+                DateTimeOffset.UtcNow, 0, 0, "10.0.404")).Throws<IOException>();
 
             await Assert.That(await File.ReadAllTextAsync(original)).IsEqualTo("original-evidence");
         }
@@ -99,7 +99,7 @@ public sealed class PlatformInstallTests
             {
                 try
                 {
-                    await ObserveAsync(candidate, new string('a', 40), DateTimeOffset.UtcNow, 0, 0, "10.0.403");
+                    await ObserveAsync(candidate, new string('a', 40), DateTimeOffset.UtcNow, 0, 0, "10.0.404");
                     return true;
                 }
                 catch (IOException) { return false; }

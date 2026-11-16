@@ -263,7 +263,7 @@ public sealed class VerificationCohortTests
                 File.WriteAllText(path, Path.GetFileName(file));
             }
             Record = new(1, "local-verification-not-native-qualified", "0.2.0-integration.9",
-                "10.0.403", new string('a', 40), 1, 1,
+                "10.0.404", new string('a', 40), 1, 1,
                 VerificationCohort.ExpectedFiles("0.2.0-integration.9").Select(file =>
                     new FileDigest(file, Manifest.Hash(File.ReadAllBytes(Path.Combine(Root, file))))).ToArray());
             Write(Record);
