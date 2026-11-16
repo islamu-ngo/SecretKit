@@ -156,7 +156,7 @@ public sealed class CloudIdentityAuthenticationTests
             await Assert.That(result.AccessTokenTTL?.GetDecimal()).IsEqualTo(0.5m);
             await Assert.That(result.AccessTokenMaxTTL?.GetDecimal()).IsEqualTo(1.5m);
             await Assert.That(result.AccessTokenNumUsesLimit?.GetDecimal()).IsEqualTo(0m);
-            await Assert.That(result.HasUnestablishedTrustedIpProjection).IsTrue();
+            await Assert.That(result.AccessTokenTrustedIps.IsPresent).IsTrue();
             await Assert.That(JsonSerializer.Serialize(result, result.GetType())).IsEqualTo("{}");
             await Assert.That(result.ToString()!.Contains("returned", StringComparison.Ordinal)).IsFalse();
         }
@@ -371,14 +371,14 @@ public sealed class CloudIdentityAuthenticationTests
             .Replace("\"accessTokenMaxTTL\":1.5,", "", StringComparison.Ordinal)
             .Replace("\"accessTokenNumUsesLimit\":0,", "", StringComparison.Ordinal));
         var result = Parse(strategy, absent.RootElement);
-        await Assert.That(result.HasUnestablishedTrustedIpProjection).IsFalse();
+        await Assert.That(result.AccessTokenTrustedIps.IsPresent).IsFalse();
         await Assert.That(result.AccessTokenTTL is null).IsTrue();
         await Assert.That(result.AccessTokenMaxTTL is null).IsTrue();
         await Assert.That(result.AccessTokenNumUsesLimit is null).IsTrue();
         foreach (string unknown in new[] { "null", "[]", "{}", "\"opaque\"", "42" })
         {
             using var document = JsonDocument.Parse(valid.Replace("\"accessTokenTrustedIps\":false", "\"accessTokenTrustedIps\":" + unknown, StringComparison.Ordinal));
-            await Assert.That(Parse(strategy, document.RootElement).HasUnestablishedTrustedIpProjection).IsTrue();
+            await Assert.That(Parse(strategy, document.RootElement).AccessTokenTrustedIps.IsPresent).IsTrue();
         }
     }
 

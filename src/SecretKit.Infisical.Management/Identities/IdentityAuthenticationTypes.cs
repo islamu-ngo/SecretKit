@@ -142,9 +142,6 @@ public sealed class IdentityAuthenticationConfiguration
         LockoutCounterResetSeconds = universal ? AuthenticationJson.OptionalNumber(value, "lockoutCounterResetSeconds") : null;
         AccessTokenTrustedIps = AuthenticationJson.JsonField(value, "accessTokenTrustedIps");
         ClientSecretTrustedIps = universal ? AuthenticationJson.JsonField(value, "clientSecretTrustedIps") : default;
-        // Retaining returned JSON does not establish trusted-IP policy or enforcement semantics.
-        HasUnestablishedTrustedIpProjection = value.TryGetProperty("accessTokenTrustedIps", out _) ||
-            universal && value.TryGetProperty("clientSecretTrustedIps", out _);
     }
     /// <summary>Gets the returned authentication-configuration identifier.</summary>
     [JsonIgnore] public string Id { get; }
@@ -178,8 +175,6 @@ public sealed class IdentityAuthenticationConfiguration
     /// <summary>Gets detached Universal Auth client-secret trusted-IP JSON; Token Auth leaves this absent.</summary>
     /// <remarks>Value explicitly exposes a GC-owned JSON snapshot, not a validated network policy.</remarks>
     [JsonIgnore] public ProjectField<JsonElement> ClientSecretTrustedIps { get; }
-    /// <summary>Gets whether a trusted-IP node exists whose shape is deliberately not interpreted as policy.</summary>
-    [JsonIgnore] public bool HasUnestablishedTrustedIpProjection { get; }
     /// <summary>Returns a marker without client or policy metadata.</summary>
     public override string ToString() => "[IdentityAuthenticationConfiguration]";
 }

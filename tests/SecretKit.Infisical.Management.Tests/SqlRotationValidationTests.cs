@@ -1,4 +1,5 @@
 using System.Net;
+using System.Reflection;
 using System.Text.Json.Nodes;
 using SecretKit.Core;
 
@@ -60,6 +61,51 @@ public sealed class SqlRotationValidationTests
     {
         foreach (string provider in new[] { "postgres", "mysql", "mssql" })
             await Execute(provider, requirements, SecretStatus.Unknown);
+    }
+
+    [Test]
+    public async Task UnifiedSqlRotationTypesGeneratedRegexAndPrunedProjectionFlagsAreExposed()
+    {
+        Assembly assembly = typeof(PostgresSecretRotationOperations).Assembly;
+
+        string[] unifiedNames =
+        [
+            "SecretKit.Infisical.Management.SqlRotationNullableText",
+            "SecretKit.Infisical.Management.SqlRotationPasswordRequirements",
+            "SecretKit.Infisical.Management.SqlRotationTime",
+            "SecretKit.Infisical.Management.SqlRotationSecretsMapping"
+        ];
+        foreach (string unifiedName in unifiedNames)
+            await Assert.That(assembly.GetType(unifiedName)).IsNotNull();
+
+        string[] duplicateSuffixes =
+        [
+            "RotationNullableText",
+            "RotationPasswordRequirements",
+            "RotationTime",
+            "RotationSecretsMapping"
+        ];
+        Type[] remainingDuplicates = assembly.GetTypes()
+            .Where(type => type.IsPublic &&
+                duplicateSuffixes.Any(suffix =>
+                    type.Name.EndsWith(suffix, StringComparison.Ordinal) &&
+                    !type.Name.StartsWith("Sql", StringComparison.Ordinal)))
+            .ToArray();
+        await Assert.That(remainingDuplicates).IsEmpty();
+
+        PropertyInfo[] unestablishedFlags = assembly.GetTypes()
+            .SelectMany(type => type.GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly))
+            .Where(property => property.Name.StartsWith("HasUnestablished", StringComparison.Ordinal) &&
+                property.Name.EndsWith("Projection", StringComparison.Ordinal))
+            .ToArray();
+        await Assert.That(unestablishedFlags).IsEmpty();
+
+        Type sharedType = assembly.GetType("SecretKit.Infisical.Management.SqlSecretRotationShared")!;
+        await Assert.That(sharedType).IsNotNull();
+        MethodInfo[] generatedRegexMethods = sharedType.GetMethods(BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.DeclaredOnly)
+            .Where(method => method.GetCustomAttribute<System.Text.RegularExpressions.GeneratedRegexAttribute>() is not null)
+            .ToArray();
+        await Assert.That(generatedRegexMethods.Length).IsGreaterThanOrEqualTo(1);
     }
 
     private static async Task Execute(string provider, string? requirements, SecretStatus expected,

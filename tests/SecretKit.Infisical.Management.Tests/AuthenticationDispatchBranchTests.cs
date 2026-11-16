@@ -182,15 +182,15 @@ public sealed class AuthenticationDispatchBranchTests
         await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.Applied);
         await Assert.That(result.Value.Id).IsEqualTo(ConfigurationId);
         await Assert.That(result.Value.IdentityId).IsEqualTo(IdentityId);
-        await Assert.That(result.Value.HasUnestablishedTrustedIpProjection).IsTrue();
+        await Assert.That(result.Value.AccessTokenTrustedIps.IsPresent).IsTrue();
         // Native success is deliberately different from every input branch.
         if (result.Value is JwtAuthConfiguration jwt)
         {
             await Assert.That(jwt.ConfigurationType).IsEqualTo("static");
-            await Assert.That(jwt.HasUnestablishedBoundClaimsProjection).IsTrue();
+            await Assert.That(jwt.BoundClaims.IsPresent).IsTrue();
         }
         if (result.Value is OidcAuthConfiguration oidc)
-            await Assert.That(oidc.HasUnestablishedClaimMetadataMappingProjection).IsTrue();
+            await Assert.That(oidc.ClaimMetadataMapping.IsPresent).IsTrue();
         if (result.Value is KubernetesAuthConfiguration kubernetes)
         {
             using var copy = kubernetes.TokenReviewerJwt.Value.Copy();

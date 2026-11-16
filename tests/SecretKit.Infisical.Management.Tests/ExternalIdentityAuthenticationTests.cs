@@ -213,11 +213,11 @@ public sealed class ExternalIdentityAuthenticationTests
             await Assert.That(result.AccessTokenTTL?.GetDecimal()).IsEqualTo(0.5m);
             await Assert.That(result.AccessTokenMaxTTL?.GetDecimal()).IsEqualTo(1.5m);
             await Assert.That(result.AccessTokenNumUsesLimit?.GetDecimal()).IsEqualTo(0m);
-            await Assert.That(result.HasUnestablishedTrustedIpProjection).IsTrue();
+            await Assert.That(result.AccessTokenTrustedIps.IsPresent).IsTrue();
             await Assert.That(JsonSerializer.Serialize(result, result.GetType())).IsEqualTo("{}");
             await Assert.That(result.ToString()!.Contains("canary", StringComparison.Ordinal)).IsFalse();
         }
-        await Assert.That(lr.HasUnestablishedAllowedFieldsProjection).IsTrue();
+        await Assert.That(lr.AllowedFields.IsPresent).IsTrue();
         await Assert.That(lr.Url).IsEqualTo("");
         await Assert.That(lr.SearchBase).IsEqualTo("");
         await Assert.That(lr.SearchFilter).IsEqualTo("");
@@ -246,7 +246,7 @@ public sealed class ExternalIdentityAuthenticationTests
         await Assert.That(tr.AllowedCommonNames.IsNull).IsTrue();
         await Assert.That(tr.AllowedSubjectAltNames.IsNull).IsTrue();
         await Assert.That(tr.VerifyClientCertificateChain).IsFalse();
-        await Assert.That(tr.HasUnestablishedEncryptedCaCertificateProjection).IsTrue();
+        await Assert.That(tr.EncryptedCaCertificate.IsPresent).IsTrue();
         await Assert.That(tr.CaCertificate is not null).IsEqualTo(method == "GET");
         if (method == "GET")
         {
@@ -582,7 +582,7 @@ public sealed class ExternalIdentityAuthenticationTests
         await Assert.That(value.AccessTokenTTL).IsNull();
         await Assert.That(value.AccessTokenMaxTTL).IsNull();
         await Assert.That(value.AccessTokenNumUsesLimit).IsNull();
-        await Assert.That(value.HasUnestablishedTrustedIpProjection).IsFalse();
+        await Assert.That(value.AccessTokenTrustedIps.IsPresent).IsFalse();
     }
 
     [Test]

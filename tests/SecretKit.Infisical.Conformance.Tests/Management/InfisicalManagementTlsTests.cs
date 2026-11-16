@@ -169,7 +169,7 @@ public sealed class InfisicalManagementTlsTests
         using TlsCertAuthConfiguration attached = await Need(environment,
             () => ExternalIdentityAuthenticationOperations.AttachTlsCertAuth(Org, Identity, input));
         await Assert.That(attached.CaCertificate is null).IsTrue();
-        await Assert.That(attached.HasUnestablishedEncryptedCaCertificateProjection).IsTrue();
+        await Assert.That(attached.EncryptedCaCertificate.IsPresent).IsTrue();
         using TlsCertAuthConfiguration read = await Need(environment,
             () => ExternalIdentityAuthenticationOperations.GetTlsCertAuth(Org, Identity));
         await Assert.That(read.CaCertificate!.Reveal()).IsEqualTo(ca.Reveal());

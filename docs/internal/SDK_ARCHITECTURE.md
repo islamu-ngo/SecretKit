@@ -88,7 +88,13 @@ owned transport through operation settlement. Sync disposal schedules cleanup;
 async disposal bounds the wait, with eventual cleanup preserved after timeout.
 Native dynamic/rotation request intent is derived independently from typed
 coordinates and validated before token acquisition. The Refit request-builder
-interface receives no bearer argument. These internal owners do not add a
+interface receives no bearer argument. PostgreSQL, MySQL and SQL Server rotation
+inputs and projections share unified `SqlRotationNullableText`,
+`SqlRotationPasswordRequirements`, `SqlRotationTime` and
+`SqlRotationSecretsMapping` value types plus compile-time `[GeneratedRegex]`
+validation in `SqlSecretRotationShared`. Core, Extensions and Infisical/Management
+packages serialize JSON payloads via `Utf8JsonWriter` and `SecretMaterial.Use`
+without `[RequiresUnreferencedCode]` or `[RequiresDynamicCode]`. These internal owners do not add a
 portable lease abstraction, material cache, database client or hidden scheduler.
 
 ## Deliberately Small Core

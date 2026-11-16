@@ -72,9 +72,9 @@ Sources: [authorization](../../../src/SecretKit.Infisical.Management/Access/Mana
 
 Authentication results preserve the actual returned trusted-IP, bound-claim,
 OIDC claim-mapping and LDAP allowed-field JSON, including omitted versus
-explicitly null fields. Check the `ProjectField<T>` presence/null flags before
-accessing its value. Returned fields do not establish effective network policy,
-issuer acceptance or permission.
+explicitly null fields. Inspect presence directly via `ProjectField<T>.IsPresent`
+and `ProjectField<T>.IsNull` before accessing its value. Returned fields do not
+establish effective network policy, issuer acceptance or permission.
 
 Authentication numeric responses use `ManagementNumber`. Optional fields use
 `ManagementNumber?`: omission is absent, explicit JSON null is rejected, and zero
@@ -174,6 +174,7 @@ This map includes retained families beyond the basic operation-coverage registry
 | PostgreSQL rotation configuration | [PostgresSecretRotationOperations](../../../src/SecretKit.Infisical.Management/Rotations/PostgresSecretRotations.cs): `List`, `Get`, `GetByName`, `Create`, `Update`, `Delete`, `Move`, `CheckCredentials`, `GetGeneratedCredentials`, `ListPostgresSubset`, `PostgresOptionsSubset` | Native `postgres-credentials` API; explicit existing connection, protected parameters and disposable generated results. |
 | MySQL rotation configuration | [MySqlSecretRotationOperations](../../../src/SecretKit.Infisical.Management/Rotations/MySqlSecretRotations.cs): corresponding CRUD/move/check/generated methods, `ListMySqlSubset`, `MySqlOptionsSubset` | Native MySQL API support, not MariaDB qualification or a shipped database driver. |
 | SQL Server rotation configuration | [MsSqlSecretRotationOperations](../../../src/SecretKit.Infisical.Management/Rotations/MsSqlSecretRotations.cs): corresponding CRUD/move/check/generated methods, `ListMsSqlSubset`, `MsSqlOptionsSubset` | Native `mssql-credentials` API; no ODBC/SQL client implementation. |
+| Shared SQL rotation value types | [SqlSecretRotationShared](../../../src/SecretKit.Infisical.Management/Rotations/SqlSecretRotationShared.cs): `SqlRotationNullableText`, `SqlRotationPasswordRequirements`, `SqlRotationTime`, `SqlRotationSecretsMapping` | Shared across PostgreSQL, MySQL and SQL Server rotation inputs/projections while preserving dialect-specific response strictness. |
 | Gateway administration | [GatewayAdministrationOperations](../../../src/SecretKit.Infisical.Management/Gateways/GatewayAdministration.cs): `Create`, `Get`, `Update`, `GenerateEnrollmentToken` | Dispose enrollment tokens; metadata does not prove agent deployment or connectivity. |
 | Proxied services | [ProxiedServiceAdministrationOperations](../../../src/SecretKit.Infisical.Management/Gateways/ProxiedServiceAdministration.cs): `List`, `Create`, `Get`, `GetByName`, `Update`, `Delete` | Existing typed gateway/proxy subset, not arbitrary service execution. |
 

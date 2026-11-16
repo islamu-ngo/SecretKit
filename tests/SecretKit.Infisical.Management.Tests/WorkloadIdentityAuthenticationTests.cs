@@ -182,10 +182,10 @@ public sealed class WorkloadIdentityAuthenticationTests
         await Assert.That(jwtResult.BoundAudiences).IsEqualTo("");
         await Assert.That(jwtResult.BoundSubject).IsEqualTo("");
         await Assert.That(jwtResult.JwksUrl).IsEqualTo("");
-        await Assert.That(jwtResult.HasUnestablishedTrustedIpProjection).IsTrue();
-        await Assert.That(jwtResult.HasUnestablishedBoundClaimsProjection).IsTrue();
-        await Assert.That(oidcResult.HasUnestablishedBoundClaimsProjection).IsTrue();
-        await Assert.That(oidcResult.HasUnestablishedClaimMetadataMappingProjection).IsTrue();
+        await Assert.That(jwtResult.AccessTokenTrustedIps.IsPresent).IsTrue();
+        await Assert.That(jwtResult.BoundClaims.IsPresent).IsTrue();
+        await Assert.That(oidcResult.BoundClaims.IsPresent).IsTrue();
+        await Assert.That(oidcResult.ClaimMetadataMapping.IsPresent).IsTrue();
         await Assert.That(oidcResult.BoundSubject.IsNull).IsTrue();
         await Assert.That(oidcResult.TemplateId.Value).IsEqualTo(TemplateId);
         await Assert.That(oidcResult.OidcDiscoveryUrl).IsEqualTo("");
@@ -199,7 +199,7 @@ public sealed class WorkloadIdentityAuthenticationTests
         await Assert.That(kubernetesResult.TokenReviewMode).IsEqualTo("gateway");
         await Assert.That(kubernetesResult.VerifyTlsCertificate).IsFalse();
         await Assert.That(kubernetesResult.IsTokenReviewerJwtTemplateSourced).IsFalse();
-        await Assert.That(kubernetesResult.HasUnestablishedTrustedIpProjection).IsTrue();
+        await Assert.That(kubernetesResult.AccessTokenTrustedIps.IsPresent).IsTrue();
         await Assert.That(jwtResult.JwksCaCert).IsEqualTo(method == "DELETE" ? null : "ca-canary");
         await Assert.That(jwtResult.PublicKeys is null).IsEqualTo(method == "DELETE");
         await Assert.That(oidcResult.CaCert).IsEqualTo(method == "DELETE" ? null : "ca-canary");

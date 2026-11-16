@@ -160,9 +160,9 @@ public sealed class MySqlSecretRotationTests
             variant == 0 ? null : new(20.5, 0.5, 1.5, 2.5, 3.5, variant == 1 ? null : "!"),
             variant == 0 ? null : statement);
         statement.Dispose();
-        MySqlRotationNullableText? description = variant switch
+        SqlRotationNullableText? description = variant switch
         { 0 => null, 1 => new(null), 2 => new(""), _ => new("description-private") };
-        var time = variant == 0 ? null : new MySqlRotationTime(1.5, 2.5);
+        var time = variant == 0 ? null : new SqlRotationTime(1.5, 2.5);
         bool? enabled = variant == 0 ? null : variant == 3;
         var creation = new MySqlSecretRotationCreation("rotation-private", Project, "dev", "/", Id, 1.5, parameters,
             new("USERNAME", "PASSWORD"), time, description, enabled);
@@ -442,11 +442,11 @@ public sealed class MySqlSecretRotationTests
         using var parameters = new MySqlRotationParameters("one", "two");
         Action action = defect switch
         {
-            0 => () => new MySqlRotationTime(24, 0),
-            1 => () => new MySqlRotationTime(0, 60),
-            2 => () => new MySqlRotationPasswordRequirements(251, 0, 0, 0, 0),
-            3 => () => new MySqlRotationPasswordRequirements(1, -1, 0, 0, 0),
-            4 => () => new MySqlRotationPasswordRequirements(1, 0, 0, 0, 0, ""),
+            0 => () => new SqlRotationTime(24, 0),
+            1 => () => new SqlRotationTime(0, 60),
+            2 => () => new SqlRotationPasswordRequirements(251, 0, 0, 0, 0),
+            3 => () => new SqlRotationPasswordRequirements(1, -1, 0, 0, 0),
+            4 => () => new SqlRotationPasswordRequirements(1, 0, 0, 0, 0, ""),
             5 => () => new MySqlSecretRotationUpdate(rotationInterval: double.NaN),
             6 => () => new MySqlSecretRotationUpdate(description: new(new string('x', 257))),
             _ => () => new MySqlSecretRotationCreation("x", Project, "dev", "/", "not-uuid", 1, parameters, new("U", "P"))

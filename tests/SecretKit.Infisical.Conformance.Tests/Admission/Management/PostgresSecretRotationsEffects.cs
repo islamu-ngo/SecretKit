@@ -212,7 +212,7 @@ internal static class PostgresSecretRotationsEffects
         bool statement = !v.EndsWith("rotationStatement.omitted", StringComparison.Ordinal);
         double length = v == "passwordRequirements.fractional-number" ? 24.5 : 24;
         string? symbols = v.EndsWith("allowedSymbols.value", StringComparison.Ordinal) ? "!@" : null;
-        var requirements = password ? new PostgresRotationPasswordRequirements(length, 2, 2, 2, 2, symbols) : null;
+        var requirements = password ? new SqlRotationPasswordRequirements(length, 2, 2, 2, 2, symbols) : null;
         return new(f.Username1, f.Username2, requirements, statement ? f.RotationStatement : null);
     }
 
@@ -221,9 +221,9 @@ internal static class PostgresSecretRotationsEffects
         string v = c.Variant;
         bool? enabled = v.EndsWith("isAutoRotationEnabled.omitted", StringComparison.Ordinal) ? null :
             v.EndsWith("isAutoRotationEnabled.true", StringComparison.Ordinal);
-        PostgresRotationTime? time = v.EndsWith("rotateAtUtc.omitted", StringComparison.Ordinal) ? null :
+        SqlRotationTime? time = v.EndsWith("rotateAtUtc.omitted", StringComparison.Ordinal) ? null :
             v == "rotateAtUtc.fractional-number" ? new(2.5, 3.5) : new(2, 3);
-        PostgresRotationNullableText? description = v.EndsWith("description.omitted", StringComparison.Ordinal) ? null :
+        SqlRotationNullableText? description = v.EndsWith("description.omitted", StringComparison.Ordinal) ? null :
             new(v == "description.null" ? null : f.Name);
         return new(f.Name, c.ProjectId, f.Environment, f.SourcePath, f.ConnectionId,
             v == "rotationInterval.fractional-number" ? 2.5 : 2, p, new(f.UsernameKey, f.PasswordKey), time, description, enabled);
@@ -264,7 +264,7 @@ internal static class PostgresSecretRotationsEffects
         s.SecretsMapping.Password, s.RotationInterval, s.RotateAtUtc.Hours, s.RotateAtUtc.Minutes,
         s.IsAutoRotationEnabled, s.HasDescription, s.Description, Requirements(s.Parameters.PasswordRequirements));
 
-    private static DatabasePasswordRequirements? Requirements(PostgresRotationPasswordRequirements? r) => r is null ? null :
+    private static DatabasePasswordRequirements? Requirements(SqlRotationPasswordRequirements? r) => r is null ? null :
         new(r.Length, r.Digits, r.Lowercase, r.Symbols, r.Uppercase, r.AllowedSymbols);
 
     private static bool Same(PostgresSecretRotationSummary a, PostgresSecretRotationSummary b) => a.Id == b.Id && a.ProjectId == b.ProjectId &&

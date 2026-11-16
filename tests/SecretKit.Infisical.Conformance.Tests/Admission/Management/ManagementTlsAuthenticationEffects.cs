@@ -129,7 +129,7 @@ internal static class ManagementTlsAuthenticationEffects
                 before || updating && Omitted("allowedSubjectAltNames") ? initialSans : selectedSans;
             bool verify = before || updating && Omitted("verifyClientCertificateChain") ? initialVerify : selectedVerify;
             return c.PolicyMatches(configuration, policy) &&
-                configuration.HasUnestablishedEncryptedCaCertificateProjection &&
+                configuration.EncryptedCaCertificate.IsPresent &&
                 (mutation || configuration.CaCertificate!.Reveal() == expectedCa) &&
                 configuration.AllowedCommonNames.IsPresent &&
                 (cnNull ? configuration.AllowedCommonNames.IsNull : !configuration.AllowedCommonNames.IsNull &&

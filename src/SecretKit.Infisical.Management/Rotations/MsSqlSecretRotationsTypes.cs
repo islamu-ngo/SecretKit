@@ -4,59 +4,6 @@ using SecretKit.Core;
 
 namespace SecretKit.Infisical.Management;
 
-/// <summary>A supplied nullable rotation description; no wrapper means omission.</summary>
-public sealed class MsSqlRotationNullableText
-{
-    /// <summary>Captures a bounded description; a null value explicitly sends JSON null rather than omitting the wrapper.</summary>
-    public MsSqlRotationNullableText(string? value)
-    {
-        if (value?.Length > 16384) throw new ArgumentException("Invalid Microsoft SQL Server text budget.");
-        Value = value;
-    }
-    /// <summary>Gets the explicit description value, including null.</summary>
-    [JsonIgnore] public string? Value { get; }
-    /// <summary>Returns a marker without description text.</summary>
-    public override string ToString() => "[MsSqlRotationNullableText]";
-}
-
-/// <summary>Published numeric requirements; fractional numbers are not silently rounded.</summary>
-/// <remarks>Unknown response fields in the requirements or required counts fail closed as Unknown.</remarks>
-public sealed class MsSqlRotationPasswordRequirements
-{
-    /// <summary>Captures native numeric password requirements without rounding fractional values.</summary>
-    public MsSqlRotationPasswordRequirements(double length, double digits, double lowercase,
-        double symbols, double uppercase, string? allowedSymbols = null)
-    {
-        SqlSecretRotationShared.Validate(length, digits, lowercase, symbols, uppercase, allowedSymbols);
-        Length = length;
-        Digits = digits;
-        Lowercase = lowercase;
-        Symbols = symbols;
-        Uppercase = uppercase;
-        AllowedSymbols = allowedSymbols;
-    }
-    internal MsSqlRotationPasswordRequirements(JsonElement value)
-    {
-        (Length, Digits, Lowercase, Symbols, Uppercase, AllowedSymbols) = SqlSecretRotationShared.Read(value);
-    }
-    /// <summary>Gets the native requested password length.</summary>
-    [JsonIgnore] public double Length { get; }
-    /// <summary>Gets the required digit count.</summary>
-    [JsonIgnore] public double Digits { get; }
-    /// <summary>Gets the required lowercase-character count.</summary>
-    [JsonIgnore] public double Lowercase { get; }
-    /// <summary>Gets the required symbol count.</summary>
-    [JsonIgnore] public double Symbols { get; }
-    /// <summary>Gets the required uppercase-character count.</summary>
-    [JsonIgnore] public double Uppercase { get; }
-    /// <summary>Gets allowed symbol text, or null when omitted.</summary>
-    [JsonIgnore] public string? AllowedSymbols { get; }
-    internal void Write(Utf8JsonWriter writer) =>
-        SqlSecretRotationShared.Write(writer, Length, Digits, Lowercase, Symbols, Uppercase, AllowedSymbols);
-    /// <summary>Returns a marker without password-generation settings.</summary>
-    public override string ToString() => "[MsSqlRotationPasswordRequirements]";
-}
-
 /// <summary>Native configuration only. Statement material is copied, never executed by the SDK.</summary>
 public sealed class MsSqlRotationParameters : IDisposable
 {
@@ -65,7 +12,7 @@ public sealed class MsSqlRotationParameters : IDisposable
     private SecretMaterial? _statement;
     /// <summary>Captures alternating usernames and copies optional statement material; caller retains the original material.</summary>
     public MsSqlRotationParameters(string username1, string username2,
-        MsSqlRotationPasswordRequirements? passwordRequirements = null, SecretMaterial? rotationStatement = null)
+        SqlRotationPasswordRequirements? passwordRequirements = null, SecretMaterial? rotationStatement = null)
     {
         ManagementJson.Text(username1, 16384);
         ManagementJson.Text(username2, 16384);
@@ -109,7 +56,7 @@ public sealed class MsSqlRotationParameters : IDisposable
     /// <summary>Gets the second configured rotation username, not a generated credential.</summary>
     [JsonIgnore] public string Username2 { get; }
     /// <summary>Gets optional password-generation requirements, or null when omitted.</summary>
-    [JsonIgnore] public MsSqlRotationPasswordRequirements? PasswordRequirements { get; }
+    [JsonIgnore] public SqlRotationPasswordRequirements? PasswordRequirements { get; }
     /// <summary>Gets the owned statement copy, or null when omitted; access after disposal throws and the SDK never executes it.</summary>
     [JsonIgnore]
     public SecretMaterial? RotationStatement
@@ -138,78 +85,14 @@ public sealed class MsSqlRotationParameters : IDisposable
     public override string ToString() => "[MsSqlRotationParameters]";
 }
 
-/// <summary>Native UTC rotation time fields; numeric values are preserved without rounding.</summary>
-public sealed class MsSqlRotationTime
-{
-    /// <summary>Captures hours from 0 through 23 and minutes from 0 through 59.</summary>
-    public MsSqlRotationTime(double hours, double minutes)
-    {
-        MsSqlSecretRotationOperations.InputNumber(hours, 0, 23);
-        MsSqlSecretRotationOperations.InputNumber(minutes, 0, 59);
-        Hours = hours;
-        Minutes = minutes;
-    }
-    internal MsSqlRotationTime(JsonElement value)
-    {
-        MsSqlSecretRotationOperations.Only(value, "hours", "minutes");
-        Hours = MsSqlSecretRotationOperations.Number(value, "hours", 0, 23);
-        Minutes = MsSqlSecretRotationOperations.Number(value, "minutes", 0, 59);
-    }
-    /// <summary>Gets the native UTC hour value.</summary>
-    [JsonIgnore] public double Hours { get; }
-    /// <summary>Gets the native UTC minute value.</summary>
-    [JsonIgnore] public double Minutes { get; }
-    internal void Write(Utf8JsonWriter writer)
-    {
-        writer.WriteStartObject("rotateAtUtc");
-        writer.WriteNumber("hours", Hours);
-        writer.WriteNumber("minutes", Minutes);
-        writer.WriteEndObject();
-    }
-    /// <summary>Returns a marker without schedule details.</summary>
-    public override string ToString() => "[MsSqlRotationTime]";
-}
-
-/// <summary>Secret key mapping, not generated authentication material.</summary>
-public sealed class MsSqlRotationSecretsMapping
-{
-    /// <summary>Captures destination secret key names, not username or password values.</summary>
-    public MsSqlRotationSecretsMapping(string username, string password)
-    {
-        ManagementJson.Text(username, 16384);
-        ManagementJson.Text(password, 16384);
-        Username = username;
-        Password = password;
-    }
-    internal MsSqlRotationSecretsMapping(JsonElement value, bool nonempty = true)
-    {
-        MsSqlSecretRotationOperations.Only(value, "username", "password");
-        Username = nonempty ? ManagementJson.Nonempty(value, "username") : ManagementJson.Required(value, "username");
-        Password = nonempty ? ManagementJson.Nonempty(value, "password") : ManagementJson.Required(value, "password");
-    }
-    /// <summary>Gets the destination key name for generated usernames.</summary>
-    [JsonIgnore] public string Username { get; }
-    /// <summary>Gets the destination key name for generated passwords.</summary>
-    [JsonIgnore] public string Password { get; }
-    internal void Write(Utf8JsonWriter writer)
-    {
-        writer.WriteStartObject("secretsMapping");
-        writer.WriteString("username", Username);
-        writer.WriteString("password", Password);
-        writer.WriteEndObject();
-    }
-    /// <summary>Returns a marker without secret key mappings.</summary>
-    public override string ToString() => "[MsSqlRotationSecretsMapping]";
-}
-
 /// <summary>Native rotation creation settings; referenced parameter material remains caller-owned until request serialization.</summary>
 public sealed class MsSqlSecretRotationCreation
 {
     /// <summary>Captures exact creation fields; null optional fields omit them and parameters are not cloned by this container.</summary>
     public MsSqlSecretRotationCreation(string name, string projectId, string environment, string secretPath,
         string connectionId, double rotationInterval, MsSqlRotationParameters parameters,
-        MsSqlRotationSecretsMapping secretsMapping, MsSqlRotationTime? rotateAtUtc = null,
-        MsSqlRotationNullableText? description = null, bool? isAutoRotationEnabled = null)
+        SqlRotationSecretsMapping secretsMapping, SqlRotationTime? rotateAtUtc = null,
+        SqlRotationNullableText? description = null, bool? isAutoRotationEnabled = null)
     {
         ManagementJson.Text(name, 64);
         ManagementJson.Text(projectId);
@@ -247,11 +130,11 @@ public sealed class MsSqlSecretRotationCreation
     /// <summary>Gets caller-owned parameters; keep them alive until request and grant construction are complete.</summary>
     [JsonIgnore] public MsSqlRotationParameters Parameters { get; }
     /// <summary>Gets destination secret key mappings, not credential values.</summary>
-    [JsonIgnore] public MsSqlRotationSecretsMapping SecretsMapping { get; }
+    [JsonIgnore] public SqlRotationSecretsMapping SecretsMapping { get; }
     /// <summary>Gets explicit UTC time selection, or null when omitted.</summary>
-    [JsonIgnore] public MsSqlRotationTime? RotateAtUtc { get; }
+    [JsonIgnore] public SqlRotationTime? RotateAtUtc { get; }
     /// <summary>Gets description intent; no wrapper omits the field and a null wrapper value clears it.</summary>
-    [JsonIgnore] public MsSqlRotationNullableText? Description { get; }
+    [JsonIgnore] public SqlRotationNullableText? Description { get; }
     /// <summary>Gets automatic-rotation intent, or null when omitted.</summary>
     [JsonIgnore] public bool? IsAutoRotationEnabled { get; }
     internal void Write(Utf8JsonWriter writer)
@@ -278,17 +161,17 @@ public sealed class MsSqlSecretRotationCreation
 public sealed class MsSqlSecretRotationUpdate
 {
     private readonly string? _name;
-    private readonly MsSqlRotationNullableText? _description;
+    private readonly SqlRotationNullableText? _description;
     private readonly bool? _enabled;
     private readonly double? _interval;
     private readonly MsSqlRotationParameters? _parameters;
-    private readonly MsSqlRotationSecretsMapping? _mapping;
-    private readonly MsSqlRotationTime? _time;
+    private readonly SqlRotationSecretsMapping? _mapping;
+    private readonly SqlRotationTime? _time;
     /// <summary>Captures optional patch fields; null omits, a nullable description can explicitly clear, and referenced material remains caller-owned.</summary>
-    public MsSqlSecretRotationUpdate(string? name = null, MsSqlRotationNullableText? description = null,
+    public MsSqlSecretRotationUpdate(string? name = null, SqlRotationNullableText? description = null,
         bool? isAutoRotationEnabled = null, double? rotationInterval = null,
-        MsSqlRotationParameters? parameters = null, MsSqlRotationSecretsMapping? secretsMapping = null,
-        MsSqlRotationTime? rotateAtUtc = null)
+        MsSqlRotationParameters? parameters = null, SqlRotationSecretsMapping? secretsMapping = null,
+        SqlRotationTime? rotateAtUtc = null)
     {
         if (name is not null) ManagementJson.Text(name, 64);
         if (description?.Value?.Length > 256) throw new ArgumentException("Invalid rotation description budget.");
@@ -401,9 +284,9 @@ public sealed class MsSqlSecretRotationSummary : IDisposable
         LastRotationMessage = ManagementJson.Optional(value, "lastRotationMessage");
         HasNextRotationAt = value.TryGetProperty("nextRotationAt", out _);
         NextRotationAt = ManagementJson.Timestamp(value, "nextRotationAt", false);
-        RotateAtUtc = new(ManagementJson.Object(value, "rotateAtUtc"));
+        RotateAtUtc = new(ManagementJson.Object(value, "rotateAtUtc"), strictFields: true);
         RotationInterval = MsSqlSecretRotationOperations.Number(value, "rotationInterval");
-        SecretsMapping = new(ManagementJson.Object(value, "secretsMapping"));
+        SecretsMapping = new(ManagementJson.Object(value, "secretsMapping"), strictFields: true);
         // Material is allocated last so a rejected coordinate cannot leak an owned result.
         Parameters = new(ManagementJson.Object(value, "parameters"));
     }
@@ -460,11 +343,11 @@ public sealed class MsSqlSecretRotationSummary : IDisposable
     /// <summary>Gets the reported next timestamp; use HasNextRotationAt to distinguish absence.</summary>
     [JsonIgnore] public string? NextRotationAt { get; }
     /// <summary>Gets the returned UTC schedule fields.</summary>
-    [JsonIgnore] public MsSqlRotationTime RotateAtUtc { get; }
+    [JsonIgnore] public SqlRotationTime RotateAtUtc { get; }
     /// <summary>Gets the native returned rotation interval, not an SDK schedule.</summary>
     [JsonIgnore] public double RotationInterval { get; }
     /// <summary>Gets returned secret key mappings, not generated credential values.</summary>
-    [JsonIgnore] public MsSqlRotationSecretsMapping SecretsMapping { get; }
+    [JsonIgnore] public SqlRotationSecretsMapping SecretsMapping { get; }
     /// <summary>Gets owned returned parameters; statement material is disposed with this summary.</summary>
     [JsonIgnore] public MsSqlRotationParameters Parameters { get; }
     /// <summary>Disposes owned parameter statement material without changing provider configuration.</summary>
@@ -559,7 +442,7 @@ public sealed class MsSqlSecretRotationOption : IDisposable
         ManagementJson.RequireEqual(value, "name", "Microsoft SQL Server Credentials");
         JsonElement template = ManagementJson.Object(value, "template");
         MsSqlSecretRotationOperations.Only(template, "secretsMapping", "createUserStatement", "rotationStatement");
-        SecretsMapping = new(ManagementJson.Object(template, "secretsMapping"), false);
+        SecretsMapping = new(ManagementJson.Object(template, "secretsMapping"), false, strictFields: true);
         string create = ManagementJson.Required(template, "createUserStatement");
         string rotate = ManagementJson.Required(template, "rotationStatement");
         CreateUserStatement = SecretMaterial.FromText(create);
@@ -571,7 +454,7 @@ public sealed class MsSqlSecretRotationOption : IDisposable
     /// <summary>Gets owned rotation statement template text; the SDK does not execute it.</summary>
     [JsonIgnore] public SecretMaterial RotationStatement { get; }
     /// <summary>Gets template destination key mappings, not generated credentials.</summary>
-    [JsonIgnore] public MsSqlRotationSecretsMapping SecretsMapping { get; }
+    [JsonIgnore] public SqlRotationSecretsMapping SecretsMapping { get; }
     /// <summary>Disposes both owned statement templates.</summary>
     public void Dispose() { CreateUserStatement.Dispose(); RotationStatement.Dispose(); }
     /// <summary>Returns a marker without statement templates or key mappings.</summary>

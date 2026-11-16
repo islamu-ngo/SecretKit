@@ -1,4 +1,6 @@
+using System.Reflection;
 using System.Reflection.Metadata;
+using System.Reflection.Metadata.Ecma335;
 using System.Reflection.PortableExecutable;
 using System.Text.Json;
 using SecretKit.Release;
@@ -94,7 +96,42 @@ public sealed class ArchitectureBoundaryTests
         };
         await Assert.That(friends.SequenceEqual(expected.Order(StringComparer.Ordinal), StringComparer.Ordinal)).IsTrue();
         if (package == "SecretKit.Infisical.Management")
+        {
             await Assert.That(RuntimeManagementDependencyTests.UnapprovedRuntimeReferences(metadata)).IsEmpty();
+            string[] publicTypes = metadata.TypeDefinitions
+                .Select(metadata.GetTypeDefinition)
+                .Where(type => (type.Attributes & TypeAttributes.VisibilityMask) is TypeAttributes.Public or TypeAttributes.NestedPublic)
+                .Select(type => metadata.GetString(type.Name))
+                .ToArray();
+            string[] expectedSqlTypes =
+            [
+                "SqlRotationNullableText",
+                "SqlRotationPasswordRequirements",
+                "SqlRotationTime",
+                "SqlRotationSecretsMapping"
+            ];
+            foreach (string sqlType in expectedSqlTypes)
+                await Assert.That(publicTypes.Contains(sqlType, StringComparer.Ordinal)).IsTrue();
+            string[] duplicateSuffixes =
+            [
+                "RotationNullableText",
+                "RotationPasswordRequirements",
+                "RotationTime",
+                "RotationSecretsMapping"
+            ];
+            await Assert.That(publicTypes.Any(name => duplicateSuffixes.Any(suffix =>
+                name.EndsWith(suffix, StringComparison.Ordinal) && !name.StartsWith("Sql", StringComparison.Ordinal)))).IsFalse();
+            bool hasUnestablishedFlags = metadata.PropertyDefinitions
+                .Select(metadata.GetPropertyDefinition)
+                .Any(property =>
+                {
+                    string name = metadata.GetString(property.Name);
+                    return name.StartsWith("HasUnestablished", StringComparison.Ordinal) &&
+                        name.EndsWith("Projection", StringComparison.Ordinal);
+                });
+            await Assert.That(hasUnestablishedFlags).IsFalse();
+        }
+        await Assert.That(HasPublicSecretMaterialPropertyWithoutJsonIgnore(metadata)).IsFalse();
         if (package is "SecretKit.Core" or "SecretKit.Extensions.Configuration" or "SecretKit.Extensions.Hosting" or
             "SecretKit.Infisical" or "SecretKit.Infisical.Management")
         {
@@ -115,6 +152,89 @@ public sealed class ArchitectureBoundaryTests
                     signature.ReadByte() == (byte)SignatureTypeCode.Object;
             });
         await Assert.That(hasLegacyObjectLock).IsFalse();
+    }
+
+    private static bool HasPublicSecretMaterialPropertyWithoutJsonIgnore(MetadataReader metadata)
+    {
+        foreach (TypeDefinitionHandle typeHandle in metadata.TypeDefinitions)
+        {
+            TypeDefinition type = metadata.GetTypeDefinition(typeHandle);
+            if ((type.Attributes & TypeAttributes.VisibilityMask) is not (TypeAttributes.Public or TypeAttributes.NestedPublic))
+                continue;
+            foreach (PropertyDefinitionHandle propertyHandle in type.GetProperties())
+            {
+                PropertyDefinition property = metadata.GetPropertyDefinition(propertyHandle);
+                PropertyAccessors accessors = property.GetAccessors();
+                if (accessors.Getter.IsNil) continue;
+                MethodDefinition getter = metadata.GetMethodDefinition(accessors.Getter);
+                if ((getter.Attributes & MethodAttributes.MemberAccessMask) != MethodAttributes.Public) continue;
+                BlobReader blob = metadata.GetBlobReader(property.Signature);
+                blob.ReadSignatureHeader();
+                _ = blob.ReadCompressedInteger();
+                if (!TypeSignatureReferencesSecretMaterial(metadata, ref blob)) continue;
+                bool hasJsonIgnore = property.GetCustomAttributes()
+                    .Select(metadata.GetCustomAttribute)
+                    .Any(attribute => HasAttributeName(metadata, attribute,
+                        "System.Text.Json.Serialization", "JsonIgnoreAttribute"));
+                if (!hasJsonIgnore) return true;
+            }
+        }
+        return false;
+    }
+
+    private static bool TypeSignatureReferencesSecretMaterial(MetadataReader metadata, ref BlobReader blob)
+    {
+        SignatureTypeCode code = blob.ReadSignatureTypeCode();
+        switch (code)
+        {
+            case SignatureTypeCode.TypeHandle:
+                {
+                    EntityHandle handle = blob.ReadTypeHandle();
+                    if (handle.Kind == HandleKind.TypeDefinition)
+                    {
+                        TypeDefinition type = metadata.GetTypeDefinition((TypeDefinitionHandle)handle);
+                        return metadata.GetString(type.Namespace) == "SecretKit.Core" &&
+                            metadata.GetString(type.Name) == "SecretMaterial";
+                    }
+                    if (handle.Kind == HandleKind.TypeReference)
+                    {
+                        TypeReference type = metadata.GetTypeReference((TypeReferenceHandle)handle);
+                        return metadata.GetString(type.Namespace) == "SecretKit.Core" &&
+                            metadata.GetString(type.Name) == "SecretMaterial";
+                    }
+                    return false;
+                }
+            case SignatureTypeCode.GenericTypeInstance:
+                {
+                    _ = blob.ReadByte();
+                    _ = blob.ReadTypeHandle();
+                    int count = blob.ReadCompressedInteger();
+                    bool match = false;
+                    for (int i = 0; i < count; i++)
+                    {
+                        if (TypeSignatureReferencesSecretMaterial(metadata, ref blob)) match = true;
+                    }
+                    return match;
+                }
+            case SignatureTypeCode.SZArray:
+                return TypeSignatureReferencesSecretMaterial(metadata, ref blob);
+            case SignatureTypeCode.OptionalModifier:
+            case SignatureTypeCode.RequiredModifier:
+                _ = blob.ReadTypeHandle();
+                return TypeSignatureReferencesSecretMaterial(metadata, ref blob);
+            default:
+                return false;
+        }
+    }
+
+    private static bool HasAttributeName(MetadataReader metadata, CustomAttribute attribute, string expectedNamespace, string expectedName)
+    {
+        if (attribute.Constructor.Kind != HandleKind.MemberReference) return false;
+        MemberReference constructor = metadata.GetMemberReference((MemberReferenceHandle)attribute.Constructor);
+        if (constructor.Parent.Kind != HandleKind.TypeReference) return false;
+        TypeReference type = metadata.GetTypeReference((TypeReferenceHandle)constructor.Parent);
+        return metadata.GetString(type.Namespace) == expectedNamespace &&
+            metadata.GetString(type.Name) == expectedName;
     }
 
     private static bool HasTrimmingIncompatibleAttribute(MetadataReader metadata)

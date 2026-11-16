@@ -98,7 +98,7 @@
     },
     {
       "file": "src/SecretKit.Infisical.Management/Identities/ExternalIdentityAuthenticationTypes.cs",
-      "sha256": "37b17c83b797ac3e0a663fcd18bed7b25f15d65133add9b9880687ef99436173"
+      "sha256": "1fe6b5f67d0391936fc774d14e1c33cc492ae484e6ebb67b410ea0fc36b471f4"
     },
     {
       "file": "src/SecretKit.Infisical.Management/Identities/Identities.cs",
@@ -110,7 +110,7 @@
     },
     {
       "file": "src/SecretKit.Infisical.Management/Identities/IdentityAuthenticationTypes.cs",
-      "sha256": "fa4356d1aea2eaa7eec2609b525f34dd0d18c0bba6fb28f6036122e08e5f67cf"
+      "sha256": "3ea9ce89e69a15370278aa8001052d51d6f017542cf9b7780b99d3397edeb8a3"
     },
     {
       "file": "src/SecretKit.Infisical.Management/Identities/IdentityMetadataVariants.cs",
@@ -158,7 +158,7 @@
     },
     {
       "file": "src/SecretKit.Infisical.Management/Identities/WorkloadIdentityAuthenticationTypes.cs",
-      "sha256": "73454d31fe6bb8a7cfcbdac432e030029b30befa10b4f94ac67585b16b4e3f1e"
+      "sha256": "b585360e33a75db4be4ef3cf2edad561616336a014afda32c26e5f5e3a373829"
     },
     {
       "file": "src/SecretKit.Infisical.Management/Projects/ProjectConnections.cs",
@@ -194,7 +194,7 @@
     },
     {
       "file": "src/SecretKit.Infisical.Management/Rotations/MsSqlSecretRotationsTypes.cs",
-      "sha256": "9d0830670f33bd0776f1339d416e301980b8251012c6169d8906319327bb277c"
+      "sha256": "56f650808d3f6997cff3bcd640de452ea110be36dc0f5792bfc424df97094ce1"
     },
     {
       "file": "src/SecretKit.Infisical.Management/Rotations/MySqlSecretRotations.cs",
@@ -206,7 +206,7 @@
     },
     {
       "file": "src/SecretKit.Infisical.Management/Rotations/MySqlSecretRotationsTypes.cs",
-      "sha256": "5ce82950037a59d2efe3f311e58a50b6c9d69f7825a27e1d87191879e0f294a0"
+      "sha256": "b910c2f145b5c30f1647074fe4ce8aa37cc14da923364998edefa09efc448c36"
     },
     {
       "file": "src/SecretKit.Infisical.Management/Rotations/PostgresSecretRotations.cs",
@@ -218,11 +218,11 @@
     },
     {
       "file": "src/SecretKit.Infisical.Management/Rotations/PostgresSecretRotationsTypes.cs",
-      "sha256": "cb150390d9863edefc7230a4369f0429ec62b60287e7be6817fc2295d13db74e"
+      "sha256": "2155c1bbfc2f5d6f8060fd8c39951dce590aa87c6c6aee3a5a27db67e300cbca"
     },
     {
       "file": "src/SecretKit.Infisical.Management/Rotations/SqlSecretRotationShared.cs",
-      "sha256": "f55fbddd26323ed133dd8370da6bb1dc9d349ce40e9e5410d439100ab4631568"
+      "sha256": "29da59b061f532a5d1384ae2feac42f78b6afcac320c687a543691d80769256d"
     },
     {
       "file": "src/SecretKit.Infisical.Management/Transport/ManagementApis.cs",

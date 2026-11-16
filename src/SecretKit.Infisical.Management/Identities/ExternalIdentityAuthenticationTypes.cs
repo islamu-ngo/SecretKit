@@ -397,7 +397,6 @@ public sealed class LdapAuthConfiguration : WorkloadAuthConfiguration, IDisposab
         LockoutDurationSeconds = WorkloadAuthJson.Number(value, "lockoutDurationSeconds");
         LockoutCounterResetSeconds = WorkloadAuthJson.Number(value, "lockoutCounterResetSeconds");
         AllowedFields = AuthenticationJson.JsonField(value, "allowedFields");
-        HasUnestablishedAllowedFieldsProjection = value.TryGetProperty("allowedFields", out _);
         if (read)
         {
             BindDN = ManagementJson.Required(value, "bindDN");
@@ -426,8 +425,6 @@ public sealed class LdapAuthConfiguration : WorkloadAuthConfiguration, IDisposab
     /// <summary>Gets detached allowed-fields JSON, preserving omission and null without interpreting directory predicates.</summary>
     /// <remarks>Value explicitly exposes a GC-owned JSON snapshot, not evidence of directory matching or effective access.</remarks>
     [JsonIgnore] public ProjectField<JsonElement> AllowedFields { get; }
-    /// <summary>Gets whether an allowed-fields node exists whose matching semantics remain unestablished.</summary>
-    [JsonIgnore] public bool HasUnestablishedAllowedFieldsProjection { get; }
     /// <summary>Gets returned bind DN for inspection responses; other operations leave it null.</summary>
     [JsonIgnore] public string? BindDN { get; }
     /// <summary>Gets owned returned LDAP CA material, or null when not returned.</summary>
@@ -537,7 +534,6 @@ public sealed class TlsCertAuthConfiguration : WorkloadAuthConfiguration, IDispo
         VerifyClientCertificateChain = AuthenticationJson.OptionalBoolean(value, "verifyClientCertificateChain");
         if (!value.TryGetProperty("encryptedCaCertificate", out _))
             throw new ManagementContractException(SecretStatus.Unknown);
-        HasUnestablishedEncryptedCaCertificateProjection = true;
         // Validate inspection material before allocating either owned copy.
         string? certificate = read ? ManagementJson.Required(value, "caCertificate") : null;
         EncryptedCaCertificate = ProjectWire.Field(value, "encryptedCaCertificate",
@@ -562,8 +558,6 @@ public sealed class TlsCertAuthConfiguration : WorkloadAuthConfiguration, IDispo
     /// <remarks>Dispose this result after use. Reveal exports JSON, including string quotes, not a plaintext CA or fingerprint.
     /// Exported strings and independently parsed JSON have lifetimes outside this owner.</remarks>
     [JsonIgnore] public ProjectField<SecretMaterial> EncryptedCaCertificate { get; }
-    /// <summary>Gets whether the required encrypted-CA node was present; its encryption format remains unestablished.</summary>
-    [JsonIgnore] public bool HasUnestablishedEncryptedCaCertificateProjection { get; }
     /// <summary>Gets owned returned CA material; non-inspection responses leave it null.</summary>
     [JsonIgnore] public SecretMaterial? CaCertificate { get; }
     /// <summary>Clears owned encrypted-CA JSON and returned CA material without revocation or erasing exported strings.</summary>

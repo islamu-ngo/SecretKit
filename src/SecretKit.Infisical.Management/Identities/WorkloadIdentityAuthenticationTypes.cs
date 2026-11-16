@@ -307,7 +307,6 @@ public abstract class WorkloadAuthConfiguration
         AccessTokenMaxTTL = WorkloadAuthJson.Number(value, "accessTokenMaxTTL");
         AccessTokenNumUsesLimit = WorkloadAuthJson.Number(value, "accessTokenNumUsesLimit");
         AccessTokenTrustedIps = AuthenticationJson.JsonField(value, "accessTokenTrustedIps");
-        HasUnestablishedTrustedIpProjection = value.TryGetProperty("accessTokenTrustedIps", out _);
     }
     /// <summary>Gets the returned authentication-configuration identifier.</summary>
     [JsonIgnore] public string Id { get; }
@@ -326,8 +325,6 @@ public abstract class WorkloadAuthConfiguration
     /// <summary>Gets detached returned JSON, preserving omission and null without interpreting trusted-IP policy.</summary>
     /// <remarks>Value explicitly exposes a GC-owned JSON snapshot; it is not clearable secret storage or authorization proof.</remarks>
     [JsonIgnore] public ProjectField<JsonElement> AccessTokenTrustedIps { get; }
-    /// <summary>Gets whether an unestablished trusted-IP node exists; does not interpret its values.</summary>
-    [JsonIgnore] public bool HasUnestablishedTrustedIpProjection { get; }
     /// <summary>Returns a marker without identity configuration details.</summary>
     public override string ToString() => "[WorkloadAuthConfiguration]";
 }
@@ -344,7 +341,6 @@ public sealed class JwtAuthConfiguration : WorkloadAuthConfiguration
         BoundSubject = ManagementJson.Required(value, "boundSubject");
         AccessTokenPeriod = WorkloadAuthJson.Number(value, "accessTokenPeriod");
         BoundClaims = AuthenticationJson.JsonField(value, "boundClaims");
-        HasUnestablishedBoundClaimsProjection = value.TryGetProperty("boundClaims", out _);
         if (!deleted)
         {
             JwksCaCert = ManagementJson.Required(value, "jwksCaCert");
@@ -370,8 +366,6 @@ public sealed class JwtAuthConfiguration : WorkloadAuthConfiguration
     /// <summary>Gets detached bound-claims JSON, preserving omission and null without input-schema or matching assumptions.</summary>
     /// <remarks>Value explicitly exposes a GC-owned JSON snapshot, not evidence that an issuer proof is accepted.</remarks>
     [JsonIgnore] public ProjectField<JsonElement> BoundClaims { get; }
-    /// <summary>Gets whether a bound-claims node exists whose matching semantics remain unestablished.</summary>
-    [JsonIgnore] public bool HasUnestablishedBoundClaimsProjection { get; }
 }
 
 /// <summary>Returned OIDC metadata without guessed bound-claim or mapping shapes.</summary>
@@ -387,8 +381,6 @@ public sealed class OidcAuthConfiguration : WorkloadAuthConfiguration
         AuthenticationJson.Uuid(TemplateId);
         BoundClaims = AuthenticationJson.JsonField(value, "boundClaims");
         ClaimMetadataMapping = AuthenticationJson.JsonField(value, "claimMetadataMapping");
-        HasUnestablishedBoundClaimsProjection = value.TryGetProperty("boundClaims", out _);
-        HasUnestablishedClaimMetadataMappingProjection = value.TryGetProperty("claimMetadataMapping", out _);
         if (!deleted) CaCert = ManagementJson.Required(value, "caCert");
     }
     /// <summary>Gets the returned discovery URL.</summary>
@@ -409,10 +401,6 @@ public sealed class OidcAuthConfiguration : WorkloadAuthConfiguration
     /// <summary>Gets detached claim-mapping JSON, preserving omission and null without interpreting mapping semantics.</summary>
     /// <remarks>Value explicitly exposes a GC-owned JSON snapshot, not effective identity metadata or permission proof.</remarks>
     [JsonIgnore] public ProjectField<JsonElement> ClaimMetadataMapping { get; }
-    /// <summary>Gets whether an unestablished bound-claims node was included.</summary>
-    [JsonIgnore] public bool HasUnestablishedBoundClaimsProjection { get; }
-    /// <summary>Gets whether an unestablished claim-mapping node was included.</summary>
-    [JsonIgnore] public bool HasUnestablishedClaimMetadataMappingProjection { get; }
 }
 
 /// <summary>Reviewer material is protected and disposable, not an SDK credential source.</summary>
