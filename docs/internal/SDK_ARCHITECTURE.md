@@ -170,13 +170,13 @@ The focused scanner also checks the current Release Management output without
 loading or executing either product assembly. Rebuild that output before using
 the result as current-source evidence.
 
-The allowlist names 16 Runtime types and 34 exact member signatures:
+The allowlist names 16 Runtime types and 35 exact member signatures:
 
 | Approved group | Types / members | Purpose |
 | --- | --- | --- |
 | Public token, network and rotation selection | 6 / 15 | `IInfisicalTokenSource.GetTokenAsync`; token material/expiry access; network construction, byte/time limits and the existing loopback/response-limit/proxy initialization; read-only native project/environment/folder and rotation ID/profile selectors. |
 | Internal transport binding | 1 / 5 | `InfisicalTransportBinding` construction, `ValidateOrigin`, `Client`, `Requests` and `Dispose` preserve fixed-origin request construction and borrowed-resource ownership. |
-| Internal budget | 2 / 1 | The `InfisicalOperation` type is present in the nullable budget selector; only `InfisicalOperationBudget.RunAsync<T>` may be referenced. No other budget member is implicitly admitted. |
+| Internal budget | 2 / 2 | The `InfisicalOperation` type is present in the nullable budget selector; `InfisicalOperationBudget.RunAsync<T>` enforces the operation budget and `InfisicalOperationBudget.ReadJsonAsync` shares bounded, pooled-buffer JSON response reading with `ZeroMemory` scrub and strict duplicate-property rejection. No other budget member is implicitly admitted. |
 | Internal failure decoder | 1 / 1 | `InfisicalFailureResponse.ReadAsync<T>` consumes one bounded body, projects closed classes/protected correlation and bounded retry advice. HTTP and recorded effects remain authoritative. No raw response body is exported. |
 | Internal diagnostic capture/deferral/observation | 6 / 12 | `InfisicalDiagnostics.Capture`, `Complete` and `Defer`; interval start/duration/parent getters; completion status/reason/dispatch/termination getters; observation construction and its completion getter. Start and termination types carry only the closed capture/result contract. |
 

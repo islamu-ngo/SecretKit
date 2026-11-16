@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text.Json;
@@ -71,6 +72,8 @@ public sealed class ManagementTransport : IDisposable
 /// </summary>
 public sealed class ManagementClient
 {
+    private static readonly SearchValues<char> VisibleAsciiCharacters =
+        SearchValues.Create(Enumerable.Range(0x21, 0x7E - 0x21 + 1).Select(static c => (char)c).ToArray());
     private readonly ManagementTransport _transport;
     private readonly TimeProvider _time;
     /// <summary>Gets this client's local binding identity for grants and receipts, not proof of provider permissions.</summary>
@@ -149,7 +152,6 @@ public sealed class ManagementClient
         byte[]? body = request.CopyBody(_transport.RequestLimit);
         if (body is { Length: 0 })
             return SecretOutcome<T>.Failure(SecretStatus.Invalid, reason: SecretFailureReason.RequestTooLarge);
-        byte[] responseBytes = new byte[_transport.ResponseLimit + 1];
         try
         {
             using var content = body is null ? null : new ByteArrayContent(body);
@@ -170,7 +172,7 @@ public sealed class ManagementClient
                 return SecretOutcome<T>.Failure(SecretStatus.Expired);
             }
             string bearer = token.Material.Reveal();
-            if (bearer.Length is 0 or > 16384 || bearer.Any(c => c <= ' ' || c >= 127))
+            if (bearer.Length is 0 or > 16384 || bearer.AsSpan().ContainsAnyExcept(VisibleAsciiCharacters))
             {
                 return SecretOutcome<T>.Failure(SecretStatus.Invalid);
             }
@@ -224,30 +226,13 @@ public sealed class ManagementClient
                 return await InfisicalFailureResponse.ReadAsync<T>(response, _transport.ResponseLimit, _time,
                     status, cancellationToken: cancellationToken).ConfigureAwait(false);
             }
-            if (response.Content.Headers.ContentLength > _transport.ResponseLimit)
+            using JsonDocument? document = await InfisicalOperationBudget.ReadJsonAsync(
+                response, _transport.ResponseLimit, 64, allowDuplicateProperties: false, cancellationToken: cancellationToken).ConfigureAwait(false);
+            if (document is null)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 return SecretOutcome<T>.Failure(SecretStatus.Unknown);
             }
-            using Stream stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-            int length = 0;
-            while (length < responseBytes.Length)
-            {
-                int count = await stream.ReadAsync(responseBytes.AsMemory(length), cancellationToken).ConfigureAwait(false);
-                if (count == 0)
-                {
-                    break;
-                }
-                length += count;
-            }
-            if (length > _transport.ResponseLimit)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                return SecretOutcome<T>.Failure(SecretStatus.Unknown);
-            }
-            using JsonDocument document = JsonDocument.Parse(responseBytes.AsMemory(0, length),
-                new JsonDocumentOptions { MaxDepth = 64 });
-            RejectDuplicateProperties(document.RootElement);
             T result = request.Parse(document.RootElement);
             receipt?.Record(DispatchEvidence.Applied);
             // If cancellation wins after a complete response, preserve its known receipt,
@@ -279,30 +264,6 @@ public sealed class ManagementClient
             if (body is not null)
             {
                 Array.Clear(body);
-            }
-            Array.Clear(responseBytes);
-        }
-    }
-
-    private static void RejectDuplicateProperties(JsonElement value)
-    {
-        if (value.ValueKind == JsonValueKind.Object)
-        {
-            var names = new HashSet<string>(StringComparer.Ordinal);
-            foreach (JsonProperty property in value.EnumerateObject())
-            {
-                if (!names.Add(property.Name))
-                {
-                    throw new ManagementContractException(SecretStatus.Unknown);
-                }
-                RejectDuplicateProperties(property.Value);
-            }
-        }
-        else if (value.ValueKind == JsonValueKind.Array)
-        {
-            foreach (JsonElement item in value.EnumerateArray())
-            {
-                RejectDuplicateProperties(item);
             }
         }
     }

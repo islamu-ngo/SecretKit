@@ -398,44 +398,14 @@ public sealed class InfisicalRotationClient : IDisposable, IAsyncDisposable
                 return await InfisicalFailureResponse.ReadAsync<JsonDocument>(response, _maximumResponseBytes,
                     _time, status, cancellationToken: cancellationToken).ConfigureAwait(false);
             }
-            if (response.Content.Headers.ContentLength > _maximumResponseBytes)
+            JsonDocument? document = await InfisicalOperationBudget.ReadJsonAsync(
+                response, _maximumResponseBytes, 32, allowDuplicateProperties: false, cancellationToken: cancellationToken).ConfigureAwait(false);
+            if (document is null)
             {
                 return SecretOutcome<JsonDocument>.Failure(action is null ? SecretStatus.Invalid : SecretStatus.Unknown,
                     reason: SecretFailureReason.ResponseTooLarge);
             }
-            using Stream stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-            byte[] bytes = new byte[_maximumResponseBytes + 1];
-            try
-            {
-                int length = 0;
-                while (length < bytes.Length)
-                {
-                    int read = await stream.ReadAsync(bytes.AsMemory(length), cancellationToken).ConfigureAwait(false);
-                    if (read == 0)
-                    {
-                        break;
-                    }
-                    length += read;
-                }
-                if (length > _maximumResponseBytes)
-                {
-                    return SecretOutcome<JsonDocument>.Failure(action is null ? SecretStatus.Invalid : SecretStatus.Unknown,
-                        reason: SecretFailureReason.ResponseTooLarge);
-                }
-                // Parse owns its backing bytes; disposing the document releases the unexported payload.
-                using var input = new MemoryStream(bytes, 0, length, writable: false);
-                var document = JsonDocument.Parse(input, new JsonDocumentOptions { MaxDepth = 32 });
-                if (!UniqueProperties(document.RootElement))
-                {
-                    document.Dispose();
-                    return SecretOutcome<JsonDocument>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.InvalidResponse);
-                }
-                return SecretOutcome<JsonDocument>.Success(document);
-            }
-            finally
-            {
-                CryptographicOperations.ZeroMemory(bytes);
-            }
+            return SecretOutcome<JsonDocument>.Success(document);
         }
         catch (OperationCanceledException) when (!reserved && !cancellationToken.IsCancellationRequested &&
             _shutdown.IsCancellationRequested)
@@ -460,32 +430,6 @@ public sealed class InfisicalRotationClient : IDisposable, IAsyncDisposable
             return SecretOutcome<JsonDocument>.Failure(SecretStatus.Unknown, reason: exception is JsonException
                     ? SecretFailureReason.InvalidResponse : SecretFailureReason.TransportFailure);
         }
-    }
-
-    private static bool UniqueProperties(JsonElement value)
-    {
-        if (value.ValueKind == JsonValueKind.Object)
-        {
-            var names = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var property in value.EnumerateObject())
-            {
-                if (!names.Add(property.Name) || !UniqueProperties(property.Value))
-                {
-                    return false;
-                }
-            }
-        }
-        else if (value.ValueKind == JsonValueKind.Array)
-        {
-            foreach (var item in value.EnumerateArray())
-            {
-                if (!UniqueProperties(item))
-                {
-                    return false;
-                }
-            }
-        }
-        return true;
     }
 
     private static bool TryProgress(JsonElement item, string project,

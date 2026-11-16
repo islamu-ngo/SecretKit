@@ -230,7 +230,7 @@
     },
     {
       "file": "src/SecretKit.Infisical.Management/Transport/ManagementClient.cs",
-      "sha256": "523125dceb6e36c464ff2aa5fc2f67c5872dccf25652cbb70c1f0860f836980f"
+      "sha256": "df8605b47576027523fb840e7115a8012177dd0bbe221ef8a9060924276ca28b"
     },
     {
       "file": "src/SecretKit.Infisical.Management/Transport/ManagementContracts.cs",
@@ -266,11 +266,11 @@
     },
     {
       "file": "src/SecretKit.Infisical/Authentication/InfisicalPeriodicTokenSession.cs",
-      "sha256": "c5035f4994b2a56ae171656a0a2fa1148fb20179d4d7c14b61b9224addc60afe"
+      "sha256": "5135d3392696bea18f85595731b0f3739b356da951a710ca0daa474d438e8358"
     },
     {
       "file": "src/SecretKit.Infisical/Authentication/InfisicalProofAuthentication.cs",
-      "sha256": "b695758b38077a46bf49d3a15a1c2ffff232f373c22d115672464f995f30574b"
+      "sha256": "67e8c0f1348a5058be437f1c33f4295e71466b4a5796c37cdd5510c6578182cb"
     },
     {
       "file": "src/SecretKit.Infisical/Authentication/InfisicalProofAuthenticationWire.cs",
@@ -294,11 +294,11 @@
     },
     {
       "file": "src/SecretKit.Infisical/Authentication/InfisicalTokenRevocation.cs",
-      "sha256": "ca18be74164941f86c67d621fc44ea14dfe64801e26f166240322f5db44fce61"
+      "sha256": "84e8ce253bb16dae55c7ae30f68d0f136b25c2c51737c8d1f483f4ed50ff05aa"
     },
     {
       "file": "src/SecretKit.Infisical/Authentication/InfisicalUniversalAuthentication.cs",
-      "sha256": "9302b7e68f764a82547c4a036d547c44aed6843b5a63df7b0126a4d2e24a9644"
+      "sha256": "968a93885a32ae6e850c04c265320400d82d4a0cf3ec6d090b075a3e070a4a79"
     },
     {
       "file": "src/SecretKit.Infisical/Authentication/NativeAuthority.cs",
@@ -310,7 +310,7 @@
     },
     {
       "file": "src/SecretKit.Infisical/Dynamic/InfisicalDynamicClient.cs",
-      "sha256": "aabc9a6ce1acb7649ca9aed0487bfb3e5eca1c62e05dc83bff250312fd8125b8"
+      "sha256": "ac2cbc777865476976ff548cdf5dc0db28b32b3af9d29841aeaf1d814d424912"
     },
     {
       "file": "src/SecretKit.Infisical/Dynamic/InfisicalDynamicTypes.cs",
@@ -382,7 +382,7 @@
     },
     {
       "file": "src/SecretKit.Infisical/Internal/InfisicalFailureResponse.cs",
-      "sha256": "e993eac7318c7a6dc34613557c4c55021731c2cfa9337e692a0d8aa8c9bd7420"
+      "sha256": "4cc1d83e605b2720012dedd64583a319f07e3c736eab463af9bb79b080e0817c"
     },
     {
       "file": "src/SecretKit.Infisical/Internal/InfisicalNativeOperation.cs",
@@ -390,7 +390,7 @@
     },
     {
       "file": "src/SecretKit.Infisical/Internal/InfisicalOperationBudget.cs",
-      "sha256": "801c078aead8b5a70c70b3f65670c2d21716656e415f72106b022f3e890bc5bb"
+      "sha256": "42cec232d0a5ee6596932c7f88dae92b6b035a5516804ea90e4887777a11a08e"
     },
     {
       "file": "src/SecretKit.Infisical/Internal/NativeWireBindings.cs",
@@ -418,7 +418,7 @@
     },
     {
       "file": "src/SecretKit.Infisical/Rotation/InfisicalRotationClient.cs",
-      "sha256": "e87f1a64c0dc44f5687a950aae558de3c0aecb2c739f0a88d3efe37420af5b7f"
+      "sha256": "bd0b5dc03603423d15962e3e23972774ed8e3e3a4650072b300d4923d013e695"
     },
     {
       "file": "src/SecretKit.Infisical/Rotation/InfisicalRotationModels.cs",
@@ -430,7 +430,7 @@
     },
     {
       "file": "src/SecretKit.Infisical/Secrets/InfisicalClient.cs",
-      "sha256": "a6c28a96d57c3a14a2212b431f8ede4deece81dbf461accd6d2fbe68c087ab5b"
+      "sha256": "6d3d4191e5edee983e4302a6643cc9a4bce513ab235a6142f49f7bc12e063fa6"
     },
     {
       "file": "src/SecretKit.Infisical/Secrets/InfisicalInventory.cs",

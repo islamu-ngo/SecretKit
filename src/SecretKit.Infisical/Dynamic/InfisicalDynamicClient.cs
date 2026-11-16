@@ -824,43 +824,18 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
                     return await InfisicalFailureResponse.ReadAsync<JsonDocument>(response, _byteLimit, _time,
                         status, cancellationToken: linked.Token).ConfigureAwait(false);
                 }
-                if (response.Content.Headers.ContentLength > _byteLimit)
+                JsonDocument? document = await InfisicalOperationBudget.ReadJsonAsync(
+                    response, _byteLimit, 32, allowDuplicateProperties: false, cancellationToken: linked.Token).ConfigureAwait(false);
+                if (document is null)
                 {
                     return Failure(SecretStatus.Invalid, receipt, SecretFailureReason.ResponseTooLarge);
                 }
-                Stream stream = await response.Content.ReadAsStreamAsync(linked.Token).ConfigureAwait(false);
-                await using var streamDisposal = stream.ConfigureAwait(false);
-                using var collected = new MemoryStream();
-                byte[] buffer = ArrayPool<byte>.Shared.Rent(8192);
-                try
+                if (!Bounded(document.RootElement))
                 {
-                    int count;
-                    while ((count = await stream.ReadAsync(buffer.AsMemory(0, 8192), linked.Token).ConfigureAwait(false)) != 0)
-                    {
-                        if (collected.Length + count > _byteLimit)
-                        {
-                            return Failure(SecretStatus.Invalid, receipt, SecretFailureReason.ResponseTooLarge);
-                        }
-                        collected.Write(buffer, 0, count);
-                    }
-                    collected.Position = 0;
-                    JsonDocument document = JsonDocument.Parse(collected,
-                        new JsonDocumentOptions { MaxDepth = 32 });
-                    if (!Bounded(document.RootElement))
-                    {
-                        document.Dispose();
-                        return Failure(SecretStatus.Invalid, receipt, SecretFailureReason.InvalidResponse);
-                    }
-                    return SecretOutcome<JsonDocument>.Success(document);
+                    document.Dispose();
+                    return Failure(SecretStatus.Invalid, receipt, SecretFailureReason.InvalidResponse);
                 }
-                finally
-                {
-                    ArrayPool<byte>.Shared.Return(buffer, clearArray: true);
-                    if (collected.TryGetBuffer(out ArraySegment<byte> bytes))
-                    {
-                        bytes.AsSpan().Clear();
-                    }
-                }
+                return SecretOutcome<JsonDocument>.Success(document);
             }
             finally
             {

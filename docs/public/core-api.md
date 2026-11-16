@@ -106,7 +106,7 @@ explicitly when authorized support work needs it. `GetValueOrThrow` does not
 put correlation into its exception.
 
 `SecretCorrelationId` accepts 1..128 ASCII letters, digits, hyphens, underscores
-or dots. Its `Reveal()` method exports an ordinary string. Default formatting
+or dots (with `TryCreate` for non-throwing validation). Its `Reveal()` method exports an ordinary string. Default formatting
 uses a fixed marker and outcome JSON ignores the correlation property. A valid
 identifier can still be sensitive; it proves neither identity nor idempotency.
 See [security and ownership](security-and-ownership.md).

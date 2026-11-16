@@ -205,6 +205,36 @@ public sealed class ManagementBudgetTests
         await Assert.That(result.RetryAfter).IsEqualTo(TimeSpan.FromSeconds(7));
     }
 
+    [Test]
+    [NotInParallel]
+    public async Task SmallResponseDoesNotEagerlyAllocateResponseLimitBuffer()
+    {
+        using var wire = new Wire();
+        using var transport = new ManagementTransport(new("https://management.test"), new()
+        {
+            Transport = InfisicalTransportOptions.HostControlled(wire),
+            OperationTimeout = TimeSpan.FromSeconds(2),
+            MaximumRequestBytes = 1024,
+            MaximumResponseBytes = 4 * 1024 * 1024
+        });
+        var client = new ManagementClient(transport);
+        var authority = new ManagementAuthority(client.Authority, new Tokens(), Organization);
+        using var request = ScopedAccessOperations.GetGroup(Organization, Group);
+        _ = await client.ExecuteAsync(request, authority,
+            authority.IssueGrant(request.OperationId, new(Organization, resourceId: Group)));
+
+        long before = GC.GetTotalAllocatedBytes(precise: true);
+        for (int i = 0; i < 16; i++)
+        {
+            var result = await client.ExecuteAsync(request, authority,
+                authority.IssueGrant(request.OperationId, new(Organization, resourceId: Group)));
+            await Assert.That(result.IsSuccess).IsTrue();
+        }
+        long allocated = GC.GetTotalAllocatedBytes(precise: true) - before;
+
+        await Assert.That(allocated).IsLessThan(8 * 1024 * 1024);
+    }
+
     private static ManagementTransport Transport(Wire wire) => new(new("https://management.test"), new()
     {
         Transport = InfisicalTransportOptions.HostControlled(wire),

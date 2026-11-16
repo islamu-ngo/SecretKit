@@ -79,16 +79,18 @@ public sealed class InfisicalUniversalAuthentication : IDisposable
             operationToken.ThrowIfCancellationRequested();
             if (!ReferenceEquals(receipt.Owner, this) || receipt.Evidence != DispatchEvidence.NotDispatched)
                 return SecretOutcome<InfisicalUniversalLogin>.Failure(SecretStatus.Invalid, reason: SecretFailureReason.AuthorityMismatch);
-            if (string.IsNullOrWhiteSpace(clientId) || clientId.Length > 1024 || clientId.Any(char.IsControl) ||
-                organizationSlug is not null && (organizationSlug.Length is < 1 or > 64 || organizationSlug.Any(char.IsControl)))
+            if (string.IsNullOrWhiteSpace(clientId) || clientId.Length > 1024 ||
+                clientId.AsSpan().ContainsAny(InfisicalOperationBudget.ControlCharacters) ||
+                organizationSlug is not null && (organizationSlug.Length is < 1 or > 64 ||
+                    organizationSlug.AsSpan().ContainsAny(InfisicalOperationBudget.ControlCharacters)))
                 throw new ArgumentException("Invalid protected login selection.");
 
             byte[] payload = new byte[Math.Min(64 * 1024, _requestLimit)];
-            byte[] bytes = new byte[_responseLimit + 1];
             char[] characters = clientSecret.ExportCharacters();
             try
             {
-                if (characters.Length is < 1 or > 16384 || characters.Any(char.IsControl))
+                if (characters.Length is < 1 or > 16384 ||
+                    characters.AsSpan().ContainsAny(InfisicalOperationBudget.ControlCharacters))
                     throw new ArgumentException("Invalid bootstrap credential.");
                 using var stream = new MemoryStream(payload, writable: true);
                 using (var writer = new Utf8JsonWriter(stream))
@@ -128,21 +130,12 @@ public sealed class InfisicalUniversalAuthentication : IDisposable
                     return await InfisicalFailureResponse.ReadAsync<InfisicalUniversalLogin>(response,
                         _responseLimit, _time, status, resource: false, cancellationToken: operationToken).ConfigureAwait(false);
                 }
-                if (response.Content.Headers.ContentLength > _responseLimit)
+                using var document = await InfisicalOperationBudget.ReadJsonAsync(
+                    response, _responseLimit, 8, allowDuplicateProperties: false, cancellationToken: operationToken).ConfigureAwait(false);
+                if (document is null)
                     return SecretOutcome<InfisicalUniversalLogin>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.ResponseTooLarge);
-                using Stream body = await response.Content.ReadAsStreamAsync(operationToken).ConfigureAwait(false);
-                int length = 0;
-                while (length < bytes.Length)
-                {
-                    int count = await body.ReadAsync(bytes.AsMemory(length), operationToken).ConfigureAwait(false);
-                    if (count == 0) break;
-                    length += count;
-                }
-                if (length > _responseLimit) return SecretOutcome<InfisicalUniversalLogin>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.ResponseTooLarge);
-                using var document = JsonDocument.Parse(bytes.AsMemory(0, length), new JsonDocumentOptions { MaxDepth = 8 });
                 JsonElement root = document.RootElement;
                 if (root.ValueKind != JsonValueKind.Object ||
-                    root.EnumerateObject().Select(p => p.Name).Distinct(StringComparer.Ordinal).Count() != root.EnumerateObject().Count() ||
                     !root.TryGetProperty("accessToken", out var token) || token.ValueKind != JsonValueKind.String ||
                     !root.TryGetProperty("tokenType", out var type) || type.ValueKind != JsonValueKind.String || type.GetString() != "Bearer" ||
                     !root.TryGetProperty("expiresIn", out var expires) || expires.ValueKind != JsonValueKind.Number || !expires.TryGetDouble(out double seconds) ||
@@ -151,7 +144,8 @@ public sealed class InfisicalUniversalAuthentication : IDisposable
                     !double.IsFinite(max) || max < 0 || max > 315360000)
                     return SecretOutcome<InfisicalUniversalLogin>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.InvalidResponse);
                 string text = token.GetString()!;
-                if (text.Length is < 1 or > 16384 || text.Any(c => c <= ' ' || c >= 127))
+                if (text.Length is < 1 or > 16384 ||
+                    text.AsSpan().ContainsAnyExcept(InfisicalOperationBudget.VisibleAsciiCharacters))
                     return SecretOutcome<InfisicalUniversalLogin>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.InvalidResponse);
                 DateTimeOffset expiresAt = sentAt.AddSeconds(seconds);
                 var result = new InfisicalUniversalLogin(new(SecretMaterial.FromText(text), expiresAt),
@@ -182,7 +176,6 @@ public sealed class InfisicalUniversalAuthentication : IDisposable
             {
                 Array.Clear(characters);
                 Array.Clear(payload);
-                Array.Clear(bytes);
             }
         }
     }

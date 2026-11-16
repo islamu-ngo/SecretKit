@@ -97,7 +97,11 @@ public sealed partial class AzureKeyVaultClient : ISecretReader, ISecretInventor
             using var source = new MemoryStream();
             message.Request.Content!.WriteTo(source, message.CancellationToken);
             source.Position = 0;
-            using var document = JsonDocument.Parse(source);
+            using var document = JsonDocument.Parse(source, new JsonDocumentOptions
+            {
+                MaxDepth = 32,
+                AllowDuplicateProperties = false
+            });
             using var output = new MemoryStream();
             using (var writer = new Utf8JsonWriter(output))
             {

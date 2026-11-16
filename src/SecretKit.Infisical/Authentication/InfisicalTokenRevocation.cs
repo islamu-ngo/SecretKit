@@ -42,10 +42,10 @@ public sealed partial class InfisicalProofAuthentication
                 return SecretOutcome<InfisicalTokenRevocationReceipt>.Failure(SecretStatus.Invalid);
             char[] characters = token.ExportCharacters();
             byte[] payload = new byte[Math.Min(128 * 1024, _requestLimit)];
-            byte[] bytes = new byte[_responseLimit + 1];
             try
             {
-                if (characters.Length is < 1 or > 16384 || characters.Any(char.IsControl))
+                if (characters.Length is < 1 or > 16384 ||
+                    characters.AsSpan().ContainsAny(InfisicalOperationBudget.ControlCharacters))
                     return SecretOutcome<InfisicalTokenRevocationReceipt>.Failure(SecretStatus.Invalid);
                 using var stream = new MemoryStream(payload, writable: true);
                 using (var writer = new Utf8JsonWriter(stream))
@@ -79,19 +79,10 @@ public sealed partial class InfisicalProofAuthentication
                     return await InfisicalFailureResponse.ReadAsync<InfisicalTokenRevocationReceipt>(response,
                         _responseLimit, _time, status, resource: false, cancellationToken: operationToken).ConfigureAwait(false);
                 }
-                if (response.Content.Headers.ContentLength > _responseLimit)
+                using var document = await InfisicalOperationBudget.ReadJsonAsync(
+                    response, _responseLimit, 8, allowDuplicateProperties: false, cancellationToken: operationToken).ConfigureAwait(false);
+                if (document is null)
                     return SecretOutcome<InfisicalTokenRevocationReceipt>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.ResponseTooLarge);
-                using Stream body = await response.Content.ReadAsStreamAsync(operationToken).ConfigureAwait(false);
-                int length = 0;
-                while (length < bytes.Length)
-                {
-                    int read = await body.ReadAsync(bytes.AsMemory(length), operationToken).ConfigureAwait(false);
-                    if (read == 0) break;
-                    length += read;
-                }
-                if (length > _responseLimit)
-                    return SecretOutcome<InfisicalTokenRevocationReceipt>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.ResponseTooLarge);
-                using var document = JsonDocument.Parse(bytes.AsMemory(0, length), new JsonDocumentOptions { MaxDepth = 8 });
                 JsonElement root = document.RootElement;
                 if (root.ValueKind != JsonValueKind.Object || root.EnumerateObject().Count() != 1 ||
                     !root.TryGetProperty("message", out var message) || message.ValueKind != JsonValueKind.String)
@@ -110,7 +101,6 @@ public sealed partial class InfisicalProofAuthentication
             {
                 Array.Clear(characters);
                 Array.Clear(payload);
-                Array.Clear(bytes);
             }
         }
     }

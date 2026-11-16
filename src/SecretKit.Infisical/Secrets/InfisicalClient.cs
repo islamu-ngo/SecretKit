@@ -209,7 +209,8 @@ public sealed partial class InfisicalClient : IInfisicalSecretReader, IAsyncDisp
             {
                 string? resource = NativeString(secret, "id");
                 if (string.IsNullOrWhiteSpace(resource) || resource.Length > 1024 ||
-                    resource.Any(char.IsControl) || !secret.TryGetProperty("version", out JsonElement nativeVersion) ||
+                    resource.AsSpan().ContainsAny(InfisicalOperationBudget.ControlCharacters) ||
+                    !secret.TryGetProperty("version", out JsonElement nativeVersion) ||
                     nativeVersion.ValueKind != JsonValueKind.Number ||
                     !nativeVersion.TryGetInt32(out int version) || version <= 0)
                     return SecretOutcome<AcquiredRead>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.InvalidResponse);
@@ -308,8 +309,8 @@ public sealed partial class InfisicalClient : IInfisicalSecretReader, IAsyncDisp
             if (access!.ExpiresAt <= _time.GetUtcNow())
                 return SecretOutcome<JsonDocument>.Failure(SecretStatus.Expired, reason: SecretFailureReason.CredentialUnavailable);
             string bearer = access.Material.Reveal();
-            if (bearer.Length is < 1 or > 16384 || !bearer.All(character => char.IsAsciiLetterOrDigit(character) ||
-                character is '-' or '_' or '.' or '~' or '+' or '/' or '='))
+            if (bearer.Length is < 1 or > 16384 ||
+                bearer.AsSpan().ContainsAnyExcept(InfisicalOperationBudget.Rfc6750BearerCharacters))
                 return SecretOutcome<JsonDocument>.Failure(SecretStatus.Invalid, reason: SecretFailureReason.CredentialUnavailable);
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
             budget.Check();
@@ -343,35 +344,27 @@ public sealed partial class InfisicalClient : IInfisicalSecretReader, IAsyncDisp
             }
             if (response.Content.Headers.ContentLength > _responseLimit)
                 return DocumentFailure(SecretStatus.Invalid, SecretFailureReason.ResponseTooLarge, receipt);
-            Stream body = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-            await using var bodyDisposal = body.ConfigureAwait(false);
-            using var collected = new MemoryStream();
-            byte[] buffer = ArrayPool<byte>.Shared.Rent(8192);
-            try
-            {
-                int count;
-                while ((count = await body.ReadAsync(buffer.AsMemory(0, Math.Min(8192,
-                    Math.Min(_responseLimit - (int)collected.Length, inventory?.RemainingBytes ?? _responseLimit) + 1)),
-                    cancellationToken).ConfigureAwait(false)) > 0)
+            int effectiveLimit = inventory is null
+                ? _responseLimit
+                : Math.Max(0, Math.Min(_responseLimit, inventory.RemainingBytes));
+
+            // Parse a late acknowledgement to retain any actual effect. The
+            // operation owner checks the budget again before publication.
+            JsonDocument? document = await InfisicalOperationBudget.ReadJsonAsync(
+                response,
+                effectiveLimit,
+                32,
+                allowDuplicateProperties: bulkReceipt is not null,
+                onChunkRead: inventory is null ? null : count =>
                 {
-                    if (inventory is not null && !inventory.ConsumeBytes(count))
-                        return DocumentFailure(SecretStatus.Invalid, SecretFailureReason.ResponseTooLarge, receipt);
-                    if (collected.Length + count > _responseLimit)
-                        return DocumentFailure(SecretStatus.Invalid, SecretFailureReason.ResponseTooLarge, receipt);
-                    if (inventory is not null) budget.Check();
-                    collected.Write(buffer, 0, count);
-                }
-                // Parse a late acknowledgement to retain any actual effect. The
-                // operation owner checks the budget again before publication.
-                collected.Position = 0;
-                return SecretOutcome<JsonDocument>.Success(JsonDocument.Parse(collected,
-                    new JsonDocumentOptions { MaxDepth = 32, AllowDuplicateProperties = bulkReceipt is not null }));
-            }
-            finally
-            {
-                ArrayPool<byte>.Shared.Return(buffer, clearArray: true);
-                if (collected.TryGetBuffer(out ArraySegment<byte> bytes)) bytes.AsSpan().Clear();
-            }
+                    if (!inventory.ConsumeBytes(count)) return false;
+                    budget.Check();
+                    return true;
+                },
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+            if (document is null)
+                return DocumentFailure(SecretStatus.Invalid, SecretFailureReason.ResponseTooLarge, receipt);
+            return SecretOutcome<JsonDocument>.Success(document);
         }
         catch (OperationCanceledException)
         {

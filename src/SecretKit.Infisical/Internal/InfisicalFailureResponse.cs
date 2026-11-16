@@ -17,44 +17,30 @@ internal static class InfisicalFailureResponse
             ? InfisicalOperationBudget.RetryAfter(response, time) : null;
         SecretOutcome<T> fallback = SecretOutcome<T>.Failure(status, advice, reason);
         if (response.IsSuccessStatusCode) return fallback;
-        byte[] bytes = new byte[maximumBytes + 1];
         try
         {
-            if (response.Content.Headers.ContentLength > maximumBytes) return fallback;
-            using Stream body = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-            int length = 0;
-            while (length < bytes.Length)
-            {
-                int count = await body.ReadAsync(bytes.AsMemory(length), cancellationToken).ConfigureAwait(false);
-                consumeBytes?.Invoke(count);
-                cancellationToken.ThrowIfCancellationRequested();
-                if (count == 0) break;
-                length += count;
-            }
-            if (length > maximumBytes) return fallback;
-            using JsonDocument document = JsonDocument.Parse(bytes.AsMemory(0, length),
-                new JsonDocumentOptions { MaxDepth = 16, AllowDuplicateProperties = true });
+            using JsonDocument? document = await InfisicalOperationBudget.ReadJsonAsync(
+                response, maximumBytes, 16, allowDuplicateProperties: false,
+                onChunkRead: consumeBytes is null ? null : chunk =>
+                {
+                    consumeBytes(chunk);
+                    return true;
+                },
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+            if (document is null) return fallback;
             JsonElement root = document.RootElement;
             if (root.ValueKind != JsonValueKind.Object) return fallback;
-            int seen = 0;
             foreach (JsonProperty property in root.EnumerateObject())
             {
-                int bit = property.Name switch
+                bool invalid = property.Name switch
                 {
-                    "reqId" => 1,
-                    "statusCode" => 2,
-                    "error" => 4,
-                    "message" => 8,
-                    "details" => 16,
-                    _ => 0
+                    "reqId" or "error" => property.Value.ValueKind != JsonValueKind.String,
+                    "statusCode" => property.Value.ValueKind != JsonValueKind.Number ||
+                        !property.Value.TryGetInt32(out int code) || code != (int)response.StatusCode,
+                    "message" => property.Value.ValueKind is not (JsonValueKind.String or JsonValueKind.Array),
+                    _ => false
                 };
-                if ((seen & bit) != 0) return fallback;
-                seen |= bit;
-                if (bit is 1 or 4 && property.Value.ValueKind != JsonValueKind.String ||
-                    bit == 2 && (property.Value.ValueKind != JsonValueKind.Number ||
-                        !property.Value.TryGetInt32(out int code) || code != (int)response.StatusCode) ||
-                    bit == 8 && property.Value.ValueKind is not (JsonValueKind.String or JsonValueKind.Array))
-                    return fallback;
+                if (invalid) return fallback;
             }
             string? error = root.TryGetProperty("error", out JsonElement errorField) ? errorField.GetString() : null;
             if (root.TryGetProperty("message", out JsonElement messageShape) &&
@@ -71,10 +57,7 @@ internal static class InfisicalFailureResponse
             SecretCorrelationId? correlation = null;
             if (root.TryGetProperty("reqId", out JsonElement identifier))
             {
-                string value = identifier.GetString()!;
-                if (value.Length is >= 1 and <= 128 &&
-                    value.All(character => char.IsAsciiLetterOrDigit(character) || character is '-' or '_' or '.'))
-                    correlation = new(value);
+                _ = SecretCorrelationId.TryCreate(identifier.GetString(), out correlation);
             }
             if (advice is null && status == SecretStatus.Throttled &&
                 response.StatusCode == HttpStatusCode.TooManyRequests &&
@@ -93,10 +76,6 @@ internal static class InfisicalFailureResponse
             InvalidOperationException or NotSupportedException)
         {
             return fallback;
-        }
-        finally
-        {
-            Array.Clear(bytes);
         }
     }
 

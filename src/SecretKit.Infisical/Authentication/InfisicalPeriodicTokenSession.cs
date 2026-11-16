@@ -382,7 +382,8 @@ public sealed class InfisicalPeriodicTokenSession : IInfisicalTokenSource, IAsyn
             char[] characters = ownedToken.ExportCharacters();
             try
             {
-                if (characters.Length is < 1 or > 16384 || characters.Any(char.IsControl))
+                if (characters.Length is < 1 or > 16384 ||
+                    characters.AsSpan().ContainsAny(InfisicalOperationBudget.ControlCharacters))
                     return FailRecovery(SecretStatus.Invalid, SecretFailureReason.CredentialUnavailable);
                 using (var writer = new Utf8JsonWriter(payload))
                 {
@@ -420,62 +421,48 @@ public sealed class InfisicalPeriodicTokenSession : IInfisicalTokenSource, IAsyn
                     if (linked.Expired) observation.ObserveCancellation(InfisicalTermination.DeadlineExceeded);
                     return failure;
                 }
-                byte[] buffer = new byte[_responseLimit + 1];
-                try
+                using JsonDocument? document = await InfisicalOperationBudget.ReadJsonAsync(
+                    response, _responseLimit, 8, allowDuplicateProperties: false, cancellationToken: linked.Token).ConfigureAwait(false);
+                if (document is null) return FailRecovery(SecretStatus.Unknown, SecretFailureReason.ResponseTooLarge);
+                JsonElement json = document.RootElement;
+                if (json.ValueKind != JsonValueKind.Object ||
+                    !json.TryGetProperty("accessToken", out var token) || token.ValueKind != JsonValueKind.String ||
+                    !json.TryGetProperty("tokenType", out var type) || type.ValueKind != JsonValueKind.String ||
+                    type.GetString() != "Bearer" ||
+                    !json.TryGetProperty("expiresIn", out var expiry) || expiry.ValueKind != JsonValueKind.Number || !expiry.TryGetDouble(out double seconds) ||
+                    !double.IsFinite(seconds) || seconds <= _renewBefore.TotalSeconds || seconds > 3153600000 ||
+                    !json.TryGetProperty("accessTokenMaxTTL", out var maximum) || maximum.ValueKind != JsonValueKind.Number ||
+                    !maximum.TryGetDouble(out double maximumSeconds) ||
+                    maximumSeconds != _lifetime.ReportedMaximumTtl.TotalSeconds ||
+                    (_lifetime.Lifetime == InfisicalTokenLifetime.Periodic && seconds > _lifetime.Period!.Value.TotalSeconds))
+                    return FailRecovery();
+                string text = token.GetString()!;
+                if (text.Length is < 1 or > 16384 ||
+                    text.AsSpan().ContainsAnyExcept(InfisicalOperationBudget.VisibleAsciiCharacters))
+                    return FailRecovery();
+                DateTimeOffset expires = sentAt.AddSeconds(seconds);
+                if (LifetimeLimit is { } limit && expires > limit)
+                    expires = limit;
+                if (expires - _time.GetUtcNow() <= _renewBefore)
+                    return FailRecovery();
+                candidate = SecretMaterial.FromText(text);
+                DateTimeOffset observedAt = _time.GetUtcNow();
+                linked.Check();
+                lock (_gate)
                 {
-                    using Stream body = await response.Content.ReadAsStreamAsync(linked.Token).ConfigureAwait(false);
-                    int length = 0;
-                    while (length < buffer.Length)
-                    {
-                        int read = await body.ReadAsync(buffer.AsMemory(length), linked.Token).ConfigureAwait(false);
-                        if (read == 0) break;
-                        length += read;
-                    }
-                    if (length > _responseLimit) return FailRecovery(SecretStatus.Unknown, SecretFailureReason.ResponseTooLarge);
-                    using JsonDocument document = JsonDocument.Parse(buffer.AsMemory(0, length),
-                        new JsonDocumentOptions { MaxDepth = 8 });
-                    JsonElement json = document.RootElement;
-                    if (json.ValueKind != JsonValueKind.Object ||
-                        json.EnumerateObject().Select(property => property.Name).Distinct(StringComparer.Ordinal).Count() !=
-                        json.EnumerateObject().Count() ||
-                        !json.TryGetProperty("accessToken", out var token) || token.ValueKind != JsonValueKind.String ||
-                        !json.TryGetProperty("tokenType", out var type) || type.ValueKind != JsonValueKind.String ||
-                        type.GetString() != "Bearer" ||
-                        !json.TryGetProperty("expiresIn", out var expiry) || expiry.ValueKind != JsonValueKind.Number || !expiry.TryGetDouble(out double seconds) ||
-                        !double.IsFinite(seconds) || seconds <= _renewBefore.TotalSeconds || seconds > 3153600000 ||
-                        !json.TryGetProperty("accessTokenMaxTTL", out var maximum) || maximum.ValueKind != JsonValueKind.Number ||
-                        !maximum.TryGetDouble(out double maximumSeconds) ||
-                        maximumSeconds != _lifetime.ReportedMaximumTtl.TotalSeconds ||
-                        (_lifetime.Lifetime == InfisicalTokenLifetime.Periodic && seconds > _lifetime.Period!.Value.TotalSeconds))
+                    linked.Token.ThrowIfCancellationRequested();
+                    UpdateDeadline(observedAt);
+                    if (_state is InfisicalTokenSessionState.Expired or InfisicalTokenSessionState.RecoveryRequired or
+                        InfisicalTokenSessionState.Stopped)
                         return FailRecovery();
-                    string text = token.GetString()!;
-                    if (text.Length is < 1 or > 16384 || text.Any(c => c <= ' ' || c >= 127))
-                        return FailRecovery();
-                    DateTimeOffset expires = sentAt.AddSeconds(seconds);
-                    if (LifetimeLimit is { } limit && expires > limit)
-                        expires = limit;
-                    if (expires - _time.GetUtcNow() <= _renewBefore)
-                        return FailRecovery();
-                    candidate = SecretMaterial.FromText(text);
-                    DateTimeOffset observedAt = _time.GetUtcNow();
-                    linked.Check();
-                    lock (_gate)
-                    {
-                        linked.Token.ThrowIfCancellationRequested();
-                        UpdateDeadline(observedAt);
-                        if (_state is InfisicalTokenSessionState.Expired or InfisicalTokenSessionState.RecoveryRequired or
-                            InfisicalTokenSessionState.Stopped)
-                            return FailRecovery();
-                        _token!.Dispose();
-                        _token = candidate;
-                        candidate = null;
-                        _expiresAt = expires;
-                        receipt.Record(InfisicalRenewalEvidence.Applied);
-                        _state = InfisicalTokenSessionState.Ready;
-                    }
-                    return SecretOutcome<InfisicalTokenRenewal>.Success(receipt);
+                    _token!.Dispose();
+                    _token = candidate;
+                    candidate = null;
+                    _expiresAt = expires;
+                    receipt.Record(InfisicalRenewalEvidence.Applied);
+                    _state = InfisicalTokenSessionState.Ready;
                 }
-                finally { Array.Clear(buffer); }
+                return SecretOutcome<InfisicalTokenRenewal>.Success(receipt);
             }
             finally
             {

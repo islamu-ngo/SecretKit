@@ -51,6 +51,11 @@ public sealed class OutcomeContractTests
         await Assert.That(() => new SecretCorrelationId(value)).Throws<ArgumentException>();
         await Assert.That(() => new SecretCorrelationId(new string('a', 129))).Throws<ArgumentException>();
         await Assert.That(new SecretCorrelationId(new string('a', 128)).Reveal().Length).IsEqualTo(128);
+        await Assert.That(SecretCorrelationId.TryCreate(null, out _)).IsFalse();
+        await Assert.That(SecretCorrelationId.TryCreate(value, out _)).IsFalse();
+        await Assert.That(SecretCorrelationId.TryCreate(new string('a', 129), out _)).IsFalse();
+        await Assert.That(SecretCorrelationId.TryCreate("req-AZ_09.canary", out SecretCorrelationId? valid)).IsTrue();
+        await Assert.That(valid?.Reveal()).IsEqualTo("req-AZ_09.canary");
     }
 
     [Test]
