@@ -3,7 +3,7 @@
 > **Audience:** Developers selecting packages and reviewers assessing support
 > **Status:** Implemented subsets with offline evidence; incomplete live qualification
 > **Owner:** SecretKit maintainers
-> **Last verified:** 2026-10-25 (local source/documentation review only)
+> **Last verified:** 2026-11-16 (offline source, installed-archive, and SPDX SBOM review on Linux x64, SDK 10.0.404; live qualification incomplete)
 > **Source anchors:** [Projects](../../PROJECTS.md), [package inputs](../../Directory.Build.props),
 > [local profile](../internal/local/infisical-runtime.json), source/test links below
 
@@ -30,11 +30,20 @@ Configuration and Hosting are independently optional; Hosting depends on
 Infisical, not Configuration. The immediate local profile selects four packages,
 not a replacement seven-package release policy.
 
-The current deployment posture is JIT on `net10.0`, not qualified trimming or
-Native AOT. Hosting's concrete Core/Infisical dependencies and expansion triggers
-are recorded in [ADR-005](../internal/adr/ADR-005-enterprise-hardening-contracts.md).
-A second actual provider hosting requirement, a named AOT consumer, or a named
-sovereign management deployment triggers a separately evidenced proposal.
+Five packages (`SecretKit.Core`, `SecretKit.Extensions.Configuration`,
+`SecretKit.Extensions.Hosting`, `SecretKit.Infisical`, and
+`SecretKit.Infisical.Management`) set `<IsAotCompatible>true</IsAotCompatible>`
+(emitting `IsTrimmable`/`IsAotCompatible` metadata and zero
+`[RequiresUnreferencedCode]` attributes), and all seven Release `.nupkg`
+archives embed filtered SPDX 2.2 SBOM manifests (`Microsoft.Sbom.Targets
+4.1.13`). `SecretKit.AzureKeyVault` and `SecretKit.AzureKeyVault.Management`
+remain non-AOT due to external Azure SDK dependencies, and full downstream
+NativeAOT/trimming application qualification remains governed by
+[ADR-005](../internal/adr/ADR-005-enterprise-hardening-contracts.md) and Gate
+`G4`. Hosting's concrete Core/Infisical dependencies and expansion triggers
+are also recorded in ADR-005.
+A second actual provider hosting requirement, full NativeAOT/Azure trimming, or
+a named sovereign management deployment triggers a separately evidenced proposal.
 See the [exact public-cloud selections](providers/management.md#public-cloud-selection);
 endpoint declaration and implemented acceptance do not establish live support.
 

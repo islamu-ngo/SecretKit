@@ -60,10 +60,14 @@ Corporation copyright, and `microsoft/sbom-tool` revision
 
 The seven library locks record these private build-only dependencies; neither is
 a dependency of a shipped SecretKit package or its runtime closure (`nuspec`
-and runtime closure stay clean). Retain original archives and MIT legal
-notices if redistributing build tools. Enabling build-time analyzers does not by
-itself declare trimming or NativeAOT compatibility where an optional provider
-dependency lacks AOT metadata.
+and runtime closure stay clean). Release packaging also filters these private
+build-only tools from the SBOM component-detection input (`project.assets.json`)
+so embedded `_manifest/spdx_2.2/manifest.spdx.json` manifests record only
+shipped dependencies matching the `.nuspec` graph and pass fail-closed archive
+and candidate SHA-256, `packages[]`, `files[]`, and `relationships[]` checks.
+Retain original archives and MIT legal notices if redistributing build tools.
+Enabling build-time analyzers does not by itself declare trimming or NativeAOT
+compatibility where an optional provider dependency lacks AOT metadata.
 
 ## Nonpackable notification authentication verification
 

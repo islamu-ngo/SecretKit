@@ -3,7 +3,7 @@
 > **Audience:** Qualification maintainers, operators and evidence reviewers
 > **Status:** Supplemental declaration, content checks and scoped Infisical owner admission; native qualification remains open
 > **Owner:** SecretKit qualification maintainers
-> **Last verified:** 2026-11-05, local contract/schema inspection; no provider execution
+> **Last verified:** 2026-11-16, local contract/schema/source/installed-archive inspection (SDK 10.0.404, runtime 10.0.15); native and multi-OS execution remain open
 > **Source anchors:** [profile](enterprise-hardening-profile.json), [schema](enterprise-hardening-profile.schema.json), [ADR-005](../adr/ADR-005-enterprise-hardening-contracts.md)
 
 `enterprise-hardening` is a separate supplemental evidence namespace. Its

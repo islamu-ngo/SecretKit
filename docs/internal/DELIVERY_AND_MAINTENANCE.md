@@ -150,6 +150,22 @@ direct imported omission + `personal` rejection witnesses), and all 4
 `unestablished-schema` findings arise from `anyOf` unions intentionally
 excluded from `OperatorContractCheck`. No manifest constraints were weakened.
 
+On the same **2026-11-16** baseline (SDK **10.0.404**, runtime **10.0.15**),
+offline hardening updates adopted `.NET 10` `System.Threading.Lock`, `CA2007`
+`ConfigureAwait(false)` across `src/`, shared pooled `ArrayPool<byte>` +
+`CryptographicOperations.ZeroMemory` bounded HTTP JSON readers with
+`AllowDuplicateProperties = false`, allocation-free `SearchValues<char>`
+validation, unified `SqlRotation*` shared models with non-backtracking
+`[GeneratedRegex]`, scoped `ControlledTransport` status checks, zero
+`[RequiresUnreferencedCode]` or internal plaintext `.Reveal()` /
+`.ExportCharacters()` exports across the five `<IsAotCompatible>true</IsAotCompatible>`
+packages (`Core`, `Infisical`, `Infisical.Management`, `Configuration`,
+`Hosting`), filtered SPDX 2.2 SBOM generation/validation (`Microsoft.Sbom.Targets`
+**4.1.13**), and Tier 1 multi-agent adversarial review remediations. Live
+provider qualification (`2.1–2.4`, `3.3–3.6`, `4.1–4.3`), `windows-2025` /
+`macos-15` CI jobs (`5.2`), protected candidate promotion (`6.2`), and NuGet
+publication remain open external gates.
+
 ## Admission Policy Is Not A Populated Registry
 
 After building the affected provider projects in Release, refresh their owned

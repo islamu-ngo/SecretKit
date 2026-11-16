@@ -3,7 +3,7 @@
 > **Audience:** Application developers and support evaluators
 > **Status:** Implemented development subsets; unpublished, not ready for production
 > **Owner:** SecretKit maintainers
-> **Last verified:** 2026-10-31 (credential-free source/test validation, not native qualification)
+> **Last verified:** 2026-11-16 (credential-free Linux x64 SDK 10.0.404 source/installed/SBOM validation; native, multi-OS CI, and publication remain open)
 > **Source anchors:** [Package inputs](../../Directory.Build.props),
 > [local profile](../internal/local/infisical-runtime.json),
 > [project map](../../PROJECTS.md), [support reference](provider-support.md)
@@ -21,6 +21,23 @@ compatibility.** Package presence does not mean complete provider support.
 
 ## Recent source verification
 
+The November 16 offline hardening increment on SDK **10.0.404** (runtime
+**10.0.15**) adopts `.NET 10` `System.Threading.Lock`, pre-operation disposal
+guards, `CA2007` `ConfigureAwait(false)` across `src/`, shared pooled
+`ArrayPool<byte>` + `CryptographicOperations.ZeroMemory` HTTP JSON readers with
+`AllowDuplicateProperties = false`, `SearchValues<char>` correlation checks,
+scoped Azure `ControlledTransport` status checks, unified `SqlRotation*`
+types with non-backtracking `[GeneratedRegex]`, pruned redundant auth
+projection flags, `InfisicalDatabaseCredentials.UseUsername`/`UsePassword`
+span accessors, zero `[RequiresUnreferencedCode]` across the five
+`<IsAotCompatible>true</IsAotCompatible>` packages (`Core`, `Infisical`,
+`Infisical.Management`, `Configuration`, `Hosting`), and embedded/verified
+filtered SPDX 2.2 SBOM manifests (`Microsoft.Sbom.Targets 4.1.13`) in Release
+`.nupkg` archives. Primary-contract-gated operations (`G01` approval, causal
+audit/share, three Azure denied-authority rows, Event Grid `O09–O12`), live
+48-family qualification, `windows-2025` / `macos-15` CI execution, downstream
+NativeAOT/Azure trimming (`G4`), and publication remain open gates.
+
 The November 15 [operator host example](interactive-hosts.md) adds a nonpackable
 offline sample and public-seam Consumer tests for capitalization/rotation
 preflight, explicit folder creation, one-item bulk deletion and the actual
@@ -37,9 +54,14 @@ Azure empty-tag clearing has controlled wire/readback and uncertainty tests.
 These contracts have source and controlled verification; native qualification
 remains separate. The [supplemental enterprise profile](../internal/compatibility/enterprise-hardening-profile.md)
 has scoped owner-local Infisical S24 admission; Azure positive admission still
-needs its native provenance producer connection. Current deployment posture is JIT/net10.0; Hosting depends on
-Infisical and not Configuration. Sovereign management, trimming/AOT and a second
-hosting contract require the named [demand and evidence gates](../internal/INTEGRATION_QUALITY_FOLLOW_UPS.md).
+needs its native provenance producer connection. Five packages (`Core`, `Infisical`,
+`Infisical.Management`, `Configuration`, `Hosting`) set
+`<IsAotCompatible>true</IsAotCompatible>` and pass analyzer/IL gates without
+`[RequiresUnreferencedCode]`, while `AzureKeyVault` and
+`AzureKeyVault.Management` remain non-AOT (`G4`) and Hosting depends on
+Infisical and not Configuration. Sovereign management, full downstream NativeAOT
+or Azure trimming certification, and a second hosting contract require the named
+[demand and evidence gates](../internal/INTEGRATION_QUALITY_FOLLOW_UPS.md).
 
 The November 1 integration-quality increment adds strict UTF-8 ownership, closed
 failure reasons, native operation budgets, explicit runtime/DI ownership, optional
