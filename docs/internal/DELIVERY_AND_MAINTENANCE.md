@@ -139,6 +139,17 @@ enforcement and relaxing reference depth produced the intended failures before
 the original implementation was restored. These observations establish offline
 checker behavior only.
 
+On **2026-11-16** (SDK **10.0.404**, runtime **10.0.15**), all **12 findings**
+against the read-only public OpenAPI snapshot (`c3283ae46b216a6c30d28cd82011cf1fa9182dc645bc1076d3b7f49489509571`)
+were triaged against the live code paths in `InfisicalInventory`, `InfisicalClient`,
+`InfisicalStaticChanges`, `NativeBulk` and `Projects`: all 8 schema mismatches
+reflect deliberate fail-closed reader boundaries (`shared`-only filter, positive
+32-bit `version`, required `project` / `secret-manager` type) or optional
+`updatedAt`/`tags` parsing on imported rows (`InfisicalInventoryTests` adds
+direct imported omission + `personal` rejection witnesses), and all 4
+`unestablished-schema` findings arise from `anyOf` unions intentionally
+excluded from `OperatorContractCheck`. No manifest constraints were weakened.
+
 ## Admission Policy Is Not A Populated Registry
 
 After building the affected provider projects in Release, refresh their owned

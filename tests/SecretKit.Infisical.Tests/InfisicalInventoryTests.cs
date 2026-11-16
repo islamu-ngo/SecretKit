@@ -633,6 +633,44 @@ public sealed class InfisicalInventoryTests
         }
     }
 
+    [Test]
+    public async Task ImportedRowsWithoutUpdatedAtOrTagsSucceedWhilePersonalTypeFailsClosed()
+    {
+        var imported = Row("/source", "upstream");
+        imported.Remove("updatedAt");
+        imported.Remove("tags");
+        using var okWire = new Wire((_, _) => Task.FromResult(Json(new
+        {
+            secrets = Array.Empty<object>(),
+            imports = new[] { new { environment = "upstream", secretPath = "/source", secrets = new[] { imported } } }
+        })));
+        await using var okClient = Client(okWire);
+        var ok = await okClient.InspectNativeAsync(new(okClient.Authority, "project", "test", "/", includeImports: true));
+        await Assert.That(ok.IsSuccess).IsTrue();
+        await Assert.That(ok.Value.IsComplete).IsTrue();
+        InfisicalInventoryEntry entry = ok.Value.Entries.Single();
+        await Assert.That(entry.Origin).IsEqualTo(InfisicalInventoryOrigin.Imported);
+        await Assert.That(entry.ModifiedAt).IsNull();
+        await Assert.That(entry.TagIds).IsNull();
+
+        foreach (bool importedPersonal in new[] { false, true })
+        {
+            var directRow = Row();
+            var importRow = Row("/source", "upstream");
+            (importedPersonal ? importRow : directRow)["type"] = "personal";
+            using var personalWire = new Wire((_, _) => Task.FromResult(Json(new
+            {
+                secrets = importedPersonal ? Array.Empty<object>() : [directRow],
+                imports = importedPersonal
+                    ? [new { environment = "upstream", secretPath = "/source", secrets = new[] { importRow } }]
+                    : Array.Empty<object>()
+            })));
+            await using var personalClient = Client(personalWire);
+            var rejected = await personalClient.InspectNativeAsync(new(personalClient.Authority, "project", "test", "/", includeImports: importedPersonal));
+            await Assert.That(rejected.Status).IsEqualTo(SecretStatus.Invalid);
+        }
+    }
+
     private sealed class SelectedTokens(Func<InfisicalAccessToken> create) : IInfisicalTokenSource
     {
         public ValueTask<SecretOutcome<InfisicalAccessToken>> GetTokenAsync(CancellationToken cancellationToken = default) =>

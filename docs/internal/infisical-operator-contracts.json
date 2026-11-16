@@ -19,7 +19,8 @@
     "Bulk create/update optional metadata and rename profiles; this manifest covers static create/update and the actual one-item-capable bulk-delete route.",
     "Folder mutations beyond create, import mutations and imported value acquisition. Import configuration listing is covered.",
     "Inventory revision, tags, rotation and import-group fields reflect the implemented value-free reader. Missing observations remain unknown; schema matching does not establish provenance, ancestry, effective precedence or a revision.",
-    "Only listed primitive, presence, nullability, enum, format and inclusive bound facts are compared; runtime validation and host policy remain authoritative."
+    "Only listed primitive, presence, nullability, enum, format and inclusive bound facts are compared; runtime validation and host policy remain authoritative.",
+    "2026-11-16 Task 2.0 triage against OpenAPI 3.0.3 SHA-256 c3283ae46b216a6c30d28cd82011cf1fa9182dc645bc1076d3b7f49489509571 (all 12 findings retained deliberately without loosening): (1-2,5) direct/imported secret type 'shared' filter and (6) secret.version positive int32 requirement remain intentional fail-closed reader contracts; (3-4) imports[].secrets[] omit updatedAt/tags in vendor OpenAPI while InfisicalInventory handles both as optional; (7-10) anyOf schemas on static create/update, bulk delete and recursive folder query sit outside OperatorContractCheck's admitted subset; (11-12) required 'project' wrapper and 'secret-manager' project type remain intentional fail-closed management reader checks."
   ],
   "shapes": {
     "coordinate": { "type": "string", "minLength": 1 },
