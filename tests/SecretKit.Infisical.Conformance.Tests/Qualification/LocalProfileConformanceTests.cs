@@ -392,23 +392,106 @@ public sealed class LocalProfileAdmissionTests
                 };
                 string entries = string.Concat(dependencies.Select(d =>
                     $"""<dependency id="{d}" version="{(d.StartsWith("SecretKit.", StringComparison.Ordinal) ? "[" + Binding.Version + "]" : "1.0.0")}" />"""));
+                (string Name, string Content)[] files =
+                [
+                    (id + ".nuspec", $"""
+                        <package><metadata><id>{id}</id><version>{Binding.Version}</version>
+                        <license type="expression">MIT</license>
+                        <repository type="git" url="{Manifest.Repository}" commit="{new string('a', 40)}"/>
+                        <dependencies><group targetFramework="net10.0">{entries}</group></dependencies>
+                        </metadata></package>
+                        """),
+                    ("README.md", "controlled"),
+                    ("THIRD-PARTY-NOTICES.md", "controlled notices")
+                ];
+                byte[] spdx = CreateSpdxManifest(id, Binding.Version, files,
+                    dependencies.Where(d => !d.StartsWith("SecretKit.", StringComparison.Ordinal)).ToArray());
                 using var zip = ZipFile.Open(Path.Combine(Originals, $"{id}.{Binding.Version}.nupkg"), ZipArchiveMode.Create);
-                Write(id + ".nuspec", $"""
-                    <package><metadata><id>{id}</id><version>{Binding.Version}</version>
-                    <license type="expression">MIT</license>
-                    <repository type="git" url="{Manifest.Repository}" commit="{new string('a', 40)}"/>
-                    <dependencies><group targetFramework="net10.0">{entries}</group></dependencies>
-                    </metadata></package>
-                    """);
-                Write("README.md", "controlled");
-                Write("THIRD-PARTY-NOTICES.md", "controlled notices");
-                void Write(string name, string content)
+                foreach ((string name, string content) in files)
                 {
-                    using var stream = new StreamWriter(zip.CreateEntry(name).Open());
-                    stream.Write(content);
+                    WriteBytes(zip, name, Encoding.UTF8.GetBytes(content));
                 }
+
+                WriteBytes(zip, SbomManifest.ManifestPath, spdx);
+                WriteBytes(zip, SbomManifest.DigestPath, Encoding.ASCII.GetBytes(Manifest.Hash(spdx)));
             }
             _ = LocalQualification.Prepare(Source, Originals, Record);
+        }
+
+        private static void WriteBytes(ZipArchive zip, string name, byte[] content)
+        {
+            using Stream stream = zip.CreateEntry(name).Open();
+            stream.Write(content);
+        }
+
+        private static byte[] CreateSpdxManifest(string id, string version, (string Name, string Content)[] files,
+            string[] externalDependencies)
+        {
+            var fileNodes = files.Select((entry, index) => new
+            {
+                fileName = "./" + entry.Name,
+                SPDXID = $"SPDXRef-File-{index}",
+                checksums = new[]
+                {
+                    new { algorithm = "SHA256", checksumValue = Manifest.Hash(Encoding.UTF8.GetBytes(entry.Content)) }
+                }
+            }).ToArray();
+            var packageNodes = externalDependencies.Select((dep, index) => new
+            {
+                SPDXID = $"SPDXRef-Package-{index}",
+                name = dep,
+                versionInfo = "1.0.0",
+                externalRefs = new[]
+                {
+                    new
+                    {
+                        referenceCategory = "PACKAGE-MANAGER",
+                        referenceType = "purl",
+                        referenceLocator = $"pkg:nuget/{dep}@1.0.0"
+                    }
+                }
+            }).Append(new
+            {
+                SPDXID = "SPDXRef-RootPackage",
+                name = id,
+                versionInfo = version,
+                externalRefs = new[]
+                {
+                    new
+                    {
+                        referenceCategory = "PACKAGE-MANAGER",
+                        referenceType = "purl",
+                        referenceLocator = $"pkg:swid/ISLAMU/github.com/{id}@{version}?tag_id=00000000-0000-0000-0000-000000000000"
+                    }
+                }
+            }).ToArray();
+
+            return JsonSerializer.SerializeToUtf8Bytes(new
+            {
+                spdxVersion = "SPDX-2.2",
+                dataLicense = "CC0-1.0",
+                SPDXID = "SPDXRef-DOCUMENT",
+                name = $"{id} {version}",
+                documentNamespace = $"{SbomManifest.NamespacePrefix}{id}/{version}/0000000000000000000000",
+                creationInfo = new
+                {
+                    created = "2026-01-01T00:00:00Z",
+                    creators = new[] { "Organization: ISLAMU", "Tool: Microsoft.SBOMTool-4.1.13" }
+                },
+                documentDescribes = new[] { "SPDXRef-RootPackage" },
+                files = fileNodes,
+                packages = packageNodes,
+                externalDocumentRefs = Array.Empty<object>(),
+                relationships = new[]
+                {
+                    new
+                    {
+                        relationshipType = "DESCRIBES",
+                        relatedSpdxElement = "SPDXRef-RootPackage",
+                        spdxElementId = "SPDXRef-DOCUMENT"
+                    }
+                }
+            });
         }
         public void Dispose() => Directory.Delete(root, recursive: true);
     }
