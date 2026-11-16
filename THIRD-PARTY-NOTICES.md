@@ -44,16 +44,26 @@ f1ce8e8a389e35c76d1c108ec29b06e58ad7960c and
 management-only dependencies; selection does not establish callable family
 coverage, permission or live conformance.
 
-## Build-only trimming analysis
+## Build-only trimming analysis and SPDX SBOM generation
 
-Reviewed on 2026-11-02: the pinned .NET SDK selects
-Microsoft.NET.ILLink.Tasks **10.0.10** for library trimming analysis. Its restored
-NuGet nuspec declares **MIT**, Microsoft Corporation copyright, and
-`dotnet/dotnet` revision `f7d90799ce4ef09a0bb257852a57248d2a8fb8dd`.
-The seven library locks record this SDK-owned, private build dependency; it is
-not a dependency of a shipped SecretKit package or its runtime closure.
-Retain its original archive and legal notices if distributing build tools.
-Enabling its analyzer does not declare trimming or NativeAOT compatibility.
+Reviewed on 2026-11-16: the pinned .NET SDK (`10.0.404`) selects
+Microsoft.NET.ILLink.Tasks **10.0.15** for library trimming analysis. Its
+restored NuGet nuspec declares **MIT**, Microsoft Corporation copyright, and
+`dotnet/dotnet` revision `8e0f8ed2312954727f8919d7d1c2f78b483b4ee7`.
+
+Release packaging also selects Microsoft.Sbom.Targets **4.1.13** with
+`PrivateAssets="All"` (`developmentDependency: true`) to embed SPDX 2.2 SBOM
+manifests (`_manifest/spdx_2.2/manifest.spdx.json` and `.sha256`) in packed
+`.nupkg` archives. Its restored NuGet nuspec declares **MIT**, Microsoft
+Corporation copyright, and `microsoft/sbom-tool` revision
+`4d2b44739b4317ff2655b4076292ca2522d376bf`.
+
+The seven library locks record these private build-only dependencies; neither is
+a dependency of a shipped SecretKit package or its runtime closure (`nuspec`
+and runtime closure stay clean). Retain original archives and MIT legal
+notices if redistributing build tools. Enabling build-time analyzers does not by
+itself declare trimming or NativeAOT compatibility where an optional provider
+dependency lacks AOT metadata.
 
 ## Nonpackable notification authentication verification
 

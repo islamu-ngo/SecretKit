@@ -267,6 +267,7 @@ public static partial class Manifest
             archive.Files.ContainsKey("README.md") &&
             archive.Files.TryGetValue("THIRD-PARTY-NOTICES.md", out byte[]? notices) &&
             Hash(notices) == manifest.NoticesSha256, "package-notices");
+        SbomManifest.Verify(archive, id, manifest.Version);
     }
 
     private static void RejectDuplicateProperties(JsonElement element)

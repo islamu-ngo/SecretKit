@@ -360,6 +360,7 @@ public static partial class Candidate
                 metadata.Elements(ns + "repository").Single().Attribute("url")?.Value == Manifest.Repository &&
                 metadata.Elements(ns + "repository").Single().Attribute("type")?.Value == "git",
                 "candidate-original-source");
+            SbomManifest.Verify(archive, package.Id, manifest.Version);
         }
     }
 

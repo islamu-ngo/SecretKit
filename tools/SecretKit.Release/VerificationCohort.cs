@@ -105,11 +105,21 @@ public static class VerificationCohort
         _ = DemoInputs.Check(source, Path.Combine(directory, "demos"),
             record.SourceCommit, record.Run, record.Attempt, record.Sdk);
         foreach (string id in Manifest.PackageIds)
+        {
+            string firstPackage = Path.Combine(directory, "family", $"{id}.{record.Version}.nupkg");
+            string secondPackage = Path.Combine(directory, "rebuild-family", $"{id}.{record.Version}.nupkg");
+            SbomManifest.Verify(
+                PackageArchive.Read(Manifest.ReadFile(Path.Combine(directory, "family"), $"{id}.{record.Version}.nupkg", PackageArchive.MaximumBytes)),
+                id, record.Version);
+            SbomManifest.Verify(
+                PackageArchive.Read(Manifest.ReadFile(Path.Combine(directory, "rebuild-family"), $"{id}.{record.Version}.nupkg", PackageArchive.MaximumBytes)),
+                id, record.Version);
             _ = LocalQualification.CompareRebuild(source,
-                Path.Combine(directory, "family", $"{id}.{record.Version}.nupkg"),
+                firstPackage,
                 Path.Combine(directory, "symbols", $"{id}.{record.Version}.snupkg"),
-                Path.Combine(directory, "rebuild-family", $"{id}.{record.Version}.nupkg"),
+                secondPackage,
                 Path.Combine(directory, "rebuild-symbols", $"{id}.{record.Version}.snupkg"), id);
+        }
         return record;
     }
 

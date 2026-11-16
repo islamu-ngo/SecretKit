@@ -1,0 +1,14 @@
+<Project>
+  <Import Project="../Directory.Build.targets" />
+  <Target Name="ConfigureSecretKitSbom" BeforeTargets="GenerateSbomTarget" Condition="'$(IsPackable)' == 'true' AND '$(GenerateSBOM)' == 'true'">
+    <PropertyGroup>
+      <SbomGenerationPackageName>$(PackageId)</SbomGenerationPackageName>
+      <SbomGenerationPackageVersion>$(PackageVersion)</SbomGenerationPackageVersion>
+      <SbomGenerationNamespaceBaseUri>https://github.com/islamu-ngo/SecretKit/spdx</SbomGenerationNamespaceBaseUri>
+      <SbomGenerationBuildComponentPath>$(IntermediateOutputPath)sbom-components</SbomGenerationBuildComponentPath>
+    </PropertyGroup>
+    <RemoveDir Directories="$(SbomGenerationBuildComponentPath)" />
+    <MakeDir Directories="$(SbomGenerationBuildComponentPath)" />
+    <Copy SourceFiles="$(ProjectAssetsFile)" DestinationFolder="$(SbomGenerationBuildComponentPath)" Condition="Exists('$(ProjectAssetsFile)')" />
+  </Target>
+</Project>

@@ -1,6 +1,7 @@
 using System.IO.Compression;
 using System.Text.Json;
 using System.Xml.Linq;
+using SecretKit.Release;
 using SecretKit.TestFixtures;
 
 namespace SecretKit.Package.Tests;
@@ -28,8 +29,21 @@ public sealed class PackageSelectionTests
             await Assert.That(license.Attribute("type")!.Value).IsEqualTo("expression");
             await Assert.That(license.Value).IsEqualTo("MIT");
             await Assert.That(metadata.Descendants(ns + "dependency")
-                .Any(dependency => (string?)dependency.Attribute("id") == "Microsoft.NET.ILLink.Tasks")).IsFalse();
+                .Any(dependency => (string?)dependency.Attribute("id") is "Microsoft.NET.ILLink.Tasks" or "Microsoft.Sbom.Targets")).IsFalse();
             await PackageInstallTests.VerifyXmlDocumentationAsync(archive, package);
+        }
+    }
+
+    [Test]
+    public async Task SelectedPackagesEmbedValidSpdxSbomWithoutLeakingBuildTooling()
+    {
+        string root = Path.GetFullPath("../../../../../", AppContext.BaseDirectory);
+        var candidate = PackageCandidate.FromEnvironment(root);
+        foreach (string package in PackageCandidate.PackageIds)
+        {
+            byte[] packageBytes = await File.ReadAllBytesAsync(candidate.ArchivePath(package));
+            ArchiveContent archive = PackageArchive.Read(packageBytes);
+            SbomManifest.Verify(archive, package, candidate.Version);
         }
     }
 

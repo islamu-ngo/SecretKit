@@ -32,7 +32,7 @@ internal sealed class TestBundle : IDisposable
                 <repository type="git" url="{Manifest.Repository}" commit="{Commit}"/>
                 </metadata></package>
                 """;
-            byte[] bytes = ArchiveTests.Zip((id + ".nuspec", nuspec), ("README.md", "test"),
+            byte[] bytes = ArchiveTests.ZipWithSbom(id, Version, (id + ".nuspec", nuspec), ("README.md", "test"),
                 ("THIRD-PARTY-NOTICES.md", notices));
             string file = $"{id}.{Version}.nupkg";
             File.WriteAllBytes(Path.Combine(Root, file), bytes);

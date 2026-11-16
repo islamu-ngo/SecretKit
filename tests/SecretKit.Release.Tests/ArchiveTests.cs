@@ -2,6 +2,7 @@ using System.Buffers.Binary;
 using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Xml;
 using System.Xml.Linq;
@@ -87,6 +88,7 @@ public sealed class ArchiveTests
             await Assert.That(archive.Files["README.md"].Length > 0).IsTrue();
             await Assert.That(archive.Files["THIRD-PARTY-NOTICES.md"].SequenceEqual(notices)).IsTrue();
             await Assert.That(archive.Files.ContainsKey($"lib/net10.0/{id}.dll")).IsTrue();
+            SbomManifest.Verify(archive, id, declaredVersion);
         }
 
         await Assert.That(seen.SetEquals(ids)).IsTrue();
@@ -261,18 +263,96 @@ public sealed class ArchiveTests
     public static byte[] Zip(params (string Name, string Content)[] entries) =>
         ZipAt(new DateTimeOffset(2020, 1, 1, 0, 0, 0, TimeSpan.Zero), entries);
 
-    public static byte[] ZipAt(DateTimeOffset timestamp, params (string Name, string Content)[] entries)
+    public static byte[] ZipWithSbom(string id, string version, params (string Name, string Content)[] entries)
+    {
+        byte[] json = CreateSpdxJson(id, version, entries);
+        string digest = Manifest.Hash(json);
+        return ZipAt(
+            new DateTimeOffset(2020, 1, 1, 0, 0, 0, TimeSpan.Zero),
+            [
+                .. entries.Select(e => (e.Name, Encoding.UTF8.GetBytes(e.Content))),
+                (SbomManifest.ManifestPath, json),
+                (SbomManifest.DigestPath, Encoding.ASCII.GetBytes(digest))
+            ]);
+    }
+
+    public static byte[] CreateSpdxJson(string id, string version, IEnumerable<(string Name, string Content)> entries,
+        params (string Name, string Version)[] dependencies)
+    {
+        var fileNodes = entries.Select((entry, index) => new
+        {
+            fileName = "./" + entry.Name,
+            SPDXID = $"SPDXRef-File-{index}",
+            checksums = new[]
+            {
+                new { algorithm = "SHA256", checksumValue = Manifest.Hash(Encoding.UTF8.GetBytes(entry.Content)) }
+            }
+        }).ToArray();
+        var packageNodes = dependencies.Select((dep, index) => new
+        {
+            SPDXID = $"SPDXRef-Package-{index}",
+            name = dep.Name,
+            versionInfo = dep.Version,
+            externalRefs = new[]
+            {
+                new
+                {
+                    referenceCategory = "PACKAGE-MANAGER",
+                    referenceType = "purl",
+                    referenceLocator = $"pkg:nuget/{dep.Name}@{dep.Version}"
+                }
+            }
+        }).Append(new
+        {
+            SPDXID = "SPDXRef-RootPackage",
+            name = id,
+            versionInfo = version,
+            externalRefs = new[]
+            {
+                new
+                {
+                    referenceCategory = "PACKAGE-MANAGER",
+                    referenceType = "purl",
+                    referenceLocator = $"pkg:swid/ISLAMU/github.com/{id}@{version}?tag_id=00000000-0000-0000-0000-000000000000"
+                }
+            }
+        }).ToArray();
+
+        return JsonSerializer.SerializeToUtf8Bytes(new
+        {
+            spdxVersion = "SPDX-2.2",
+            dataLicense = "CC0-1.0",
+            SPDXID = "SPDXRef-DOCUMENT",
+            name = $"{id} {version}",
+            documentNamespace = $"{SbomManifest.NamespacePrefix}{id}/{version}/0000000000000000000000",
+            creationInfo = new
+            {
+                created = "2026-01-01T00:00:00Z",
+                creators = new[] { "Organization: ISLAMU", "Tool: Microsoft.SBOMTool-4.1.13" }
+            },
+            documentDescribes = new[] { "SPDXRef-RootPackage" },
+            files = fileNodes,
+            packages = packageNodes,
+            externalDocumentRefs = Array.Empty<object>(),
+            relationships = Array.Empty<object>()
+        });
+    }
+
+    public static byte[] ZipAt(DateTimeOffset timestamp, params (string Name, string Content)[] entries) =>
+        ZipAt(timestamp, entries.Select(e => (e.Name, Encoding.UTF8.GetBytes(e.Content))).ToArray());
+
+    private static byte[] ZipAt(DateTimeOffset timestamp, IEnumerable<(string Name, byte[] Content)> entries)
     {
         using var stream = new MemoryStream();
         using (var archive = new ZipArchive(stream, ZipArchiveMode.Create, leaveOpen: true))
         {
-            foreach ((string name, string content) in entries)
+            foreach ((string name, byte[] content) in entries)
             {
                 ZipArchiveEntry entry = archive.CreateEntry(name, CompressionLevel.NoCompression);
                 entry.LastWriteTime = timestamp;
                 entry.ExternalAttributes = 0;
                 using Stream output = entry.Open();
-                output.Write(Encoding.UTF8.GetBytes(content));
+                output.Write(content);
             }
         }
 
