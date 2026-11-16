@@ -58,6 +58,7 @@ public sealed class ManagementOperation
         using var deadline = new CancellationTokenSource(_timeout, _time);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
         bool entered = false;
+        ControlledTransport.StatusCheckScope? statusCheck = null;
         try
         {
             await _gate.WaitAsync(linked.Token).ConfigureAwait(false);
@@ -68,18 +69,16 @@ public sealed class ManagementOperation
                 return observation.Record(_validatedSuccess ? SecretStatus.Success : SecretStatus.Unknown);
             }
 
-            _transport.CheckingStatus = true;
-            _transport.StatusRequests = 0;
-            _transport.LastOperationState = NativeProvisioningState.Unknown;
+            statusCheck = _transport.BeginStatusCheck();
             await _update(linked.Token).ConfigureAwait(false);
-            if (_transport.LastOperationState != NativeProvisioningState.Unknown)
-            {
-                State = _transport.LastOperationState;
-            }
+            NativeProvisioningState observedState = statusCheck.OperationState;
             linked.Token.ThrowIfCancellationRequested();
-            if (_transport.LastOperationState is NativeProvisioningState.Failed or NativeProvisioningState.Canceled)
+            if (observedState != NativeProvisioningState.Unknown)
             {
-                State = _transport.LastOperationState;
+                State = observedState;
+            }
+            if (observedState is NativeProvisioningState.Failed or NativeProvisioningState.Canceled)
+            {
                 return observation.Record(SecretStatus.Unknown);
             }
 
@@ -101,27 +100,31 @@ public sealed class ManagementOperation
         catch (OperationCanceledException)
         {
             observation.Cancel(deadline.IsCancellationRequested);
-            if (entered && _transport.LastOperationState != NativeProvisioningState.Unknown)
-                State = _transport.LastOperationState;
+            if (statusCheck?.OperationState is NativeProvisioningState.Failed or NativeProvisioningState.Canceled or NativeProvisioningState.Pending)
+            {
+                State = statusCheck.OperationState;
+            }
+
             cancellationToken.ThrowIfCancellationRequested();
             return observation.Record(SecretStatus.Unavailable);
         }
         catch (Exception exception)
         {
             if (deadline.IsCancellationRequested) observation.Cancel(true);
-            if (entered && _transport.LastOperationState != NativeProvisioningState.Unknown)
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!deadline.IsCancellationRequested && statusCheck is not null &&
+                statusCheck.OperationState != NativeProvisioningState.Unknown)
             {
-                State = _transport.LastOperationState;
+                State = statusCheck.OperationState;
             }
 
-            cancellationToken.ThrowIfCancellationRequested();
             return observation.Record(deadline.IsCancellationRequested ? SecretStatus.Unavailable : ControlledTransport.Failure(exception));
         }
         finally
         {
+            statusCheck?.Dispose();
             if (entered)
             {
-                _transport.CheckingStatus = false;
                 _gate.Release();
             }
         }

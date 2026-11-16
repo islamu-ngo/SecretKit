@@ -11,12 +11,76 @@ internal sealed class ControlledTransport(HttpPipelineTransport inner, string ho
     RequestMethod method, string? apiVersion, int[] statuses, int maximumBytes,
     ManagementReceipt? receipt = null) : HttpPipelineTransport
 {
+    private readonly Lock _gate = new();
     private readonly HashSet<string> _statusUrls = new(StringComparer.OrdinalIgnoreCase);
-    internal bool CheckingStatus;
-    internal int StatusRequests;
-    internal int LastStatus;
-    internal bool HasContinuation;
-    internal NativeProvisioningState LastOperationState;
+    private StatusCheckScope? _activeStatusCheck;
+    private int _lastStatus;
+    private bool _hasContinuation;
+
+    internal int LastStatus
+    {
+        get { lock (_gate) return _lastStatus; }
+    }
+
+    internal bool HasContinuation
+    {
+        get { lock (_gate) return _hasContinuation; }
+    }
+
+    internal StatusCheckScope BeginStatusCheck()
+    {
+        lock (_gate)
+        {
+            if (_activeStatusCheck is not null)
+                throw new InvalidOperationException("A status check is already active on this transport.");
+            var scope = new StatusCheckScope(this);
+            _activeStatusCheck = scope;
+            return scope;
+        }
+    }
+
+    internal sealed class StatusCheckScope : IDisposable
+    {
+        private readonly ControlledTransport _transport;
+        private int _requests;
+        private bool _disposed;
+        private NativeProvisioningState _operationState = NativeProvisioningState.Unknown;
+
+        internal StatusCheckScope(ControlledTransport transport) => _transport = transport;
+
+        internal NativeProvisioningState OperationState
+        {
+            get { lock (_transport._gate) return _operationState; }
+        }
+
+        internal bool TryBeginRequest()
+        {
+            lock (_transport._gate)
+            {
+                return !_disposed && ++_requests <= 2;
+            }
+        }
+
+        internal void RecordState(NativeProvisioningState state)
+        {
+            lock (_transport._gate)
+            {
+                if (!_disposed && ReferenceEquals(_transport._activeStatusCheck, this))
+                    _operationState = state;
+            }
+        }
+
+        public void Dispose()
+        {
+            lock (_transport._gate)
+            {
+                _disposed = true;
+                _operationState = NativeProvisioningState.Unknown;
+                if (ReferenceEquals(_transport._activeStatusCheck, this))
+                    _transport._activeStatusCheck = null;
+            }
+        }
+    }
 
     public override Request CreateRequest() => inner.CreateRequest();
     public override void Process(HttpMessage message) => throw new InvalidOperationException("Use asynchronous operations.");
@@ -25,11 +89,19 @@ internal sealed class ControlledTransport(HttpPipelineTransport inner, string ho
     {
         var uri = message.Request.Uri.ToUri();
         bool sameTarget = uri.AbsolutePath.Equals(path, StringComparison.OrdinalIgnoreCase);
-        bool status = CheckingStatus && message.Request.Method == RequestMethod.Get &&
-            ((sameTarget && Revision(uri)) || _statusUrls.Contains(uri.AbsoluteUri));
+        StatusCheckScope? statusCheck;
+        bool knownStatusUrl;
+        lock (_gate)
+        {
+            statusCheck = _activeStatusCheck;
+            knownStatusUrl = statusCheck is not null && _statusUrls.Contains(uri.AbsoluteUri);
+        }
+        bool checkingStatus = statusCheck is not null;
+        bool status = checkingStatus && message.Request.Method == RequestMethod.Get &&
+            ((sameTarget && Revision(uri)) || knownStatusUrl);
         if (!Trusted(uri) || (!status &&
                 (!sameTarget || message.Request.Method != method || !Revision(uri))) ||
-            (CheckingStatus && (!status || ++StatusRequests > 2)))
+            (statusCheck is not null && (!status || !statusCheck.TryBeginRequest())))
         {
             throw new BoundaryException();
         }
@@ -42,24 +114,25 @@ internal sealed class ControlledTransport(HttpPipelineTransport inner, string ho
         }
 
         message.BufferResponse = false;
-        if (!CheckingStatus && receipt is not null && message.Request.Headers.Contains("Authorization"))
+        if (!checkingStatus && receipt is not null && message.Request.Headers.Contains("Authorization"))
         {
             receipt.BeginDispatch();
         }
 
         await inner.ProcessAsync(message).ConfigureAwait(false);
-        LastStatus = message.Response.Status;
-        if (CheckingStatus && LastStatus >= 400)
+        int responseStatus = message.Response.Status;
+        lock (_gate) { _lastStatus = responseStatus; }
+        if (checkingStatus && responseStatus >= 400)
         {
             // Do not let the original ARM handle cache an observation failure as its
             // terminal operation exception. A later explicit check uses this same handle.
-            var failure = Failure(new RequestFailedException(LastStatus, "Status observation failed."));
+            var failure = Failure(new RequestFailedException(responseStatus, "Status observation failed."));
             message.Response.Dispose();
             throw new ObservationException(failure);
         }
-        if (LastStatus < 400 && (CheckingStatus
-                ? LastStatus is not (200 or 201 or 202 or 204)
-                : !statuses.Contains(LastStatus)))
+        if (responseStatus < 400 && (checkingStatus
+                ? responseStatus is not (200 or 201 or 202 or 204)
+                : !statuses.Contains(responseStatus)))
         {
             message.Response.Dispose();
             throw new BoundaryException();
@@ -84,7 +157,7 @@ internal sealed class ControlledTransport(HttpPipelineTransport inner, string ho
                         throw new BoundaryException();
                     }
 
-                    _statusUrls.Add(next.AbsoluteUri);
+                    lock (_gate) { _statusUrls.Add(next.AbsoluteUri); }
                 }
             }
         }
@@ -106,26 +179,28 @@ internal sealed class ControlledTransport(HttpPipelineTransport inner, string ho
                 using var bounded = new BudgetStream(stream, maximumBytes);
                 await bounded.CopyToAsync(buffer, message.CancellationToken).ConfigureAwait(false);
                 buffer.Position = 0;
-                if (apiVersion is not null && LastStatus < 400 && buffer.Length != 0)
+                if (apiVersion is not null && responseStatus < 400 && buffer.Length != 0)
                 {
-                    using var document = JsonDocument.Parse(buffer.ToArray());
+                    using var document = JsonDocument.Parse(buffer.ToArray(),
+                        new JsonDocumentOptions { AllowDuplicateProperties = false, MaxDepth = 32 });
                     var root = document.RootElement;
-                    if (CheckingStatus && root.TryGetProperty("status", out var state) &&
+                    if (statusCheck is not null && root.TryGetProperty("status", out var state) &&
                         state.ValueKind == JsonValueKind.String)
                     {
-                        LastOperationState = state.GetString()?.ToLowerInvariant() switch
+                        statusCheck.RecordState(state.GetString()?.ToLowerInvariant() switch
                         {
                             "succeeded" => NativeProvisioningState.Succeeded,
                             "failed" => NativeProvisioningState.Failed,
                             "canceled" or "cancelled" => NativeProvisioningState.Canceled,
                             "inprogress" or "running" or "accepted" => NativeProvisioningState.Pending,
                             _ => NativeProvisioningState.Unknown
-                        };
+                        });
                     }
 
-                    HasContinuation = root.TryGetProperty("nextLink", out var nextLink) &&
+                    bool continuation = root.TryGetProperty("nextLink", out var nextLink) &&
                         nextLink.ValueKind != JsonValueKind.Null;
-                    if (HasContinuation && (!Uri.TryCreate(nextLink.GetString(), UriKind.Absolute, out var next) ||
+                    lock (_gate) { _hasContinuation = continuation; }
+                    if (continuation && (!Uri.TryCreate(nextLink.GetString(), UriKind.Absolute, out var next) ||
                         !Trusted(next) || !Revision(next) ||
                         !next.AbsolutePath.Equals(path, StringComparison.OrdinalIgnoreCase)))
                     {
@@ -137,7 +212,7 @@ internal sealed class ControlledTransport(HttpPipelineTransport inner, string ho
                         ManagementMutation.UpdatePrivateConnection or ManagementMutation.AddAccessPolicy or
                         ManagementMutation.ReplaceAccessPolicy or ManagementMutation.RemoveAccessPolicy or
                         ManagementMutation.CreateOrUpdateNotification or ManagementMutation.UpdateNotification;
-                    if (!CheckingStatus && resourceMutation &&
+                    if (!checkingStatus && resourceMutation &&
                         (!root.TryGetProperty("id", out var id) || id.ValueKind != JsonValueKind.String ||
                             !string.Equals(id.GetString(), receipt!.Scope.ResourceId, StringComparison.OrdinalIgnoreCase)))
                     {
@@ -156,7 +231,7 @@ internal sealed class ControlledTransport(HttpPipelineTransport inner, string ho
                     {
                         throw new BoundaryException();
                     }
-                    if (!CheckingStatus && receipt?.Operation is
+                    if (!checkingStatus && receipt?.Operation is
                             ManagementMutation.CreateOrUpdateNotification or ManagementMutation.UpdateNotification &&
                         (!root.TryGetProperty("properties", out var notificationProperties) ||
                             !notificationProperties.TryGetProperty("provisioningState", out var notificationState) ||

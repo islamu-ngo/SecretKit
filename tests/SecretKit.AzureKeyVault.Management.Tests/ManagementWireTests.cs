@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Net;
+using System.Reflection;
 using System.Text.Json;
 using SecretKit.Core;
 
@@ -367,5 +368,92 @@ public sealed class ManagementWireTests
         }
 
         await Assert.That(rejected).IsTrue();
+    }
+
+    [Test]
+    public async Task ControlledTransportScopesStatusCheckStateAndIsolatesCanceledChecks()
+    {
+        Type transportType = typeof(ManagementOperation).Assembly
+            .GetType("SecretKit.AzureKeyVault.Management.ControlledTransport", throwOnError: true)!;
+        const BindingFlags Any = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly;
+        await Assert.That(transportType.GetField("CheckingStatus", Any)).IsNull();
+        await Assert.That(transportType.GetField("StatusRequests", Any)).IsNull();
+        await Assert.That(transportType.GetField("LastOperationState", Any)).IsNull();
+        MethodInfo? beginStatusCheck = transportType.GetMethod("BeginStatusCheck", Any);
+        await Assert.That(beginStatusCheck).IsNotNull();
+
+        object transport = Activator.CreateInstance(
+            transportType,
+            BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance,
+            binder: null,
+            args: [
+                new Azure.Core.Pipeline.HttpClientTransport(),
+                "management.azure.com",
+                "/subscriptions/11111111-1111-1111-1111-111111111111/providers/Microsoft.KeyVault/vaults/vault-canary",
+                Azure.Core.RequestMethod.Get,
+                "2026-02-01",
+                new[] { 200 },
+                1024,
+                null
+            ],
+            culture: null)!;
+        Type scopeType = beginStatusCheck!.ReturnType;
+        MethodInfo tryBeginRequest = scopeType.GetMethod("TryBeginRequest", Any)!;
+        using (var first = (IDisposable)beginStatusCheck.Invoke(transport, null)!)
+        {
+            TargetInvocationException? overlap = await Assert.That(() => { _ = beginStatusCheck.Invoke(transport, null); })
+                .Throws<TargetInvocationException>();
+            await Assert.That(overlap?.InnerException).IsTypeOf<InvalidOperationException>();
+            await Assert.That((bool)tryBeginRequest.Invoke(first, null)!).IsTrue();
+            await Assert.That((bool)tryBeginRequest.Invoke(first, null)!).IsTrue();
+            await Assert.That((bool)tryBeginRequest.Invoke(first, null)!).IsFalse();
+        }
+        using (var second = (IDisposable)beginStatusCheck.Invoke(transport, null)!)
+        {
+            await Assert.That((bool)tryBeginRequest.Invoke(second, null)!).IsTrue();
+        }
+
+        string operationUrl = "https://management.azure.com/subscriptions/11111111-1111-1111-1111-111111111111/providers/Microsoft.KeyVault/locations/eastus/operations/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa?api-version=2026-02-01";
+        int step = 0;
+        var cancelDuringFinalGet = new CancellationTokenSource();
+        var backend = new WireBackend(async (request, token) =>
+        {
+            if (request.Method == HttpMethod.Put)
+            {
+                var created = WireBackend.Json(201, ScopeAuthorityTests.VaultJson(ScopeAuthorityTests.Id, "Creating"));
+                created.Headers.Add("Azure-AsyncOperation", operationUrl);
+                return created;
+            }
+            if (request.RequestUri!.AbsolutePath.EndsWith("/operations/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", StringComparison.Ordinal))
+            {
+                step++;
+                return WireBackend.Json(200, """{"status":"Succeeded"}""");
+            }
+            if (step == 1)
+            {
+                cancelDuringFinalGet.Cancel();
+                token.ThrowIfCancellationRequested();
+            }
+            await Task.CompletedTask;
+            return WireBackend.Json(200, ScopeAuthorityTests.VaultJson(ScopeAuthorityTests.Id));
+        });
+
+        var client = new VaultAdministration(new Credential(), backend);
+        var scope = Scope();
+        var receipt = client.PrepareReceipt(scope, ManagementMutation.CreateOrUpdateVault);
+        var started = await client.CreateOrUpdateVaultAsync(scope, Configuration(), receipt);
+        await Assert.That(started.Status).IsEqualTo(SecretStatus.Success);
+        ManagementOperation operation = started.Value;
+        await Assert.That(operation.State).IsEqualTo(NativeProvisioningState.Pending);
+
+        // First status check polls {"status":"Succeeded"} then cancels during final vault GET:
+        // must throw OperationCanceledException and must NOT falsely promote State to Succeeded.
+        await Assert.That(async () => await operation.CheckStatusAsync(cancelDuringFinalGet.Token))
+            .Throws<OperationCanceledException>();
+        await Assert.That(operation.State).IsEqualTo(NativeProvisioningState.Pending);
+
+        // Second un-canceled check must get a clean 2-request budget and reach Succeeded cleanly.
+        await Assert.That(await operation.CheckStatusAsync()).IsEqualTo(SecretStatus.Success);
+        await Assert.That(operation.State).IsEqualTo(NativeProvisioningState.Succeeded);
     }
 }
