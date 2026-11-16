@@ -8,7 +8,7 @@ namespace SecretKit.Extensions.Configuration;
 /// </summary>
 public sealed class SecretSnapshotLoader : IDisposable
 {
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private readonly SemaphoreSlim _collection = new(1, 1);
     private readonly SecretSelection[] _selections;
     private readonly SecretCollectionOptions _options;

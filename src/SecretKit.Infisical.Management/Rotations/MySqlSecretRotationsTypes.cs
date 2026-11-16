@@ -60,7 +60,7 @@ public sealed class MySqlRotationPasswordRequirements
 /// <summary>Native configuration only. Statement material is copied, never executed by the SDK.</summary>
 public sealed class MySqlRotationParameters : IDisposable
 {
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private bool _disposed;
     private SecretMaterial? _statement;
     /// <summary>Captures alternating usernames and copies optional statement material; caller retains the original material.</summary>

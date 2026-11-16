@@ -145,7 +145,7 @@ public enum InfisicalDynamicOperation
 /// <summary>Local pre-dispatch evidence tied to an exact native operation and target, not idempotency.</summary>
 public sealed class InfisicalDynamicMutationReceipt
 {
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private readonly InfisicalDynamicTarget? _definition;
     private readonly InfisicalLeaseReference? _lease;
     private DispatchEvidence _evidence;

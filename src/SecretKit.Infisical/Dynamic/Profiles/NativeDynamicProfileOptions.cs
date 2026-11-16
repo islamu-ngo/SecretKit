@@ -55,7 +55,7 @@ internal sealed class NativeProfileOptionData : IDisposable
 /// <summary>Protected, independently copied native inputs. Disposal never contacts a provider.</summary>
 public abstract class NativeProfileOptions : IDisposable
 {
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private readonly NativeProfileOptionData _data = new();
     private bool _disposed;
     private protected NativeProfileOptions() { }

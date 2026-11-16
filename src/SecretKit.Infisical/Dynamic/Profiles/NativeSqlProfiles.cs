@@ -10,7 +10,7 @@ public enum NativeSqlEngine { /** <summary>PostgreSQL.</summary> */ Postgres, /*
 /// <summary>Bounded whole-number native password generation requirements, not a local generator.</summary>
 public sealed class NativePasswordRequirements : IDisposable
 {
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private readonly SecretMaterial? _allowedSymbols;
     private bool _disposed;
     /// <summary>Validates length/count budgets and copies optional allowed symbols; requirements are sent to the provider, not executed locally.</summary>

@@ -284,6 +284,7 @@ public sealed partial class InfisicalClient
         string name, InfisicalNativeAuthority authority, MutationReceipt receipt, double? position = null,
         CancellationToken cancellationToken = default)
     {
+        ThrowIfDisposed(cancellationToken);
         InfisicalNativeAddress.NativeText(name, 255);
         if (position is { } number && (!double.IsFinite(number) || number < 1))
         {
@@ -304,6 +305,7 @@ public sealed partial class InfisicalClient
         InfisicalNativeAuthority authority, MutationReceipt receipt, string? name = null, string? slug = null,
         double? position = null, CancellationToken cancellationToken = default)
     {
+        ThrowIfDisposed(cancellationToken);
         if (name is not null) { InfisicalNativeAddress.NativeText(name, 255); }
         if (slug is not null) { InfisicalNativeAddress.NativeText(slug, 64); }
         if (position is { } number && !double.IsFinite(number))
@@ -330,6 +332,7 @@ public sealed partial class InfisicalClient
         HttpMethod method, Func<int, byte[]>? payload, InfisicalNativeAuthority? authority, MutationReceipt? receipt,
         bool restore, bool hardDelete, CancellationToken cancellationToken)
     {
+        ThrowIfDisposed(cancellationToken);
         return await InfisicalOperationBudget.RunAsync(_operationTimeout, _time, cancellationToken,
             InfisicalOperation.Native, ExecuteAsync, () => receipt?.Evidence ?? DispatchEvidence.NotDispatched, shutdown: _shutdown.Token).ConfigureAwait(false);
 
@@ -345,7 +348,7 @@ public sealed partial class InfisicalClient
             var operation = new InfisicalNativeOperation(method,
                 restore ? InfisicalNativeOperationKind.RestoreEnvironment : InfisicalNativeOperationKind.Standard,
                 HardDelete: hardDelete);
-            SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target, operation, payload, authority, receipt, operationToken);
+            SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target, operation, payload, authority, receipt, operationToken).ConfigureAwait(false);
             if (!outcome.IsSuccess) { return outcome.ConvertFailure<InfisicalEnvironment>(); }
             using JsonDocument document = outcome.Value;
             if (!NativeObject(document.RootElement, "environment", out JsonElement item) ||
@@ -373,6 +376,7 @@ public sealed partial class InfisicalClient
     public ValueTask<SecretOutcome<InfisicalTag>> CreateTagAsync(SecretReference target, string color,
         InfisicalNativeAuthority authority, MutationReceipt receipt, CancellationToken cancellationToken = default)
     {
+        ThrowIfDisposed(cancellationToken);
         InfisicalNativeAddress.NativeText(color);
         if (target.Address is not InfisicalTagAddress { Selection: InfisicalOrganizationSelector.Slug, Selector: not null } address)
         {
@@ -387,6 +391,7 @@ public sealed partial class InfisicalClient
     public ValueTask<SecretOutcome<InfisicalTag>> UpdateTagAsync(SecretReference target, string slug, string color,
         InfisicalNativeAuthority authority, MutationReceipt receipt, CancellationToken cancellationToken = default)
     {
+        ThrowIfDisposed(cancellationToken);
         InfisicalNativeAddress.NativeText(slug, 64);
         InfisicalNativeAddress.NativeText(color);
         return TagOperationAsync(target, HttpMethod.Patch, InfisicalOperationBudget.Payload(new { slug, color }),
@@ -401,6 +406,7 @@ public sealed partial class InfisicalClient
     private async ValueTask<SecretOutcome<InfisicalTag>> TagOperationAsync(SecretReference target, HttpMethod method,
         Func<int, byte[]>? payload, InfisicalNativeAuthority? authority, MutationReceipt? receipt, CancellationToken cancellationToken)
     {
+        ThrowIfDisposed(cancellationToken);
         return await InfisicalOperationBudget.RunAsync(_operationTimeout, _time, cancellationToken,
             InfisicalOperation.Native, ExecuteAsync, () => receipt?.Evidence ?? DispatchEvidence.NotDispatched, shutdown: _shutdown.Token).ConfigureAwait(false);
 
@@ -411,7 +417,7 @@ public sealed partial class InfisicalClient
             {
                 return SecretOutcome<InfisicalTag>.Failure(SecretStatus.Invalid);
             }
-            SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target, new(method), payload, authority, receipt, operationToken);
+            SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target, new(method), payload, authority, receipt, operationToken).ConfigureAwait(false);
             if (!outcome.IsSuccess) { return outcome.ConvertFailure<InfisicalTag>(); }
             using JsonDocument document = outcome.Value;
             if (!NativeObject(document.RootElement, "tag", out JsonElement item) ||
@@ -429,6 +435,7 @@ public sealed partial class InfisicalClient
     public async ValueTask<SecretOutcome<InfisicalNativeList<InfisicalTag>>> ListTagsAsync(SecretReference target,
         int maximumItems = 1000, CancellationToken cancellationToken = default)
     {
+        ThrowIfDisposed(cancellationToken);
         return await InfisicalOperationBudget.RunAsync(_operationTimeout, _time, cancellationToken,
             InfisicalOperation.Native, ExecuteAsync, shutdown: _shutdown.Token).ConfigureAwait(false);
 
@@ -440,7 +447,7 @@ public sealed partial class InfisicalClient
                 return SecretOutcome<InfisicalNativeList<InfisicalTag>>.Failure(SecretStatus.Invalid);
             }
             SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target,
-                new(HttpMethod.Get), null, null, null, operationToken);
+                new(HttpMethod.Get), null, null, null, operationToken).ConfigureAwait(false);
             if (!outcome.IsSuccess) { return outcome.ConvertFailure<InfisicalNativeList<InfisicalTag>>(); }
             using JsonDocument document = outcome.Value;
             if (!NativeArray(document.RootElement, "tags", out JsonElement items))
@@ -467,6 +474,7 @@ public sealed partial class InfisicalClient
         int maximumItems = 1000, bool recursive = false, DateTimeOffset? lastSecretModified = null,
         CancellationToken cancellationToken = default)
     {
+        ThrowIfDisposed(cancellationToken);
         return await InfisicalOperationBudget.RunAsync(_operationTimeout, _time, cancellationToken,
             InfisicalOperation.Native, ExecuteAsync, shutdown: _shutdown.Token).ConfigureAwait(false);
 
@@ -479,7 +487,7 @@ public sealed partial class InfisicalClient
             }
             var operation = new InfisicalNativeOperation(HttpMethod.Get, InfisicalNativeOperationKind.ListFolders,
                 Recursive: recursive, LastSecretModified: lastSecretModified);
-            SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target, operation, null, null, null, operationToken);
+            SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target, operation, null, null, null, operationToken).ConfigureAwait(false);
             if (!outcome.IsSuccess) { return outcome.ConvertFailure<InfisicalNativeList<InfisicalFolder>>(); }
             using JsonDocument document = outcome.Value;
             if (!NativeArray(document.RootElement, "folders", out JsonElement items))
@@ -559,6 +567,7 @@ public sealed partial class InfisicalClient
         InfisicalNativeAuthority authority, MutationReceipt receipt, HttpMethod method, string? description,
         bool clearDescription, CancellationToken cancellationToken)
     {
+        ThrowIfDisposed(cancellationToken);
         if (description?.Length > 4096 || (description is not null && clearDescription))
         {
             throw new ArgumentException("Invalid folder description.");
@@ -585,6 +594,7 @@ public sealed partial class InfisicalClient
         InfisicalNativeAuthority authority, MutationReceipt receipt, bool forceDelete = false,
         CancellationToken cancellationToken = default)
     {
+        ThrowIfDisposed(cancellationToken);
         if (target.Address is not InfisicalFolderAddress address)
         {
             return ValueTask.FromResult(SecretOutcome<InfisicalFolder>.Failure(SecretStatus.Invalid));
@@ -601,6 +611,7 @@ public sealed partial class InfisicalClient
     private async ValueTask<SecretOutcome<InfisicalFolder>> FolderOperationAsync(SecretReference target, HttpMethod method,
         Func<int, byte[]>? payload, InfisicalNativeAuthority? authority, MutationReceipt? receipt, CancellationToken cancellationToken)
     {
+        ThrowIfDisposed(cancellationToken);
         return await InfisicalOperationBudget.RunAsync(_operationTimeout, _time, cancellationToken,
             InfisicalOperation.Native, ExecuteAsync, () => receipt?.Evidence ?? DispatchEvidence.NotDispatched, shutdown: _shutdown.Token).ConfigureAwait(false);
 
@@ -612,7 +623,7 @@ public sealed partial class InfisicalClient
             {
                 return SecretOutcome<InfisicalFolder>.Failure(SecretStatus.Invalid);
             }
-            SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target, new(method), payload, authority, receipt, operationToken);
+            SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target, new(method), payload, authority, receipt, operationToken).ConfigureAwait(false);
             if (!outcome.IsSuccess) { return outcome.ConvertFailure<InfisicalFolder>(); }
             using JsonDocument document = outcome.Value;
             if (!NativeObject(document.RootElement, "folder", out JsonElement item) ||
@@ -638,6 +649,7 @@ public sealed partial class InfisicalClient
         IReadOnlyList<InfisicalFolderUpdate> updates, InfisicalNativeAuthority authority, MutationReceipt receipt,
         CancellationToken cancellationToken = default)
     {
+        ThrowIfDisposed(cancellationToken);
         return await InfisicalOperationBudget.RunAsync(_operationTimeout, _time, cancellationToken,
             InfisicalOperation.Native, ExecuteAsync, () => receipt?.Evidence ?? DispatchEvidence.NotDispatched, shutdown: _shutdown.Token).ConfigureAwait(false);
 
@@ -665,7 +677,7 @@ public sealed partial class InfisicalClient
             }).ToArray();
             SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target,
                 new(HttpMethod.Patch, InfisicalNativeOperationKind.UpdateFolders), InfisicalOperationBudget.Payload(new { projectId = address.ProjectId, folders = bodies }),
-                authority, receipt, operationToken);
+                authority, receipt, operationToken).ConfigureAwait(false);
             if (!outcome.IsSuccess) { return outcome.ConvertFailure<InfisicalNativeList<InfisicalFolder>>(); }
             using JsonDocument document = outcome.Value;
             if (!NativeArray(document.RootElement, "folders", out JsonElement items) || items.GetArrayLength() > owned.Length)
@@ -696,6 +708,7 @@ public sealed partial class InfisicalClient
         InfisicalFolderAddress destination, InfisicalNativeAuthority authority, MutationReceipt receipt,
         CancellationToken cancellationToken = default)
     {
+        ThrowIfDisposed(cancellationToken);
         return await InfisicalOperationBudget.RunAsync(_operationTimeout, _time, cancellationToken,
             InfisicalOperation.Native, ExecuteAsync, () => receipt?.Evidence ?? DispatchEvidence.NotDispatched, shutdown: _shutdown.Token).ConfigureAwait(false);
 
@@ -714,7 +727,7 @@ public sealed partial class InfisicalClient
                     folderId = address.Id,
                     destinationEnvironment = destination.Environment,
                     destinationPath = destination.Folder
-                }), authority, receipt, operationToken);
+                }), authority, receipt, operationToken).ConfigureAwait(false);
             if (!outcome.IsSuccess) { return outcome.ConvertFailure<InfisicalFolderMove>(); }
             using JsonDocument document = outcome.Value;
             JsonElement item = document.RootElement;

@@ -93,7 +93,7 @@ public sealed class InfisicalTokenRenewal
 /// </summary>
 public sealed class InfisicalPeriodicTokenSession : IInfisicalTokenSource, IAsyncDisposable
 {
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private readonly HttpClient _transport;
     private readonly IInfisicalTokenRenewalWire _wire;
     private readonly TimeProvider _time;

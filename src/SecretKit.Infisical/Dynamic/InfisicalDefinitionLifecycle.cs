@@ -6,7 +6,7 @@ namespace SecretKit.Infisical;
 // parent never retains children or material. Permits span operations, not monitor locks.
 internal sealed class InfisicalDefinitionLifecycle(string name)
 {
-    internal object Gate { get; } = new();
+    internal Lock Gate { get; } = new();
     private string _currentName = name;
     private int _activeChildPermits;
     private bool _exclusive;

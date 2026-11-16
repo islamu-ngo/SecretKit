@@ -22,7 +22,7 @@ public enum DispatchEvidence
 /// <summary>Caller-held local evidence. Its identifier is not a provider idempotency or query handle.</summary>
 public sealed class MutationReceipt
 {
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private readonly object _issuer;
     private readonly SecretReference _target;
     private DispatchEvidence _evidence;

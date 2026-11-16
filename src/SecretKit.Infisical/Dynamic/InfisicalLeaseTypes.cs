@@ -55,7 +55,7 @@ public sealed class InfisicalDatabaseCredentials : IDisposable
 {
     private readonly SecretMaterial _username;
     private readonly SecretMaterial _password;
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private readonly InfisicalLeaseLifecycle _lifecycle;
     internal InfisicalDatabaseCredentials(string username, string password, InfisicalLeaseLifecycle lifecycle)
     {

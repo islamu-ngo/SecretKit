@@ -32,7 +32,7 @@ internal sealed class NotificationWebhookHost : IAsyncDisposable
         public override string ToString() => "[NotificationWebhookHostConfiguration]";
     }
 
-    private readonly object gate = new();
+    private readonly Lock gate = new();
     private readonly int maximumRequests, maximumBodyBytes;
     private readonly TaskCompletionSource controlsDrained = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource requestsDrained = new(TaskCreationOptions.RunContinuationsAsynchronously);

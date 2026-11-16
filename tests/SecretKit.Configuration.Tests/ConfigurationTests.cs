@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Security.Cryptography;
 using System.Text.Json;
 using Microsoft.Extensions.Configuration;
@@ -31,6 +32,23 @@ public sealed class ConfigurationTests
         await Assert.That(authorityOnly["Service:Unselected"]).IsNull();
         await Assert.That(authorityOnly.AsEnumerable().Count(pair => pair.Value is not null)).IsEqualTo(2);
         await Assert.That(local["Service:Unselected"]).IsEqualTo("local-only");
+    }
+
+    [Test]
+    public async Task ConfigurationAssemblyUsesSystemThreadingLockAndIsMarkedTrimmable()
+    {
+        Assembly assembly = typeof(SecretConfigurationExport).Assembly;
+        bool isTrimmable = assembly.GetCustomAttributes<AssemblyMetadataAttribute>()
+            .Any(attribute => attribute.Key == "IsTrimmable" &&
+                string.Equals(attribute.Value, "True", StringComparison.OrdinalIgnoreCase));
+        await Assert.That(isTrimmable).IsTrue();
+
+        FieldInfo[] gateFields = assembly.GetTypes()
+            .SelectMany(type => type.GetFields(BindingFlags.Instance | BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public))
+            .Where(field => field.Name is "_gate" or "Gate")
+            .ToArray();
+        await Assert.That(gateFields.Length).IsGreaterThan(0);
+        await Assert.That(gateFields.All(field => field.FieldType == typeof(Lock))).IsTrue();
     }
 
     [Test]

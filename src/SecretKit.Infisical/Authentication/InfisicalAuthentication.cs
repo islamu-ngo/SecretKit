@@ -34,3 +34,48 @@ public sealed class InfisicalAccessToken : IDisposable
     /// <summary>Returns a fixed label without token material.</summary>
     public override string ToString() => "[InfisicalAccessToken]";
 }
+
+internal sealed class InfisicalAuthTransportLease(InfisicalTransportBinding binding) : IDisposable
+{
+    private readonly Lock _gate = new();
+    private int _active;
+    private bool _disposed;
+
+    internal void ThrowIfDisposed(object owner)
+    {
+        lock (_gate) ObjectDisposedException.ThrowIf(_disposed, owner);
+    }
+
+    internal void BeginOperation(object owner, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_gate)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, owner);
+            _active++;
+        }
+    }
+
+    internal void EndOperation()
+    {
+        bool release;
+        lock (_gate)
+        {
+            _active--;
+            release = _disposed && _active == 0;
+        }
+        if (release) binding.Dispose();
+    }
+
+    public void Dispose()
+    {
+        bool release;
+        lock (_gate)
+        {
+            if (_disposed) return;
+            _disposed = true;
+            release = _active == 0;
+        }
+        if (release) binding.Dispose();
+    }
+}

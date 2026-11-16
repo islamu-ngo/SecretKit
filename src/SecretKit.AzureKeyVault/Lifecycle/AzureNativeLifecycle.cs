@@ -636,7 +636,7 @@ public sealed partial class AzureKeyVaultClient
         {
             return SecretOutcome<T>.Failure(SecretStatus.Invalid);
         }
-        lock (UsedReceipts)
+        lock (UsedReceiptsGate)
         {
             if (UsedReceipts.TryGetValue(receipt, out _))
             {

@@ -6,7 +6,7 @@ namespace SecretKit.Infisical;
 // wrapper, reference, receipt or callback. The client registry holds only a weak reference.
 internal sealed class InfisicalLeaseLifecycle
 {
-    internal object Gate { get; } = new();
+    internal Lock Gate { get; } = new();
     internal TimeProvider Time { get; }
     internal InfisicalDefinitionLifecycle Parent { get; }
     private readonly DateTimeOffset _createdAt;

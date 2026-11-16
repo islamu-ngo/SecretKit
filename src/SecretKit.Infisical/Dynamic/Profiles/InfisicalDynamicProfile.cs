@@ -9,7 +9,7 @@ namespace SecretKit.Infisical.Dynamic;
 /// </summary>
 public abstract class InfisicalDynamicProfile : IDisposable
 {
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private readonly Dictionary<string, SecretMaterial> _text = new(StringComparer.Ordinal);
     private readonly Dictionary<string, decimal> _numbers = new(StringComparer.Ordinal);
     private readonly Dictionary<string, bool> _booleans = new(StringComparer.Ordinal);

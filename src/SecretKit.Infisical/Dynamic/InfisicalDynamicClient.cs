@@ -29,7 +29,7 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
     private readonly int _requestLimit;
     private readonly TimeSpan _operationTimeout;
     private readonly int _maximumItems;
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private readonly Dictionary<(Guid DefinitionId, Guid LeaseId), WeakReference<InfisicalLeaseLifecycle>> _leases = [];
     private readonly Dictionary<Guid, WeakReference<InfisicalDefinitionLifecycle>> _definitions = [];
     private readonly CancellationTokenSource _shutdown = new();
@@ -828,7 +828,8 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
                 {
                     return Failure(SecretStatus.Invalid, receipt, SecretFailureReason.ResponseTooLarge);
                 }
-                await using Stream stream = await response.Content.ReadAsStreamAsync(linked.Token).ConfigureAwait(false);
+                Stream stream = await response.Content.ReadAsStreamAsync(linked.Token).ConfigureAwait(false);
+                await using var streamDisposal = stream.ConfigureAwait(false);
                 using var collected = new MemoryStream();
                 byte[] buffer = ArrayPool<byte>.Shared.Rent(8192);
                 try

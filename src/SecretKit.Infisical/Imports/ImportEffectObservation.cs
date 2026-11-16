@@ -61,10 +61,10 @@ public sealed partial class InfisicalClient
         SecretReference target, InfisicalClient intendedReader, SecretReference intendedSecret,
         CancellationToken cancellationToken = default)
     {
+        ThrowIfDisposed(cancellationToken);
         ArgumentNullException.ThrowIfNull(target);
         ArgumentNullException.ThrowIfNull(intendedReader);
         ArgumentNullException.ThrowIfNull(intendedSecret);
-        cancellationToken.ThrowIfCancellationRequested();
         if (!NativeTargetValid(target, null) || target.Address is not InfisicalImportAddress { ImportId: not null } address ||
             !intendedSecret.BelongsTo(intendedReader.Authority) || intendedSecret.Address is not InfisicalSecretAddress secret ||
             secret.ProjectId != address.ProjectId || secret.Environment != address.Environment ||

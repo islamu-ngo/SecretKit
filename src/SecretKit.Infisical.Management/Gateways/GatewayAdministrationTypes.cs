@@ -29,7 +29,7 @@ public sealed class GatewayNullableId
 /// <summary>Copied, disposable, typed gateway authentication input. No identity request branch is published.</summary>
 public sealed class GatewayAuthenticationInput : IDisposable
 {
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private byte[]? _body;
     private GatewayAuthenticationInput(Action<Utf8JsonWriter> write) => _body = GatewayJson.Serialize(write);
 

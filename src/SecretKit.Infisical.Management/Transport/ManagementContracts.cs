@@ -12,7 +12,7 @@ namespace SecretKit.Infisical.Management;
 /// </summary>
 public sealed class ManagementRequest<T> : IDisposable where T : notnull
 {
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private byte[]? _body;
     private bool _disposed;
     internal HttpMethod Method { get; }

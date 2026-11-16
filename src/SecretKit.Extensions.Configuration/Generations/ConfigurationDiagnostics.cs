@@ -61,7 +61,7 @@ internal static class ConfigurationDiagnostics
     // the queue before invoking host code; a late child forwards to its next owner.
     private sealed class Scope(Scope? parent) : IDisposable
     {
-        private readonly object _gate = new();
+        private readonly Lock _gate = new();
         private List<Record>? _records = [];
 
         internal void Submit(Record record)

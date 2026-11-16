@@ -205,7 +205,7 @@ public sealed class AzurePurgeResult
 /// </summary>
 public sealed class AzureSecretBackup : IDisposable
 {
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private byte[]? _bytes;
 
     private AzureSecretBackup(ReadOnlySpan<byte> bytes) => _bytes = bytes.ToArray();

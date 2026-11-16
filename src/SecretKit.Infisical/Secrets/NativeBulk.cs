@@ -35,7 +35,7 @@ public enum InfisicalBulkOperation { /** <summary>Create a batch.</summary> */ C
 /// when token acquisition fails before dispatch. Earlier snapshots never change.</remarks>
 public sealed class InfisicalBulkReceipt
 {
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private readonly InfisicalClient _owner;
     private readonly SecretReference _target;
     private readonly InfisicalBulkOperation _operation;
@@ -311,6 +311,7 @@ public sealed partial class InfisicalClient
         IReadOnlyList<InfisicalBulkSecret> inputs, InfisicalNativeAuthority authority, InfisicalBulkReceipt receipt,
         HttpMethod method, InfisicalBulkUpdateMode mode, CancellationToken cancellationToken)
     {
+        ThrowIfDisposed(cancellationToken);
         return await InfisicalOperationBudget.RunAsync(_operationTimeout, _time, cancellationToken,
             InfisicalOperation.Native, ExecuteAsync, () => receipt?.Envelope.Evidence ?? DispatchEvidence.NotDispatched, shutdown: _shutdown.Token).ConfigureAwait(false);
 
@@ -417,7 +418,7 @@ public sealed partial class InfisicalClient
                 method == HttpMethod.Patch ? InfisicalBulkOperation.Update : InfisicalBulkOperation.Delete;
             if (!receipt.Claim(this, target, owned, operation, mode))
                 return SecretOutcome<InfisicalBulkObservation>.Failure(SecretStatus.Invalid);
-            SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target, new(method), InfisicalOperationBudget.Payload(requestBody), authority, receipt.Envelope, operationToken, receipt);
+            SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target, new(method), InfisicalOperationBudget.Payload(requestBody), authority, receipt.Envelope, operationToken, receipt).ConfigureAwait(false);
             if (!outcome.IsSuccess) { return outcome.ConvertFailure<InfisicalBulkObservation>(); }
             using JsonDocument document = outcome.Value;
             JsonElement root = document.RootElement;

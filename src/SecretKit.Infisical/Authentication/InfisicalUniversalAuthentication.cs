@@ -18,7 +18,7 @@ public sealed class InfisicalUniversalAuthentication : IDisposable
     private readonly int _requestLimit;
     private readonly TimeSpan _operationTimeout;
     private readonly Uri _origin;
-    private bool _disposed;
+    private readonly InfisicalAuthTransportLease _lease;
 
     /// <summary>Creates a fixed-origin bootstrap client without logging in; selected borrowed transports remain host-owned.</summary>
     public InfisicalUniversalAuthentication(Uri origin, InfisicalNetworkOptions? network = null,
@@ -41,6 +41,7 @@ public sealed class InfisicalUniversalAuthentication : IDisposable
         _operationTimeout = network.OperationTimeout;
         _time = timeProvider ?? TimeProvider.System;
         _binding = new(origin, network, handler, ownsHandler);
+        _lease = new(_binding);
         _transport = _binding.Client;
         _api = RestService.ForGenerated<IInfisicalUniversalAuthenticationApi>(_binding.Requests,
             new RefitSettings { ExceptionFactory = _ => ValueTask.FromResult<Exception?>(null) });
@@ -49,7 +50,7 @@ public sealed class InfisicalUniversalAuthentication : IDisposable
     /// <summary>Creates single-dispatch evidence bound to this authentication client before login.</summary>
     public InfisicalUniversalLoginReceipt CreateReceipt()
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        _lease.ThrowIfDisposed(this);
         return new(this);
     }
 
@@ -60,12 +61,19 @@ public sealed class InfisicalUniversalAuthentication : IDisposable
         SecretMaterial clientSecret, InfisicalUniversalLoginReceipt receipt,
         string? organizationSlug = null, CancellationToken cancellationToken = default)
     {
-        return await InfisicalOperationBudget.RunAsync(_operationTimeout, _time, cancellationToken,
-            InfisicalOperation.UniversalLogin, ExecuteAsync, () => receipt?.Evidence ?? DispatchEvidence.NotDispatched).ConfigureAwait(false);
+        _lease.BeginOperation(this, cancellationToken);
+        try
+        {
+            return await InfisicalOperationBudget.RunAsync(_operationTimeout, _time, cancellationToken,
+                InfisicalOperation.UniversalLogin, ExecuteAsync, () => receipt?.Evidence ?? DispatchEvidence.NotDispatched).ConfigureAwait(false);
+        }
+        finally
+        {
+            _lease.EndOperation();
+        }
 
         async ValueTask<SecretOutcome<InfisicalUniversalLogin>> ExecuteAsync(CancellationToken operationToken)
         {
-            ObjectDisposedException.ThrowIf(_disposed, this);
             ArgumentNullException.ThrowIfNull(clientSecret);
             ArgumentNullException.ThrowIfNull(receipt);
             operationToken.ThrowIfCancellationRequested();
@@ -180,11 +188,7 @@ public sealed class InfisicalUniversalAuthentication : IDisposable
     }
 
     /// <summary>Disposes owned transport resources without revoking issued tokens or disposing borrowed pipelines.</summary>
-    public void Dispose()
-    {
-        _disposed = true;
-        _binding.Dispose();
-    }
+    public void Dispose() => _lease.Dispose();
     /// <summary>Returns a fixed label without origin or credential details.</summary>
     public override string ToString() => "[InfisicalUniversalAuthentication]";
 }

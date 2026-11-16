@@ -32,7 +32,7 @@ public enum AuthenticationMaintenanceState
 /// </summary>
 public sealed class InfisicalAuthenticationMaintenance : IHostedService, IHealthCheck, IAsyncDisposable
 {
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private readonly InfisicalPeriodicTokenSession _session;
     private readonly CancellationTokenSource _stop = new();
     private readonly TimeSpan _shutdownTimeout;

@@ -174,7 +174,7 @@ public sealed class AuditQueryResult
 public sealed class AuditBatchProgress
 {
     private readonly AuditQueryResult?[] _results;
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     internal int Used;
 
     /// <summary>Creates single-use caller-held progress before awaiting a bounded batch.</summary>

@@ -208,6 +208,7 @@ public sealed partial class InfisicalClient
         InfisicalImportSource source, bool replication, InfisicalNativeAuthority authority, MutationReceipt receipt,
         CancellationToken cancellationToken = default)
     {
+        ThrowIfDisposed(cancellationToken);
         ArgumentNullException.ThrowIfNull(source);
         if (target.Address is not InfisicalImportAddress { ImportId: null } address)
         {
@@ -232,6 +233,7 @@ public sealed partial class InfisicalClient
         InfisicalNativeAuthority authority, MutationReceipt receipt, string? sourceEnvironment = null,
         string? sourcePath = null, double? position = null, CancellationToken cancellationToken = default)
     {
+        ThrowIfDisposed(cancellationToken);
         if (sourceEnvironment is not null) { InfisicalNativeAddress.NativeText(sourceEnvironment); }
         if (sourcePath is not null) { InfisicalNativeAddress.NativeFolder(sourcePath); }
         if (position is { } number && !double.IsFinite(number)) { throw new ArgumentException("Invalid import position."); }
@@ -255,6 +257,7 @@ public sealed partial class InfisicalClient
     public ValueTask<SecretOutcome<InfisicalImport>> DeleteImportAsync(SecretReference target,
         InfisicalNativeAuthority authority, MutationReceipt receipt, CancellationToken cancellationToken = default)
     {
+        ThrowIfDisposed(cancellationToken);
         if (target.Address is not InfisicalImportAddress address)
         {
             return ValueTask.FromResult(SecretOutcome<InfisicalImport>.Failure(SecretStatus.Invalid));
@@ -271,6 +274,7 @@ public sealed partial class InfisicalClient
         HttpMethod method, Func<int, byte[]>? payload, InfisicalNativeAuthority? authority, MutationReceipt? receipt,
         string? sourceEnvironment, string? sourcePath, bool? replication, CancellationToken cancellationToken)
     {
+        ThrowIfDisposed(cancellationToken);
         return await InfisicalOperationBudget.RunAsync(_operationTimeout, _time, cancellationToken,
             InfisicalOperation.Native, ExecuteAsync, () => receipt?.Evidence ?? DispatchEvidence.NotDispatched, shutdown: _shutdown.Token).ConfigureAwait(false);
 
@@ -281,7 +285,7 @@ public sealed partial class InfisicalClient
             {
                 return SecretOutcome<InfisicalImport>.Failure(SecretStatus.Invalid);
             }
-            SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target, new(method), payload, authority, receipt, operationToken);
+            SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target, new(method), payload, authority, receipt, operationToken).ConfigureAwait(false);
             if (!outcome.IsSuccess) { return outcome.ConvertFailure<InfisicalImport>(); }
             using JsonDocument document = outcome.Value;
             if (!NativeObject(document.RootElement, "secretImport", out JsonElement item) ||
@@ -307,6 +311,7 @@ public sealed partial class InfisicalClient
     public async ValueTask<SecretOutcome<InfisicalNativeList<InfisicalImport>>> ListImportsAsync(SecretReference target,
         int maximumItems = 1000, CancellationToken cancellationToken = default)
     {
+        ThrowIfDisposed(cancellationToken);
         return await InfisicalOperationBudget.RunAsync(_operationTimeout, _time, cancellationToken,
             InfisicalOperation.Native, ExecuteAsync, shutdown: _shutdown.Token).ConfigureAwait(false);
 
@@ -318,7 +323,7 @@ public sealed partial class InfisicalClient
                 return SecretOutcome<InfisicalNativeList<InfisicalImport>>.Failure(SecretStatus.Invalid);
             }
             SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target,
-                new(HttpMethod.Get), null, null, null, operationToken);
+                new(HttpMethod.Get), null, null, null, operationToken).ConfigureAwait(false);
             if (!outcome.IsSuccess) { return outcome.ConvertFailure<InfisicalNativeList<InfisicalImport>>(); }
             using JsonDocument document = outcome.Value;
             if (!NativeArray(document.RootElement, "secretImports", out JsonElement items))
@@ -345,6 +350,7 @@ public sealed partial class InfisicalClient
     public async ValueTask<SecretOutcome<InfisicalImportedSecrets>> ReadImportedSecretsAsync(SecretReference target,
         int maximumItems = 1000, CancellationToken cancellationToken = default)
     {
+        ThrowIfDisposed(cancellationToken);
         return await InfisicalOperationBudget.RunAsync(_operationTimeout, _time, cancellationToken,
             InfisicalOperation.Native, ExecuteAsync, shutdown: _shutdown.Token).ConfigureAwait(false);
 
@@ -356,7 +362,7 @@ public sealed partial class InfisicalClient
                 return SecretOutcome<InfisicalImportedSecrets>.Failure(SecretStatus.Invalid);
             }
             SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target,
-                new(HttpMethod.Get, InfisicalNativeOperationKind.ReadImportedSecrets), null, null, null, operationToken);
+                new(HttpMethod.Get, InfisicalNativeOperationKind.ReadImportedSecrets), null, null, null, operationToken).ConfigureAwait(false);
             if (!outcome.IsSuccess) { return outcome.ConvertFailure<InfisicalImportedSecrets>(); }
             using JsonDocument document = outcome.Value;
             if (!NativeArray(document.RootElement, "secrets", out JsonElement groups) || groups.GetArrayLength() > 1000)

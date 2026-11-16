@@ -119,7 +119,7 @@ internal sealed class NotificationWebhookDeliveryCollector : IAsyncDisposable
         internal DateTimeOffset AdmissionClosedAt, LatestAdmission;
     }
 
-    private readonly object gate = new();
+    private readonly Lock gate = new();
     private readonly RoleFixtureJournal journal;
     private readonly string owner;
     private readonly Uri endpoint;

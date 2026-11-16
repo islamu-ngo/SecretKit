@@ -45,7 +45,7 @@ public sealed record SecretGenerationObservation(
 /// </remarks>
 public sealed class SecretGenerationCoordinator<TClient> : IAsyncDisposable where TClient : class, IAsyncDisposable
 {
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private readonly SecretSelection[] _selections;
     private readonly Func<SecretSnapshotHandle, CancellationToken,
         ValueTask<SecretOutcome<TClient>>> _validate;
@@ -119,7 +119,7 @@ public sealed class SecretGenerationCoordinator<TClient> : IAsyncDisposable wher
             observation = ObserveLocked();
         }
         // Reserve the state before yielding; replica callers may hold their revision gate.
-        await Task.Yield();
+        await Task.CompletedTask.ConfigureAwait(ConfigureAwaitOptions.ForceYielding);
         if (retired is not null) await retired.ReleaseAsync().ConfigureAwait(false);
         return observation;
     }
@@ -161,7 +161,7 @@ public sealed class SecretGenerationCoordinator<TClient> : IAsyncDisposable wher
             _collections.Add(finished.Task);
         }
         // Application readers/validators/disposers must not run under a caller's revision gate.
-        await Task.Yield();
+        await Task.CompletedTask.ConfigureAwait(ConfigureAwaitOptions.ForceYielding);
         TClient? client = null;
         SecretClientGeneration<TClient>? retired = null;
         SecretStatus status = SecretStatus.Unknown;
@@ -356,7 +356,7 @@ public sealed class SecretGenerationCoordinator<TClient> : IAsyncDisposable wher
         }
         if (ownsDisposal)
         {
-            await Task.Yield();
+            await Task.CompletedTask.ConfigureAwait(ConfigureAwaitOptions.ForceYielding);
             try
             {
                 Task release = retired?.ReleaseAsync().AsTask() ?? Task.CompletedTask;

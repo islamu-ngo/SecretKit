@@ -35,7 +35,7 @@ public sealed class SecretConfigurationMapping
 /// </summary>
 public sealed class SecretConfigurationExport : IConfigurationSource, IDisposable
 {
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private readonly SecretConfigurationMapping[] _mapping;
     private readonly ExportProvider _provider = new();
     private bool _built;
@@ -146,7 +146,7 @@ public sealed class SecretConfigurationExport : IConfigurationSource, IDisposabl
 
     private sealed class ExportProvider : ConfigurationProvider, IDisposable
     {
-        private readonly object _gate = new();
+        private readonly Lock _gate = new();
         private Dictionary<string, string?> _strings = new(StringComparer.OrdinalIgnoreCase);
         private bool _disposed;
         internal int Count => Volatile.Read(ref _strings).Count;

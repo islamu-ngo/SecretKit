@@ -11,7 +11,7 @@ namespace SecretKit.Infisical;
 /// <summary>Closed, copied host proof. Disposal erases this copy, not host credentials.</summary>
 public sealed class InfisicalLoginProof : IDisposable
 {
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private byte[]? _payload;
     internal string Strategy { get; }
 
@@ -188,7 +188,7 @@ public sealed partial class InfisicalProofAuthentication : IDisposable
     private readonly int _responseLimit;
     private readonly int _requestLimit;
     private readonly TimeSpan _operationTimeout;
-    private bool _disposed;
+    private readonly InfisicalAuthTransportLease _lease;
 
     /// <summary>Creates a fixed-origin proof client without acquiring credentials; borrowed transport stays host-owned.</summary>
     public InfisicalProofAuthentication(Uri origin, InfisicalNetworkOptions? network = null,
@@ -211,6 +211,7 @@ public sealed partial class InfisicalProofAuthentication : IDisposable
         _requestLimit = network.MaximumRequestBytes;
         _operationTimeout = network.OperationTimeout;
         _binding = new(origin, network, handler, ownsHandler);
+        _lease = new(_binding);
         _transport = _binding.Client;
         _wire = RestService.ForGenerated<IInfisicalProofAuthenticationWire>(_binding.Requests, new RefitSettings
         {
@@ -223,7 +224,7 @@ public sealed partial class InfisicalProofAuthentication : IDisposable
     /// <summary>Creates caller-retainable dispatch evidence bound to this authentication client.</summary>
     public InfisicalProofLoginReceipt CreateReceipt()
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        _lease.ThrowIfDisposed(this);
         return new(this);
     }
 
@@ -233,12 +234,19 @@ public sealed partial class InfisicalProofAuthentication : IDisposable
     public async ValueTask<SecretOutcome<InfisicalProofLogin>> LoginAsync(InfisicalLoginProof proof,
         InfisicalProofLoginReceipt receipt, CancellationToken cancellationToken = default)
     {
-        return await InfisicalOperationBudget.RunAsync(_operationTimeout, _time, cancellationToken,
-            InfisicalOperation.ProofLogin, ExecuteAsync, () => receipt?.Evidence ?? DispatchEvidence.NotDispatched).ConfigureAwait(false);
+        _lease.BeginOperation(this, cancellationToken);
+        try
+        {
+            return await InfisicalOperationBudget.RunAsync(_operationTimeout, _time, cancellationToken,
+                InfisicalOperation.ProofLogin, ExecuteAsync, () => receipt?.Evidence ?? DispatchEvidence.NotDispatched).ConfigureAwait(false);
+        }
+        finally
+        {
+            _lease.EndOperation();
+        }
 
         async ValueTask<SecretOutcome<InfisicalProofLogin>> ExecuteAsync(CancellationToken operationToken)
         {
-            ObjectDisposedException.ThrowIf(_disposed, this);
             ArgumentNullException.ThrowIfNull(proof);
             ArgumentNullException.ThrowIfNull(receipt);
             operationToken.ThrowIfCancellationRequested();
@@ -345,11 +353,7 @@ public sealed partial class InfisicalProofAuthentication : IDisposable
         };
 
     /// <summary>Releases owned transport resources without disposing borrowed pipelines or revoking logins.</summary>
-    public void Dispose()
-    {
-        _disposed = true;
-        _binding.Dispose();
-    }
+    public void Dispose() => _lease.Dispose();
     /// <summary>Returns a fixed label without identity or origin details.</summary>
     public override string ToString() => "[InfisicalProofAuthentication]";
 }

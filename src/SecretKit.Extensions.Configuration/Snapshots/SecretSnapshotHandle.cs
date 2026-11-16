@@ -8,7 +8,7 @@ namespace SecretKit.Extensions.Configuration;
 /// </summary>
 public sealed class SecretSnapshotHandle : IDisposable
 {
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private SecretSnapshotGeneration? _storage;
 
     internal SecretSnapshotHandle(SecretSnapshotGeneration storage)
@@ -80,7 +80,7 @@ public sealed class SecretSnapshotHandle : IDisposable
 
 internal sealed class SecretSnapshotGeneration
 {
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private readonly Dictionary<string, SecretRead?> _entries;
     // One initial reference belongs to the current-publication pointer.
     private int _references = 1;

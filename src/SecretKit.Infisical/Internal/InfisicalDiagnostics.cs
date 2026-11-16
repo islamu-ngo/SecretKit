@@ -75,7 +75,7 @@ internal static class InfisicalDiagnostics
     // ownership and forwards to the next owner instead of stranding its record.
     private sealed class Scope(Scope? parent) : IDisposable
     {
-        private readonly object _gate = new();
+        private readonly Lock _gate = new();
         private List<Record>? _records = [];
 
         internal void Submit(Record record)

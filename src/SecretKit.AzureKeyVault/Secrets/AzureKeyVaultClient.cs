@@ -27,6 +27,7 @@ public sealed partial class AzureKeyVaultClient : ISecretReader, ISecretInventor
     private readonly int _maximumResponseBytes;
     private readonly MutationReceiptIssuer _receipts = new();
     private static readonly ConditionalWeakTable<MutationReceipt, SecretReference> UsedReceipts = new();
+    private static readonly Lock UsedReceiptsGate = new();
 
     /// <summary>
     /// Accepts HTTPS vault origins in public, US government, or China Azure clouds.
@@ -169,7 +170,7 @@ public sealed partial class AzureKeyVaultClient : ISecretReader, ISecretInventor
             return SecretOutcome<AzureSetSecretResult>.Failure(SecretStatus.Invalid);
         }
 
-        lock (UsedReceipts)
+        lock (UsedReceiptsGate)
         {
             if (UsedReceipts.TryGetValue(receipt, out _))
             {

@@ -21,3 +21,7 @@ dotnet_sort_system_directives_first = true
 [src/SecretKit.Core/**/SecretOutcome.cs]
 # Typed outcome factories preserve the successful value type without an extra factory abstraction.
 dotnet_diagnostic.CA1000.severity = none
+
+[src/**/*.cs]
+# Libraries must explicitly configure await continuation marshaling to prevent host SynchronizationContext deadlocks (ADR-006).
+dotnet_diagnostic.CA2007.severity = warning

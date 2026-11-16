@@ -264,7 +264,7 @@ public sealed partial class InfisicalClient
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(selection);
-        lock (_gate) ObjectDisposedException.ThrowIf(_disposed, this);
+        ThrowIfDisposed(cancellationToken);
         TimeSpan timeout = selection.Timeout ?? _operationTimeout;
         if (timeout > _operationTimeout) throw new ArgumentOutOfRangeException(nameof(selection));
         return InfisicalOperationBudget.RunAsync(timeout, _time, cancellationToken, InfisicalOperation.Inventory,

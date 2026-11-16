@@ -6,7 +6,7 @@ namespace SecretKit.Infisical;
 /// <summary>Explicit owner of one native client and token session, without bootstrap retention or automatic maintenance.</summary>
 public sealed class InfisicalRuntimeSession : IAsyncDisposable
 {
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private readonly TimeSpan _shutdownTimeout;
     private readonly TimeProvider _time;
     private readonly InfisicalRuntimeOptions _options;

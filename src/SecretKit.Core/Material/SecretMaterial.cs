@@ -9,7 +9,7 @@ namespace SecretKit.Core;
 /// <remarks>Dispose this owner to clear its array. Disposal cannot erase inputs, earlier copies or exported strings.</remarks>
 public sealed class SecretMaterial : IDisposable
 {
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
     private char[]? _characters;
 

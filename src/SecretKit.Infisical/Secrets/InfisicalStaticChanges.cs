@@ -58,6 +58,7 @@ public sealed partial class InfisicalClient
     private async ValueTask<SecretOutcome<InfisicalStaticChange>> ChangeValueAsync(SecretReference target,
         SecretMaterial material, MutationReceipt receipt, HttpMethod method, CancellationToken cancellationToken)
     {
+        ThrowIfDisposed(cancellationToken);
         return await InfisicalOperationBudget.RunAsync(_operationTimeout, _time, cancellationToken,
             InfisicalOperation.StaticMutation, ExecuteAsync, () => receipt?.Evidence ?? DispatchEvidence.NotDispatched, shutdown: _shutdown.Token).ConfigureAwait(false);
 
@@ -117,7 +118,7 @@ public sealed partial class InfisicalClient
                 using HttpRequestMessage request = method == HttpMethod.Post
                     ? await _staticWire.CreateAsync(address.Key, content, linked.Token).ConfigureAwait(false)
                     : await _staticWire.UpdateAsync(address.Key, content, linked.Token).ConfigureAwait(false);
-                SecretOutcome<JsonDocument> result = await ReadDocumentAsync(request, linked, receipt, target);
+                SecretOutcome<JsonDocument> result = await ReadDocumentAsync(request, linked, receipt, target).ConfigureAwait(false);
                 if (!result.IsSuccess)
                 {
                     SecretStatus status = receipt.Evidence == DispatchEvidence.PossiblyDispatched

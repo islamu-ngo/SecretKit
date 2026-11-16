@@ -6,7 +6,7 @@ namespace SecretKit.Infisical;
 /// <remarks>No JWT claims are interpreted, and no renewal or remote revocation is performed.</remarks>
 public sealed class InfisicalSuppliedTokenSource : IInfisicalTokenSource, IDisposable
 {
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private readonly DateTimeOffset? _expiresAt;
     private readonly TimeProvider _time;
     private SecretMaterial? _material;

@@ -6,7 +6,7 @@ namespace SecretKit.Extensions.Configuration;
 /// <typeparam name="TClient">The independently owned client type.</typeparam>
 public sealed class SecretGenerationLease<TClient> : IAsyncDisposable where TClient : class, IAsyncDisposable
 {
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private SecretClientGeneration<TClient>? _generation;
     private readonly long _revision;
     private TaskCompletionSource? _disposal;

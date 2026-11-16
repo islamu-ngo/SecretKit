@@ -14,7 +14,7 @@
     },
     {
       "file": "src/SecretKit.AzureKeyVault.Management/Audit/AuditDiagnostics.cs",
-      "sha256": "d5cc6cd5bfbc828ffc15f6db83752ee16bc0d00986d048bfc627cccec842f229"
+      "sha256": "818044978b5256f4f3aa0ee8cbdd523cc31c55f34d61c448c56f4c1301a58a2f"
     },
     {
       "file": "src/SecretKit.AzureKeyVault.Management/Internal/AzureManagementDiagnostics.cs",
@@ -58,15 +58,15 @@
     },
     {
       "file": "src/SecretKit.AzureKeyVault/Lifecycle/AzureNativeLifecycle.cs",
-      "sha256": "7383730b016be227291a561e4378a286b957edf6a64892d362c2c9b70611e5b4"
+      "sha256": "2a583a6ff17b8345d48ed2cc11734b55d30215645a8c3ae5c2361876e39d10c6"
     },
     {
       "file": "src/SecretKit.AzureKeyVault/Lifecycle/AzureNativeModels.cs",
-      "sha256": "854198931aad465d2620992bb3953c7b834292473fcb53a038a9b5570f179284"
+      "sha256": "05043e3b00ba3fb54749847255c8fcf8f8e42f6e5972a2f6c08b1af9003bbfe4"
     },
     {
       "file": "src/SecretKit.AzureKeyVault/Secrets/AzureKeyVaultClient.cs",
-      "sha256": "1ab0d2bcf00f47d637021f097fda7a6fc31bea80d7ddc7c6321ab54fc0febc97"
+      "sha256": "fd4f4ccee8579d0a97eae5231fd190f23d8dc3ec153de91fb333ec8f27fb139c"
     },
     {
       "file": "src/SecretKit.AzureKeyVault/Secrets/AzureSecretAddress.cs",

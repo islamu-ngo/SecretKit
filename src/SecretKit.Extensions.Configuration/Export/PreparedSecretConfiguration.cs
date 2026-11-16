@@ -6,7 +6,7 @@ namespace SecretKit.Extensions.Configuration;
 /// <summary>Owns one prepared generation and its optional explicit string export.</summary>
 public sealed class PreparedSecretConfiguration : IDisposable
 {
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private readonly SecretSnapshotLoader _loader;
     private readonly SecretSnapshotHandle _handle;
     private SecretConfigurationExport? _export;

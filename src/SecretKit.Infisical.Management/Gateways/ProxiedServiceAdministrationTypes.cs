@@ -14,7 +14,7 @@ public enum ProxiedServiceSubstitutionSurface { /** <summary>Substitutes within 
 /// <summary>Immutable copied protected credential selectors; no secret retrieval or principal acquisition.</summary>
 public sealed class ProxiedServiceCredentialInput : IDisposable
 {
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private byte[]? _body;
     /// <summary>Copies bounded credential selectors and optional placeholder material into an owned body; acquires no secret.</summary>
     public ProxiedServiceCredentialInput(ProxiedServiceCredentialRole role, string? dynamicSecretField = null,
@@ -92,7 +92,7 @@ public sealed class ProxiedServiceCredentialInput : IDisposable
 /// <summary>Owns an immutable credential/body copy; disposal performs no remote cleanup.</summary>
 public sealed class ProxiedServiceCreation : IDisposable
 {
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private byte[]? _body;
     /// <summary>Gets the selected proxy service name.</summary>
     [JsonIgnore] public string Name { get; }
@@ -138,7 +138,7 @@ public sealed class ProxiedServiceCreation : IDisposable
 /// <summary>Owned optional proxy patch body; null fields remain omitted rather than cleared.</summary>
 public sealed class ProxiedServiceUpdate : IDisposable
 {
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private byte[]? _body;
     /// <summary>Copies optional credential inputs into an owned body; null credentials omit the field and explicit arrays must be nonempty.</summary>
     public ProxiedServiceUpdate(string? name = null, string? hostPattern = null, bool? isEnabled = null,

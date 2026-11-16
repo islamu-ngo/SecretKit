@@ -10,7 +10,7 @@ public sealed partial class InfisicalProofAuthentication
     /// <summary>Creates single-dispatch revocation evidence bound to this authentication client.</summary>
     public InfisicalTokenRevocationReceipt CreateRevocationReceipt()
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        _lease.ThrowIfDisposed(this);
         return new(this);
     }
 
@@ -22,12 +22,19 @@ public sealed partial class InfisicalProofAuthentication
     public async ValueTask<SecretOutcome<InfisicalTokenRevocationReceipt>> RevokeTokenAsync(SecretMaterial token,
         InfisicalTokenRevocationReceipt receipt, CancellationToken cancellationToken = default)
     {
-        return await InfisicalOperationBudget.RunAsync(_operationTimeout, _time,
-            cancellationToken, InfisicalOperation.Revocation, ExecuteAsync, () => receipt?.Evidence ?? DispatchEvidence.NotDispatched).ConfigureAwait(false);
+        _lease.BeginOperation(this, cancellationToken);
+        try
+        {
+            return await InfisicalOperationBudget.RunAsync(_operationTimeout, _time,
+                cancellationToken, InfisicalOperation.Revocation, ExecuteAsync, () => receipt?.Evidence ?? DispatchEvidence.NotDispatched).ConfigureAwait(false);
+        }
+        finally
+        {
+            _lease.EndOperation();
+        }
 
         async ValueTask<SecretOutcome<InfisicalTokenRevocationReceipt>> ExecuteAsync(CancellationToken operationToken)
         {
-            ObjectDisposedException.ThrowIf(_disposed, this);
             ArgumentNullException.ThrowIfNull(token);
             ArgumentNullException.ThrowIfNull(receipt);
             operationToken.ThrowIfCancellationRequested();

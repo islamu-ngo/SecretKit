@@ -1,4 +1,5 @@
 using System.Net;
+using System.Reflection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Hosting;
@@ -24,6 +25,20 @@ public sealed class HostingOptionsTests
         await using var runtime = outcome.GetValueOrThrow();
         await Assert.That(runtime.OpeningAttempt).IsSameReferenceAs(attempt);
         await Assert.That(runtime.OpeningAttempt.LoginReceipt!.Evidence).IsEqualTo(DispatchEvidence.Applied);
+    }
+
+    [Test]
+    public async Task HostingAssemblyUsesSystemThreadingLockAndIsMarkedTrimmable()
+    {
+        Assembly assembly = typeof(InfisicalAuthenticationMaintenance).Assembly;
+        bool isTrimmable = assembly.GetCustomAttributes<AssemblyMetadataAttribute>()
+            .Any(attribute => attribute.Key == "IsTrimmable" &&
+                string.Equals(attribute.Value, "True", StringComparison.OrdinalIgnoreCase));
+        await Assert.That(isTrimmable).IsTrue();
+
+        FieldInfo? gate = typeof(InfisicalAuthenticationMaintenance)
+            .GetField("_gate", BindingFlags.Instance | BindingFlags.NonPublic);
+        await Assert.That(gate?.FieldType).IsEqualTo(typeof(Lock));
     }
 
     [Test]

@@ -275,8 +275,8 @@ public sealed partial class InfisicalClient
         InfisicalValidationInput input, InfisicalNativeAuthority authority, MutationReceipt receipt, bool update,
         CancellationToken cancellationToken)
     {
+        ThrowIfDisposed(cancellationToken);
         ArgumentNullException.ThrowIfNull(input);
-        cancellationToken.ThrowIfCancellationRequested();
         if (target.Address is not InfisicalValidationAddress address ||
             (update ? address.RuleId is null : address.RuleId is not null) ||
             (!update && (input.Name is null || address.Folder is null || input.ClearEnvironment ||
@@ -340,6 +340,7 @@ public sealed partial class InfisicalClient
         HttpMethod method, Func<int, byte[]>? payload, InfisicalNativeAuthority? authority, MutationReceipt? receipt,
         CancellationToken cancellationToken)
     {
+        ThrowIfDisposed(cancellationToken);
         return await InfisicalOperationBudget.RunAsync(_operationTimeout, _time, cancellationToken,
             InfisicalOperation.Native, ExecuteAsync, () => receipt?.Evidence ?? DispatchEvidence.NotDispatched, shutdown: _shutdown.Token).ConfigureAwait(false);
 
@@ -350,7 +351,7 @@ public sealed partial class InfisicalClient
             {
                 return SecretOutcome<InfisicalValidationRule>.Failure(SecretStatus.Invalid);
             }
-            SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target, new(method), payload, authority, receipt, operationToken);
+            SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target, new(method), payload, authority, receipt, operationToken).ConfigureAwait(false);
             if (!outcome.IsSuccess) { return outcome.ConvertFailure<InfisicalValidationRule>(); }
             using JsonDocument document = outcome.Value;
             if (!NativeObject(document.RootElement, "secretValidationRule", out JsonElement item) ||
@@ -377,6 +378,7 @@ public sealed partial class InfisicalClient
     public async ValueTask<SecretOutcome<InfisicalNativeList<InfisicalValidationRule>>> ListValidationRulesAsync(
         SecretReference target, int maximumItems = 1000, bool allKinds = false, CancellationToken cancellationToken = default)
     {
+        ThrowIfDisposed(cancellationToken);
         return await InfisicalOperationBudget.RunAsync(_operationTimeout, _time, cancellationToken,
             InfisicalOperation.Native, ExecuteAsync, shutdown: _shutdown.Token).ConfigureAwait(false);
 
@@ -389,7 +391,7 @@ public sealed partial class InfisicalClient
             }
             var operation = new InfisicalNativeOperation(HttpMethod.Get,
                 allKinds ? InfisicalNativeOperationKind.ListValidationRules : InfisicalNativeOperationKind.Standard);
-            SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target, operation, null, null, null, operationToken);
+            SecretOutcome<JsonDocument> outcome = await NativeDocumentAsync(target, operation, null, null, null, operationToken).ConfigureAwait(false);
             if (!outcome.IsSuccess) { return outcome.ConvertFailure<InfisicalNativeList<InfisicalValidationRule>>(); }
             using JsonDocument document = outcome.Value;
             if (!NativeArray(document.RootElement, "secretValidationRules", out JsonElement items))

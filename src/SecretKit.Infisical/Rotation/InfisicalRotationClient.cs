@@ -22,7 +22,7 @@ public sealed class InfisicalRotationClient : IDisposable, IAsyncDisposable
     private readonly int _maximumResponseBytes;
     private readonly TimeSpan _operationTimeout;
     private readonly TimeProvider _time;
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private readonly CancellationTokenSource _shutdown = new();
     private readonly TimeSpan _shutdownTimeout;
     private TaskCompletionSource? _drained;

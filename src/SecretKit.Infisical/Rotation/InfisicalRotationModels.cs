@@ -124,7 +124,7 @@ public enum InfisicalRotationPrecondition { /** <summary>Require no extra mutati
 /// </summary>
 public sealed class InfisicalRotationReceipt
 {
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private readonly SecretReference _target;
     private InfisicalRotationDispatch _dispatch;
     private InfisicalRotationEffect _effect;

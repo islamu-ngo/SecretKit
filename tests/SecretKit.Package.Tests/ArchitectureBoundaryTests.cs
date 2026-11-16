@@ -95,6 +95,43 @@ public sealed class ArchitectureBoundaryTests
         await Assert.That(friends.SequenceEqual(expected.Order(StringComparer.Ordinal), StringComparer.Ordinal)).IsTrue();
         if (package == "SecretKit.Infisical.Management")
             await Assert.That(RuntimeManagementDependencyTests.UnapprovedRuntimeReferences(metadata)).IsEmpty();
+        if (package is "SecretKit.Core" or "SecretKit.Extensions.Configuration" or "SecretKit.Extensions.Hosting")
+        {
+            bool trimmable = metadata.GetAssemblyDefinition().GetCustomAttributes()
+                .Select(handle => metadata.GetCustomAttribute(handle))
+                .Any(attribute => IsAssemblyMetadata(metadata, attribute, "IsTrimmable", "True"));
+            await Assert.That(trimmable).IsTrue();
+        }
+        bool hasLegacyObjectLock = metadata.FieldDefinitions
+            .Select(handle => metadata.GetFieldDefinition(handle))
+            .Any(field =>
+            {
+                string name = metadata.GetString(field.Name);
+                if (name is not ("_gate" or "<Gate>k__BackingField" or "UsedReceiptsGate")) return false;
+                BlobReader signature = metadata.GetBlobReader(field.Signature);
+                return signature.ReadSignatureHeader().Kind == SignatureKind.Field &&
+                    signature.ReadByte() == (byte)SignatureTypeCode.Object;
+            });
+        await Assert.That(hasLegacyObjectLock).IsFalse();
+    }
+
+    private static bool IsAssemblyMetadata(MetadataReader metadata, CustomAttribute attribute, string expectedKey, string expectedValue)
+    {
+        if (attribute.Constructor.Kind != HandleKind.MemberReference) return false;
+        MemberReference constructor = metadata.GetMemberReference((MemberReferenceHandle)attribute.Constructor);
+        if (constructor.Parent.Kind != HandleKind.TypeReference) return false;
+        TypeReference type = metadata.GetTypeReference((TypeReferenceHandle)constructor.Parent);
+        if (metadata.GetString(type.Namespace) != "System.Reflection" ||
+            metadata.GetString(type.Name) != "AssemblyMetadataAttribute")
+        {
+            return false;
+        }
+        BlobReader value = metadata.GetBlobReader(attribute.Value);
+        if (value.ReadUInt16() != 1) return false;
+        string? key = value.ReadSerializedString();
+        string? actual = value.ReadSerializedString();
+        return string.Equals(key, expectedKey, StringComparison.Ordinal) &&
+            string.Equals(actual, expectedValue, StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsFriendAttribute(MetadataReader metadata, CustomAttribute attribute)

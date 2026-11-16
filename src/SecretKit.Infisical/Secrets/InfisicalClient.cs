@@ -26,7 +26,7 @@ public sealed partial class InfisicalClient : IInfisicalSecretReader, IAsyncDisp
     private readonly TimeSpan _operationTimeout;
     private readonly TimeSpan _shutdownTimeout;
     private readonly CancellationTokenSource _shutdown = new();
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private int _active;
     private bool _disposed;
     private TaskCompletionSource? _drained;
@@ -95,7 +95,7 @@ public sealed partial class InfisicalClient : IInfisicalSecretReader, IAsyncDisp
     public async ValueTask<SecretOutcome<SecretRead>> ReadAsync(
         SecretReference reference, CancellationToken cancellationToken = default)
     {
-        lock (_gate) ObjectDisposedException.ThrowIf(_disposed, this);
+        ThrowIfDisposed(cancellationToken);
         return await InfisicalOperationBudget.RunAsync(_operationTimeout, _time, cancellationToken,
             InfisicalOperation.Read, ExecuteAsync, shutdown: _shutdown.Token).ConfigureAwait(false);
 
@@ -115,7 +115,7 @@ public sealed partial class InfisicalClient : IInfisicalSecretReader, IAsyncDisp
     public async ValueTask<SecretOutcome<InfisicalSecretRead>> ReadNativeAsync(
         SecretReference reference, CancellationToken cancellationToken = default)
     {
-        lock (_gate) ObjectDisposedException.ThrowIf(_disposed, this);
+        ThrowIfDisposed(cancellationToken);
         return await InfisicalOperationBudget.RunAsync(_operationTimeout, _time, cancellationToken,
             InfisicalOperation.Read, ExecuteAsync, shutdown: _shutdown.Token).ConfigureAwait(false);
 
@@ -236,6 +236,7 @@ public sealed partial class InfisicalClient : IInfisicalSecretReader, IAsyncDisp
     public async ValueTask<SecretOutcome<SecretInventory>> InspectAsync(
         SecretInventoryScope scope, CancellationToken cancellationToken = default)
     {
+        ThrowIfDisposed(cancellationToken);
         return await InfisicalOperationBudget.RunAsync(_operationTimeout, _time, cancellationToken,
             InfisicalOperation.Inventory, ExecuteAsync, shutdown: _shutdown.Token).ConfigureAwait(false);
 
@@ -342,7 +343,8 @@ public sealed partial class InfisicalClient : IInfisicalSecretReader, IAsyncDisp
             }
             if (response.Content.Headers.ContentLength > _responseLimit)
                 return DocumentFailure(SecretStatus.Invalid, SecretFailureReason.ResponseTooLarge, receipt);
-            await using Stream body = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+            Stream body = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+            await using var bodyDisposal = body.ConfigureAwait(false);
             using var collected = new MemoryStream();
             byte[] buffer = ArrayPool<byte>.Shared.Rent(8192);
             try
@@ -477,6 +479,12 @@ public sealed partial class InfisicalClient : IInfisicalSecretReader, IAsyncDisp
 
     private static string Query(string project, string environment, string folder) =>
         $"?projectId={Uri.EscapeDataString(project)}&environment={Uri.EscapeDataString(environment)}&secretPath={Uri.EscapeDataString(folder)}";
+
+    private void ThrowIfDisposed(CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_gate) ObjectDisposedException.ThrowIf(_disposed, this);
+    }
 
     private void BeginOperation()
     {
