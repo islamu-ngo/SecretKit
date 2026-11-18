@@ -1,6 +1,6 @@
-using System.Buffers;
 using System.Net;
 using System.Net.Http.Headers;
+using System.Security.Cryptography;
 using System.Text.Json;
 using SecretKit.Core;
 
@@ -72,8 +72,6 @@ public sealed class ManagementTransport : IDisposable
 /// </summary>
 public sealed class ManagementClient
 {
-    private static readonly SearchValues<char> VisibleAsciiCharacters =
-        SearchValues.Create(Enumerable.Range(0x21, 0x7E - 0x21 + 1).Select(static c => (char)c).ToArray());
     private readonly ManagementTransport _transport;
     private readonly TimeProvider _time;
     /// <summary>Gets this client's local binding identity for grants and receipts, not proof of provider permissions.</summary>
@@ -171,12 +169,11 @@ public sealed class ManagementClient
             {
                 return SecretOutcome<T>.Failure(SecretStatus.Expired);
             }
-            string bearer = token.Material.Reveal();
-            if (bearer.Length is 0 or > 16384 || bearer.AsSpan().ContainsAnyExcept(VisibleAsciiCharacters))
+            if (InfisicalBearer.CreateHeader(token.Material) is not { } authorization)
             {
                 return SecretOutcome<T>.Failure(SecretStatus.Invalid);
             }
-            message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
+            message.Headers.Authorization = authorization;
             cancellationToken.ThrowIfCancellationRequested();
             if (receipt is not null && !receipt.TryBeginDispatch())
             {
@@ -263,7 +260,7 @@ public sealed class ManagementClient
         {
             if (body is not null)
             {
-                Array.Clear(body);
+                CryptographicOperations.ZeroMemory(body);
             }
         }
     }

@@ -87,8 +87,8 @@ public sealed class RotationProgressTests
             }
         }
         record("app-connection", connectionId);
-        using var parameters = new PostgresRotationParameters("sdk_rotation_a", "sdk_rotation_b");
-        var rotationCreation = new PostgresSecretRotationCreation("sdk-owned-progress-observation", project, "dev", "/",
+        using var parameters = new SqlRotationParameters("sdk_rotation_a", "sdk_rotation_b");
+        var rotationCreation = new SqlSecretRotationCreation("sdk-owned-progress-observation", project, "dev", "/",
             connectionId, 1, parameters, new("SDK_ROTATION_USERNAME", "SDK_ROTATION_PASSWORD"),
             isAutoRotationEnabled: false);
         using var createRotation = PostgresSecretRotationOperations.Create(organization, rotationCreation);

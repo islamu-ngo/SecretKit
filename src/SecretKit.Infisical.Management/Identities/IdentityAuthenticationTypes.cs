@@ -448,23 +448,12 @@ internal static class AuthenticationJson
             throw new ArgumentException("Invalid protected authentication text.");
     }
     internal static ManagementTarget Intent(string organizationId, string resourceId, string action,
-        Action<Utf8JsonWriter> write)
-    {
-        byte[] storage = new byte[64 * 1024];
-        try
+        Action<Utf8JsonWriter> write) =>
+        new(organizationId, resourceId: resourceId, secondaryId: ManagementJson.IntentFingerprint(writer =>
         {
-            using var stream = new MemoryStream(storage, writable: true);
-            using (var writer = new Utf8JsonWriter(stream))
-            {
-                writer.WriteStartArray();
-                writer.WriteStringValue(action);
-                write(writer);
-                writer.WriteEndArray();
-            }
-            return new(organizationId, resourceId: resourceId,
-                secondaryId: Convert.ToHexString(SHA256.HashData(storage.AsSpan(0, (int)stream.Position))));
-        }
-        catch (NotSupportedException) { throw new ArgumentException("Authentication input exceeds its byte budget."); }
-        finally { Array.Clear(storage); }
-    }
+            writer.WriteStartArray();
+            writer.WriteStringValue(action);
+            write(writer);
+            writer.WriteEndArray();
+        }, "authentication"));
 }

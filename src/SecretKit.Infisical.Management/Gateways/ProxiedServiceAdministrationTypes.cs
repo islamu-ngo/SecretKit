@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using SecretKit.Core;
@@ -83,7 +84,7 @@ public sealed class ProxiedServiceCredentialInput : IDisposable
         }
     }
     /// <summary>Clears the owned serialized selector/material body and prevents further serialization.</summary>
-    public void Dispose() { lock (_gate) { if (_body is not null) Array.Clear(_body); _body = null; } }
+    public void Dispose() { lock (_gate) { if (_body is not null) CryptographicOperations.ZeroMemory(_body); _body = null; } }
     /// <summary>Returns a marker without credential selectors or placeholder material.</summary>
     public override string ToString() => "[ProxiedServiceCredentialInput]";
 }
@@ -129,7 +130,7 @@ public sealed class ProxiedServiceCreation : IDisposable
         lock (_gate) { ObjectDisposedException.ThrowIf(_body is null, this); writer.WriteRawValue(_body); }
     }
     /// <summary>Clears the owned creation body without deleting provider configuration.</summary>
-    public void Dispose() { lock (_gate) { if (_body is not null) Array.Clear(_body); _body = null; } }
+    public void Dispose() { lock (_gate) { if (_body is not null) CryptographicOperations.ZeroMemory(_body); _body = null; } }
     /// <summary>Returns a marker without creation settings or credential selectors.</summary>
     public override string ToString() => "[ProxiedServiceCreation]";
 }
@@ -161,7 +162,7 @@ public sealed class ProxiedServiceUpdate : IDisposable
         lock (_gate) { ObjectDisposedException.ThrowIf(_body is null, this); writer.WriteRawValue(_body); }
     }
     /// <summary>Clears the owned patch body and prevents further serialization.</summary>
-    public void Dispose() { lock (_gate) { if (_body is not null) Array.Clear(_body); _body = null; } }
+    public void Dispose() { lock (_gate) { if (_body is not null) CryptographicOperations.ZeroMemory(_body); _body = null; } }
     /// <summary>Returns a marker without patch contents.</summary>
     public override string ToString() => "[ProxiedServiceUpdate]";
 }

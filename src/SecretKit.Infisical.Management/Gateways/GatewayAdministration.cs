@@ -69,25 +69,10 @@ public static class GatewayAdministrationOperations
 
 internal static class GatewayJson
 {
-    internal static byte[] Serialize(Action<Utf8JsonWriter> write)
-    {
-        byte[] storage = new byte[64 * 1024];
-        try
-        {
-            using var stream = new MemoryStream(storage, writable: true);
-            using (var writer = new Utf8JsonWriter(stream)) write(writer);
-            return storage.AsSpan(0, (int)stream.Position).ToArray();
-        }
-        catch (NotSupportedException) { throw new ArgumentException("The protected input exceeds its byte budget."); }
-        finally { Array.Clear(storage); }
-    }
+    internal static byte[] Serialize(Action<Utf8JsonWriter> write) => ManagementJson.Serialize(write, "protected");
 
-    internal static ManagementTarget BodyTarget(string org, string? project, string resource, Action<Utf8JsonWriter> write)
-    {
-        byte[] body = Serialize(write);
-        try { return new(org, project, resource, Convert.ToHexString(SHA256.HashData(body))); }
-        finally { Array.Clear(body); }
-    }
+    internal static ManagementTarget BodyTarget(string org, string? project, string resource, Action<Utf8JsonWriter> write) =>
+        new(org, project, resource, ManagementJson.IntentFingerprint(write, "protected"));
 
     internal static void InputText(string? text, int maximum, int minimum = 0)
     {

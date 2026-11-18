@@ -26,9 +26,9 @@ internal sealed class InfisicalAuditObserver(InfisicalLifecycleObservers channel
         {
             writer.WriteString("ownedName", ownedName);
             writer.WriteBoolean("projectScope", projectScope);
-            writer.WriteString("setupToken", setupToken.Material.Reveal());
-            writer.WriteString("administrativeToken", adminToken.Material.Reveal());
-            writer.WriteString("observerToken", observerToken.Material.Reveal());
+            setupToken.Material.Use(value => writer.WriteString("setupToken", value));
+            adminToken.Material.Use(value => writer.WriteString("administrativeToken", value));
+            observerToken.Material.Use(value => writer.WriteString("observerToken", value));
         }, token);
         Require(facts.OwnedName == ownedName && !string.IsNullOrWhiteSpace(facts.OrganizationId) &&
             projectScope == !string.IsNullOrWhiteSpace(facts.ProjectId));
@@ -44,7 +44,7 @@ internal sealed class InfisicalAuditObserver(InfisicalLifecycleObservers channel
             Scope(writer, scope);
             writer.WriteString("correlation", correlation);
             writer.WriteNumber("eventClass", (int)eventClass);
-            writer.WriteString("runtimeToken", selected.Material.Reveal());
+            selected.Material.Use(value => writer.WriteString("runtimeToken", value));
         }, token);
         Require(facts.Correlation == correlation && facts.OrganizationId == scope.OrganizationId &&
             facts.ProjectId == scope.ProjectId && facts.EventClass == eventClass &&
@@ -63,7 +63,7 @@ internal sealed class InfisicalAuditObserver(InfisicalLifecycleObservers channel
             Scope(writer, scope);
             writer.WriteString("eventId", triggered.Id);
             writer.WriteString("correlation", triggered.Correlation);
-            writer.WriteString("observerToken", selected.Material.Reveal());
+            selected.Material.Use(value => writer.WriteString("observerToken", value));
         }, token);
         Require(facts.Correlation == triggered.Correlation && facts.PersistedEventIds is not null &&
             facts.EnabledClasses is not null);
@@ -77,7 +77,7 @@ internal sealed class InfisicalAuditObserver(InfisicalLifecycleObservers channel
         CleanupFacts facts = await channel.PostAsync<CleanupFacts>("audit/cleanup", writer =>
         {
             writer.WriteString("ownedName", ownedName);
-            writer.WriteString("setupToken", selected.Material.Reveal());
+            selected.Material.Use(value => writer.WriteString("setupToken", value));
         }, token);
         if (facts.OwnedName != ownedName || facts.RemainingOrganizations != 0 || facts.RemainingProjects != 0)
             throw new NativeCaseFailureException("cleanup-incomplete");

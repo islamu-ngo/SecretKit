@@ -152,17 +152,7 @@ internal sealed class OwnedRotationValidation : IAsyncDisposable
         public override string ToString() => "[RotationValidationState]";
     }
 
-    private static State Project(PostgresSecretRotationSummary s) => new(s.Id, s.Name, s.ProjectId, s.Environment,
-        s.EnvironmentId, s.SecretPath, s.FolderId, s.ConnectionId, s.Parameters.Username1, s.Parameters.Username2,
-        s.Parameters.RotationStatement is not null, s.IsAutoRotationEnabled, s.RotationInterval, s.ActiveIndex,
-        s.SecretsMapping.Username, s.SecretsMapping.Password, s.Parameters.PasswordRequirements is { } p ?
-            new(p.Length, p.Digits, p.Lowercase, p.Symbols, p.Uppercase, p.AllowedSymbols) : null);
-    private static State Project(MySqlSecretRotationSummary s) => new(s.Id, s.Name, s.ProjectId, s.Environment,
-        s.EnvironmentId, s.SecretPath, s.FolderId, s.ConnectionId, s.Parameters.Username1, s.Parameters.Username2,
-        s.Parameters.RotationStatement is not null, s.IsAutoRotationEnabled, s.RotationInterval, s.ActiveIndex,
-        s.SecretsMapping.Username, s.SecretsMapping.Password, s.Parameters.PasswordRequirements is { } p ?
-            new(p.Length, p.Digits, p.Lowercase, p.Symbols, p.Uppercase, p.AllowedSymbols) : null);
-    private static State Project(MsSqlSecretRotationSummary s) => new(s.Id, s.Name, s.ProjectId, s.Environment,
+    private static State Project(SqlSecretRotationSummary s) => new(s.Id, s.Name, s.ProjectId, s.Environment,
         s.EnvironmentId, s.SecretPath, s.FolderId, s.ConnectionId, s.Parameters.Username1, s.Parameters.Username2,
         s.Parameters.RotationStatement is not null, s.IsAutoRotationEnabled, s.RotationInterval, s.ActiveIndex,
         s.SecretsMapping.Username, s.SecretsMapping.Password, s.Parameters.PasswordRequirements is { } p ?
@@ -188,19 +178,19 @@ internal sealed class OwnedRotationValidation : IAsyncDisposable
         switch (input.Profile)
         {
             case InfisicalRotationProfile.PostgresCredentials:
-                using (var p = new PostgresRotationParameters(accounts!.Username1, accounts.Username2, new(32, 8, 8, 8, 8, "!")))
+                using (var p = new SqlRotationParameters(accounts!.Username1, accounts.Username2, new(32, 8, 8, 8, 8, "!")))
                 using (var r = PostgresSecretRotationOperations.Create(input.OrganizationId, new(name, folder.Input.ProjectId,
                     folder.Input.Environment, folder.Folder, input.ConnectionId, input.RotationInterval, p,
                     new(UserKey, PasswordKey), isAutoRotationEnabled: false)))
                     return await ExecuteAsync(r, NativeIdentityRole.Setup, true, Project, token);
             case InfisicalRotationProfile.MysqlCredentials:
-                using (var p = new MySqlRotationParameters(accounts!.Username1, accounts.Username2, new(32, 8, 8, 8, 8, "!")))
+                using (var p = new SqlRotationParameters(accounts!.Username1, accounts.Username2, new(32, 8, 8, 8, 8, "!")))
                 using (var r = MySqlSecretRotationOperations.Create(input.OrganizationId, new(name, folder.Input.ProjectId,
                     folder.Input.Environment, folder.Folder, input.ConnectionId, input.RotationInterval, p,
                     new(UserKey, PasswordKey), isAutoRotationEnabled: false)))
                     return await ExecuteAsync(r, NativeIdentityRole.Setup, true, Project, token);
             case InfisicalRotationProfile.MssqlCredentials:
-                using (var p = new MsSqlRotationParameters(accounts!.Username1, accounts.Username2, new(32, 8, 8, 8, 8, "!")))
+                using (var p = new SqlRotationParameters(accounts!.Username1, accounts.Username2, new(32, 8, 8, 8, 8, "!")))
                 using (var r = MsSqlSecretRotationOperations.Create(input.OrganizationId, new(name, folder.Input.ProjectId,
                     folder.Input.Environment, folder.Folder, input.ConnectionId, input.RotationInterval, p,
                     new(UserKey, PasswordKey), isAutoRotationEnabled: false)))

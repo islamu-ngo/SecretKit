@@ -14,11 +14,11 @@
     },
     {
       "file": "src/SecretKit.Infisical.Management/Access/MembershipMutations.cs",
-      "sha256": "4330ecade49a093e2cfc43fcfabc052c5d4b9a66d24a4bbb457ca28020083164"
+      "sha256": "6010d4feca7cc53e2b286ce4400925bdc026a22a44980e8eaa16256a7bec770a"
     },
     {
       "file": "src/SecretKit.Infisical.Management/Access/MembershipRoleVariants.cs",
-      "sha256": "4c11758001c1de4b655174585fb0a0aaccac37234c8bc28d3a568fecc634aac6"
+      "sha256": "9f9c54340e3570274202c214217284c698fbe0469ec89ce8fb47346f0dd1f30e"
     },
     {
       "file": "src/SecretKit.Infisical.Management/Access/Memberships.cs",
@@ -30,7 +30,7 @@
     },
     {
       "file": "src/SecretKit.Infisical.Management/Access/RoleChanges.cs",
-      "sha256": "6b6b39c74bae8739016ad687729878bdff00ceef665a7c39b7efef5d6de3fdac"
+      "sha256": "796a6f0658528f6e85af39e1b5f8da14f33f41794e5da0f2551204f8475f38c0"
     },
     {
       "file": "src/SecretKit.Infisical.Management/Access/RolePermissions.cs",
@@ -54,7 +54,7 @@
     },
     {
       "file": "src/SecretKit.Infisical.Management/Gateways/GatewayAdministration.cs",
-      "sha256": "28e66542a8b249da81bb49642f9fbfc1323de06e4898e4b2d4e35923748cb7cf"
+      "sha256": "475f3b927dbb18db05d4ac3c748d249d33702579b1c272e54852f3dd2af31be7"
     },
     {
       "file": "src/SecretKit.Infisical.Management/Gateways/GatewayAdministrationApi.cs",
@@ -62,7 +62,7 @@
     },
     {
       "file": "src/SecretKit.Infisical.Management/Gateways/GatewayAdministrationTypes.cs",
-      "sha256": "52ca65c5b5d3407c9876cd599ae359e17bc6d0a9b8b4e1e30b2adb50144946b6"
+      "sha256": "2c133edebec65bd154d19f5706b8545019677034668621c87701b237bbc42e64"
     },
     {
       "file": "src/SecretKit.Infisical.Management/Gateways/ProxiedServiceAdministration.cs",
@@ -74,7 +74,7 @@
     },
     {
       "file": "src/SecretKit.Infisical.Management/Gateways/ProxiedServiceAdministrationTypes.cs",
-      "sha256": "4fbe748fccbf8e580c1f2265d8e7e814c3f005ca53924d596646df7c1510637a"
+      "sha256": "563f5da21979b0f924eab3a513ba2a33829902c9215df1ca7dfa83b18eb799f8"
     },
     {
       "file": "src/SecretKit.Infisical.Management/Identities/CloudIdentityAuthentication.cs",
@@ -110,7 +110,7 @@
     },
     {
       "file": "src/SecretKit.Infisical.Management/Identities/IdentityAuthenticationTypes.cs",
-      "sha256": "3ea9ce89e69a15370278aa8001052d51d6f017542cf9b7780b99d3397edeb8a3"
+      "sha256": "2758fa7dc4e1043b61f2ca29da3d539b4df1504056bf69da30e76350664443a3"
     },
     {
       "file": "src/SecretKit.Infisical.Management/Identities/IdentityMetadataVariants.cs",
@@ -118,7 +118,7 @@
     },
     {
       "file": "src/SecretKit.Infisical.Management/Identities/IdentityPrivilegeChanges.cs",
-      "sha256": "e3574b690a59e80339200343c0f1ae94184c701311e7ad72869f02b28db2292e"
+      "sha256": "d9a2071950c926aca0e9b5977febc99d92013106248807635719fc3fc7052e4a"
     },
     {
       "file": "src/SecretKit.Infisical.Management/Identities/IdentityPrivileges.cs",
@@ -134,7 +134,7 @@
     },
     {
       "file": "src/SecretKit.Infisical.Management/Identities/IdentityTemplateVariants.cs",
-      "sha256": "3be87a4c7e3a128ab2acbef5f5ecbc06f702cd0d1d79502a01335ab7d154b4e6"
+      "sha256": "70f30f37e47bd904d958a7eebe0683111e1fcc96b3ebf4c48ee60d5cd30a8545"
     },
     {
       "file": "src/SecretKit.Infisical.Management/Identities/IdentityTemplates.cs",
@@ -166,7 +166,7 @@
     },
     {
       "file": "src/SecretKit.Infisical.Management/Projects/ProjectFieldVariants.cs",
-      "sha256": "ece54ae60fb8ff3ea852bb6c9eb3a6dc1bd005520a009a3570154aa61483295a"
+      "sha256": "a5df16168de720e4acebadf1af467029cac04462ad580e3f8bcaaa817eb71b6f"
     },
     {
       "file": "src/SecretKit.Infisical.Management/Projects/ProjectMemberships.cs",
@@ -174,7 +174,7 @@
     },
     {
       "file": "src/SecretKit.Infisical.Management/Projects/ProjectTemplateVariants.cs",
-      "sha256": "6086406c394ed9d77d57a8fb7c5a9b50d7f12f5131a11b63b56c07bea2362226"
+      "sha256": "2eeb6f32717c8e87b6045d9d99aba034c97761910c7b6dc189a59dc242b39519"
     },
     {
       "file": "src/SecretKit.Infisical.Management/Projects/ProjectTemplates.cs",
@@ -186,43 +186,31 @@
     },
     {
       "file": "src/SecretKit.Infisical.Management/Rotations/MsSqlSecretRotations.cs",
-      "sha256": "91b4866caed51dd72e66f08127f28a2ffd3a2ed8c25e7ca51ed62247c1131dc3"
-    },
-    {
-      "file": "src/SecretKit.Infisical.Management/Rotations/MsSqlSecretRotationsApi.cs",
-      "sha256": "ca029d0c688be8ec6fe55864373db12bb61a545008bff8dbdaba7b9fff63f371"
-    },
-    {
-      "file": "src/SecretKit.Infisical.Management/Rotations/MsSqlSecretRotationsTypes.cs",
-      "sha256": "56f650808d3f6997cff3bcd640de452ea110be36dc0f5792bfc424df97094ce1"
+      "sha256": "2de7d5d09755bb3188bd6b21053da2ec6492e54803d66abb006813c82988f8aa"
     },
     {
       "file": "src/SecretKit.Infisical.Management/Rotations/MySqlSecretRotations.cs",
-      "sha256": "79d24ccc5e08ddc7949281685c222981b062ea0b3a773270f65c165fae1e1560"
-    },
-    {
-      "file": "src/SecretKit.Infisical.Management/Rotations/MySqlSecretRotationsApi.cs",
-      "sha256": "d99eb8c597dc8e8363a1daf8c4c7fb09a5139ef26b3cb08aa0380b458a6e32ee"
-    },
-    {
-      "file": "src/SecretKit.Infisical.Management/Rotations/MySqlSecretRotationsTypes.cs",
-      "sha256": "b910c2f145b5c30f1647074fe4ce8aa37cc14da923364998edefa09efc448c36"
+      "sha256": "f443b4bcce7ada261e9a32db2cd8d82845afbcc9f026d331d467c22fe5f4621b"
     },
     {
       "file": "src/SecretKit.Infisical.Management/Rotations/PostgresSecretRotations.cs",
-      "sha256": "50ac7bfdb8b628d419bb8b837ba9c98feb6fd43ae9a9cd92818a249859bf96ad"
+      "sha256": "8a0a2a03ba6b215a0e4249075286c916fa50ac4b23d51a4a6f9fa45961302c8e"
     },
     {
-      "file": "src/SecretKit.Infisical.Management/Rotations/PostgresSecretRotationsApi.cs",
-      "sha256": "7a6117cae0bfd439ceeffe637f3cd8e8592df57a06e1c2a4ea36482edbbeaa7e"
+      "file": "src/SecretKit.Infisical.Management/Rotations/SqlSecretRotationApi.cs",
+      "sha256": "5e60f24a0cd45a99ea14fc5e1e64292fd0b6bd0424d986a6fb0e7a7f87bc22c2"
     },
     {
-      "file": "src/SecretKit.Infisical.Management/Rotations/PostgresSecretRotationsTypes.cs",
-      "sha256": "2155c1bbfc2f5d6f8060fd8c39951dce590aa87c6c6aee3a5a27db67e300cbca"
+      "file": "src/SecretKit.Infisical.Management/Rotations/SqlSecretRotationFamily.cs",
+      "sha256": "436d01ff1d5d3d778594e6649c7f3d978e367f92eef0b912068268400594098a"
+    },
+    {
+      "file": "src/SecretKit.Infisical.Management/Rotations/SqlSecretRotationModels.cs",
+      "sha256": "315607b0c133a92b159d3c3d857b3eff7da2c59db6a82fd18ea886cbead409b0"
     },
     {
       "file": "src/SecretKit.Infisical.Management/Rotations/SqlSecretRotationShared.cs",
-      "sha256": "5e54da57fa9e46581be1cd443505db81004ddcc6dac80f0e40b7fe352108fc4c"
+      "sha256": "162e039086951f71c1caa0c2b768fd6462ae3930de73aeb299ae929071e70947"
     },
     {
       "file": "src/SecretKit.Infisical.Management/Transport/ManagementApis.cs",
@@ -230,11 +218,11 @@
     },
     {
       "file": "src/SecretKit.Infisical.Management/Transport/ManagementClient.cs",
-      "sha256": "df8605b47576027523fb840e7115a8012177dd0bbe221ef8a9060924276ca28b"
+      "sha256": "7a6c43c24b4255ae4dbadd2f45620134b8c8eb32f18b26be5986c03e021554dc"
     },
     {
       "file": "src/SecretKit.Infisical.Management/Transport/ManagementContracts.cs",
-      "sha256": "6b3aed42c4c587510cad86a4a4af507bb636882beb012d5c0c0062c92bf14070"
+      "sha256": "2dfcfff50f99974845536fc320d816c86f65b617e5e46979b48e3871b1934c76"
     },
     {
       "file": "src/SecretKit.Infisical.Management/Transport/ManagementDiagnostics.cs",
@@ -246,7 +234,7 @@
     },
     {
       "file": "src/SecretKit.Infisical.Management/Transport/ManagementRequestBuilder.cs",
-      "sha256": "a97a6275f8693e349060455c5b87e0a9f2cd8e686a46ef82286698b73b618581"
+      "sha256": "3ef118c208e2a65c2f414cdb3a814188b16cc9537aac17fd5aa706bc0dfd012d"
     },
     {
       "file": "src/SecretKit.Infisical.Management/Transport/ManagementResponseContracts.cs",
@@ -310,7 +298,7 @@
     },
     {
       "file": "src/SecretKit.Infisical/Dynamic/InfisicalDynamicClient.cs",
-      "sha256": "a890f0a7c7cbdda557d7c2f2cd420a6fe1c28630e8b95711eeccc45be607e3f6"
+      "sha256": "12c021e78e73f68d65788e9dabcf60e773396ca06c26d31c6bc822d1fc31d4b5"
     },
     {
       "file": "src/SecretKit.Infisical/Dynamic/InfisicalDynamicTypes.cs",
@@ -373,6 +361,10 @@
       "sha256": "848bf30d8a82511c29b62e3330489a889f7da14a82b198c06327aed1d247be66"
     },
     {
+      "file": "src/SecretKit.Infisical/Internal/InfisicalBearer.cs",
+      "sha256": "31ad8fd49648c16cca449aa8729957ffe8d850b7ae817198b508552d6b72f661"
+    },
+    {
       "file": "src/SecretKit.Infisical/Internal/InfisicalContractAvailability.cs",
       "sha256": "be3b70b199a9d9cb1a491a17e393269f5a4858e4b7076f2cfce469163265c678"
     },
@@ -390,7 +382,7 @@
     },
     {
       "file": "src/SecretKit.Infisical/Internal/InfisicalOperationBudget.cs",
-      "sha256": "e3175774ed78fc3e185c59ff6c37f4f61b047dd4e6be82e347b93c1a0c0a0eb9"
+      "sha256": "def472b8ece7d4252b8c1eb6a41d362019523b1525b15592fae750b4dcc66f23"
     },
     {
       "file": "src/SecretKit.Infisical/Internal/NativeWireBindings.cs",
@@ -418,7 +410,7 @@
     },
     {
       "file": "src/SecretKit.Infisical/Rotation/InfisicalRotationClient.cs",
-      "sha256": "88ecb03422e5a4378585212085da931e125e8dbc4cd08ae8e0ee79534d1efbd8"
+      "sha256": "fddb279d65046f003ebd344e581278a6deb132a78665d3a5d3b062fa810ed4c3"
     },
     {
       "file": "src/SecretKit.Infisical/Rotation/InfisicalRotationModels.cs",
@@ -430,7 +422,7 @@
     },
     {
       "file": "src/SecretKit.Infisical/Secrets/InfisicalClient.cs",
-      "sha256": "19b2bcae43c073ee550df8548a7689e55fcd5b477df33845902c276d0abf9983"
+      "sha256": "5a9f761bdf727e87d5a3455dd60d616a1b3b168c415ce593a9b131d905927677"
     },
     {
       "file": "src/SecretKit.Infisical/Secrets/InfisicalInventory.cs",
@@ -7967,21 +7959,21 @@
     },
     {
       "id": "i.management.MsSqlSecretRotationOperations.Create",
-      "member": "SecretKit.Infisical.Management.MsSqlSecretRotationOperations.Create(System.String,SecretKit.Infisical.Management.MsSqlSecretRotationCreation)",
+      "member": "SecretKit.Infisical.Management.MsSqlSecretRotationOperations.Create(System.String,SecretKit.Infisical.Management.SqlSecretRotationCreation)",
       "variants": [
-        "MsSqlSecretRotationCreation.rotateAtUtc.omitted",
-        "MsSqlSecretRotationCreation.rotateAtUtc.value",
-        "MsSqlSecretRotationCreation.description.omitted",
-        "MsSqlSecretRotationCreation.description.value",
-        "MsSqlSecretRotationCreation.isAutoRotationEnabled.omitted",
-        "MsSqlSecretRotationCreation.isAutoRotationEnabled.false",
-        "MsSqlSecretRotationCreation.isAutoRotationEnabled.true",
-        "MsSqlRotationParameters.passwordRequirements.omitted",
-        "MsSqlRotationParameters.passwordRequirements.value",
-        "MsSqlRotationParameters.rotationStatement.omitted",
-        "MsSqlRotationParameters.rotationStatement.value",
-        "MsSqlRotationPasswordRequirements.allowedSymbols.omitted",
-        "MsSqlRotationPasswordRequirements.allowedSymbols.value",
+        "SqlSecretRotationCreation.rotateAtUtc.omitted",
+        "SqlSecretRotationCreation.rotateAtUtc.value",
+        "SqlSecretRotationCreation.description.omitted",
+        "SqlSecretRotationCreation.description.value",
+        "SqlSecretRotationCreation.isAutoRotationEnabled.omitted",
+        "SqlSecretRotationCreation.isAutoRotationEnabled.false",
+        "SqlSecretRotationCreation.isAutoRotationEnabled.true",
+        "SqlRotationParameters.passwordRequirements.omitted",
+        "SqlRotationParameters.passwordRequirements.value",
+        "SqlRotationParameters.rotationStatement.omitted",
+        "SqlRotationParameters.rotationStatement.value",
+        "SqlRotationPasswordRequirements.allowedSymbols.omitted",
+        "SqlRotationPasswordRequirements.allowedSymbols.value",
         "description.null",
         "description.value",
         "description.omitted",
@@ -8178,7 +8170,7 @@
     },
     {
       "id": "i.management.MsSqlSecretRotationOperations.Move",
-      "member": "SecretKit.Infisical.Management.MsSqlSecretRotationOperations.Move(System.String,SecretKit.Infisical.InfisicalRotationAddress,SecretKit.Infisical.Management.MsSqlSecretRotationMove)",
+      "member": "SecretKit.Infisical.Management.MsSqlSecretRotationOperations.Move(System.String,SecretKit.Infisical.InfisicalRotationAddress,SecretKit.Infisical.Management.SqlSecretRotationMove)",
       "variants": [
         "overwriteDestination.omitted",
         "overwriteDestination.false",
@@ -8233,29 +8225,29 @@
     },
     {
       "id": "i.management.MsSqlSecretRotationOperations.Update",
-      "member": "SecretKit.Infisical.Management.MsSqlSecretRotationOperations.Update(System.String,SecretKit.Infisical.InfisicalRotationAddress,SecretKit.Infisical.Management.MsSqlSecretRotationUpdate)",
+      "member": "SecretKit.Infisical.Management.MsSqlSecretRotationOperations.Update(System.String,SecretKit.Infisical.InfisicalRotationAddress,SecretKit.Infisical.Management.SqlSecretRotationUpdate)",
       "variants": [
-        "MsSqlSecretRotationUpdate.name.omitted",
-        "MsSqlSecretRotationUpdate.name.value",
-        "MsSqlSecretRotationUpdate.description.omitted",
-        "MsSqlSecretRotationUpdate.description.value",
-        "MsSqlSecretRotationUpdate.isAutoRotationEnabled.omitted",
-        "MsSqlSecretRotationUpdate.isAutoRotationEnabled.false",
-        "MsSqlSecretRotationUpdate.isAutoRotationEnabled.true",
-        "MsSqlSecretRotationUpdate.rotationInterval.omitted",
-        "MsSqlSecretRotationUpdate.rotationInterval.value",
-        "MsSqlSecretRotationUpdate.parameters.omitted",
-        "MsSqlSecretRotationUpdate.parameters.value",
-        "MsSqlSecretRotationUpdate.secretsMapping.omitted",
-        "MsSqlSecretRotationUpdate.secretsMapping.value",
-        "MsSqlSecretRotationUpdate.rotateAtUtc.omitted",
-        "MsSqlSecretRotationUpdate.rotateAtUtc.value",
-        "MsSqlRotationParameters.passwordRequirements.omitted",
-        "MsSqlRotationParameters.passwordRequirements.value",
-        "MsSqlRotationParameters.rotationStatement.omitted",
-        "MsSqlRotationParameters.rotationStatement.value",
-        "MsSqlRotationPasswordRequirements.allowedSymbols.omitted",
-        "MsSqlRotationPasswordRequirements.allowedSymbols.value",
+        "SqlSecretRotationUpdate.name.omitted",
+        "SqlSecretRotationUpdate.name.value",
+        "SqlSecretRotationUpdate.description.omitted",
+        "SqlSecretRotationUpdate.description.value",
+        "SqlSecretRotationUpdate.isAutoRotationEnabled.omitted",
+        "SqlSecretRotationUpdate.isAutoRotationEnabled.false",
+        "SqlSecretRotationUpdate.isAutoRotationEnabled.true",
+        "SqlSecretRotationUpdate.rotationInterval.omitted",
+        "SqlSecretRotationUpdate.rotationInterval.value",
+        "SqlSecretRotationUpdate.parameters.omitted",
+        "SqlSecretRotationUpdate.parameters.value",
+        "SqlSecretRotationUpdate.secretsMapping.omitted",
+        "SqlSecretRotationUpdate.secretsMapping.value",
+        "SqlSecretRotationUpdate.rotateAtUtc.omitted",
+        "SqlSecretRotationUpdate.rotateAtUtc.value",
+        "SqlRotationParameters.passwordRequirements.omitted",
+        "SqlRotationParameters.passwordRequirements.value",
+        "SqlRotationParameters.rotationStatement.omitted",
+        "SqlRotationParameters.rotationStatement.value",
+        "SqlRotationPasswordRequirements.allowedSymbols.omitted",
+        "SqlRotationPasswordRequirements.allowedSymbols.value",
         "description.null",
         "description.value",
         "description.omitted",
@@ -8320,21 +8312,21 @@
     },
     {
       "id": "i.management.MySqlSecretRotationOperations.Create",
-      "member": "SecretKit.Infisical.Management.MySqlSecretRotationOperations.Create(System.String,SecretKit.Infisical.Management.MySqlSecretRotationCreation)",
+      "member": "SecretKit.Infisical.Management.MySqlSecretRotationOperations.Create(System.String,SecretKit.Infisical.Management.SqlSecretRotationCreation)",
       "variants": [
-        "MySqlSecretRotationCreation.rotateAtUtc.omitted",
-        "MySqlSecretRotationCreation.rotateAtUtc.value",
-        "MySqlSecretRotationCreation.description.omitted",
-        "MySqlSecretRotationCreation.description.value",
-        "MySqlSecretRotationCreation.isAutoRotationEnabled.omitted",
-        "MySqlSecretRotationCreation.isAutoRotationEnabled.false",
-        "MySqlSecretRotationCreation.isAutoRotationEnabled.true",
-        "MySqlRotationParameters.passwordRequirements.omitted",
-        "MySqlRotationParameters.passwordRequirements.value",
-        "MySqlRotationParameters.rotationStatement.omitted",
-        "MySqlRotationParameters.rotationStatement.value",
-        "MySqlRotationPasswordRequirements.allowedSymbols.omitted",
-        "MySqlRotationPasswordRequirements.allowedSymbols.value",
+        "SqlSecretRotationCreation.rotateAtUtc.omitted",
+        "SqlSecretRotationCreation.rotateAtUtc.value",
+        "SqlSecretRotationCreation.description.omitted",
+        "SqlSecretRotationCreation.description.value",
+        "SqlSecretRotationCreation.isAutoRotationEnabled.omitted",
+        "SqlSecretRotationCreation.isAutoRotationEnabled.false",
+        "SqlSecretRotationCreation.isAutoRotationEnabled.true",
+        "SqlRotationParameters.passwordRequirements.omitted",
+        "SqlRotationParameters.passwordRequirements.value",
+        "SqlRotationParameters.rotationStatement.omitted",
+        "SqlRotationParameters.rotationStatement.value",
+        "SqlRotationPasswordRequirements.allowedSymbols.omitted",
+        "SqlRotationPasswordRequirements.allowedSymbols.value",
         "description.null",
         "description.value",
         "description.omitted",
@@ -8531,7 +8523,7 @@
     },
     {
       "id": "i.management.MySqlSecretRotationOperations.Move",
-      "member": "SecretKit.Infisical.Management.MySqlSecretRotationOperations.Move(System.String,SecretKit.Infisical.InfisicalRotationAddress,SecretKit.Infisical.Management.MySqlSecretRotationMove)",
+      "member": "SecretKit.Infisical.Management.MySqlSecretRotationOperations.Move(System.String,SecretKit.Infisical.InfisicalRotationAddress,SecretKit.Infisical.Management.SqlSecretRotationMove)",
       "variants": [
         "overwriteDestination.omitted",
         "overwriteDestination.false",
@@ -8586,29 +8578,29 @@
     },
     {
       "id": "i.management.MySqlSecretRotationOperations.Update",
-      "member": "SecretKit.Infisical.Management.MySqlSecretRotationOperations.Update(System.String,SecretKit.Infisical.InfisicalRotationAddress,SecretKit.Infisical.Management.MySqlSecretRotationUpdate)",
+      "member": "SecretKit.Infisical.Management.MySqlSecretRotationOperations.Update(System.String,SecretKit.Infisical.InfisicalRotationAddress,SecretKit.Infisical.Management.SqlSecretRotationUpdate)",
       "variants": [
-        "MySqlSecretRotationUpdate.name.omitted",
-        "MySqlSecretRotationUpdate.name.value",
-        "MySqlSecretRotationUpdate.description.omitted",
-        "MySqlSecretRotationUpdate.description.value",
-        "MySqlSecretRotationUpdate.isAutoRotationEnabled.omitted",
-        "MySqlSecretRotationUpdate.isAutoRotationEnabled.false",
-        "MySqlSecretRotationUpdate.isAutoRotationEnabled.true",
-        "MySqlSecretRotationUpdate.rotationInterval.omitted",
-        "MySqlSecretRotationUpdate.rotationInterval.value",
-        "MySqlSecretRotationUpdate.parameters.omitted",
-        "MySqlSecretRotationUpdate.parameters.value",
-        "MySqlSecretRotationUpdate.secretsMapping.omitted",
-        "MySqlSecretRotationUpdate.secretsMapping.value",
-        "MySqlSecretRotationUpdate.rotateAtUtc.omitted",
-        "MySqlSecretRotationUpdate.rotateAtUtc.value",
-        "MySqlRotationParameters.passwordRequirements.omitted",
-        "MySqlRotationParameters.passwordRequirements.value",
-        "MySqlRotationParameters.rotationStatement.omitted",
-        "MySqlRotationParameters.rotationStatement.value",
-        "MySqlRotationPasswordRequirements.allowedSymbols.omitted",
-        "MySqlRotationPasswordRequirements.allowedSymbols.value",
+        "SqlSecretRotationUpdate.name.omitted",
+        "SqlSecretRotationUpdate.name.value",
+        "SqlSecretRotationUpdate.description.omitted",
+        "SqlSecretRotationUpdate.description.value",
+        "SqlSecretRotationUpdate.isAutoRotationEnabled.omitted",
+        "SqlSecretRotationUpdate.isAutoRotationEnabled.false",
+        "SqlSecretRotationUpdate.isAutoRotationEnabled.true",
+        "SqlSecretRotationUpdate.rotationInterval.omitted",
+        "SqlSecretRotationUpdate.rotationInterval.value",
+        "SqlSecretRotationUpdate.parameters.omitted",
+        "SqlSecretRotationUpdate.parameters.value",
+        "SqlSecretRotationUpdate.secretsMapping.omitted",
+        "SqlSecretRotationUpdate.secretsMapping.value",
+        "SqlSecretRotationUpdate.rotateAtUtc.omitted",
+        "SqlSecretRotationUpdate.rotateAtUtc.value",
+        "SqlRotationParameters.passwordRequirements.omitted",
+        "SqlRotationParameters.passwordRequirements.value",
+        "SqlRotationParameters.rotationStatement.omitted",
+        "SqlRotationParameters.rotationStatement.value",
+        "SqlRotationPasswordRequirements.allowedSymbols.omitted",
+        "SqlRotationPasswordRequirements.allowedSymbols.value",
         "description.null",
         "description.value",
         "description.omitted",
@@ -8779,21 +8771,21 @@
     },
     {
       "id": "i.management.PostgresSecretRotationOperations.Create",
-      "member": "SecretKit.Infisical.Management.PostgresSecretRotationOperations.Create(System.String,SecretKit.Infisical.Management.PostgresSecretRotationCreation)",
+      "member": "SecretKit.Infisical.Management.PostgresSecretRotationOperations.Create(System.String,SecretKit.Infisical.Management.SqlSecretRotationCreation)",
       "variants": [
-        "PostgresSecretRotationCreation.rotateAtUtc.omitted",
-        "PostgresSecretRotationCreation.rotateAtUtc.value",
-        "PostgresSecretRotationCreation.description.omitted",
-        "PostgresSecretRotationCreation.description.value",
-        "PostgresSecretRotationCreation.isAutoRotationEnabled.omitted",
-        "PostgresSecretRotationCreation.isAutoRotationEnabled.false",
-        "PostgresSecretRotationCreation.isAutoRotationEnabled.true",
-        "PostgresRotationParameters.passwordRequirements.omitted",
-        "PostgresRotationParameters.passwordRequirements.value",
-        "PostgresRotationParameters.rotationStatement.omitted",
-        "PostgresRotationParameters.rotationStatement.value",
-        "PostgresRotationPasswordRequirements.allowedSymbols.omitted",
-        "PostgresRotationPasswordRequirements.allowedSymbols.value",
+        "SqlSecretRotationCreation.rotateAtUtc.omitted",
+        "SqlSecretRotationCreation.rotateAtUtc.value",
+        "SqlSecretRotationCreation.description.omitted",
+        "SqlSecretRotationCreation.description.value",
+        "SqlSecretRotationCreation.isAutoRotationEnabled.omitted",
+        "SqlSecretRotationCreation.isAutoRotationEnabled.false",
+        "SqlSecretRotationCreation.isAutoRotationEnabled.true",
+        "SqlRotationParameters.passwordRequirements.omitted",
+        "SqlRotationParameters.passwordRequirements.value",
+        "SqlRotationParameters.rotationStatement.omitted",
+        "SqlRotationParameters.rotationStatement.value",
+        "SqlRotationPasswordRequirements.allowedSymbols.omitted",
+        "SqlRotationPasswordRequirements.allowedSymbols.value",
         "description.null",
         "description.value",
         "description.omitted",
@@ -8990,7 +8982,7 @@
     },
     {
       "id": "i.management.PostgresSecretRotationOperations.Move",
-      "member": "SecretKit.Infisical.Management.PostgresSecretRotationOperations.Move(System.String,SecretKit.Infisical.InfisicalRotationAddress,SecretKit.Infisical.Management.PostgresSecretRotationMove)",
+      "member": "SecretKit.Infisical.Management.PostgresSecretRotationOperations.Move(System.String,SecretKit.Infisical.InfisicalRotationAddress,SecretKit.Infisical.Management.SqlSecretRotationMove)",
       "variants": [
         "overwriteDestination.omitted",
         "overwriteDestination.false",
@@ -9045,29 +9037,29 @@
     },
     {
       "id": "i.management.PostgresSecretRotationOperations.Update",
-      "member": "SecretKit.Infisical.Management.PostgresSecretRotationOperations.Update(System.String,SecretKit.Infisical.InfisicalRotationAddress,SecretKit.Infisical.Management.PostgresSecretRotationUpdate)",
+      "member": "SecretKit.Infisical.Management.PostgresSecretRotationOperations.Update(System.String,SecretKit.Infisical.InfisicalRotationAddress,SecretKit.Infisical.Management.SqlSecretRotationUpdate)",
       "variants": [
-        "PostgresSecretRotationUpdate.name.omitted",
-        "PostgresSecretRotationUpdate.name.value",
-        "PostgresSecretRotationUpdate.description.omitted",
-        "PostgresSecretRotationUpdate.description.value",
-        "PostgresSecretRotationUpdate.isAutoRotationEnabled.omitted",
-        "PostgresSecretRotationUpdate.isAutoRotationEnabled.false",
-        "PostgresSecretRotationUpdate.isAutoRotationEnabled.true",
-        "PostgresSecretRotationUpdate.rotationInterval.omitted",
-        "PostgresSecretRotationUpdate.rotationInterval.value",
-        "PostgresSecretRotationUpdate.parameters.omitted",
-        "PostgresSecretRotationUpdate.parameters.value",
-        "PostgresSecretRotationUpdate.secretsMapping.omitted",
-        "PostgresSecretRotationUpdate.secretsMapping.value",
-        "PostgresSecretRotationUpdate.rotateAtUtc.omitted",
-        "PostgresSecretRotationUpdate.rotateAtUtc.value",
-        "PostgresRotationParameters.passwordRequirements.omitted",
-        "PostgresRotationParameters.passwordRequirements.value",
-        "PostgresRotationParameters.rotationStatement.omitted",
-        "PostgresRotationParameters.rotationStatement.value",
-        "PostgresRotationPasswordRequirements.allowedSymbols.omitted",
-        "PostgresRotationPasswordRequirements.allowedSymbols.value",
+        "SqlSecretRotationUpdate.name.omitted",
+        "SqlSecretRotationUpdate.name.value",
+        "SqlSecretRotationUpdate.description.omitted",
+        "SqlSecretRotationUpdate.description.value",
+        "SqlSecretRotationUpdate.isAutoRotationEnabled.omitted",
+        "SqlSecretRotationUpdate.isAutoRotationEnabled.false",
+        "SqlSecretRotationUpdate.isAutoRotationEnabled.true",
+        "SqlSecretRotationUpdate.rotationInterval.omitted",
+        "SqlSecretRotationUpdate.rotationInterval.value",
+        "SqlSecretRotationUpdate.parameters.omitted",
+        "SqlSecretRotationUpdate.parameters.value",
+        "SqlSecretRotationUpdate.secretsMapping.omitted",
+        "SqlSecretRotationUpdate.secretsMapping.value",
+        "SqlSecretRotationUpdate.rotateAtUtc.omitted",
+        "SqlSecretRotationUpdate.rotateAtUtc.value",
+        "SqlRotationParameters.passwordRequirements.omitted",
+        "SqlRotationParameters.passwordRequirements.value",
+        "SqlRotationParameters.rotationStatement.omitted",
+        "SqlRotationParameters.rotationStatement.value",
+        "SqlRotationPasswordRequirements.allowedSymbols.omitted",
+        "SqlRotationPasswordRequirements.allowedSymbols.value",
         "description.null",
         "description.value",
         "description.omitted",

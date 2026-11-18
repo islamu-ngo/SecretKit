@@ -167,7 +167,7 @@ public static class MembershipMutationOperations
                     hash.AppendData(length);
                     hash.AppendData(bytes);
                 }
-                finally { Array.Clear(bytes); }
+                finally { CryptographicOperations.ZeroMemory(bytes); }
             }
         }
         return Convert.ToHexString(hash.GetHashAndReset());

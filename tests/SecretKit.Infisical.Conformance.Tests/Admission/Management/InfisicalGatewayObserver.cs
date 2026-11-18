@@ -1,5 +1,4 @@
 using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using SecretKit.Core;
@@ -26,7 +25,7 @@ internal sealed class InfisicalGatewayObserver(InfisicalLifecycleObservers chann
         LookupFacts facts = await channel.PostAsync<LookupFacts>("gateway/find", writer =>
         {
             Owned(writer, organizationId, name);
-            writer.WriteString("observerToken", selected.Material.Reveal());
+            selected.Material.Use(value => writer.WriteString("observerToken", value));
         }, token);
         if (facts.OrganizationId != organizationId || facts.OwnedName != name ||
             facts.Status is not (SecretStatus.Success or SecretStatus.Absent) ||
@@ -56,19 +55,7 @@ internal sealed class InfisicalGatewayObserver(InfisicalLifecycleObservers chann
     {
         using var selected = await SelectedToken(runtime, token);
         using SecretMaterial? enrollment = enrollmentToken?.Copy();
-        char[]? characters = enrollment?.ExportCharacters();
-        byte[]? bytes = null;
-        string? fingerprint;
-        try
-        {
-            bytes = characters is null ? null : Encoding.UTF8.GetBytes(characters);
-            fingerprint = bytes is null ? null : Convert.ToHexString(SHA256.HashData(bytes));
-        }
-        finally
-        {
-            if (characters is not null) Array.Clear(characters);
-            if (bytes is not null) CryptographicOperations.ZeroMemory(bytes);
-        }
+        string? fingerprint = enrollment?.UseUtf8(value => Convert.ToHexString(SHA256.HashData(value)));
         DateTimeOffset started = DateTimeOffset.UtcNow;
         AgentFacts facts = await channel.PostAsync<AgentFacts>(route, writer =>
         {
@@ -76,8 +63,8 @@ internal sealed class InfisicalGatewayObserver(InfisicalLifecycleObservers chann
             writer.WriteString("gatewayId", gateway.Id);
             writer.WriteString("identityId", gateway.IdentityId ?? gateway.Authentication.IdentityId);
             writer.WriteNumber("authentication", (int)gateway.Authentication.Method);
-            writer.WriteString("runtimeToken", selected.Material.Reveal());
-            if (enrollment is not null) writer.WriteString("enrollmentToken", enrollment.Reveal());
+            selected.Material.Use(value => writer.WriteString("runtimeToken", value));
+            if (enrollment is not null) enrollment.Use(value => writer.WriteString("enrollmentToken", value));
         }, token);
         var measured = new GatewayAgentFacts(facts.GatewayId, facts.IdentityId, facts.Authentication,
             facts.Heartbeat, facts.AcceptedAuthentications);
@@ -106,7 +93,7 @@ internal sealed class InfisicalGatewayObserver(InfisicalLifecycleObservers chann
         CleanupFacts facts = await channel.PostAsync<CleanupFacts>("gateway/cleanup", writer =>
         {
             Owned(writer, organizationId, name);
-            writer.WriteString("setupToken", selected.Material.Reveal());
+            selected.Material.Use(value => writer.WriteString("setupToken", value));
         }, token);
         if (facts.OrganizationId != organizationId || facts.OwnedName != name ||
             facts.RemainingGateways != 0 || facts.RemainingAgents != 0 || facts.RemainingEnrollmentTokens != 0 ||

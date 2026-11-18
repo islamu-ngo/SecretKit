@@ -14,6 +14,7 @@ public sealed class MsSqlSecretRotationTests
     private const string Id = "7b15ac64-78ee-4fa5-a7b4-eb2da9ac5796";
     private const string Prefix = "infisical.";
     private const string Path = "/api/v2/secret-rotations/mssql-credentials";
+    private const string CredentialType = "mssql-credentials";
 
     [Test]
     [Arguments("root")]
@@ -215,10 +216,10 @@ public sealed class MsSqlSecretRotationTests
             return;
         }
         var (operation, method, path) = Route(route);
-        using var parameters = new MsSqlRotationParameters("first-private", "second-private");
+        using var parameters = new SqlRotationParameters("first-private", "second-private");
         var creation = Creation(parameters);
-        var update = new MsSqlSecretRotationUpdate();
-        var move = new MsSqlSecretRotationMove("next", "/next");
+        var update = new SqlSecretRotationUpdate();
+        var move = new SqlSecretRotationMove("next", "/next");
         switch (route)
         {
             case 0:
@@ -289,7 +290,7 @@ public sealed class MsSqlSecretRotationTests
     public async Task ContractCreationAndPatchPreserveEveryEstablishedAlternative(int variant)
     {
         using var statement = SecretMaterial.FromText("statement-private");
-        using var parameters = new MsSqlRotationParameters("first-private", "second-private",
+        using var parameters = new SqlRotationParameters("first-private", "second-private",
             variant == 0 ? null : new(20.5, 0.5, 1.5, 2.5, 3.5, variant == 1 ? null : "!"),
             variant == 0 ? null : statement);
         statement.Dispose();
@@ -297,9 +298,9 @@ public sealed class MsSqlSecretRotationTests
         { 0 => null, 1 => new(null), 2 => new(""), _ => new("description-private") };
         var time = variant == 0 ? null : new SqlRotationTime(1.5, 2.5);
         bool? enabled = variant == 0 ? null : variant == 3;
-        var creation = new MsSqlSecretRotationCreation("rotation-private", Project, "dev", "/", Id, 1.5, parameters,
+        var creation = new SqlSecretRotationCreation("rotation-private", Project, "dev", "/", Id, 1.5, parameters,
             new("USERNAME", "PASSWORD"), time, description, enabled);
-        var update = new MsSqlSecretRotationUpdate("rotation-private", description, enabled, 1.5,
+        var update = new SqlSecretRotationUpdate("rotation-private", description, enabled, 1.5,
             parameters, new("USERNAME", "PASSWORD"), time);
         using var create = MsSqlSecretRotationOperations.Create(Org, creation);
         using var patch = MsSqlSecretRotationOperations.Update(Org, Address(), update);
@@ -365,7 +366,7 @@ public sealed class MsSqlSecretRotationTests
         finally { Array.Clear(body); }
         request.Dispose();
         await Assert.That(() => request.CopyBody()).Throws<ObjectDisposedException>();
-        using var parameters = new MsSqlRotationParameters("one", "two");
+        using var parameters = new SqlRotationParameters("one", "two");
         parameters.Dispose();
         await Assert.That(() => MsSqlSecretRotationOperations.Create(Org, Creation(parameters))).Throws<ObjectDisposedException>();
     }
@@ -380,7 +381,7 @@ public sealed class MsSqlSecretRotationTests
         using var deletion = MsSqlSecretRotationOperations.Delete(Org, Address(), flag, flag);
         await Assert.That(deletion.Path).IsEqualTo(Path + "/" + Id + (variant == 0 ? "" :
             "?deleteSecrets=" + (flag == true ? "true" : "false") + "&revokeGeneratedCredentials=" + (flag == true ? "true" : "false")));
-        var move = new MsSqlSecretRotationMove("next", "/next", flag);
+        var move = new SqlSecretRotationMove("next", "/next", flag);
         using var request = MsSqlSecretRotationOperations.Move(Org, Address(), move);
         byte[] body = request.CopyBody()!;
         try
@@ -466,7 +467,7 @@ public sealed class MsSqlSecretRotationTests
     {
         JsonObject value = Generated(count);
         using var request = MsSqlSecretRotationOperations.GetGeneratedCredentials(Org, Address());
-        MsSqlGeneratedCredentials result;
+        SqlGeneratedCredentials result;
         using (var document = JsonDocument.Parse(value.ToJsonString())) result = request.Parse(document.RootElement);
         await Assert.That(result.RotationId).IsEqualTo(Id);
         await Assert.That(result.ActiveIndex).IsEqualTo(1.5);
@@ -572,7 +573,7 @@ public sealed class MsSqlSecretRotationTests
     [Arguments(7)]
     public async Task ContractInputBoundsRemainExplicit(int defect)
     {
-        using var parameters = new MsSqlRotationParameters("one", "two");
+        using var parameters = new SqlRotationParameters("one", "two");
         Action action = defect switch
         {
             0 => () => new SqlRotationTime(24, 0),
@@ -580,9 +581,9 @@ public sealed class MsSqlSecretRotationTests
             2 => () => new SqlRotationPasswordRequirements(251, 0, 0, 0, 0),
             3 => () => new SqlRotationPasswordRequirements(1, -1, 0, 0, 0),
             4 => () => new SqlRotationPasswordRequirements(1, 0, 0, 0, 0, ""),
-            5 => () => new MsSqlSecretRotationUpdate(rotationInterval: double.NaN),
-            6 => () => new MsSqlSecretRotationUpdate(description: new(new string('x', 257))),
-            _ => () => new MsSqlSecretRotationCreation("x", Project, "dev", "/", "not-uuid", 1, parameters, new("U", "P"))
+            5 => () => new SqlSecretRotationUpdate(rotationInterval: double.NaN),
+            6 => () => new SqlSecretRotationUpdate(description: new(new string('x', 257))),
+            _ => () => new SqlSecretRotationCreation("x", Project, "dev", "/", "not-uuid", 1, parameters, new("U", "P"))
         };
         await Assert.That(action).Throws<ArgumentException>();
     }
@@ -596,8 +597,8 @@ public sealed class MsSqlSecretRotationTests
     [Arguments("operation")]
     public async Task ContractIndependentIntentMismatchFailsBeforeTokensOrDispatch(string mismatch)
     {
-        using var parameters = new MsSqlRotationParameters("one", "two");
-        var update = new MsSqlSecretRotationUpdate(name: "selected");
+        using var parameters = new SqlRotationParameters("one", "two");
+        var update = new SqlSecretRotationUpdate(name: "selected");
         using var request = MsSqlSecretRotationOperations.Update(Org, Address(), update);
         var independent = MsSqlSecretRotationOperations.UpdateTarget(Org,
             Address(mismatch == "environment" ? "other" : "dev"), new(name: mismatch == "body" ? "other" : "selected"));
@@ -621,10 +622,10 @@ public sealed class MsSqlSecretRotationTests
     {
         using var handler = new BuildOnly();
         using var http = new HttpClient(handler) { BaseAddress = new Uri("https://management.test") };
-        var api = RestService.For<IMsSqlSecretRotationApi>(http);
-        using var byName = await api.GetByName("name?private", Project, "dev&private", "/private?x", default);
+        var api = RestService.For<ISqlSecretRotationApi>(http);
+        using var byName = await api.GetByName(CredentialType, "name?private", Project, "dev&private", "/private?x", default);
         await Assert.That(byName.RequestUri!.ToString().Contains("environment=dev%26private", StringComparison.Ordinal)).IsTrue();
-        using var deletion = await api.Delete(Id, "false", "true", default);
+        using var deletion = await api.Delete(CredentialType, Id, "false", "true", default);
         await Assert.That(deletion.RequestUri!.ToString().EndsWith("?deleteSecrets=false&revokeGeneratedCredentials=true", StringComparison.Ordinal)).IsTrue();
     }
 
@@ -726,14 +727,14 @@ public sealed class MsSqlSecretRotationTests
     [Arguments(11)]
     public async Task ContractEveryPatchMemberBindsIndependentWholeBodyIntent(int member)
     {
-        using var originalParameters = new MsSqlRotationParameters("one", "two");
-        using var changedParameters = new MsSqlRotationParameters("one", member == 6 ? "other" : "two",
+        using var originalParameters = new SqlRotationParameters("one", "two");
+        using var changedParameters = new SqlRotationParameters("one", member == 6 ? "other" : "two",
             member == 7 ? new(20, 1, 2, 3, 4, "!") : null);
         using var statement = SecretMaterial.FromText("statement-private");
-        using var statementParameters = new MsSqlRotationParameters("one", "two", rotationStatement: statement);
-        var original = new MsSqlSecretRotationUpdate("selected", new(null), false, 1,
+        using var statementParameters = new SqlRotationParameters("one", "two", rotationStatement: statement);
+        var original = new SqlSecretRotationUpdate("selected", new(null), false, 1,
             originalParameters, new("U", "P"), new(0, 0));
-        var changed = new MsSqlSecretRotationUpdate(member == 0 ? "other" : "selected",
+        var changed = new SqlSecretRotationUpdate(member == 0 ? "other" : "selected",
             member == 1 ? new("") : new(null), member == 2, member == 3 ? 2 : 1,
             member == 8 ? statementParameters : changedParameters,
             new(member == 4 ? "OTHER" : "U", member == 5 ? "OTHER" : "P"),
@@ -787,19 +788,19 @@ public sealed class MsSqlSecretRotationTests
     {
         using var handler = new BuildOnly();
         using var http = new HttpClient(handler) { BaseAddress = new Uri("https://management.test") };
-        var api = RestService.For<IMsSqlSecretRotationApi>(http);
+        var api = RestService.For<ISqlSecretRotationApi>(http);
         using var body = new StringContent("{}");
         using var request = route switch
         {
-            0 => await api.List(Project, default),
-            1 => await api.Create(body, default),
-            2 => await api.Delete(Id, null, null, default),
-            3 => await api.Get(Id, default),
-            4 => await api.Update(Id, body, default),
-            5 => await api.CheckCredentials(Id, default),
-            6 => await api.GeneratedCredentials(Id, default),
-            7 => await api.Move(Id, body, default),
-            9 => await api.GetByName("rotation-private", Project, "dev", "/", default),
+            0 => await api.List(CredentialType, Project, default),
+            1 => await api.Create(CredentialType, body, default),
+            2 => await api.Delete(CredentialType, Id, null, null, default),
+            3 => await api.Get(CredentialType, Id, default),
+            4 => await api.Update(CredentialType, Id, body, default),
+            5 => await api.CheckCredentials(CredentialType, Id, default),
+            6 => await api.GeneratedCredentials(CredentialType, Id, default),
+            7 => await api.Move(CredentialType, Id, body, default),
+            9 => await api.GetByName(CredentialType, "rotation-private", Project, "dev", "/", default),
             10 => await api.ListCatalog(Project, default),
             _ => await api.Options(default)
         };
@@ -858,6 +859,19 @@ public sealed class MsSqlSecretRotationTests
             Acquired = true;
             return ValueTask.FromResult(SecretOutcome<InfisicalAccessToken>.Success(new(SecretMaterial.FromText("offline-token"))));
         }
+    }
+
+    [Test]
+    [Arguments("root")]
+    [Arguments("item")]
+    public async Task ContractGeneratedCredentialsRejectUnlistedMembers(string branch)
+    {
+        var value = Generated(2);
+        JsonNode selected = branch == "root" ? value : value["generatedCredentials"]![1]!;
+        selected["unlisted"] = "withheld-private";
+        using var document = JsonDocument.Parse(value.ToJsonString());
+        using var request = MsSqlSecretRotationOperations.GetGeneratedCredentials(Org, Address());
+        await Assert.That(() => request.Parse(document.RootElement)).Throws<ManagementContractException>();
     }
 
     private sealed class Wire(HttpMethod method, string path) : HttpMessageHandler
@@ -938,7 +952,7 @@ public sealed class MsSqlSecretRotationTests
     }
     private static InfisicalRotationAddress Address(string environment = "dev") =>
         new(Project, environment, "/", InfisicalRotationProfile.MssqlCredentials, Id);
-    private static MsSqlSecretRotationCreation Creation(MsSqlRotationParameters parameters) =>
+    private static SqlSecretRotationCreation Creation(SqlRotationParameters parameters) =>
         new("rotation-private", Project, "dev", "/", Id, 1.5, parameters, new("USERNAME", "PASSWORD"));
     private static JsonObject Generated(int count) => new()
     {

@@ -22,11 +22,9 @@ internal sealed class ManagementRequestBuilder
     internal readonly IWorkloadIdentityAuthenticationApi WorkloadIdentityAuthentication;
     internal readonly ICloudIdentityAuthenticationApi CloudIdentityAuthentication;
     internal readonly IExternalIdentityAuthenticationApi ExternalIdentityAuthentication;
-    internal readonly IPostgresSecretRotationApi PostgresRotations;
+    internal readonly ISqlSecretRotationApi SqlRotations;
     internal readonly IGatewayAdministrationApi Gateways;
     internal readonly IProxiedServiceAdministrationApi ProxiedServices;
-    internal readonly IMySqlSecretRotationApi MySqlRotations;
-    internal readonly IMsSqlSecretRotationApi MsSqlRotations;
     private readonly Uri _origin;
 
     internal ManagementRequestBuilder(HttpClient client)
@@ -54,11 +52,9 @@ internal sealed class ManagementRequestBuilder
         WorkloadIdentityAuthentication = RestService.ForGenerated<IWorkloadIdentityAuthenticationApi>(client, settings);
         CloudIdentityAuthentication = RestService.ForGenerated<ICloudIdentityAuthenticationApi>(client, settings);
         ExternalIdentityAuthentication = RestService.ForGenerated<IExternalIdentityAuthenticationApi>(client, settings);
-        PostgresRotations = RestService.ForGenerated<IPostgresSecretRotationApi>(client, settings);
+        SqlRotations = RestService.ForGenerated<ISqlSecretRotationApi>(client, settings);
         Gateways = RestService.ForGenerated<IGatewayAdministrationApi>(client, settings);
         ProxiedServices = RestService.ForGenerated<IProxiedServiceAdministrationApi>(client, settings);
-        MySqlRotations = RestService.ForGenerated<IMySqlSecretRotationApi>(client, settings);
-        MsSqlRotations = RestService.ForGenerated<IMsSqlSecretRotationApi>(client, settings);
     }
 
     internal async Task<HttpRequestMessage> BuildAsync<T>(ManagementRequest<T> request,

@@ -565,17 +565,7 @@ internal static class ProjectTemplateWire
     }
     internal static IReadOnlyList<string> Strings(JsonElement value, string field) =>
         System.Array.AsReadOnly(ManagementJson.Array(value, field).Select(v => String(v)).ToArray());
-    internal static ManagementTarget Intent(string organizationId, string resourceId, Action<Utf8JsonWriter> write)
-    {
-        byte[] storage = new byte[64 * 1024];
-        try
-        {
-            using var stream = new MemoryStream(storage, writable: true);
-            using (var writer = new Utf8JsonWriter(stream)) write(writer);
-            return new(organizationId, resourceId: resourceId,
-                secondaryId: Convert.ToHexString(SHA256.HashData(storage.AsSpan(0, (int)stream.Position))));
-        }
-        catch (NotSupportedException) { throw new ArgumentException("The project template input exceeds its byte budget."); }
-        finally { System.Array.Clear(storage); }
-    }
+    internal static ManagementTarget Intent(string organizationId, string resourceId, Action<Utf8JsonWriter> write) =>
+        new(organizationId, resourceId: resourceId,
+            secondaryId: ManagementJson.IntentFingerprint(write, "project template"));
 }

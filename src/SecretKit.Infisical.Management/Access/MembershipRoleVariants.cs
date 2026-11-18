@@ -45,26 +45,12 @@ public sealed class MembershipRoleSelection
 internal static class MembershipRoleWire
 {
     internal static ManagementTarget Intent(string organizationId, string? projectId, string resourceId,
-        Action<Utf8JsonWriter> write, string? expectedMembershipId = null)
-    {
-        byte[] storage = new byte[64 * 1024];
-        try
+        Action<Utf8JsonWriter> write, string? expectedMembershipId = null) =>
+        new(organizationId, projectId, resourceId, ManagementJson.IntentFingerprint(writer =>
         {
-            using var stream = new MemoryStream(storage, writable: true);
-            using (var writer = new Utf8JsonWriter(stream))
-            {
-                writer.WriteStartArray();
-                writer.WriteStringValue(expectedMembershipId);
-                write(writer);
-                writer.WriteEndArray();
-            }
-            return new(organizationId, projectId, resourceId,
-                Convert.ToHexString(SHA256.HashData(storage.AsSpan(0, (int)stream.Position))));
-        }
-        catch (NotSupportedException)
-        {
-            throw new ArgumentException("The role input exceeds its byte budget.");
-        }
-        finally { Array.Clear(storage); }
-    }
+            writer.WriteStartArray();
+            writer.WriteStringValue(expectedMembershipId);
+            write(writer);
+            writer.WriteEndArray();
+        }, "role"));
 }

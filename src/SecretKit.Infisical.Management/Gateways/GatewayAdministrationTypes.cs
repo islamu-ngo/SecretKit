@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using SecretKit.Core;
@@ -134,7 +135,7 @@ public sealed class GatewayAuthenticationInput : IDisposable
         }
     }
     /// <summary>Clears the owned serialized authentication body and prevents further serialization.</summary>
-    public void Dispose() { lock (_gate) { if (_body is not null) Array.Clear(_body); _body = null; } }
+    public void Dispose() { lock (_gate) { if (_body is not null) CryptographicOperations.ZeroMemory(_body); _body = null; } }
     /// <summary>Returns a marker without authentication settings or material.</summary>
     public override string ToString() => "[GatewayAuthenticationInput]";
 }

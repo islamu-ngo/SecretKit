@@ -33,7 +33,7 @@ internal static class RotationPermissionClient
         principal == root.Authorities.Administrative ? NativeIdentityRole.Administrative :
         principal == root.Authorities.Observer ? NativeIdentityRole.Observer :
         throw new NativeCaseFailureException("missing-input");
-    internal static RotationPermissionConfiguration Value(PostgresSecretRotationSummary s)
+    internal static RotationPermissionConfiguration Value(SqlSecretRotationSummary s, InfisicalRotationProfile profile)
     {
         var p = s.Parameters; var r = p.PasswordRequirements;
         RotationPermissionContract.Require(r is not null && p.RotationStatement is not null, "effect-mismatch");
@@ -42,7 +42,7 @@ internal static class RotationPermissionClient
             s.RotateAtUtc.Minutes, s.IsAutoRotationEnabled == true, s.HasDescription, s.Description, r!.Length,
             r.Digits, r.Lowercase, r.Symbols, r.Uppercase, r.AllowedSymbols ?? "",
             RotationPermissionContract.Hash(p.RotationStatement!.Reveal()), s.EnvironmentId, s.FolderId,
-            InfisicalRotationProfile.PostgresCredentials);
+            profile);
     }
     internal static async ValueTask<RotationPermissionAttempt> ExecuteAsync(NativeEnvironment env,
         RotationPermissionRoot root, RotationPermissionRow row, CancellationToken token,
@@ -71,12 +71,12 @@ internal static class RotationPermissionClient
             return await MsSqlAsync(env, root, row, tokens, token);
         var management = env.CreateManagementClient();
         using var statement = SecretMaterial.FromText(RotationPermissionContract.Statement);
-        using var parameters = new PostgresRotationParameters(row.Username1, row.Username2,
+        using var parameters = new SqlRotationParameters(row.Username1, row.Username2,
             new(24, 2, 2, 2, 2, "!@"), statement);
         var initial = RotationPermissionContract.Initial(row);
         var edited = RotationPermissionContract.Edited(initial);
         using var editedStatement = SecretMaterial.FromText(RotationPermissionContract.Statement + " -- changed");
-        using var editedParameters = new PostgresRotationParameters(row.Username1, row.Username2,
+        using var editedParameters = new SqlRotationParameters(row.Username1, row.Username2,
             new(32, 3, 3, 3, 3, "!@#"), editedStatement);
         RotationPermissionAttempt Result(SecretStatus status, ManagementReceipt? receipt,
             RotationPermissionConfiguration[] values, bool complete = true, string[]? hashes = null) =>
@@ -96,7 +96,7 @@ internal static class RotationPermissionClient
             var (outcome, receipt) = await Send(request);
             if (!outcome.IsSuccess) return Result(outcome.Status, receipt, []);
             using var value = outcome.Value;
-            return Result(outcome.Status, receipt, value.Items.Select(Value).ToArray(), value.IsComplete);
+            return Result(outcome.Status, receipt, value.Items.Select(item => Value(item, InfisicalRotationProfile.PostgresCredentials)).ToArray(), value.IsComplete);
         }
         if (row.Action == RotationPermissionAction.ReadGeneratedCredentials)
         {
@@ -126,29 +126,7 @@ internal static class RotationPermissionClient
         var (selected, original) = await Send(operation);
         if (!selected.IsSuccess) return Result(selected.Status, original, []);
         using var summary = selected.Value;
-        return Result(selected.Status, original, [Value(summary)]);
-    }
-    private static RotationPermissionConfiguration Value(MySqlSecretRotationSummary s)
-    {
-        var p = s.Parameters; var r = p.PasswordRequirements;
-        RotationPermissionContract.Require(r is not null && p.RotationStatement is not null, "effect-mismatch");
-        return new(s.Id, s.ProjectId, s.Environment, s.SecretPath, s.ConnectionId, s.Name, p.Username1, p.Username2,
-            s.SecretsMapping.Username, s.SecretsMapping.Password, s.RotationInterval, s.RotateAtUtc.Hours,
-            s.RotateAtUtc.Minutes, s.IsAutoRotationEnabled == true, s.HasDescription, s.Description, r!.Length,
-            r.Digits, r.Lowercase, r.Symbols, r.Uppercase, r.AllowedSymbols ?? "",
-            RotationPermissionContract.Hash(p.RotationStatement!.Reveal()), s.EnvironmentId, s.FolderId,
-            InfisicalRotationProfile.MysqlCredentials);
-    }
-    private static RotationPermissionConfiguration Value(MsSqlSecretRotationSummary s)
-    {
-        var p = s.Parameters; var r = p.PasswordRequirements;
-        RotationPermissionContract.Require(r is not null && p.RotationStatement is not null, "effect-mismatch");
-        return new(s.Id, s.ProjectId, s.Environment, s.SecretPath, s.ConnectionId, s.Name, p.Username1, p.Username2,
-            s.SecretsMapping.Username, s.SecretsMapping.Password, s.RotationInterval, s.RotateAtUtc.Hours,
-            s.RotateAtUtc.Minutes, s.IsAutoRotationEnabled == true, s.HasDescription, s.Description, r!.Length,
-            r.Digits, r.Lowercase, r.Symbols, r.Uppercase, r.AllowedSymbols ?? "",
-            RotationPermissionContract.Hash(p.RotationStatement!.Reveal()), s.EnvironmentId, s.FolderId,
-            InfisicalRotationProfile.MssqlCredentials);
+        return Result(selected.Status, original, [Value(summary, InfisicalRotationProfile.PostgresCredentials)]);
     }
     private static async ValueTask<RotationPermissionAttempt> MySqlAsync(NativeEnvironment env,
         RotationPermissionRoot root, RotationPermissionRow row, RotationPermissionTokens tokens, CancellationToken token)
@@ -157,8 +135,8 @@ internal static class RotationPermissionClient
         var authority = new ManagementAuthority(client.Authority, tokens, root.Organization, row.Project);
         using var statement = SecretMaterial.FromText(RotationPermissionContract.ProfileStatement(row.SqlProfile));
         using var editedStatement = SecretMaterial.FromText(RotationPermissionContract.ProfileStatement(row.SqlProfile) + " -- changed");
-        using var parameters = new MySqlRotationParameters(row.Username1, row.Username2, new(24, 2, 2, 2, 2, "!@"), statement);
-        using var editedParameters = new MySqlRotationParameters(row.Username1, row.Username2, new(32, 3, 3, 3, 3, "!@#"), editedStatement);
+        using var parameters = new SqlRotationParameters(row.Username1, row.Username2, new(24, 2, 2, 2, 2, "!@"), statement);
+        using var editedParameters = new SqlRotationParameters(row.Username1, row.Username2, new(32, 3, 3, 3, 3, "!@#"), editedStatement);
         var initial = RotationPermissionContract.Initial(row); var edited = RotationPermissionContract.Edited(initial);
         async ValueTask<(SecretOutcome<T>, ManagementReceipt?)> Send<T>(ManagementRequest<T> request) where T : notnull
         {
@@ -175,7 +153,7 @@ internal static class RotationPermissionClient
             var (result, receipt) = await Send(request);
             if (!result.IsSuccess) return Result(result.Status, receipt, []);
             using var list = result.Value;
-            return Result(result.Status, receipt, list.Items.Select(Value).ToArray(), list.IsComplete);
+            return Result(result.Status, receipt, list.Items.Select(item => Value(item, InfisicalRotationProfile.MysqlCredentials)).ToArray(), list.IsComplete);
         }
         if (row.Action == RotationPermissionAction.ReadGeneratedCredentials)
         {
@@ -205,7 +183,7 @@ internal static class RotationPermissionClient
         var (selected, original) = await Send(operation);
         if (!selected.IsSuccess) return Result(selected.Status, original, []);
         using var summary = selected.Value;
-        return Result(selected.Status, original, [Value(summary)]);
+        return Result(selected.Status, original, [Value(summary, InfisicalRotationProfile.MysqlCredentials)]);
     }
     private static async ValueTask<RotationPermissionAttempt> MsSqlAsync(NativeEnvironment env,
         RotationPermissionRoot root, RotationPermissionRow row, RotationPermissionTokens tokens, CancellationToken token)
@@ -214,8 +192,8 @@ internal static class RotationPermissionClient
         var authority = new ManagementAuthority(client.Authority, tokens, root.Organization, row.Project);
         using var statement = SecretMaterial.FromText(RotationPermissionContract.ProfileStatement(row.SqlProfile));
         using var editedStatement = SecretMaterial.FromText(RotationPermissionContract.ProfileStatement(row.SqlProfile) + " -- changed");
-        using var parameters = new MsSqlRotationParameters(row.Username1, row.Username2, new(24, 2, 2, 2, 2, "!@"), statement);
-        using var editedParameters = new MsSqlRotationParameters(row.Username1, row.Username2, new(32, 3, 3, 3, 3, "!@#"), editedStatement);
+        using var parameters = new SqlRotationParameters(row.Username1, row.Username2, new(24, 2, 2, 2, 2, "!@"), statement);
+        using var editedParameters = new SqlRotationParameters(row.Username1, row.Username2, new(32, 3, 3, 3, 3, "!@#"), editedStatement);
         var initial = RotationPermissionContract.Initial(row); var edited = RotationPermissionContract.Edited(initial);
         async ValueTask<(SecretOutcome<T>, ManagementReceipt?)> Send<T>(ManagementRequest<T> request) where T : notnull
         {
@@ -232,7 +210,7 @@ internal static class RotationPermissionClient
             var (result, receipt) = await Send(request);
             if (!result.IsSuccess) return Result(result.Status, receipt, []);
             using var list = result.Value;
-            return Result(result.Status, receipt, list.Items.Select(Value).ToArray(), list.IsComplete);
+            return Result(result.Status, receipt, list.Items.Select(item => Value(item, InfisicalRotationProfile.MssqlCredentials)).ToArray(), list.IsComplete);
         }
         if (row.Action == RotationPermissionAction.ReadGeneratedCredentials)
         {
@@ -262,6 +240,6 @@ internal static class RotationPermissionClient
         var (selected, original) = await Send(operation);
         if (!selected.IsSuccess) return Result(selected.Status, original, []);
         using var summary = selected.Value;
-        return Result(selected.Status, original, [Value(summary)]);
+        return Result(selected.Status, original, [Value(summary, InfisicalRotationProfile.MssqlCredentials)]);
     }
 }

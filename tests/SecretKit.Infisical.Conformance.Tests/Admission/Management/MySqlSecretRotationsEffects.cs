@@ -58,12 +58,12 @@ internal static class MySqlSecretRotationsEffects
         if (c.Operation == "List" || c.Operation == "ListMySqlSubset")
         {
             bool partial = c.Operation != "List";
-            Func<ManagementRequest<MySqlSecretRotationList>> request = partial ?
+            Func<ManagementRequest<SqlSecretRotationList>> request = partial ?
                 () => MySqlSecretRotationOperations.ListMySqlSubset(org, project) :
                 () => MySqlSecretRotationOperations.List(org, project);
             using var independentlyRead = await c.NeedAsync(request, NativeIdentityRole.Observer, token);
             using var catalog = partial ? await f.ObserveCatalogAsync(false, token) : null;
-            bool Match(MySqlSecretRotationList list) => list.IsComplete == !partial && list.Items.Count is > 0 and <= 4096 &&
+            bool Match(SqlSecretRotationList list) => list.IsComplete == !partial && list.Items.Count is > 0 and <= 4096 &&
                 list.Items.Any(s => s.Id == before.Id && Same(s, before)) &&
                 list.Items.Select(s => s.Id).Distinct().Count() == list.Items.Count &&
                 list.Items.Count == independentlyRead.Items.Count && list.Items.All(s =>
@@ -81,7 +81,7 @@ internal static class MySqlSecretRotationsEffects
         {
             using var catalog = await f.ObserveCatalogAsync(true, token);
             DatabaseCatalogOption[] expected = catalog.Options.Where(o => o.Type == "mysql-credentials").ToArray();
-            bool Match(MySqlSecretRotationOptions options) => !options.IsComplete && options.Items.Count == expected.Length &&
+            bool Match(SqlSecretRotationOptions options) => !options.IsComplete && options.Items.Count == expected.Length &&
                 options.Items.Count is > 0 and <= 4096 && options.Items.All(o => expected.Any(e =>
                     e.UsernameKey == o.SecretsMapping.Username && e.PasswordKey == o.SecretsMapping.Password &&
                     InfisicalDatabaseFamilies.SameMaterial(e.CreateStatement, o.CreateUserStatement) &&
@@ -120,12 +120,12 @@ internal static class MySqlSecretRotationsEffects
             await backend.SubscribeRejectionAsync(active.Username, active.Password, token) : null;
         // Retain the exact subscription task before the mutation; no replay or progress polling.
         Task<DatabaseAuthenticationMeasurement>? rejected = rejection?.Rejected;
-        using var updatedParameters = new MySqlRotationParameters(f.UpdatedUsername1, f.UpdatedUsername2,
+        using var updatedParameters = new SqlRotationParameters(f.UpdatedUsername1, f.UpdatedUsername2,
             parameters.PasswordRequirements, parameters.RotationStatement is null ? null : f.UpdatedRotationStatement);
         var update = Update(c, f, updatedParameters);
-        var move = new MySqlSecretRotationMove(f.DestinationEnvironment, f.DestinationPath,
+        var move = new SqlSecretRotationMove(f.DestinationEnvironment, f.DestinationPath,
             moving ? InfisicalDatabaseFamilies.Flag(v, "overwriteDestination") : null);
-        Func<ManagementRequest<MySqlSecretRotationSummary>> factory = c.Operation switch
+        Func<ManagementRequest<SqlSecretRotationSummary>> factory = c.Operation switch
         {
             "Get" => () => MySqlSecretRotationOperations.Get(org, address),
             "GetByName" => () => MySqlSecretRotationOperations.GetByName(org, project, f.Environment, f.SourcePath, f.Name),
@@ -134,7 +134,7 @@ internal static class MySqlSecretRotationsEffects
             "Update" => () => MySqlSecretRotationOperations.Update(org, address, update),
             _ => throw new NativeCaseFailureException("contract-mismatch")
         };
-        bool MatchSummary(MySqlSecretRotationSummary s) => s.Id == before.Id && s.ProjectId == project &&
+        bool MatchSummary(SqlSecretRotationSummary s) => s.Id == before.Id && s.ProjectId == project &&
             (deleting || !moving && !updating ? Same(before, s) : updating ?
                 Configuration(s) == f.ExpectedPatchConfiguration &&
                     InfisicalDatabaseFamilies.SameMaterial(s.Parameters.RotationStatement, f.ExpectedPatchStatement) :
@@ -176,16 +176,16 @@ internal static class MySqlSecretRotationsEffects
         SqlRotationPatchTrial trial, CancellationToken token)
     {
         var plan = new SqlRotationPatchPlan(f, c.Variant);
-        using var seed = new MySqlRotationParameters(f.Username1, f.Username2,
+        using var seed = new SqlRotationParameters(f.Username1, f.Username2,
             new(24, 2, 2, 2, 2, "!@"), f.RotationStatement);
-        var creation = new MySqlSecretRotationCreation(f.Name, c.ProjectId, f.Environment, f.SourcePath,
+        var creation = new SqlSecretRotationCreation(f.Name, c.ProjectId, f.Environment, f.SourcePath,
             f.ConnectionId, 2, seed, new(f.UsernameKey, f.PasswordKey), new(2, 3), new(f.Name), false);
         DatabasePasswordRequirements? r = plan.PasswordRequirements;
-        using var parameters = new MySqlRotationParameters(f.Username1, f.Username2,
+        using var parameters = new SqlRotationParameters(f.Username1, f.Username2,
             !plan.Requirements || r is null ? null : new(r.Length, r.Digits, r.Lowercase, r.Symbols, r.Uppercase, r.AllowedSymbols),
             plan.Statement ? f.RotationStatement : null);
         string v = c.Variant;
-        var update = new MySqlSecretRotationUpdate(
+        var update = new SqlSecretRotationUpdate(
             name: v.EndsWith("name.value", StringComparison.Ordinal) ? plan.Expected.Name : null,
             description: v == "description.null" ? new(null) :
                 v.EndsWith("description.value", StringComparison.Ordinal) ? new(plan.Expected.Description) : null,
@@ -206,7 +206,7 @@ internal static class MySqlSecretRotationsEffects
             (id, ct) => CredentialsAsync(c, f, AddressFor(id), true, false, ct), token);
     }
 
-    internal static MySqlRotationParameters Parameters(IDatabaseOwnedFixture f, string v)
+    internal static SqlRotationParameters Parameters(IDatabaseOwnedFixture f, string v)
     {
         bool password = !v.EndsWith("passwordRequirements.omitted", StringComparison.Ordinal);
         bool statement = !v.EndsWith("rotationStatement.omitted", StringComparison.Ordinal);
@@ -216,7 +216,7 @@ internal static class MySqlSecretRotationsEffects
         return new(f.Username1, f.Username2, requirements, statement ? f.RotationStatement : null);
     }
 
-    internal static MySqlSecretRotationCreation Creation(ProjectFamilyContext c, IDatabaseOwnedFixture f, MySqlRotationParameters p)
+    internal static SqlSecretRotationCreation Creation(ProjectFamilyContext c, IDatabaseOwnedFixture f, SqlRotationParameters p)
     {
         string v = c.Variant;
         bool? enabled = v.EndsWith("isAutoRotationEnabled.omitted", StringComparison.Ordinal) ? null :
@@ -229,7 +229,7 @@ internal static class MySqlSecretRotationsEffects
             v == "rotationInterval.fractional-number" ? 2.5 : 2, p, new(f.UsernameKey, f.PasswordKey), time, description, enabled);
     }
 
-    internal static MySqlSecretRotationUpdate Update(ProjectFamilyContext c, IDatabaseOwnedFixture f, MySqlRotationParameters p)
+    internal static SqlSecretRotationUpdate Update(ProjectFamilyContext c, IDatabaseOwnedFixture f, SqlRotationParameters p)
     {
         string v = c.Variant;
         bool nested = v.StartsWith("MySqlRotation", StringComparison.Ordinal) || v == "passwordRequirements.fractional-number";
@@ -246,7 +246,7 @@ internal static class MySqlSecretRotationsEffects
                 v.EndsWith("rotateAtUtc.value", StringComparison.Ordinal) ? new(4, 5) : null);
     }
 
-    private static bool MatchCreation(MySqlSecretRotationSummary s, MySqlSecretRotationCreation creation, DatabaseConfiguration defaults) =>
+    private static bool MatchCreation(SqlSecretRotationSummary s, SqlSecretRotationCreation creation, DatabaseConfiguration defaults) =>
         s.Name == creation.Name && s.ProjectId == creation.ProjectId && s.ConnectionId == creation.ConnectionId &&
         s.Environment == creation.Environment && s.SecretPath == creation.SecretPath && s.RotationInterval == creation.RotationInterval &&
         s.Parameters.Username1 == creation.Parameters.Username1 && s.Parameters.Username2 == creation.Parameters.Username2 &&
@@ -259,7 +259,7 @@ internal static class MySqlSecretRotationsEffects
         s.HasDescription == (creation.Description is not null || defaults.HasDescription) &&
         s.Description == (creation.Description is not null ? creation.Description.Value : defaults.Description);
 
-    internal static DatabaseConfiguration Configuration(MySqlSecretRotationSummary s) => new(s.Name, s.ConnectionId,
+    internal static DatabaseConfiguration Configuration(SqlSecretRotationSummary s) => new(s.Name, s.ConnectionId,
         s.Environment, s.SecretPath, s.Parameters.Username1, s.Parameters.Username2, s.SecretsMapping.Username,
         s.SecretsMapping.Password, s.RotationInterval, s.RotateAtUtc.Hours, s.RotateAtUtc.Minutes,
         s.IsAutoRotationEnabled, s.HasDescription, s.Description, Requirements(s.Parameters.PasswordRequirements));
@@ -267,7 +267,7 @@ internal static class MySqlSecretRotationsEffects
     private static DatabasePasswordRequirements? Requirements(SqlRotationPasswordRequirements? r) => r is null ? null :
         new(r.Length, r.Digits, r.Lowercase, r.Symbols, r.Uppercase, r.AllowedSymbols);
 
-    private static bool Same(MySqlSecretRotationSummary a, MySqlSecretRotationSummary b) => a.Id == b.Id && a.ProjectId == b.ProjectId &&
+    private static bool Same(SqlSecretRotationSummary a, SqlSecretRotationSummary b) => a.Id == b.Id && a.ProjectId == b.ProjectId &&
         a.EnvironmentId == b.EnvironmentId && a.FolderId == b.FolderId && Configuration(a) == Configuration(b) &&
         InfisicalDatabaseFamilies.SameMaterial(a.Parameters.RotationStatement, b.Parameters.RotationStatement) &&
         a.RotationStatus == b.RotationStatus && a.ActiveIndex == b.ActiveIndex && a.LastRotatedAt == b.LastRotatedAt &&
@@ -276,12 +276,12 @@ internal static class MySqlSecretRotationsEffects
         a.HasNextRotationAt == b.HasNextRotationAt && a.NextRotationAt == b.NextRotationAt &&
         a.HasLastRotationMessage == b.HasLastRotationMessage && a.LastRotationMessage == b.LastRotationMessage;
 
-    private static bool SameCredentials(MySqlGeneratedCredentials a, MySqlGeneratedCredentials b) =>
+    private static bool SameCredentials(SqlGeneratedCredentials a, SqlGeneratedCredentials b) =>
         a.RotationId == b.RotationId && a.ActiveIndex == b.ActiveIndex && a.Items.Count == b.Items.Count &&
         a.Items.Zip(b.Items).All(pair => InfisicalDatabaseFamilies.SameMaterial(pair.First.Username, pair.Second.Username) &&
             InfisicalDatabaseFamilies.SameMaterial(pair.First.Password, pair.Second.Password));
 
-    private static InfisicalRotationAddress Address(string project, MySqlSecretRotationSummary s) =>
+    private static InfisicalRotationAddress Address(string project, SqlSecretRotationSummary s) =>
         new(project, s.Environment, s.SecretPath, InfisicalRotationProfile.MysqlCredentials, s.Id);
 
     private static async ValueTask CredentialsAsync(ProjectFamilyContext c, IDatabaseOwnedFixture f, InfisicalRotationAddress address,

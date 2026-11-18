@@ -148,21 +148,21 @@ internal sealed class InfisicalDatabaseFixtureFactory(InfisicalLifecycleObserver
             switch (profile)
             {
                 case InfisicalRotationProfile.PostgresCredentials:
-                    using (var parameters = new PostgresRotationParameters(Username1, Username2, rotationStatement: statement))
-                    using (var updated = new PostgresRotationParameters(UpdatedUsername1, UpdatedUsername2, rotationStatement: updatedStatement))
-                        _ = new PostgresSecretRotationCreation(name, project, Environment, SourcePath, ConnectionId,
+                    using (var parameters = new SqlRotationParameters(Username1, Username2, rotationStatement: statement))
+                    using (var updated = new SqlRotationParameters(UpdatedUsername1, UpdatedUsername2, rotationStatement: updatedStatement))
+                        _ = new SqlSecretRotationCreation(name, project, Environment, SourcePath, ConnectionId,
                             2, parameters, new(UsernameKey, PasswordKey), new(facts.DefaultHours, facts.DefaultMinutes));
                     break;
                 case InfisicalRotationProfile.MysqlCredentials:
-                    using (var parameters = new MySqlRotationParameters(Username1, Username2, rotationStatement: statement))
-                    using (var updated = new MySqlRotationParameters(UpdatedUsername1, UpdatedUsername2, rotationStatement: updatedStatement))
-                        _ = new MySqlSecretRotationCreation(name, project, Environment, SourcePath, ConnectionId,
+                    using (var parameters = new SqlRotationParameters(Username1, Username2, rotationStatement: statement))
+                    using (var updated = new SqlRotationParameters(UpdatedUsername1, UpdatedUsername2, rotationStatement: updatedStatement))
+                        _ = new SqlSecretRotationCreation(name, project, Environment, SourcePath, ConnectionId,
                             2, parameters, new(UsernameKey, PasswordKey), new(facts.DefaultHours, facts.DefaultMinutes));
                     break;
                 default:
-                    using (var parameters = new MsSqlRotationParameters(Username1, Username2, rotationStatement: statement))
-                    using (var updated = new MsSqlRotationParameters(UpdatedUsername1, UpdatedUsername2, rotationStatement: updatedStatement))
-                        _ = new MsSqlSecretRotationCreation(name, project, Environment, SourcePath, ConnectionId,
+                    using (var parameters = new SqlRotationParameters(Username1, Username2, rotationStatement: statement))
+                    using (var updated = new SqlRotationParameters(UpdatedUsername1, UpdatedUsername2, rotationStatement: updatedStatement))
+                        _ = new SqlSecretRotationCreation(name, project, Environment, SourcePath, ConnectionId,
                             2, parameters, new(UsernameKey, PasswordKey), new(facts.DefaultHours, facts.DefaultMinutes));
                     break;
             }

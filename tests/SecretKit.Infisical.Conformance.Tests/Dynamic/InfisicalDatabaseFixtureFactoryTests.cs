@@ -45,12 +45,12 @@ public sealed class InfisicalDatabaseFixtureFactoryTests
                     await Assert.That(parameters.RotationStatement!.Reveal()).IsEqualTo("owned-rotate");
                 break;
             case "MySql":
-                using (var parameters = new MySqlRotationParameters(fixture.Username1, fixture.Username2,
+                using (var parameters = new SqlRotationParameters(fixture.Username1, fixture.Username2,
                     rotationStatement: statement))
                     await Assert.That(parameters.RotationStatement!.Reveal()).IsEqualTo("owned-rotate");
                 break;
             default:
-                using (var parameters = new MsSqlRotationParameters(fixture.Username1, fixture.Username2,
+                using (var parameters = new SqlRotationParameters(fixture.Username1, fixture.Username2,
                     rotationStatement: statement))
                     await Assert.That(parameters.RotationStatement!.Reveal()).IsEqualTo("owned-rotate");
                 break;

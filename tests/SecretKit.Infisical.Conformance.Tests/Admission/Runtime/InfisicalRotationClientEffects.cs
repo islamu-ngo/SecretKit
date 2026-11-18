@@ -289,7 +289,7 @@ internal static class InfisicalRotationClientEffects
             switch (input.Profile)
             {
                 case InfisicalRotationProfile.PostgresCredentials:
-                    using (var parameters = new PostgresRotationParameters(input.Username1, input.Username2, rotationStatement: statement))
+                    using (var parameters = new SqlRotationParameters(input.Username1, input.Username2, rotationStatement: statement))
                     using (var request = PostgresSecretRotationOperations.Create(input.OrganizationId, new(name,
                         input.Sandbox.ProjectId, input.Sandbox.Environment, folder.Path, input.ConnectionId,
                         input.RotationInterval, parameters, new(UsernameKey, PasswordKey), isAutoRotationEnabled: false)))
@@ -297,7 +297,7 @@ internal static class InfisicalRotationClientEffects
                             r => new(r.Id, r.ConnectionId, r.Parameters.Username1, r.Parameters.Username2), token);
                     break;
                 case InfisicalRotationProfile.MysqlCredentials:
-                    using (var parameters = new MySqlRotationParameters(input.Username1, input.Username2, rotationStatement: statement))
+                    using (var parameters = new SqlRotationParameters(input.Username1, input.Username2, rotationStatement: statement))
                     using (var request = MySqlSecretRotationOperations.Create(input.OrganizationId, new(name,
                         input.Sandbox.ProjectId, input.Sandbox.Environment, folder.Path, input.ConnectionId,
                         input.RotationInterval, parameters, new(UsernameKey, PasswordKey), isAutoRotationEnabled: false)))
@@ -305,7 +305,7 @@ internal static class InfisicalRotationClientEffects
                             r => new(r.Id, r.ConnectionId, r.Parameters.Username1, r.Parameters.Username2), token);
                     break;
                 case InfisicalRotationProfile.MssqlCredentials:
-                    using (var parameters = new MsSqlRotationParameters(input.Username1, input.Username2, rotationStatement: statement))
+                    using (var parameters = new SqlRotationParameters(input.Username1, input.Username2, rotationStatement: statement))
                     using (var request = MsSqlSecretRotationOperations.Create(input.OrganizationId, new(name,
                         input.Sandbox.ProjectId, input.Sandbox.Environment, folder.Path, input.ConnectionId,
                         input.RotationInterval, parameters, new(UsernameKey, PasswordKey), isAutoRotationEnabled: false)))

@@ -14,6 +14,7 @@ public sealed class PostgresSecretRotationTests
     private const string Id = "7b15ac64-78ee-4fa5-a7b4-eb2da9ac5796";
     private const string Prefix = "infisical.";
     private const string Path = "/api/v2/secret-rotations/postgres-credentials";
+    private const string CredentialType = "postgres-credentials";
 
     [Test]
     public async Task EmptyCheckAcknowledgementDoesNotReadAResponseBody()
@@ -82,10 +83,10 @@ public sealed class PostgresSecretRotationTests
             return;
         }
         var (operation, method, path) = Route(route);
-        using var parameters = new PostgresRotationParameters("first-private", "second-private");
+        using var parameters = new SqlRotationParameters("first-private", "second-private");
         var creation = Creation(parameters);
-        var update = new PostgresSecretRotationUpdate();
-        var move = new PostgresSecretRotationMove("next", "/next");
+        var update = new SqlSecretRotationUpdate();
+        var move = new SqlSecretRotationMove("next", "/next");
         switch (route)
         {
             case 0:
@@ -156,7 +157,7 @@ public sealed class PostgresSecretRotationTests
     public async Task ContractCreationAndPatchPreserveEveryEstablishedAlternative(int variant)
     {
         using var statement = SecretMaterial.FromText("statement-private");
-        using var parameters = new PostgresRotationParameters("first-private", "second-private",
+        using var parameters = new SqlRotationParameters("first-private", "second-private",
             variant == 0 ? null : new(20.5, 0.5, 1.5, 2.5, 3.5, variant == 1 ? null : "!"),
             variant == 0 ? null : statement);
         statement.Dispose();
@@ -164,9 +165,9 @@ public sealed class PostgresSecretRotationTests
         { 0 => null, 1 => new(null), 2 => new(""), _ => new("description-private") };
         var time = variant == 0 ? null : new SqlRotationTime(1.5, 2.5);
         bool? enabled = variant == 0 ? null : variant == 3;
-        var creation = new PostgresSecretRotationCreation("rotation-private", Project, "dev", "/", Id, 1.5, parameters,
+        var creation = new SqlSecretRotationCreation("rotation-private", Project, "dev", "/", Id, 1.5, parameters,
             new("USERNAME", "PASSWORD"), time, description, enabled);
-        var update = new PostgresSecretRotationUpdate("rotation-private", description, enabled, 1.5,
+        var update = new SqlSecretRotationUpdate("rotation-private", description, enabled, 1.5,
             parameters, new("USERNAME", "PASSWORD"), time);
         using var create = PostgresSecretRotationOperations.Create(Org, creation);
         using var patch = PostgresSecretRotationOperations.Update(Org, Address(), update);
@@ -232,7 +233,7 @@ public sealed class PostgresSecretRotationTests
         finally { Array.Clear(body); }
         request.Dispose();
         await Assert.That(() => request.CopyBody()).Throws<ObjectDisposedException>();
-        using var parameters = new PostgresRotationParameters("one", "two");
+        using var parameters = new SqlRotationParameters("one", "two");
         parameters.Dispose();
         await Assert.That(() => PostgresSecretRotationOperations.Create(Org, Creation(parameters))).Throws<ObjectDisposedException>();
     }
@@ -247,7 +248,7 @@ public sealed class PostgresSecretRotationTests
         using var deletion = PostgresSecretRotationOperations.Delete(Org, Address(), flag, flag);
         await Assert.That(deletion.Path).IsEqualTo(Path + "/" + Id + (variant == 0 ? "" :
             "?deleteSecrets=" + (flag == true ? "true" : "false") + "&revokeGeneratedCredentials=" + (flag == true ? "true" : "false")));
-        var move = new PostgresSecretRotationMove("next", "/next", flag);
+        var move = new SqlSecretRotationMove("next", "/next", flag);
         using var request = PostgresSecretRotationOperations.Move(Org, Address(), move);
         byte[] body = request.CopyBody()!;
         try
@@ -333,7 +334,7 @@ public sealed class PostgresSecretRotationTests
     {
         JsonObject value = Generated(count);
         using var request = PostgresSecretRotationOperations.GetGeneratedCredentials(Org, Address());
-        PostgresGeneratedCredentials result;
+        SqlGeneratedCredentials result;
         using (var document = JsonDocument.Parse(value.ToJsonString())) result = request.Parse(document.RootElement);
         await Assert.That(result.RotationId).IsEqualTo(Id);
         await Assert.That(result.ActiveIndex).IsEqualTo(1.5);
@@ -439,7 +440,7 @@ public sealed class PostgresSecretRotationTests
     [Arguments(7)]
     public async Task ContractInputBoundsRemainExplicit(int defect)
     {
-        using var parameters = new PostgresRotationParameters("one", "two");
+        using var parameters = new SqlRotationParameters("one", "two");
         Action action = defect switch
         {
             0 => () => new SqlRotationTime(24, 0),
@@ -447,9 +448,9 @@ public sealed class PostgresSecretRotationTests
             2 => () => new SqlRotationPasswordRequirements(251, 0, 0, 0, 0),
             3 => () => new SqlRotationPasswordRequirements(1, -1, 0, 0, 0),
             4 => () => new SqlRotationPasswordRequirements(1, 0, 0, 0, 0, ""),
-            5 => () => new PostgresSecretRotationUpdate(rotationInterval: double.NaN),
-            6 => () => new PostgresSecretRotationUpdate(description: new(new string('x', 257))),
-            _ => () => new PostgresSecretRotationCreation("x", Project, "dev", "/", "not-uuid", 1, parameters, new("U", "P"))
+            5 => () => new SqlSecretRotationUpdate(rotationInterval: double.NaN),
+            6 => () => new SqlSecretRotationUpdate(description: new(new string('x', 257))),
+            _ => () => new SqlSecretRotationCreation("x", Project, "dev", "/", "not-uuid", 1, parameters, new("U", "P"))
         };
         await Assert.That(action).Throws<ArgumentException>();
     }
@@ -463,8 +464,8 @@ public sealed class PostgresSecretRotationTests
     [Arguments("operation")]
     public async Task ContractIndependentIntentMismatchFailsBeforeTokensOrDispatch(string mismatch)
     {
-        using var parameters = new PostgresRotationParameters("one", "two");
-        var update = new PostgresSecretRotationUpdate(name: "selected");
+        using var parameters = new SqlRotationParameters("one", "two");
+        var update = new SqlSecretRotationUpdate(name: "selected");
         using var request = PostgresSecretRotationOperations.Update(Org, Address(), update);
         var independent = PostgresSecretRotationOperations.UpdateTarget(Org,
             Address(mismatch == "environment" ? "other" : "dev"), new(name: mismatch == "body" ? "other" : "selected"));
@@ -488,10 +489,10 @@ public sealed class PostgresSecretRotationTests
     {
         using var handler = new BuildOnly();
         using var http = new HttpClient(handler) { BaseAddress = new Uri("https://management.test") };
-        var api = RestService.For<IPostgresSecretRotationApi>(http);
-        using var byName = await api.GetByName("name?private", Project, "dev&private", "/private?x", default);
+        var api = RestService.For<ISqlSecretRotationApi>(http);
+        using var byName = await api.GetByName(CredentialType, "name?private", Project, "dev&private", "/private?x", default);
         await Assert.That(byName.RequestUri!.ToString().Contains("environment=dev%26private", StringComparison.Ordinal)).IsTrue();
-        using var deletion = await api.Delete(Id, "false", "true", default);
+        using var deletion = await api.Delete(CredentialType, Id, "false", "true", default);
         await Assert.That(deletion.RequestUri!.ToString().EndsWith("?deleteSecrets=false&revokeGeneratedCredentials=true", StringComparison.Ordinal)).IsTrue();
     }
 
@@ -607,6 +608,77 @@ public sealed class PostgresSecretRotationTests
         }
     }
 
+    [Test]
+    [Arguments("root")]
+    [Arguments("summary")]
+    [Arguments("connection")]
+    [Arguments("environment")]
+    [Arguments("folder")]
+    [Arguments("parameters")]
+    [Arguments("secretsMapping")]
+    [Arguments("rotateAtUtc")]
+    [Arguments("passwordRequirements")]
+    [Arguments("required")]
+    public async Task ContractMetadataRejectsUnlistedMembersAtEveryClosedObject(string branch)
+    {
+        var value = Metadata();
+        value["parameters"]!["passwordRequirements"] = JsonNode.Parse("""
+            {"length":20,"required":{"digits":1,"lowercase":1,"symbols":1,"uppercase":1}}
+            """);
+        var root = new JsonObject { ["secretRotation"] = value };
+        JsonNode selected = branch switch
+        {
+            "root" => root,
+            "summary" => value,
+            "passwordRequirements" => value["parameters"]!["passwordRequirements"]!,
+            "required" => value["parameters"]!["passwordRequirements"]!["required"]!,
+            _ => value[branch]!
+        };
+        selected["unlisted"] = "withheld-private";
+        using var document = JsonDocument.Parse(root.ToJsonString());
+        using var request = PostgresSecretRotationOperations.Get(Org, Address());
+        await Assert.That(() => request.Parse(document.RootElement)).Throws<ManagementContractException>();
+    }
+
+    [Test]
+    [Arguments("root")]
+    [Arguments("option")]
+    [Arguments("template")]
+    [Arguments("mapping")]
+    [Arguments("name")]
+    [Arguments("connection")]
+    public async Task ContractOptionClosedObjectsAndDiscriminatorsFailClosed(string defect)
+    {
+        var value = Options();
+        var option = value["secretRotationOptions"]![1]!;
+        var template = option["template"]!;
+        switch (defect)
+        {
+            case "root": value["unlisted"] = true; break;
+            case "option": option["unlisted"] = true; break;
+            case "template": template["unlisted"] = true; break;
+            case "mapping": template["secretsMapping"]!["unlisted"] = true; break;
+            case "name": option["name"] = "MySQL Credentials"; break;
+            default: option["connection"] = "mysql"; break;
+        }
+        using var document = JsonDocument.Parse(value.ToJsonString());
+        using var request = PostgresSecretRotationOperations.PostgresOptionsSubset(Org);
+        await Assert.That(() => request.Parse(document.RootElement)).Throws<ManagementContractException>();
+    }
+
+    [Test]
+    [Arguments("root")]
+    [Arguments("item")]
+    public async Task ContractGeneratedCredentialsRejectUnlistedMembers(string branch)
+    {
+        var value = Generated(2);
+        JsonNode selected = branch == "root" ? value : value["generatedCredentials"]![1]!;
+        selected["unlisted"] = "withheld-private";
+        using var document = JsonDocument.Parse(value.ToJsonString());
+        using var request = PostgresSecretRotationOperations.GetGeneratedCredentials(Org, Address());
+        await Assert.That(() => request.Parse(document.RootElement)).Throws<ManagementContractException>();
+    }
+
     private sealed class Wire(HttpMethod method, string path) : HttpMessageHandler
     {
         public int RouteNumber { get; init; }
@@ -675,7 +747,7 @@ public sealed class PostgresSecretRotationTests
     }
     private static InfisicalRotationAddress Address(string environment = "dev") =>
         new(Project, environment, "/", InfisicalRotationProfile.PostgresCredentials, Id);
-    private static PostgresSecretRotationCreation Creation(PostgresRotationParameters parameters) =>
+    private static SqlSecretRotationCreation Creation(SqlRotationParameters parameters) =>
         new("rotation-private", Project, "dev", "/", Id, 1.5, parameters, new("USERNAME", "PASSWORD"));
     private static JsonObject Generated(int count) => new()
     {

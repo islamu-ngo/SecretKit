@@ -5,13 +5,13 @@ using SecretKit.Core;
 namespace SecretKit.Infisical.Management;
 
 /// <summary>Native configuration only. Statement material is copied, never executed by the SDK.</summary>
-public sealed class PostgresRotationParameters : IDisposable
+public sealed class SqlRotationParameters : IDisposable
 {
     private readonly Lock _gate = new();
     private bool _disposed;
     private SecretMaterial? _statement;
     /// <summary>Captures alternating usernames and copies optional statement material; caller retains the original material.</summary>
-    public PostgresRotationParameters(string username1, string username2,
+    public SqlRotationParameters(string username1, string username2,
         SqlRotationPasswordRequirements? passwordRequirements = null, SecretMaterial? rotationStatement = null)
     {
         ManagementJson.Text(username1, 16384);
@@ -37,8 +37,9 @@ public sealed class PostgresRotationParameters : IDisposable
             }
         }
     }
-    internal PostgresRotationParameters(JsonElement value)
+    internal SqlRotationParameters(JsonElement value)
     {
+        SqlSecretRotationShared.Only(value, "username1", "username2", "passwordRequirements", "rotationStatement");
         Username1 = ManagementJson.Nonempty(value, "username1");
         Username2 = ManagementJson.Nonempty(value, "username2");
         if (value.TryGetProperty("passwordRequirements", out _))
@@ -81,15 +82,15 @@ public sealed class PostgresRotationParameters : IDisposable
         lock (_gate) { _disposed = true; _statement?.Dispose(); _statement = null; }
     }
     /// <summary>Returns a marker without usernames or statement text.</summary>
-    public override string ToString() => "[PostgresRotationParameters]";
+    public override string ToString() => "[SqlRotationParameters]";
 }
 
 /// <summary>Native rotation creation settings; referenced parameter material remains caller-owned until request serialization.</summary>
-public sealed class PostgresSecretRotationCreation
+public sealed class SqlSecretRotationCreation
 {
     /// <summary>Captures exact creation fields; null optional fields omit them and parameters are not cloned by this container.</summary>
-    public PostgresSecretRotationCreation(string name, string projectId, string environment, string secretPath,
-        string connectionId, double rotationInterval, PostgresRotationParameters parameters,
+    public SqlSecretRotationCreation(string name, string projectId, string environment, string secretPath,
+        string connectionId, double rotationInterval, SqlRotationParameters parameters,
         SqlRotationSecretsMapping secretsMapping, SqlRotationTime? rotateAtUtc = null,
         SqlRotationNullableText? description = null, bool? isAutoRotationEnabled = null)
     {
@@ -97,8 +98,8 @@ public sealed class PostgresSecretRotationCreation
         ManagementJson.Text(projectId);
         ManagementJson.Text(environment, 64);
         ManagementJson.Text(secretPath);
-        PostgresSecretRotationOperations.InputUuid(connectionId);
-        PostgresSecretRotationOperations.InputNumber(rotationInterval, 1);
+        SqlSecretRotationShared.InputUuid(connectionId);
+        SqlSecretRotationShared.InputNumber(rotationInterval, 1);
         ArgumentNullException.ThrowIfNull(parameters);
         ArgumentNullException.ThrowIfNull(secretsMapping);
         if (description?.Value?.Length > 256) throw new ArgumentException("Invalid rotation description budget.");
@@ -127,7 +128,7 @@ public sealed class PostgresSecretRotationCreation
     /// <summary>Gets the native rotation interval value without converting it into an SDK timer.</summary>
     [JsonIgnore] public double RotationInterval { get; }
     /// <summary>Gets caller-owned parameters; keep them alive until request and grant construction are complete.</summary>
-    [JsonIgnore] public PostgresRotationParameters Parameters { get; }
+    [JsonIgnore] public SqlRotationParameters Parameters { get; }
     /// <summary>Gets destination secret key mappings, not credential values.</summary>
     [JsonIgnore] public SqlRotationSecretsMapping SecretsMapping { get; }
     /// <summary>Gets explicit UTC time selection, or null when omitted.</summary>
@@ -153,28 +154,28 @@ public sealed class PostgresSecretRotationCreation
         writer.WriteEndObject();
     }
     /// <summary>Returns a marker without creation settings.</summary>
-    public override string ToString() => "[PostgresSecretRotationCreation]";
+    public override string ToString() => "[SqlSecretRotationCreation]";
 }
 
 /// <summary>Empty PATCH and omitted members are preserved. Nested persistence is not asserted.</summary>
-public sealed class PostgresSecretRotationUpdate
+public sealed class SqlSecretRotationUpdate
 {
     private readonly string? _name;
     private readonly SqlRotationNullableText? _description;
     private readonly bool? _enabled;
     private readonly double? _interval;
-    private readonly PostgresRotationParameters? _parameters;
+    private readonly SqlRotationParameters? _parameters;
     private readonly SqlRotationSecretsMapping? _mapping;
     private readonly SqlRotationTime? _time;
     /// <summary>Captures optional patch fields; null omits, a nullable description can explicitly clear, and referenced material remains caller-owned.</summary>
-    public PostgresSecretRotationUpdate(string? name = null, SqlRotationNullableText? description = null,
+    public SqlSecretRotationUpdate(string? name = null, SqlRotationNullableText? description = null,
         bool? isAutoRotationEnabled = null, double? rotationInterval = null,
-        PostgresRotationParameters? parameters = null, SqlRotationSecretsMapping? secretsMapping = null,
+        SqlRotationParameters? parameters = null, SqlRotationSecretsMapping? secretsMapping = null,
         SqlRotationTime? rotateAtUtc = null)
     {
         if (name is not null) ManagementJson.Text(name, 64);
         if (description?.Value?.Length > 256) throw new ArgumentException("Invalid rotation description budget.");
-        if (rotationInterval is { } interval) PostgresSecretRotationOperations.InputNumber(interval, 1);
+        if (rotationInterval is { } interval) SqlSecretRotationShared.InputNumber(interval, 1);
         _name = name;
         _description = description;
         _enabled = isAutoRotationEnabled;
@@ -196,14 +197,14 @@ public sealed class PostgresSecretRotationUpdate
         writer.WriteEndObject();
     }
     /// <summary>Returns a marker without update fields.</summary>
-    public override string ToString() => "[PostgresSecretRotationUpdate]";
+    public override string ToString() => "[SqlSecretRotationUpdate]";
 }
 
 /// <summary>Explicit native destination and optional overwrite intent for a rotation move.</summary>
-public sealed class PostgresSecretRotationMove
+public sealed class SqlSecretRotationMove
 {
     /// <summary>Captures destination environment/path and nullable overwrite selection.</summary>
-    public PostgresSecretRotationMove(string destinationEnvironment, string destinationSecretPath,
+    public SqlSecretRotationMove(string destinationEnvironment, string destinationSecretPath,
         bool? overwriteDestination = null)
     {
         ManagementJson.Text(destinationEnvironment);
@@ -227,35 +228,43 @@ public sealed class PostgresSecretRotationMove
         writer.WriteEndObject();
     }
     /// <summary>Returns a marker without destination coordinates.</summary>
-    public override string ToString() => "[PostgresSecretRotationMove]";
+    public override string ToString() => "[SqlSecretRotationMove]";
 }
 
 /// <summary>Server-authored metadata. Status is open; timestamps/job IDs do not attribute a previous trigger.</summary>
-public sealed class PostgresSecretRotationSummary : IDisposable
+public sealed class SqlSecretRotationSummary : IDisposable
 {
-    internal PostgresSecretRotationSummary(JsonElement value, string projectId, string? id = null,
+    internal SqlSecretRotationSummary(JsonElement value, SqlSecretRotationFamily family, string projectId, string? id = null,
         string? name = null, string? environment = null, string? secretPath = null, string? connectionId = null)
     {
-        ManagementJson.RequireEqual(value, "type", "postgres-credentials");
+        SqlSecretRotationShared.Only(value, "type", "projectId", "id", "name", "connectionId", "connection",
+            "environment", "folderId", "folder", "createdAt", "updatedAt", "lastRotatedAt", "lastRotationAttemptedAt",
+            "rotationStatus", "activeIndex", "isAutoRotationEnabled", "isLastRotationManual", "description",
+            "lastRotationJobId", "lastRotationMessage", "nextRotationAt", "rotateAtUtc", "rotationInterval",
+            "secretsMapping", "parameters");
+        ManagementJson.RequireEqual(value, "type", family.CredentialType);
         ManagementJson.RequireEqual(value, "projectId", projectId);
         if (id is not null) ManagementJson.RequireEqual(value, "id", id);
         if (name is not null) ManagementJson.RequireEqual(value, "name", name);
-        Id = PostgresSecretRotationOperations.Uuid(value, "id");
+        Id = SqlSecretRotationShared.Uuid(value, "id");
         ProjectId = ManagementJson.Required(value, "projectId");
         Name = ManagementJson.Required(value, "name");
-        ConnectionId = PostgresSecretRotationOperations.Uuid(value, "connectionId");
+        ConnectionId = SqlSecretRotationShared.Uuid(value, "connectionId");
         if (connectionId is not null) ManagementJson.RequireEqual(value, "connectionId", connectionId);
         JsonElement connection = ManagementJson.Object(value, "connection");
-        ManagementJson.RequireEqual(connection, "app", "postgres");
+        SqlSecretRotationShared.Only(connection, "app", "id", "name");
+        ManagementJson.RequireEqual(connection, "app", family.App);
         ManagementJson.RequireEqual(connection, "id", ConnectionId);
         ConnectionName = ManagementJson.Required(connection, "name");
         JsonElement env = ManagementJson.Object(value, "environment");
-        EnvironmentId = PostgresSecretRotationOperations.Uuid(env, "id");
+        SqlSecretRotationShared.Only(env, "id", "name", "slug");
+        EnvironmentId = SqlSecretRotationShared.Uuid(env, "id");
         EnvironmentName = ManagementJson.Required(env, "name");
         Environment = ManagementJson.Required(env, "slug");
         if (environment is not null) ManagementJson.RequireEqual(env, "slug", environment);
         JsonElement folder = ManagementJson.Object(value, "folder");
-        FolderId = PostgresSecretRotationOperations.Uuid(value, "folderId");
+        SqlSecretRotationShared.Only(folder, "id", "path");
+        FolderId = SqlSecretRotationShared.Uuid(value, "folderId");
         ManagementJson.RequireEqual(folder, "id", FolderId);
         SecretPath = ManagementJson.Required(folder, "path");
         if (secretPath is not null) ManagementJson.RequireEqual(folder, "path", secretPath);
@@ -264,7 +273,7 @@ public sealed class PostgresSecretRotationSummary : IDisposable
         LastRotatedAt = ManagementJson.Timestamp(value, "lastRotatedAt", true)!;
         LastRotationAttemptedAt = ManagementJson.Timestamp(value, "lastRotationAttemptedAt", true)!;
         RotationStatus = ManagementJson.Required(value, "rotationStatus");
-        ActiveIndex = value.TryGetProperty("activeIndex", out _) ? PostgresSecretRotationOperations.Number(value, "activeIndex") : null;
+        ActiveIndex = value.TryGetProperty("activeIndex", out _) ? SqlSecretRotationShared.Number(value, "activeIndex") : null;
         IsAutoRotationEnabled = value.TryGetProperty("isAutoRotationEnabled", out _) ? ManagementJson.Boolean(value, "isAutoRotationEnabled") : null;
         IsLastRotationManual = value.TryGetProperty("isLastRotationManual", out _) ? ManagementJson.Boolean(value, "isLastRotationManual") : null;
         HasDescription = value.TryGetProperty("description", out _);
@@ -275,9 +284,9 @@ public sealed class PostgresSecretRotationSummary : IDisposable
         LastRotationMessage = ManagementJson.Optional(value, "lastRotationMessage");
         HasNextRotationAt = value.TryGetProperty("nextRotationAt", out _);
         NextRotationAt = ManagementJson.Timestamp(value, "nextRotationAt", false);
-        RotateAtUtc = new(ManagementJson.Object(value, "rotateAtUtc"));
-        RotationInterval = PostgresSecretRotationOperations.Number(value, "rotationInterval");
-        SecretsMapping = new(ManagementJson.Object(value, "secretsMapping"));
+        RotateAtUtc = new(ManagementJson.Object(value, "rotateAtUtc"), strictFields: true);
+        RotationInterval = SqlSecretRotationShared.Number(value, "rotationInterval");
+        SecretsMapping = new(ManagementJson.Object(value, "secretsMapping"), strictFields: true);
         // Material is allocated last so a rejected coordinate cannot leak an owned result.
         Parameters = new(ManagementJson.Object(value, "parameters"));
     }
@@ -340,35 +349,35 @@ public sealed class PostgresSecretRotationSummary : IDisposable
     /// <summary>Gets returned secret key mappings, not generated credential values.</summary>
     [JsonIgnore] public SqlRotationSecretsMapping SecretsMapping { get; }
     /// <summary>Gets owned returned parameters; statement material is disposed with this summary.</summary>
-    [JsonIgnore] public PostgresRotationParameters Parameters { get; }
+    [JsonIgnore] public SqlRotationParameters Parameters { get; }
     /// <summary>Disposes owned parameter statement material without changing provider configuration.</summary>
     public void Dispose() => Parameters.Dispose();
     /// <summary>Returns a marker without native status details, coordinates or statements.</summary>
-    public override string ToString() => "[PostgresSecretRotationSummary]";
+    public override string ToString() => "[SqlSecretRotationSummary]";
 }
 
-/// <summary>Disposable list owns every selected PostgreSQL result; mixed catalogs remain explicitly partial.</summary>
-public sealed class PostgresSecretRotationList : IDisposable
+/// <summary>Disposable list owns every selected single-dialect result; mixed catalogs remain explicitly partial.</summary>
+public sealed class SqlSecretRotationList : IDisposable
 {
-    internal PostgresSecretRotationList(IEnumerable<PostgresSecretRotationSummary> items, bool complete)
+    internal SqlSecretRotationList(IEnumerable<SqlSecretRotationSummary> items, bool complete)
     {
         Items = Array.AsReadOnly(items.ToArray());
         IsComplete = complete;
     }
     /// <summary>Gets selected owned rotation summaries; dispose the list to release all material.</summary>
-    [JsonIgnore] public IReadOnlyList<PostgresSecretRotationSummary> Items { get; }
+    [JsonIgnore] public IReadOnlyList<SqlSecretRotationSummary> Items { get; }
     /// <summary>Gets whether the listing is complete; a profile subset of a mixed catalog remains incomplete.</summary>
     public bool IsComplete { get; }
     /// <summary>Disposes every owned selected rotation summary.</summary>
     public void Dispose() { foreach (var item in Items) item.Dispose(); }
     /// <summary>Returns a marker without rotation inventory contents.</summary>
-    public override string ToString() => "[PostgresSecretRotationList]";
+    public override string ToString() => "[SqlSecretRotationList]";
 }
 
 /// <summary>Owned generated username/password pair; dispose after use and protect any deliberate plaintext exports.</summary>
-public sealed class PostgresGeneratedCredential : IDisposable
+public sealed class SqlGeneratedCredential : IDisposable
 {
-    internal PostgresGeneratedCredential(string username, string password)
+    internal SqlGeneratedCredential(string username, string password)
     {
         Username = SecretMaterial.FromText(username);
         try { Password = SecretMaterial.FromText(password); }
@@ -381,24 +390,26 @@ public sealed class PostgresGeneratedCredential : IDisposable
     /// <summary>Disposes both credential buffers; does not revoke the database credential or erase exported strings.</summary>
     public void Dispose() { Username.Dispose(); Password.Dispose(); }
     /// <summary>Returns a marker without generated authentication material.</summary>
-    public override string ToString() => "[PostgresGeneratedCredential]";
+    public override string ToString() => "[SqlGeneratedCredential]";
 }
 
 /// <summary>One observed material response, not proof of current database access or trigger attribution.</summary>
-public sealed class PostgresGeneratedCredentials : IDisposable
+public sealed class SqlGeneratedCredentials : IDisposable
 {
-    internal PostgresGeneratedCredentials(JsonElement value, string rotationId)
+    internal SqlGeneratedCredentials(JsonElement value, SqlSecretRotationFamily family, string rotationId)
     {
-        ManagementJson.RequireEqual(value, "type", "postgres-credentials");
+        SqlSecretRotationShared.Only(value, "type", "rotationId", "activeIndex", "generatedCredentials");
+        ManagementJson.RequireEqual(value, "type", family.CredentialType);
         ManagementJson.RequireEqual(value, "rotationId", rotationId);
-        RotationId = PostgresSecretRotationOperations.Uuid(value, "rotationId");
-        ActiveIndex = PostgresSecretRotationOperations.Number(value, "activeIndex");
+        RotationId = SqlSecretRotationShared.Uuid(value, "rotationId");
+        ActiveIndex = SqlSecretRotationShared.Number(value, "activeIndex");
         var values = ManagementJson.Array(value, "generatedCredentials");
-        var parsed = new List<PostgresGeneratedCredential>();
+        var parsed = new List<SqlGeneratedCredential>();
         try
         {
             foreach (var item in values)
             {
+                SqlSecretRotationShared.Only(item, "username", "password");
                 if (parsed.Count == 2) throw new ManagementContractException(SecretStatus.Unknown);
                 // Empty values are established here, independently of creation parameters.
                 parsed.Add(new(ManagementJson.Required(item, "username"), ManagementJson.Required(item, "password")));
@@ -413,23 +424,25 @@ public sealed class PostgresGeneratedCredentials : IDisposable
     /// <summary>Gets the native reported active slot without testing database authentication.</summary>
     [JsonIgnore] public double ActiveIndex { get; }
     /// <summary>Gets one or two owned credential pairs from this observed response.</summary>
-    [JsonIgnore] public IReadOnlyList<PostgresGeneratedCredential> Items { get; }
+    [JsonIgnore] public IReadOnlyList<SqlGeneratedCredential> Items { get; }
     /// <summary>Disposes all owned generated credential pairs.</summary>
     public void Dispose() { foreach (var item in Items) item.Dispose(); }
     /// <summary>Returns a marker without generated credentials.</summary>
-    public override string ToString() => "[PostgresGeneratedCredentials]";
+    public override string ToString() => "[SqlGeneratedCredentials]";
 }
 
-/// <summary>A PostgreSQL-only catalog option. Statements are protected template text, never executed.</summary>
-public sealed class PostgresSecretRotationOption : IDisposable
+/// <summary>A single-dialect catalog option. Statements are protected template text, never executed.</summary>
+public sealed class SqlSecretRotationOption : IDisposable
 {
-    internal PostgresSecretRotationOption(JsonElement value)
+    internal SqlSecretRotationOption(JsonElement value, SqlSecretRotationFamily family)
     {
-        ManagementJson.RequireEqual(value, "type", "postgres-credentials");
-        ManagementJson.RequireEqual(value, "connection", "postgres");
-        ManagementJson.RequireEqual(value, "name", "PostgreSQL Credentials");
+        SqlSecretRotationShared.Only(value, "type", "connection", "name", "template");
+        ManagementJson.RequireEqual(value, "type", family.CredentialType);
+        ManagementJson.RequireEqual(value, "connection", family.App);
+        ManagementJson.RequireEqual(value, "name", family.OptionName);
         JsonElement template = ManagementJson.Object(value, "template");
-        SecretsMapping = new(ManagementJson.Object(template, "secretsMapping"), false);
+        SqlSecretRotationShared.Only(template, "secretsMapping", "createUserStatement", "rotationStatement");
+        SecretsMapping = new(ManagementJson.Object(template, "secretsMapping"), false, strictFields: true);
         string create = ManagementJson.Required(template, "createUserStatement");
         string rotate = ManagementJson.Required(template, "rotationStatement");
         CreateUserStatement = SecretMaterial.FromText(create);
@@ -445,16 +458,16 @@ public sealed class PostgresSecretRotationOption : IDisposable
     /// <summary>Disposes both owned statement templates.</summary>
     public void Dispose() { CreateUserStatement.Dispose(); RotationStatement.Dispose(); }
     /// <summary>Returns a marker without statement templates or key mappings.</summary>
-    public override string ToString() => "[PostgresSecretRotationOption]";
+    public override string ToString() => "[SqlSecretRotationOption]";
 }
 
 /// <summary>Owned profile-only catalog projection; it never claims completeness for the mixed native catalog.</summary>
-public sealed class PostgresSecretRotationOptions : IDisposable
+public sealed class SqlSecretRotationOptions : IDisposable
 {
-    internal PostgresSecretRotationOptions(IEnumerable<PostgresSecretRotationOption> items) =>
+    internal SqlSecretRotationOptions(IEnumerable<SqlSecretRotationOption> items) =>
         Items = Array.AsReadOnly(items.ToArray());
     /// <summary>Gets selected owned catalog options; dispose the collection after inspection.</summary>
-    [JsonIgnore] public IReadOnlyList<PostgresSecretRotationOption> Items { get; }
+    [JsonIgnore] public IReadOnlyList<SqlSecretRotationOption> Items { get; }
     /// <summary>Always false: this collection projects only one profile from a mixed catalog.</summary>
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1822:Mark members as static",
         Justification = "This result is one native profile subset, not a complete mixed provider catalog.")]
@@ -462,13 +475,13 @@ public sealed class PostgresSecretRotationOptions : IDisposable
     /// <summary>Disposes all owned option statement templates.</summary>
     public void Dispose() { foreach (var item in Items) item.Dispose(); }
     /// <summary>Returns a marker without catalog statement templates.</summary>
-    public override string ToString() => "[PostgresSecretRotationOptions]";
+    public override string ToString() => "[SqlSecretRotationOptions]";
 }
 
 /// <summary>Native 204 credential-check acknowledgement only; no material or convergence result.</summary>
-public sealed class PostgresCredentialCheckAcknowledgement
+public sealed class SqlCredentialCheckAcknowledgement
 {
-    internal PostgresCredentialCheckAcknowledgement() { }
+    internal SqlCredentialCheckAcknowledgement() { }
     /// <summary>Returns a marker without claiming database convergence or credential material.</summary>
-    public override string ToString() => "[PostgresCredentialCheckAcknowledgement]";
+    public override string ToString() => "[SqlCredentialCheckAcknowledgement]";
 }

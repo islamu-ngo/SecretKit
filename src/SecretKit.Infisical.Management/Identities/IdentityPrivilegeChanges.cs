@@ -362,27 +362,16 @@ public static class IdentityPrivilegeChangeOperations
     }
 
     private static ManagementTarget Intent(LegacyPrivilegeSelection selection, string? resource,
-        Action<Utf8JsonWriter> write)
-    {
-        byte[] storage = new byte[64 * 1024];
-        try
+        Action<Utf8JsonWriter> write) =>
+        new(selection.OrganizationId, selection.ProjectId, selection.IdentityId, ManagementJson.IntentFingerprint(writer =>
         {
-            using var stream = new MemoryStream(storage, writable: true);
-            using (var writer = new Utf8JsonWriter(stream))
-            {
-                writer.WriteStartArray();
-                writer.WriteStringValue(selection.ProjectSlug);
-                writer.WriteStringValue(selection.MembershipId);
-                writer.WriteStringValue(resource);
-                write(writer);
-                writer.WriteEndArray();
-            }
-            return new(selection.OrganizationId, selection.ProjectId, selection.IdentityId,
-                Convert.ToHexString(SHA256.HashData(storage.AsSpan(0, (int)stream.Position))));
-        }
-        catch (NotSupportedException) { throw new ArgumentException("The privilege input exceeds its byte budget."); }
-        finally { Array.Clear(storage); }
-    }
+            writer.WriteStartArray();
+            writer.WriteStringValue(selection.ProjectSlug);
+            writer.WriteStringValue(selection.MembershipId);
+            writer.WriteStringValue(resource);
+            write(writer);
+            writer.WriteEndArray();
+        }, "privilege"));
 
     private static IdentityPrivilegeSummary Response(JsonElement root, LegacyPrivilegeSelection selection,
         bool legacy, string? id, string? slug)

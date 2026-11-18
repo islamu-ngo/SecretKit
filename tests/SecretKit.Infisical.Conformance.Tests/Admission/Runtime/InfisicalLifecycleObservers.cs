@@ -89,8 +89,8 @@ internal sealed class InfisicalLifecycleObservers :
         PostAsync<DynamicBackendFacts>("dynamic/measure", writer =>
         {
             Write(writer, "coordinate", coordinate);
-            writer.WriteString("username", username.Reveal());
-            writer.WriteString("password", password.Reveal());
+            username.Use(value => writer.WriteString("username", value));
+            password.Use(value => writer.WriteString("password", value));
         }, token);
 
     public async ValueTask<DynamicUsernameFacts> InspectUsernamesAsync(DynamicUsernameCoordinate coordinate,
@@ -114,14 +114,14 @@ internal sealed class InfisicalLifecycleObservers :
 
     public ValueTask<SessionLifetimeFacts> MeasureAsync(SecretMaterial token, CancellationToken cancellationToken) =>
         PostAsync<SessionLifetimeFacts>("session/measure", writer =>
-            writer.WriteString("token", token.Reveal()), cancellationToken);
+            token.Use(value => writer.WriteString("token", value)), cancellationToken);
 
     public async ValueTask ExpiredAsync(SecretMaterial token, InfisicalTokenLifetimeEvidence previous,
         CancellationToken cancellationToken)
     {
         Expiry facts = await PostAsync<Expiry>("session/expired", writer =>
         {
-            writer.WriteString("token", token.Reveal());
+            token.Use(value => writer.WriteString("token", value));
             Write(writer, "previous", previous);
         }, cancellationToken);
         if (facts.Authentication != BackendAuthentication.Rejected || facts.ExpiresAt != previous.ExpiresAt ||
@@ -166,8 +166,8 @@ internal sealed class InfisicalLifecycleObservers :
         Authentication facts = await PostAsync<Authentication>("rotation/authenticate", writer =>
         {
             Write(writer, "coordinate", coordinate);
-            writer.WriteString("username", username.Reveal());
-            writer.WriteString("password", password.Reveal());
+            username.Use(value => writer.WriteString("username", value));
+            password.Use(value => writer.WriteString("password", value));
         }, token);
         if (facts.Coordinate != coordinate) throw new NativeCaseFailureException("effect-mismatch");
         return facts.Result;
@@ -178,8 +178,8 @@ internal sealed class InfisicalLifecycleObservers :
         PostAsync<RotationCredentialFacts>("rotation/measure-credentials", writer =>
         {
             Write(writer, "coordinate", coordinate);
-            writer.WriteString("username", username.Reveal());
-            writer.WriteString("password", password.Reveal());
+            username.Use(value => writer.WriteString("username", value));
+            password.Use(value => writer.WriteString("password", value));
         }, token);
 
     public async ValueTask<IInfisicalRotationBackendSubscription> SubscribeAsync(RotationBackendCoordinate coordinate,
@@ -240,7 +240,7 @@ internal sealed class InfisicalLifecycleObservers :
                     received.Write(chunk, 0, count);
                 }
                 using JsonDocument document = JsonDocument.Parse(received.GetBuffer().AsMemory(0,
-                    checked((int)received.Length)), new JsonDocumentOptions { MaxDepth = 32 });
+                    checked((int)received.Length)), new JsonDocumentOptions { AllowDuplicateProperties = false, MaxDepth = 32 });
                 try { NativeRunProtocol.RejectDuplicates(document.RootElement); }
                 catch (InvalidOperationException) { throw new NativeCaseFailureException("observer-unavailable"); }
                 Envelope<T>? envelope = document.RootElement.Deserialize<Envelope<T>>(InfisicalLifecycleFamilies.Options);

@@ -173,24 +173,10 @@ public static class RoleChangeOperations
         return Intent(organizationId, projectId, roleId, change.Write);
     }
 
-    private static ManagementTarget Intent(string org, string? project, string role, Action<Utf8JsonWriter> write)
-    {
-        byte[] storage = new byte[64 * 1024];
-        try
-        {
-            using var stream = new MemoryStream(storage, writable: true);
-            using (var writer = new Utf8JsonWriter(stream)) write(writer);
-            // The bounded canonical wire body binds scalar/array actions, ordering,
-            // inversion, every constraint, and absent/null/empty update distinctions.
-            string digest = Convert.ToHexString(SHA256.HashData(storage.AsSpan(0, (int)stream.Position)));
-            return new(org, project, role, digest);
-        }
-        catch (NotSupportedException)
-        {
-            throw new ArgumentException("The role input exceeds its byte budget.");
-        }
-        finally { Array.Clear(storage); }
-    }
+    // The bounded canonical wire body binds scalar/array actions, ordering,
+    // inversion, every constraint, and absent/null/empty update distinctions.
+    private static ManagementTarget Intent(string org, string? project, string role, Action<Utf8JsonWriter> write) =>
+        new(org, project, role, ManagementJson.IntentFingerprint(write, "role"));
 
     private static RoleSummary Response(JsonElement root, string org, string? project, string? role, string? slug)
     {

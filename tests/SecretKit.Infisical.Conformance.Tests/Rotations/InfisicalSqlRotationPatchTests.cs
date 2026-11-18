@@ -47,9 +47,9 @@ public sealed class InfisicalSqlRotationPatchTests
     }
 
     [Test]
-    [Arguments("Postgres", "PostgresRotationParameters.passwordRequirements.omitted")]
-    [Arguments("MySql", "MySqlRotationParameters.rotationStatement.omitted")]
-    [Arguments("MsSql", "MsSqlRotationPasswordRequirements.allowedSymbols.omitted")]
+    [Arguments("Postgres", "SqlRotationParameters.passwordRequirements.omitted")]
+    [Arguments("MySql", "SqlRotationParameters.rotationStatement.omitted")]
+    [Arguments("MsSql", "SqlRotationPasswordRequirements.allowedSymbols.omitted")]
     public async Task RecursiveMergeCannotCertifyReplacementOfPopulatedSiblings(string profile, string variant)
     {
         await using var fixture = new InfisicalSqlRotationPatchFixture("deep-merge");
@@ -74,7 +74,7 @@ public sealed class InfisicalSqlRotationPatchTests
     {
         await using var fixture = new InfisicalSqlRotationPatchFixture(mode);
         var result = await fixture.RunAsync(InfisicalSqlRotationPatchFixture.Definition("Postgres",
-            "PostgresSecretRotationUpdate.name.value"));
+            "SqlSecretRotationUpdate.name.value"));
         await Assert.That(result.Passed).IsFalse();
         await Assert.That(fixture.Residual).IsEqualTo(0);
         await Assert.That(fixture.Sources.Single().Registrations).IsEqualTo(0);

@@ -789,7 +789,7 @@ public sealed class InfisicalRotationValidationWitnessTests
     {
         if (profile == InfisicalRotationProfile.MysqlCredentials)
         {
-            using var parameters = new MySqlRotationParameters(accounts.Username1, accounts.Username2, new(32, 8, 8, 8, 8, "!"));
+            using var parameters = new SqlRotationParameters(accounts.Username1, accounts.Username2, new(32, 8, 8, 8, 8, "!"));
             using var request = MySqlSecretRotationOperations.Create("organization", new("fixture", "project", "env",
                 folder, ConnectionId, 1, parameters, new("fixture-user", "fixture-password"), isAutoRotationEnabled: false));
             var result = await ExecuteAsync(env, management, request, NativeIdentityRole.Setup, true);
@@ -803,7 +803,7 @@ public sealed class InfisicalRotationValidationWitnessTests
         }
         if (profile == InfisicalRotationProfile.MssqlCredentials)
         {
-            using var parameters = new MsSqlRotationParameters(accounts.Username1, accounts.Username2, new(32, 8, 8, 8, 8, "!"));
+            using var parameters = new SqlRotationParameters(accounts.Username1, accounts.Username2, new(32, 8, 8, 8, 8, "!"));
             using var request = MsSqlSecretRotationOperations.Create("organization", new("fixture", "project", "env",
                 folder, ConnectionId, 1, parameters, new("fixture-user", "fixture-password"), isAutoRotationEnabled: false));
             var result = await ExecuteAsync(env, management, request, NativeIdentityRole.Setup, true);
@@ -815,7 +815,7 @@ public sealed class InfisicalRotationValidationWitnessTests
             await Assert.That(config.IsAutoRotationEnabled).IsFalse();
             return config.Id;
         }
-        using var pg = new PostgresRotationParameters(accounts.Username1, accounts.Username2, new(32, 8, 8, 8, 8, "!"));
+        using var pg = new SqlRotationParameters(accounts.Username1, accounts.Username2, new(32, 8, 8, 8, 8, "!"));
         using var create = PostgresSecretRotationOperations.Create("organization", new("fixture", "project", "env",
             folder, ConnectionId, 1, pg, new("fixture-user", "fixture-password"), isAutoRotationEnabled: false));
         var created = await ExecuteAsync(env, management, create, NativeIdentityRole.Setup, true);

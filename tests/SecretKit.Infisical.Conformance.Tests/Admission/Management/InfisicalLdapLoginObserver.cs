@@ -1,3 +1,5 @@
+using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Text.Json;
 using SecretKit.Core;
 using SecretKit.TestFixtures;
@@ -65,64 +67,41 @@ internal sealed class InfisicalLdapLoginObserver : ILdapLoginObserver
         }
         try
         {
-            // Acquire each clearable export transactionally. A later disposed input
-            // cannot strand earlier exports; no private string exports are created.
-            char[] original = credentials.Original.ExportCharacters();
-            try
+            // Independent owners keep one credential generation pinned across the call.
+            using var original = credentials.Original.Copy();
+            using var rotated = credentials.Rotated.Copy();
+            using var wrongService = credentials.WrongService.Copy();
+            using var user = credentials.User.Copy();
+            using var wrongUser = credentials.WrongUser.Copy();
+            if (!original.Use(Private) || !rotated.Use(Private) || !wrongService.Use(Private) ||
+                !user.Use(Private) || !wrongUser.Use(Private) ||
+                Same(original, rotated) || Same(original, wrongService) || Same(rotated, wrongService) ||
+                Same(user, wrongUser))
+                throw new NativeCaseFailureException("missing-input");
+            LdapDirectoryBinding facts = await Post<LdapDirectoryBinding>(session, "open", writer =>
             {
-                char[] rotated = credentials.Rotated.ExportCharacters();
-                try
-                {
-                    char[] wrongService = credentials.WrongService.ExportCharacters();
-                    try
-                    {
-                        char[] user = credentials.User.ExportCharacters();
-                        try
-                        {
-                            char[] wrongUser = credentials.WrongUser.ExportCharacters();
-                            try
-                            {
-                                if (!Private(original) || !Private(rotated) || !Private(wrongService) ||
-                                    !Private(user) || !Private(wrongUser) ||
-                                    original.AsSpan().SequenceEqual(rotated) ||
-                                    original.AsSpan().SequenceEqual(wrongService) ||
-                                    rotated.AsSpan().SequenceEqual(wrongService) ||
-                                    user.AsSpan().SequenceEqual(wrongUser))
-                                    throw new NativeCaseFailureException("missing-input");
-                                LdapDirectoryBinding facts = await Post<LdapDirectoryBinding>(session, "open", writer =>
-                                {
-                                    Write(writer, "attempt", attempt);
-                                    writer.WriteStartObject("credentials");
-                                    writer.WriteString("original", original.AsSpan());
-                                    writer.WriteString("rotated", rotated.AsSpan());
-                                    writer.WriteString("wrongService", wrongService.AsSpan());
-                                    writer.WriteString("user", user.AsSpan());
-                                    writer.WriteString("wrongUser", wrongUser.AsSpan());
-                                    writer.WriteBase64String("correlationKey", credentials.CorrelationKey);
-                                    writer.WriteEndObject();
-                                }, token);
-                                if (facts.Attempt != attempt || !Unique(registrations, facts.RegistrationId) ||
-                                    facts.SourceIdentity != sourceIdentity || !Text(facts.ClockAuthority) ||
-                                    !Text(facts.ClockEpoch) || !Utc(facts.OpenedAt) || facts.Sequence < 0 ||
-                                    !facts.OwnedRootCreated || !facts.RootInitiallyAbsent || !facts.ServiceBindAccepted ||
-                                    !facts.WrongServiceBindRejected || !facts.UserBindAccepted || !facts.WrongUserBindRejected)
-                                    throw Unavailable();
-                                facts = facts with { Attempt = attempt };
-                                session.Directory = facts;
-                                session.Sequence = facts.Sequence;
-                                session.Time = facts.OpenedAt;
-                                session.Unsettled = false;
-                                return facts;
-                            }
-                            finally { Array.Clear(wrongUser); }
-                        }
-                        finally { Array.Clear(user); }
-                    }
-                    finally { Array.Clear(wrongService); }
-                }
-                finally { Array.Clear(rotated); }
-            }
-            finally { Array.Clear(original); }
+                Write(writer, "attempt", attempt);
+                writer.WriteStartObject("credentials");
+                original.Use(value => writer.WriteString("original", value));
+                rotated.Use(value => writer.WriteString("rotated", value));
+                wrongService.Use(value => writer.WriteString("wrongService", value));
+                user.Use(value => writer.WriteString("user", value));
+                wrongUser.Use(value => writer.WriteString("wrongUser", value));
+                writer.WriteBase64String("correlationKey", credentials.CorrelationKey);
+                writer.WriteEndObject();
+            }, token);
+            if (facts.Attempt != attempt || !Unique(registrations, facts.RegistrationId) ||
+                facts.SourceIdentity != sourceIdentity || !Text(facts.ClockAuthority) ||
+                !Text(facts.ClockEpoch) || !Utc(facts.OpenedAt) || facts.Sequence < 0 ||
+                !facts.OwnedRootCreated || !facts.RootInitiallyAbsent || !facts.ServiceBindAccepted ||
+                !facts.WrongServiceBindRejected || !facts.UserBindAccepted || !facts.WrongUserBindRejected)
+                throw Unavailable();
+            facts = facts with { Attempt = attempt };
+            session.Directory = facts;
+            session.Sequence = facts.Sequence;
+            session.Time = facts.OpenedAt;
+            session.Unsettled = false;
+            return facts;
         }
         catch (ObjectDisposedException) { throw new NativeCaseFailureException("missing-input"); }
         finally { Release(session); }
@@ -392,7 +371,14 @@ internal sealed class InfisicalLdapLoginObserver : ILdapLoginObserver
     private static bool Id(string? value) => Text(value) && Guid.TryParseExact(value, "D", out Guid id) &&
         id != Guid.Empty && id.ToString("D") == value;
     private static bool Utc(DateTimeOffset time) => time != default && time.Offset == TimeSpan.Zero;
-    private static bool Private(char[] value) => value.Length is > 0 and <= 16384;
+    private static bool Private(ReadOnlySpan<char> value) => value.Length is > 0 and <= 16384;
+    private static bool Same(SecretMaterial left, SecretMaterial right) => left.Use(value =>
+    {
+        // One short-lived array bridges the two callbacks; neither span escapes.
+        char[] expected = value.ToArray();
+        try { return right.Use(expected, static (actual, expected) => actual.SequenceEqual(expected)); }
+        finally { CryptographicOperations.ZeroMemory(MemoryMarshal.AsBytes(expected.AsSpan())); }
+    });
     private static bool Witness(string? value)
     {
         Span<byte> decoded = stackalloc byte[32];

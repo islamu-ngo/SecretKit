@@ -21,7 +21,7 @@ internal sealed class InfisicalShareObserver(InfisicalLifecycleObservers channel
         {
             writer.WriteString("organizationId", organizationId);
             writer.WriteString("ownedName", name);
-            writer.WriteString("observerToken", selected.Material.Reveal());
+            selected.Material.Use(value => writer.WriteString("observerToken", value));
         }, token);
         if (facts.OrganizationId != organizationId || facts.OwnedName != name ||
             facts.Status is not (SecretStatus.Success or SecretStatus.Absent) ||
@@ -45,7 +45,7 @@ internal sealed class InfisicalShareObserver(InfisicalLifecycleObservers channel
         ViewFacts facts = await channel.PostAsync<ViewFacts>("share/views", writer =>
         {
             writer.WriteString("shareId", shareId);
-            writer.WriteString("observerToken", selected.Material.Reveal());
+            selected.Material.Use(value => writer.WriteString("observerToken", value));
         }, token);
         if (facts.ShareId != shareId || facts.ConsumedViews < 0)
             throw new NativeCaseFailureException("observer-unavailable");
@@ -61,9 +61,10 @@ internal sealed class InfisicalShareObserver(InfisicalLifecycleObservers channel
         {
             writer.WriteString("organizationId", organizationId);
             writer.WriteString("shareId", shareId);
-            writer.WriteString("password", password?.Reveal());
-            writer.WriteString("runtimeToken", intended.Material.Reveal());
-            writer.WriteString("deniedToken", rejected.Material.Reveal());
+            if (password is null) writer.WriteNull("password");
+            else password.Use(value => writer.WriteString("password", value));
+            intended.Material.Use(value => writer.WriteString("runtimeToken", value));
+            rejected.Material.Use(value => writer.WriteString("deniedToken", value));
         }, token);
         if (facts.OrganizationId != organizationId || facts.ShareId != shareId || !Enum.IsDefined(facts.Audience) ||
             facts.RecipientStatus != SecretStatus.Success || facts.DeniedStatus != SecretStatus.Denied ||

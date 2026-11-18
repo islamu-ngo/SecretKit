@@ -245,17 +245,6 @@ internal static class ProjectWire
             throw new ArgumentException("Invalid environment position.");
     }
     internal static ManagementTarget Intent(string organizationId, string? projectId, string? resourceId,
-        Action<Utf8JsonWriter> write)
-    {
-        byte[] storage = new byte[64 * 1024];
-        try
-        {
-            using var stream = new MemoryStream(storage, writable: true);
-            using (var writer = new Utf8JsonWriter(stream)) write(writer);
-            return new(organizationId, projectId, resourceId,
-                Convert.ToHexString(SHA256.HashData(storage.AsSpan(0, (int)stream.Position))));
-        }
-        catch (NotSupportedException) { throw new ArgumentException("The project input exceeds its byte budget."); }
-        finally { Array.Clear(storage); }
-    }
+        Action<Utf8JsonWriter> write) =>
+        new(organizationId, projectId, resourceId, ManagementJson.IntentFingerprint(write, "project"));
 }

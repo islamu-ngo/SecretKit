@@ -180,7 +180,19 @@ internal static partial class SqlSecretRotationShared
     private static bool InRange(double value, double minimum, double maximum = double.MaxValue) =>
         double.IsFinite(value) && value >= minimum && value <= maximum;
 
-    internal static double Number(JsonElement value, string field, double minimum, double maximum = double.MaxValue)
+    internal static void InputUuid(string value)
+    {
+        if (!Guid.TryParseExact(value, "D", out _)) throw new ArgumentException("Invalid SQL rotation UUID.");
+    }
+
+    internal static string Uuid(JsonElement value, string field)
+    {
+        string text = ManagementJson.Required(value, field);
+        return Guid.TryParseExact(text, "D", out _) ? text : throw new ManagementContractException(SecretStatus.Unknown);
+    }
+
+    internal static double Number(JsonElement value, string field,
+        double minimum = -double.MaxValue, double maximum = double.MaxValue)
     {
         double result = ManagementJson.Number(value, field);
         return InRange(result, minimum, maximum) ? result : throw new ManagementContractException(SecretStatus.Unknown);

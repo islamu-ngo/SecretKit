@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text.Json;
@@ -56,25 +57,8 @@ public sealed class ManagementRequest<T> : IDisposable where T : notnull
         IsMutation = mutation;
         if (writeBody is not null)
         {
-            // The fixed backing array bounds serialization before any identity or I/O is used.
-            byte[] storage = new byte[64 * 1024];
-            try
-            {
-                using var stream = new MemoryStream(storage, writable: true);
-                using (var writer = new Utf8JsonWriter(stream))
-                {
-                    writeBody(writer);
-                }
-                _body = storage.AsSpan(0, (int)stream.Position).ToArray();
-            }
-            catch (NotSupportedException)
-            {
-                throw new ArgumentException("The management input exceeds its byte budget.");
-            }
-            finally
-            {
-                Array.Clear(storage);
-            }
+            // The bounded body is serialized before any identity or I/O is used.
+            _body = ManagementJson.Serialize(writeBody, "management");
         }
     }
 
@@ -96,7 +80,7 @@ public sealed class ManagementRequest<T> : IDisposable where T : notnull
             _disposed = true;
             if (_body is not null)
             {
-                Array.Clear(_body);
+                CryptographicOperations.ZeroMemory(_body);
                 _body = null;
             }
         }
@@ -138,15 +122,38 @@ internal sealed class ManagementContractException(SecretStatus status) : Excepti
 
 internal static class ManagementJson
 {
-    internal static string IntentFingerprint(Action<Utf8JsonWriter> write)
+    internal const int BodyBudget = 64 * 1024;
+
+    // Serialization uses one pooled, bounded writer whose storage is zeroed before release;
+    // only the exact returned copy (owned and cleared by its caller) leaves this method.
+    internal static byte[] Serialize(Action<Utf8JsonWriter> write, string subject)
     {
-        using var stream = new MemoryStream();
+        using var buffer = new InfisicalOperationBudget.RequestBuffer(BodyBudget);
+        WriteBounded(buffer, write, subject);
+        return buffer.ToArray();
+    }
+
+    // The canonical bounded body is hashed in place, so intent material never leaves pooled storage.
+    internal static string IntentFingerprint(Action<Utf8JsonWriter> write, string subject = "management intent")
+    {
+        using var buffer = new InfisicalOperationBudget.RequestBuffer(BodyBudget);
+        WriteBounded(buffer, write, subject);
+        Span<byte> digest = stackalloc byte[SHA256.HashSizeInBytes];
+        SHA256.HashData(buffer.WrittenSpan, digest);
+        return Convert.ToHexString(digest);
+    }
+
+    private static void WriteBounded(IBufferWriter<byte> buffer, Action<Utf8JsonWriter> write, string subject)
+    {
         try
         {
-            using (var writer = new Utf8JsonWriter(stream)) write(writer);
-            return Convert.ToHexString(SHA256.HashData(stream.GetBuffer().AsSpan(0, (int)stream.Length)));
+            using var writer = new Utf8JsonWriter(buffer);
+            write(writer);
         }
-        finally { stream.GetBuffer().AsSpan().Clear(); }
+        catch (NotSupportedException)
+        {
+            throw new ArgumentException($"The {subject} input exceeds its byte budget.");
+        }
     }
 
     internal static void Text(string value, int maximum = 1024)

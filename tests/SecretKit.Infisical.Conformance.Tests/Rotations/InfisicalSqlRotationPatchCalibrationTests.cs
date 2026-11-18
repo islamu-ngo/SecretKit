@@ -29,9 +29,9 @@ public sealed class InfisicalSqlRotationPatchCalibrationTests
             switch (profile)
             {
                 case "Postgres":
-                    using (var p = new PostgresRotationParameters(fixture.Username1, fixture.Username2,
+                    using (var p = new SqlRotationParameters(fixture.Username1, fixture.Username2,
                         new(24, 2, 2, 2, 2, "!@"), fixture.RotationStatement))
-                    using (var changed = new PostgresRotationParameters(fixture.Username1, fixture.Username2,
+                    using (var changed = new SqlRotationParameters(fixture.Username1, fixture.Username2,
                         new(24, 2, 2, 2, 2)))
                         await CalibrateAsync(c, lease,
                             () => PostgresSecretRotationOperations.Create(c.OrganizationId, new(fixture.Name,
@@ -41,9 +41,9 @@ public sealed class InfisicalSqlRotationPatchCalibrationTests
                                 new(parameters: changed)), s => s.Id);
                     break;
                 case "MySql":
-                    using (var p = new MySqlRotationParameters(fixture.Username1, fixture.Username2,
+                    using (var p = new SqlRotationParameters(fixture.Username1, fixture.Username2,
                         new(24, 2, 2, 2, 2, "!@"), fixture.RotationStatement))
-                    using (var changed = new MySqlRotationParameters(fixture.Username1, fixture.Username2,
+                    using (var changed = new SqlRotationParameters(fixture.Username1, fixture.Username2,
                         new(24, 2, 2, 2, 2)))
                         await CalibrateAsync(c, lease,
                             () => MySqlSecretRotationOperations.Create(c.OrganizationId, new(fixture.Name,
@@ -53,9 +53,9 @@ public sealed class InfisicalSqlRotationPatchCalibrationTests
                                 new(parameters: changed)), s => s.Id);
                     break;
                 default:
-                    using (var p = new MsSqlRotationParameters(fixture.Username1, fixture.Username2,
+                    using (var p = new SqlRotationParameters(fixture.Username1, fixture.Username2,
                         new(24, 2, 2, 2, 2, "!@"), fixture.RotationStatement))
-                    using (var changed = new MsSqlRotationParameters(fixture.Username1, fixture.Username2,
+                    using (var changed = new SqlRotationParameters(fixture.Username1, fixture.Username2,
                         new(24, 2, 2, 2, 2)))
                         await CalibrateAsync(c, lease,
                             () => MsSqlSecretRotationOperations.Create(c.OrganizationId, new(fixture.Name,
