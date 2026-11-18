@@ -140,10 +140,10 @@ the 2026-11-15 correction in ADR-006 changes SecretKit guidance only.
 Configurator's separate ADR has not been edited, and its browser client is
 permanently excluded.
 
-The items below are **proposed, not implemented**. They follow the order in
-which Configurator's first pilot would need them: Infisical through SecretKit
-on Desktop and Terminal. None authorizes live provider access, publication or a
-Configurator change.
+The items below distinguish implemented subsets from remaining proposed work.
+They follow the order in which Configurator's first pilot would need them:
+Infisical through SecretKit on Desktop and Terminal. None authorizes live
+provider access, publication or a Configurator change.
 
 | Item | Need | Current source position | Evidence required |
 | --- | --- | --- | --- |
@@ -151,7 +151,7 @@ Configurator change.
 | Multi-folder value-free Infisical inventory | Compare live key names across every folder a definition maps | `ISecretInventory` lists one folder (`recursive` is `false`); `ListFoldersAsync` can already enumerate folders recursively | Bounded composition with page/item/time budgets and explicit completeness; partial results stay partial, never "unchanged" |
 | Interactive operator composition guide | Desktop/terminal hosts select credentials safely | `AzureKeyVaultClient` accepts any host `TokenCredential`; Universal Auth and OIDC/JWT proof exchanges exist | Documentation and a sample: Azure.Identity browser/device-code credentials with the operator's own client ID and protected persistent cache; explicit `AzureCliCredential`; Universal Auth with a host-held client secret |
 | Write-conflict honesty for compare-then-apply | A value can change between inventory and write | Azure `SetSecret` has no create-only or version-match option; Infisical write preconditions not yet assessed | Document the race; expose version metadata for an immediate pre-write re-read; never present it as atomic |
-| Operator discovery for pickers | Choose subscription/vault or project/environment/folder | Azure vault listing needs a known subscription; Infisical `ListProjects`, project reads and folder listing exist in subsets | Azure subscription enumeration under the selected identity; confirm Infisical coverage under a machine identity's actual permissions |
+| Operator discovery for pickers | Choose subscription/vault or project/environment/folder | `VaultAdministration.ListSubscriptionsAsync` enumerates validated Azure subscription metadata under the selected administrative identity with page/item/time budgets and explicit completeness, preserving provider order; vault listing then uses a selected subscription. Infisical `ListProjects`, project reads and folder listing exist in subsets | Offline transport tests cover Azure projection, malformed payloads and collection bounds; live subscription visibility and Infisical coverage under the selected identity's actual permissions remain unestablished |
 | Infisical delegated OAuth (future) | Human-attributed access under the user's permissions | [OAuth applications](https://infisical.com/docs/documentation/platform/oauth-applications/overview) document human delegation; `InfisicalLoginProof.Oidc` is a separate machine-identity exchange | [Token exchange](https://infisical.com/docs/documentation/platform/oauth-applications/token-exchange) needs organization-owned confidential middleware, client-secret custody, active OIDC SSO and prior user sign-in; no refresh token or administration mutations. [Authorization code](https://infisical.com/docs/documentation/platform/oauth-applications/authorization-code) currently offers only `secrets:read`, with its own client-secret custody decision despite PKCE; never embed a confidential secret in a desktop binary |
 | Third provider proposal (future) | Configurator's vision lists another self-hostable vault | No third provider admitted | A [provider admission](PROVIDER_ADMISSION.md) proposal with Configurator as the named consumer; OpenBao (MPL-2.0) fits ISLAMU's sovereignty goals better than source-available Vault, subject to that review |
 

@@ -81,7 +81,13 @@ scalar parameters, object properties, arrays, required members, primitive types,
 nullability, primitive enums, selected formats and inclusive numeric/length/item
 bounds. Formats are `uuid`, `date-time`, `date`, `password`, `int32`, `int64`,
 `float` and `double`. Descriptions, defaults and examples are annotations, never
-evidence of runtime behavior. Compositions, conditional schemas, executable
+evidence of runtime behavior. `anyOf` and `oneOf` alternatives within the selected
+scope are established before comparison, including alternatives a request does not select. Each
+declared request alternative must fit an API alternative; every API response
+alternative must fit a consumer alternative unless an audited scope exclusion
+applies. `oneOf` requires provably disjoint
+primitive types or disjoint enums; overlapping or unestablished alternatives
+fail closed. Other compositions, conditional schemas, executable
 patterns, schema-valued additional properties and other relevant unknown
 constructs yield an explicit `unestablished-*` finding. Such a finding stops
 that operation's remaining comparisons; other operations continue. The count
@@ -96,6 +102,28 @@ bounded to 64. Duplicate JSON members, duplicate parameter definitions and
 ambiguous matching method/path definitions cannot silently select a winner.
 Unselected response fields and unrelated operations are outside the check.
 
+An operation may declare a `narrowings` array. Every entry requires `path`,
+`sdkRule`, `openApiRule` and a nonempty `rationale`. Paths use comparison labels
+such as `response.secret.version` and `response.secrets[].type`. Rules project
+all compared primitive facts, or an object's type and required-member set.
+Primitive unions may also be projected. Rules must match the resolved schemas
+and establish a strict subset; stale, unmatched or widened rules are findings.
+Object presence rules additionally require every selected member to exist.
+These declarations cannot waive removed properties, unsupported schemas or
+unrelated nested differences. Schema resolution uses the same local reference
+resolver as ordinary comparison. Request restrictions are never waived.
+
+An operation may also declare `excludedAlternatives`, with a comparison
+`location`, discriminator property name and source-anchored `rationale`.
+Each declaration must identify exactly one branch whose object properties
+include that discriminator and whose `required` set lists it. The consumer
+shape at that location must exist and must not declare the discriminator.
+Stale declarations, ambiguous matches and consumer-declared discriminators are
+findings. All union members must remain schema objects with safe local
+references; only an audited excluded branch's internal type completeness is
+outside scope. At least one branch must remain, and every retained branch is
+established and compared normally. Exclusions never apply to requests.
+
 For a future comparison, obtain the public specification through a separately
 authorized process, retain its source identity/date/hash, and supply its local
 path. Review each finding against the implementation and current public
@@ -105,50 +133,48 @@ document to turn drift green. Keep the specification outside this repository.
 OAuth/prose-only contracts, approval follow-up, native effects, authorization,
 server versions and platform qualification remain outside this evidence.
 
-### Supplied snapshot observation, November 15, 2026
+### Supplied snapshot observation, November 18, 2026
 
-The actual comparison used a read-only public OpenAPI snapshot, whose SHA-256
-matched `c3283ae46b216a6c30d28cd82011cf1fa9182dc645bc1076d3b7f49489509571`.
-The command attempted all 13 manifest operations and exited **1**, reporting
-12 findings: eight selected schema mismatches and four unestablished constructs.
-Expectations were retained rather than changed to make this snapshot pass.
+The read-only OpenAPI 3.0.3 snapshot at
+`/tmp/sk-openapi/infisical-openapi.json` has SHA-256
+`4ca14f6cae737de96b8009bb432ed06b5e2723bf598eedde5719a37701eedb79`.
+It remains outside the repository. The actual command checked **13 operations**,
+reported **0 findings** and exited **0** after the audited corrections below.
+`Program.Main` accepts `operator-contract-check <specification>` and reads that
+local input; it has no default specification and never fetches one.
 
-| Selected operation | Actual finding |
+| Selected operation | Audited resolution |
 | --- | --- |
-| Metadata inventory | Direct and imported `type` enums are broader than the reader's accepted `shared` value; imported rows do not document the selected `updatedAt` and `tags` fields (four findings) |
-| Qualified secret read | Broader `type` enum; `version` is declared as a number rather than the integer required for a revision (two findings) |
-| Static create, static update, bulk delete | Each success response uses `anyOf`; the narrow checker does not establish these composed contracts (three findings) |
-| Folder list | The `recursive` parameter uses `anyOf`, outside the admitted subset (one finding) |
-| Project policy | The root does not require `project`; project `type` permits more than the selected secret-manager reader (two findings) |
-| Universal login, token renewal/revocation, folder create/get, import list | Selected facts matched (six operations) |
+| Metadata inventory | Two `shared` string narrowings; imported optional `updatedAt`/`tags` omitted because undocumented, while documented direct metadata remains selected |
+| Qualified secret read | `shared` string and positive Int32 revision narrowings |
+| Static create and update | Approval alternatives explicitly excluded from applied-success scope; retained responses bind `shared` and positive Int32 narrowings |
+| Bulk delete | Approval alternative explicitly excluded; retained rows bind selected `shared`/`personal` types and positive Int32 revisions |
+| Project policy | Required `project` wrapper and selected `secret-manager` discriminator narrowings |
+| Folder list | Its scalar `anyOf` parameter is established and accepts the selected wire type |
 
-These are mismatches between a consumer projection and one public document,
-not evidence of new server regressions. For example, a broad enum may not
-express a query-specific server restriction, and an undocumented optional
-metadata field leaves an observation unknown. The four unestablished results
-leave the remaining comparisons for those operations unproven. No native
-provider, publication or minimum-version conclusion follows.
+The three approval alternatives contain an internally untyped nullable field.
+Their required `approval` discriminator is absent from the applied-success
+consumer shape. Three source-anchored exclusions model the existing approval
+scope boundary; they do not establish approval schemas or provider effects.
+The newly reached success alternatives also omit optional `secretPath`.
+`InfisicalStaticChanges.cs:168-169` and `NativeBulk.cs:424-425` check that member
+only when present, so those undocumented optional projections were removed;
+the documented qualified-read `secretPath` remains checked. Twelve narrowings
+are bound to the exact remaining primitive and presence facts. No missing
+property was admitted by a narrowing.
 
-Controlled verification on Linux x64 with SDK **10.0.403** and runtime
-**10.0.14** passed all **72 focused checker tests**, the project-reference
-build and scoped formatting. The tests exercise the actual command, request
-and response compatibility direction, parameter inheritance, ambiguity, local
-references, the actual revocation manifest's closed response envelope and exact
-resource boundaries. Deliberately removing required-member
-enforcement and relaxing reference depth produced the intended failures before
-the original implementation was restored. These observations establish offline
-checker behavior only.
-
-On **2026-11-16** (SDK **10.0.404**, runtime **10.0.15**), all **12 findings**
-against the read-only public OpenAPI snapshot (`c3283ae46b216a6c30d28cd82011cf1fa9182dc645bc1076d3b7f49489509571`)
-were triaged against the live code paths in `InfisicalInventory`, `InfisicalClient`,
-`InfisicalStaticChanges`, `NativeBulk` and `Projects`: all 8 schema mismatches
-reflect deliberate fail-closed reader boundaries (`shared`-only filter, positive
-32-bit `version`, required `project` / `secret-manager` type) or optional
-`updatedAt`/`tags` parsing on imported rows (`InfisicalInventoryTests` adds
-direct imported omission + `personal` rejection witnesses), and all 4
-`unestablished-schema` findings arise from `anyOf` unions intentionally
-excluded from `OperatorContractCheck`. No manifest constraints were weakened.
+Linux x64 verification with SDK **10.0.404** passed both warning-as-error builds
+and all **111 focused checker tests**, including **29 union/narrowing cases**,
+**10 exclusion cases** and actual CLI synthetic exit-0/exit-1 observations.
+Removing the consumer-discriminator guard made its exclusion regression fail;
+the guard was restored byte for byte before the passing verification.
+Scoped formatting passed. The earlier full Release.Tests run, before the added
+exclusion cases, executed **874** tests: **870 passed**, **4 failed**, none
+skipped. Those failures concerned provider source-digest checks and missing
+archive/installed-candidate inputs, not the checker; no untouched-baseline
+reproduction is claimed. These observations establish offline selected-contract
+matching only, not native qualification, publication authority or a minimum
+server version.
 
 On the same **2026-11-16** baseline (SDK **10.0.404**, runtime **10.0.15**),
 offline hardening updates adopted `.NET 10` `System.Threading.Lock`, `CA2007`

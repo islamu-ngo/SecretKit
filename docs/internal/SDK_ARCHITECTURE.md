@@ -88,11 +88,24 @@ owned transport through operation settlement. Sync disposal schedules cleanup;
 async disposal bounds the wait, with eventual cleanup preserved after timeout.
 Native dynamic/rotation request intent is derived independently from typed
 coordinates and validated before token acquisition. The Refit request-builder
-interface receives no bearer argument. PostgreSQL, MySQL and SQL Server rotation
-inputs and projections share unified `SqlRotationNullableText`,
-`SqlRotationPasswordRequirements`, `SqlRotationTime` and
-`SqlRotationSecretsMapping` value types plus compile-time `[GeneratedRegex]`
-validation in `SqlSecretRotationShared`. Core, Extensions and Infisical/Management
+interface receives no bearer argument. Runtime and management requests admit a
+bearer through one RFC 6750 `b64token` gate (`InfisicalBearer`) evaluated over a
+cleared `SecretMaterial.Use` snapshot, so rejected material is never revealed.
+PostgreSQL, MySQL and SQL Server rotations are three public facades over one
+internal `SqlSecretRotationFamily`, one Refit `ISqlSecretRotationApi` with a fixed
+credential-type segment, and one unified `Sql*` model set whose parser rejects
+unlisted members on every object for all three families. Value types and
+compile-time `[GeneratedRegex]` validation stay in `SqlSecretRotationShared`.
+Management bodies and intent fingerprints share `ManagementJson.Serialize` and
+`ManagementJson.IntentFingerprint`: one 64 KiB pooled `RequestBuffer` writer whose
+rented arrays are fully zeroed before return, with SHA-256 computed in place.
+The Azure data-plane default transport is a `SocketsHttpHandler` without
+redirects, cookies or trace-header propagation and with a two-minute pooled
+connection lifetime. Azure subscription discovery reuses `VaultAdministration`
+collection and `ControlledTransport` for public-cloud `/subscriptions` with ARM
+`2022-12-01`; notification destinations map `NotificationWebhookAuthentication`
+into the locked Event Grid model and validate returned bindings before
+publication. Core, Extensions and Infisical/Management
 packages serialize JSON payloads via `Utf8JsonWriter` and `SecretMaterial.Use`
 without `[RequiresUnreferencedCode]` or `[RequiresDynamicCode]`. These internal owners do not add a
 portable lease abstraction, material cache, database client or hidden scheduler.

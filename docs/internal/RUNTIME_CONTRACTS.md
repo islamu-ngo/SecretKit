@@ -243,7 +243,21 @@ redirects/cookies/propagation, selects no ambient proxy and adds no replay.
 SafeWithPrivateTrust copies public issuer data and preserves normal hostname,
 validity and chain checks using only the selected roots. Revocation retains the
 SocketsHttpHandler default NoCheck policy. SDK connections have a two-minute
-pooled lifetime. Optional Proxy is explicit.
+pooled lifetime. Optional Proxy is explicit. Every Infisical runtime and
+management request admits its bearer only when it is a 1-16,384 character RFC
+6750 `b64token`; validation reads a cleared snapshot and a rejected token fails
+before dispatch without being exported as a string. The Azure Key Vault
+data-plane default transport applies the same redirect, cookie, propagation and
+connection-lifetime defaults; Azure secret writes check the 25 KiB UTF-8 budget
+and UTF-16 validity on owned material before any plaintext string is created.
+
+Azure subscription discovery returns bounded
+`ManagementInventory<SubscriptionObservation>` results under the selected
+administrative identity, preserving provider order and explicit completeness.
+Notification configuration and observations carry an optional validated
+Microsoft Entra tenant/application audience pair; partial or invalid returned
+bindings fail closed. Metadata does not establish effective permissions or
+webhook delivery.
 
 HostControlled(HttpClient/HttpMessageHandler) is deliberately arbitrary,
 host-owned networking; HTTP, TLS relaxation, redirects/retries/cookies and
