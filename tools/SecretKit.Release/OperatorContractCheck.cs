@@ -7,9 +7,10 @@ public sealed record OperatorContractFinding(string Operation, string Code, stri
 public sealed record OperatorContractReport(string SpecSha256, int CheckedOperations,
     IReadOnlyList<OperatorContractFinding> Findings);
 
+// allow: SIZE_OK - The bounded recursive traversal shares diagnostic and reference-cycle state.
 // This compares selected consumer facts, not complete OpenAPI documents or provider behavior.
 // It has no transport, publisher, generator or manifest-writing dependency.
-public static class OperatorContractCheck
+public static partial class OperatorContractCheck
 {
     public const string ManifestPath = "docs/internal/infisical-operator-contracts.json";
     private const int MaximumBytes = 32 * 1024 * 1024;
@@ -43,7 +44,8 @@ public static class OperatorContractCheck
         var routes = new HashSet<string>(StringComparer.Ordinal);
         foreach (JsonElement operation in operations.EnumerateArray())
         {
-            Keys(operation, "operator-manifest", "id", "method", "path", "parameters", "request", "status", "response");
+            Keys(operation, "operator-manifest", "id", "method", "path", "parameters", "request", "status", "response",
+                "narrowings", "excludedAlternatives");
             string id = Text(operation, "id");
             string method = Text(operation, "method");
             string path = Text(operation, "path");
@@ -52,8 +54,19 @@ public static class OperatorContractCheck
                 path.StartsWith('/') && !path.Any(char.IsControl) &&
                 routes.Add(method + ":" + PathShape(path)), "operator-manifest");
             string location = "operation";
+            Dictionary<string, JsonElement> narrowings = ReadNarrowings(operation);
+            var visitedNarrowings = new HashSet<string>(StringComparer.Ordinal);
+            var admittedNarrowings = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+            var exclusions = ReadExcludedAlternatives(operation);
+            var appliedExclusions = new HashSet<(string Location, string Discriminator)>();
+            var invalidExclusions = new HashSet<(string Location, string Discriminator)>();
+            var selectedAlternatives = new Dictionary<(JsonElement Schema, string Location), JsonElement[]>();
+            var exclusionConsumers = new Dictionary<(string Location, string Discriminator), (bool Found, bool Declares)>();
             try
             {
+                foreach (var key in exclusions)
+                    exclusionConsumers.Add(key, ConsumerDiscriminator(
+                        Object(operation, "response", "operator-manifest"), expectedResolver, key));
                 JsonProperty[] matchingPaths = paths.EnumerateObject()
                     .Where(candidate => PathShape(candidate.Name) == PathShape(path)).ToArray();
                 if (matchingPaths.Length == 0) { Add("path-removed"); continue; }
@@ -136,75 +149,171 @@ public static class OperatorContractCheck
                 // Only closed codes and consumer-owned labels escape. Never echo spec text.
                 Add(error.Message);
             }
+            foreach (string unused in narrowings.Keys.Except(visitedNarrowings))
+                findings.Add(new(id, "narrowing-unmatched", unused));
+            foreach (var key in exclusions.Except(appliedExclusions))
+                findings.Add(new(id, "excluded-alternative-unmatched", key.Location));
+            foreach (var key in invalidExclusions)
+                findings.Add(new(id, "excluded-alternative", key.Location));
 
-            void Add(string code) => findings.Add(new(id, code, location));
+            void Add(string code)
+            {
+                if (!admittedNarrowings.TryGetValue(location, out HashSet<string>? allowed) || !allowed.Contains(code))
+                    findings.Add(new(id, code, location));
+            }
+
+            JsonElement[] SelectAlternatives(JsonElement schema, string at)
+            {
+                if (selectedAlternatives.TryGetValue((schema, at), out JsonElement[]? cached)) return cached;
+                JsonElement[] branches = Alternatives(schema);
+                var removed = new HashSet<int>();
+                foreach (var key in exclusions.Where(key => key.Location == at))
+                {
+                    var matching = new List<int>();
+                    for (int index = 0; index < branches.Length; index++)
+                    {
+                        int candidate = index;
+                        actualResolver.Visit(branches[index], branch =>
+                        {
+                            if (Strings(branch, "required").Contains(key.Discriminator)) matching.Add(candidate);
+                        });
+                    }
+                    var consumer = exclusionConsumers[key];
+                    if (matching.Count != 1 || !consumer.Found || consumer.Declares ||
+                        removed.Contains(matching[0]))
+                    {
+                        invalidExclusions.Add(key);
+                        continue;
+                    }
+                    bool valid = false;
+                    actualResolver.Visit(branches[matching[0]], branch =>
+                    {
+                        valid = (!branch.TryGetProperty("type", out _) || Text(branch, "type") == "object") &&
+                            branch.TryGetProperty("properties", out JsonElement fields) &&
+                            fields.ValueKind == JsonValueKind.Object && fields.TryGetProperty(key.Discriminator, out _);
+                    });
+                    if (!valid) { invalidExclusions.Add(key); continue; }
+                    removed.Add(matching[0]);
+                    appliedExclusions.Add(key);
+                }
+                JsonElement[] selected = branches.Where((_, index) => !removed.Contains(index)).ToArray();
+                selectedAlternatives.Add((schema, at), selected);
+                return selected;
+            }
 
             void CompareShape(JsonElement actual, JsonElement wanted, bool request, int depth, bool scalarParameter = false)
             {
                 Guard.Require(depth <= 64, "unestablished-schema-depth");
                 actualResolver.Visit(actual, a => expectedResolver.Visit(wanted, e =>
                 {
-                    ValidateShape(a);
-                    ValidateShape(e);
-                    string actualType = Text(a, "type");
-                    string expectedType = Text(e, "type");
-                    Guard.Require(!scalarParameter || actualType is not ("array" or "object") &&
-                        expectedType is not ("array" or "object"), "unestablished-parameter");
-                    string supplied = request ? expectedType : actualType;
-                    string accepted = request ? actualType : expectedType;
-                    if (supplied != accepted && !(supplied == "integer" && accepted == "number"))
+                    bool actualUnion = HasUnion(a);
+                    bool expectedUnion = HasUnion(e);
+                    // Establish every alternative before a request can select any one of them.
+                    if (actualUnion) EstablishUnion(a, actualResolver, (depth, location, request ? null : SelectAlternatives));
+                    if (expectedUnion) EstablishUnion(e, expectedResolver, (depth, location, null));
+                    string narrowingLocation = location;
+                    bool ownsNarrowing = false;
+                    if (!request && !admittedNarrowings.ContainsKey(location) &&
+                        narrowings.TryGetValue(location, out JsonElement narrowing))
                     {
-                        Add("type");
-                        return;
+                        JsonElement sdkRule = Object(narrowing, "sdkRule", "operator-narrowing");
+                        JsonElement apiRule = Object(narrowing, "openApiRule", "operator-narrowing");
+                        if (MatchesRule(a, apiRule, actualResolver) && MatchesRule(e, sdkRule, expectedResolver) &&
+                            RuleSubset(sdkRule, apiRule) && !RuleSubset(apiRule, sdkRule))
+                        {
+                            visitedNarrowings.Add(location);
+                            admittedNarrowings.Add(location, NarrowingCodes(sdkRule));
+                            ownsNarrowing = true;
+                        }
                     }
-                    JsonElement narrower = request ? e : a;
-                    JsonElement wider = request ? a : e;
-                    if (Flag(narrower, "nullable") && !Flag(wider, "nullable")) Add("nullable");
-                    if (wider.TryGetProperty("enum", out JsonElement acceptedValues) &&
-                        (!narrower.TryGetProperty("enum", out JsonElement suppliedValues) ||
-                            suppliedValues.EnumerateArray().Any(value =>
-                                !acceptedValues.EnumerateArray().Any(other => JsonElement.DeepEquals(value, other)))))
-                        Add("enum");
-                    if (wider.TryGetProperty("format", out JsonElement format) &&
-                        (!narrower.TryGetProperty("format", out JsonElement sourceFormat) ||
-                            sourceFormat.GetString() != format.GetString())) Add("format");
-                    foreach (string bound in new[] { "minimum", "maximum", "minLength", "maxLength", "minItems", "maxItems" })
+                    try
                     {
-                        if (!wider.TryGetProperty(bound, out JsonElement limit)) continue;
-                        if (!narrower.TryGetProperty(bound, out JsonElement sourceLimit) ||
-                            (bound.StartsWith("min", StringComparison.Ordinal)
-                                ? sourceLimit.GetDouble() < limit.GetDouble()
-                                : sourceLimit.GetDouble() > limit.GetDouble())) Add("constraint");
+                        if (actualUnion || expectedUnion)
+                        {
+                            JsonElement[] actualBranches = actualUnion && !request ? SelectAlternatives(a, location) : Alternatives(a);
+                            JsonElement[] expectedBranches = Alternatives(e);
+                            foreach (JsonElement suppliedBranch in request ? expectedBranches : actualBranches)
+                            {
+                                bool matched = false;
+                                foreach (JsonElement acceptedBranch in request ? actualBranches : expectedBranches)
+                                {
+                                    int start = findings.Count;
+                                    CompareShape(request ? acceptedBranch : suppliedBranch, request ? suppliedBranch : acceptedBranch,
+                                        request, depth + 1, scalarParameter);
+                                    matched = findings.Count == start;
+                                    findings.RemoveRange(start, findings.Count - start);
+                                    if (matched) break;
+                                }
+                                if (!matched) Add("union");
+                            }
+                            return;
+                        }
+                        ValidateShape(a);
+                        ValidateShape(e);
+                        string actualType = Text(a, "type");
+                        string expectedType = Text(e, "type");
+                        Guard.Require(!scalarParameter || actualType is not ("array" or "object") &&
+                            expectedType is not ("array" or "object"), "unestablished-parameter");
+                        string supplied = request ? expectedType : actualType;
+                        string accepted = request ? actualType : expectedType;
+                        if (supplied != accepted && !(supplied == "integer" && accepted == "number"))
+                        {
+                            Add("type");
+                            return;
+                        }
+                        JsonElement narrower = request ? e : a;
+                        JsonElement wider = request ? a : e;
+                        if (Flag(narrower, "nullable") && !Flag(wider, "nullable")) Add("nullable");
+                        if (wider.TryGetProperty("enum", out JsonElement acceptedValues) &&
+                            (!narrower.TryGetProperty("enum", out JsonElement suppliedValues) ||
+                                suppliedValues.EnumerateArray().Any(value =>
+                                    !acceptedValues.EnumerateArray().Any(other => JsonElement.DeepEquals(value, other)))))
+                            Add("enum");
+                        if (wider.TryGetProperty("format", out JsonElement format) &&
+                            (!narrower.TryGetProperty("format", out JsonElement sourceFormat) ||
+                                sourceFormat.GetString() != format.GetString())) Add("format");
+                        foreach (string bound in new[] { "minimum", "maximum", "minLength", "maxLength", "minItems", "maxItems" })
+                        {
+                            if (!wider.TryGetProperty(bound, out JsonElement limit)) continue;
+                            if (!narrower.TryGetProperty(bound, out JsonElement sourceLimit) ||
+                                (bound.StartsWith("min", StringComparison.Ordinal)
+                                    ? sourceLimit.GetDouble() < limit.GetDouble()
+                                    : sourceLimit.GetDouble() > limit.GetDouble())) Add("constraint");
+                        }
+                        if (expectedType == "array")
+                        {
+                            string previous = location;
+                            location += "[]";
+                            CompareShape(Object(a, "items", "unestablished-schema"),
+                                Object(e, "items", "operator-manifest"), request, depth + 1);
+                            location = previous;
+                        }
+                        if (expectedType != "object") return;
+                        JsonElement actualFields = Object(a, "properties", "unestablished-schema");
+                        JsonElement expectedFields = Object(e, "properties", "operator-manifest");
+                        HashSet<string> actualRequired = Strings(a, "required");
+                        HashSet<string> expectedRequired = Strings(e, "required");
+                        if (request && actualRequired.Except(expectedRequired).Any()) Add("request-required");
+                        if (!request && expectedRequired.Except(actualRequired).Any()) Add("response-required");
+                        if (!request && e.TryGetProperty("additionalProperties", out JsonElement extra) &&
+                            extra.ValueKind == JsonValueKind.False &&
+                            (!a.TryGetProperty("additionalProperties", out JsonElement actualExtra) ||
+                                actualExtra.ValueKind != JsonValueKind.False ||
+                                actualFields.EnumerateObject().Any(field => !expectedFields.TryGetProperty(field.Name, out _))))
+                            Add("response-additional-properties");
+                        foreach (JsonProperty field in expectedFields.EnumerateObject())
+                        {
+                            string previous = location;
+                            location += "." + SafeField(field.Name);
+                            if (!actualFields.TryGetProperty(field.Name, out JsonElement actualField))
+                                Add(request ? "request-member-removed" : "response-member-removed");
+                            else CompareShape(actualField, field.Value, request, depth + 1);
+                            location = previous;
+                        }
                     }
-                    if (expectedType == "array")
+                    finally
                     {
-                        string previous = location;
-                        location += "[]";
-                        CompareShape(Object(a, "items", "unestablished-schema"),
-                            Object(e, "items", "operator-manifest"), request, depth + 1);
-                        location = previous;
-                    }
-                    if (expectedType != "object") return;
-                    JsonElement actualFields = Object(a, "properties", "unestablished-schema");
-                    JsonElement expectedFields = Object(e, "properties", "operator-manifest");
-                    HashSet<string> actualRequired = Strings(a, "required");
-                    HashSet<string> expectedRequired = Strings(e, "required");
-                    if (request && actualRequired.Except(expectedRequired).Any()) Add("request-required");
-                    if (!request && expectedRequired.Except(actualRequired).Any()) Add("response-required");
-                    if (!request && e.TryGetProperty("additionalProperties", out JsonElement extra) &&
-                        extra.ValueKind == JsonValueKind.False &&
-                        (!a.TryGetProperty("additionalProperties", out JsonElement actualExtra) ||
-                            actualExtra.ValueKind != JsonValueKind.False ||
-                            actualFields.EnumerateObject().Any(field => !expectedFields.TryGetProperty(field.Name, out _))))
-                        Add("response-additional-properties");
-                    foreach (JsonProperty field in expectedFields.EnumerateObject())
-                    {
-                        string previous = location;
-                        location += "." + SafeField(field.Name);
-                        if (!actualFields.TryGetProperty(field.Name, out JsonElement actualField))
-                            Add(request ? "request-member-removed" : "response-member-removed");
-                        else CompareShape(actualField, field.Value, request, depth + 1);
-                        location = previous;
+                        if (ownsNarrowing) admittedNarrowings.Remove(narrowingLocation);
                     }
                 }));
             }

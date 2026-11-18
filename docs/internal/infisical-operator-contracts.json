@@ -7,7 +7,7 @@
     "src/SecretKit.Infisical/Imports/{InfisicalImportWire,Imports}.cs",
     "src/SecretKit.Infisical/Authentication/{InfisicalUniversalAuthentication,InfisicalPeriodicTokenSession,InfisicalTokenRevocation,InfisicalProofAuthenticationWire}.cs",
     "src/SecretKit.Infisical.Management/Projects/Projects.cs",
-    "Comparison input: Infisical public OpenAPI 3.0.3 snapshot supplied read-only from https://app.infisical.com/api/docs/json; SHA-256 c3283ae46b216a6c30d28cd82011cf1fa9182dc645bc1076d3b7f49489509571. The snapshot is not distributed here.",
+    "Comparison input: Infisical public OpenAPI 3.0.3 snapshot supplied read-only on 2026-11-18 from https://app.infisical.com/api/docs/json; SHA-256 4ca14f6cae737de96b8009bb432ed06b5e2723bf598eedde5719a37701eedb79. The snapshot is not distributed here.",
     "Request required lists describe members always sent by the selected SDK operation. Response required lists describe parser requirements. Relevant optional response fields remain checked when documented.",
     "Path placeholder names follow handwritten bindings; comparison maps placeholder names by segment position. Literal route segments and parameter locations remain significant."
   ],
@@ -20,7 +20,7 @@
     "Folder mutations beyond create, import mutations and imported value acquisition. Import configuration listing is covered.",
     "Inventory revision, tags, rotation and import-group fields reflect the implemented value-free reader. Missing observations remain unknown; schema matching does not establish provenance, ancestry, effective precedence or a revision.",
     "Only listed primitive, presence, nullability, enum, format and inclusive bound facts are compared; runtime validation and host policy remain authoritative.",
-    "2026-11-16 Task 2.0 triage against OpenAPI 3.0.3 SHA-256 c3283ae46b216a6c30d28cd82011cf1fa9182dc645bc1076d3b7f49489509571 (all 12 findings retained deliberately without loosening): (1-2,5) direct/imported secret type 'shared' filter and (6) secret.version positive int32 requirement remain intentional fail-closed reader contracts; (3-4) imports[].secrets[] omit updatedAt/tags in vendor OpenAPI while InfisicalInventory handles both as optional; (7-10) anyOf schemas on static create/update, bulk delete and recursive folder query sit outside OperatorContractCheck's admitted subset; (11-12) required 'project' wrapper and 'secret-manager' project type remain intentional fail-closed management reader checks."
+    "2026-11-18 audit: source-anchored consumer narrowings bind the supplied snapshot's primitive and presence facts. Imported updatedAt/tags and applied-success secretPath are optional reader observations and undocumented in the supplied snapshot, so those shapes omit them; documented direct inventory metadata and qualified-read secretPath remain selected. Audited excludedAlternatives keep approval envelopes outside the selected applied-success projection; each excluded branch must require approval, the consumer must omit it, and every remaining branch must still establish its selected facts. No approval-success or native-qualification inference follows."
   ],
   "shapes": {
     "coordinate": { "type": "string", "minLength": 1 },
@@ -46,6 +46,19 @@
             "properties": { "id": { "type": "string", "format": "uuid" } }
           }
         }
+      }
+    },
+    "imported-inventory-row": {
+      "type": "object", "required": ["secretKey"],
+      "properties": {
+        "id": { "type": "string", "nullable": true },
+        "secretKey": { "type": "string" },
+        "workspace": { "type": "string" },
+        "environment": { "type": "string" },
+        "secretPath": { "type": "string" },
+        "type": { "$ref": "#/shapes/shared" },
+        "version": { "type": "number", "nullable": true },
+        "isRotatedSecret": { "type": "boolean", "nullable": true }
       }
     },
     "token-result": {
@@ -83,7 +96,6 @@
             "secretKey": { "type": "string" },
             "workspace": { "type": "string" },
             "environment": { "type": "string" },
-            "secretPath": { "type": "string" },
             "type": { "$ref": "#/shapes/shared" },
             "version": { "type": "integer", "minimum": 1, "maximum": 2147483647 }
           }
@@ -130,6 +142,20 @@
     },
     {
       "id": "metadata-inventory", "method": "get", "path": "/api/v4/secrets",
+      "narrowings": [
+        {
+          "path": "response.secrets[].type",
+          "sdkRule": { "type": "string", "enum": ["shared"] },
+          "openApiRule": { "type": "string" },
+          "rationale": "InfisicalInventory.ParseInventoryEntry calls InfisicalClient.ReadScope, which rejects a returned type other than shared (src/SecretKit.Infisical/Secrets/InfisicalInventory.cs; src/SecretKit.Infisical/Secrets/InfisicalClient.cs)."
+        },
+        {
+          "path": "response.imports[].secrets[].type",
+          "sdkRule": { "type": "string", "enum": ["shared"] },
+          "openApiRule": { "type": "string" },
+          "rationale": "InfisicalInventory.ReadImportedInventoryScope rejects imported entries whose returned type differs from shared (src/SecretKit.Infisical/Secrets/InfisicalInventory.cs)."
+        }
+      ],
       "parameters": [
         { "name": "projectId", "in": "query", "required": true, "schema": { "$ref": "#/shapes/coordinate" } },
         { "name": "environment", "in": "query", "required": true, "schema": { "$ref": "#/shapes/coordinate" } },
@@ -152,7 +178,7 @@
               "properties": {
                 "environment": { "type": "string" },
                 "secretPath": { "type": "string" },
-                "secrets": { "type": "array", "items": { "$ref": "#/shapes/inventory-row" } }
+                "secrets": { "type": "array", "items": { "$ref": "#/shapes/imported-inventory-row" } }
               }
             }
           }
@@ -161,6 +187,20 @@
     },
     {
       "id": "secret-read-revision", "method": "get", "path": "/api/v4/secrets/{key}",
+      "narrowings": [
+        {
+          "path": "response.secret.type",
+          "sdkRule": { "type": "string", "enum": ["shared"] },
+          "openApiRule": { "type": "string" },
+          "rationale": "InfisicalClient.ReadScope checks the returned type against shared for the selected static secret (src/SecretKit.Infisical/Secrets/InfisicalClient.cs)."
+        },
+        {
+          "path": "response.secret.version",
+          "sdkRule": { "type": "integer", "minimum": 1, "maximum": 2147483647 },
+          "openApiRule": { "type": "number" },
+          "rationale": "InfisicalClient requires TryGetInt32 to succeed and version to be positive before constructing InfisicalSecretRevision (src/SecretKit.Infisical/Secrets/InfisicalClient.cs)."
+        }
+      ],
       "parameters": [
         { "name": "key", "in": "path", "required": true, "schema": { "$ref": "#/shapes/coordinate" } },
         { "name": "projectId", "in": "query", "required": true, "schema": { "$ref": "#/shapes/coordinate" } },
@@ -196,18 +236,78 @@
     },
     {
       "id": "secret-create", "method": "post", "path": "/api/v4/secrets/{key}",
+      "excludedAlternatives": [
+        {
+          "location": "response", "discriminator": "approval",
+          "rationale": "The applied-success reader requires secret at src/SecretKit.Infisical/Secrets/InfisicalStaticChanges.cs:158. Approval envelopes are handled separately at lines 141-155 and are outside this projection."
+        }
+      ],
+      "narrowings": [
+        {
+          "path": "response.secret.type",
+          "sdkRule": { "type": "string", "enum": ["shared"] },
+          "openApiRule": { "type": "string" },
+          "rationale": "The applied-success reader rejects returned types other than shared at src/SecretKit.Infisical/Secrets/InfisicalStaticChanges.cs:170-171."
+        },
+        {
+          "path": "response.secret.version",
+          "sdkRule": { "type": "integer", "minimum": 1, "maximum": 2147483647 },
+          "openApiRule": { "type": "number" },
+          "rationale": "The applied-success reader requires Version(secret) at src/SecretKit.Infisical/Secrets/InfisicalStaticChanges.cs:177; InfisicalClient.cs:400-403 accepts positive Int32 revisions only."
+        }
+      ],
       "parameters": [{ "name": "key", "in": "path", "required": true, "schema": { "$ref": "#/shapes/coordinate" } }],
       "request": { "$ref": "#/shapes/static-request" },
       "status": "200", "response": { "$ref": "#/shapes/static-result" }
     },
     {
       "id": "secret-update", "method": "patch", "path": "/api/v4/secrets/{key}",
+      "excludedAlternatives": [
+        {
+          "location": "response", "discriminator": "approval",
+          "rationale": "The applied-success reader requires secret at src/SecretKit.Infisical/Secrets/InfisicalStaticChanges.cs:158. Approval envelopes are handled separately at lines 141-155 and are outside this projection."
+        }
+      ],
+      "narrowings": [
+        {
+          "path": "response.secret.type",
+          "sdkRule": { "type": "string", "enum": ["shared"] },
+          "openApiRule": { "type": "string" },
+          "rationale": "The applied-success reader rejects returned types other than shared at src/SecretKit.Infisical/Secrets/InfisicalStaticChanges.cs:170-171."
+        },
+        {
+          "path": "response.secret.version",
+          "sdkRule": { "type": "integer", "minimum": 1, "maximum": 2147483647 },
+          "openApiRule": { "type": "number" },
+          "rationale": "The applied-success reader requires Version(secret) at src/SecretKit.Infisical/Secrets/InfisicalStaticChanges.cs:177; InfisicalClient.cs:400-403 accepts positive Int32 revisions only."
+        }
+      ],
       "parameters": [{ "name": "key", "in": "path", "required": true, "schema": { "$ref": "#/shapes/coordinate" } }],
       "request": { "$ref": "#/shapes/static-request" },
       "status": "200", "response": { "$ref": "#/shapes/static-result" }
     },
     {
       "id": "bulk-delete", "method": "delete", "path": "/api/v4/secrets/batch", "parameters": [],
+      "excludedAlternatives": [
+        {
+          "location": "response", "discriminator": "approval",
+          "rationale": "The applied-success reader requires the secrets array at src/SecretKit.Infisical/Secrets/NativeBulk.cs:410. Approval envelopes are handled separately at lines 396-408 and are outside this projection."
+        }
+      ],
+      "narrowings": [
+        {
+          "path": "response.secrets[].type",
+          "sdkRule": { "type": "string", "enum": ["shared", "personal"] },
+          "openApiRule": { "type": "string" },
+          "rationale": "Each returned type must match a selected shared or personal bulk input at src/SecretKit.Infisical/Secrets/NativeBulk.cs:419-421."
+        },
+        {
+          "path": "response.secrets[].version",
+          "sdkRule": { "type": "integer", "minimum": 1, "maximum": 2147483647 },
+          "openApiRule": { "type": "number" },
+          "rationale": "The bulk reader requires Version(item) at src/SecretKit.Infisical/Secrets/NativeBulk.cs:426; InfisicalClient.cs:400-403 accepts positive Int32 revisions only."
+        }
+      ],
       "request": {
         "type": "object", "required": ["projectId", "environment", "secretPath", "secrets"],
         "properties": {
@@ -239,7 +339,6 @@
                 "type": { "type": "string", "enum": ["shared", "personal"] },
                 "workspace": { "type": "string" },
                 "environment": { "type": "string" },
-                "secretPath": { "type": "string" },
                 "version": { "type": "integer", "minimum": 1, "maximum": 2147483647 }
               }
             }
@@ -342,6 +441,20 @@
     },
     {
       "id": "project-policy", "method": "get", "path": "/api/v1/projects/{projectId}",
+      "narrowings": [
+        {
+          "path": "response",
+          "sdkRule": { "type": "object", "required": ["project"] },
+          "openApiRule": { "type": "object" },
+          "rationale": "ProjectOperations.Get reads the required project wrapper through ManagementJson.Object (src/SecretKit.Infisical.Management/Projects/Projects.cs)."
+        },
+        {
+          "path": "response.project.type",
+          "sdkRule": { "type": "string", "enum": ["secret-manager"] },
+          "openApiRule": { "type": "string" },
+          "rationale": "ProjectSummary defaults expectedType to secret-manager and enforces it through ManagementJson.RequireEqual (src/SecretKit.Infisical.Management/Projects/Projects.cs)."
+        }
+      ],
       "parameters": [{ "name": "projectId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
       "status": "200",
       "response": {
