@@ -373,12 +373,9 @@ public sealed class InfisicalRotationClient : IDisposable, IAsyncDisposable
             {
                 return SecretOutcome<JsonDocument>.Failure(SecretStatus.Expired);
             }
-            string bearer = token.Material.Reveal();
-            if (bearer.Length is < 1 or > 16384 ||
-                !bearer.All(character => char.IsAsciiLetterOrDigit(character) ||
-                    character is '-' or '_' or '.' or '~' or '+' or '/' or '='))
+            if (InfisicalBearer.CreateHeader(token.Material) is not { } authorization)
                 return SecretOutcome<JsonDocument>.Failure(SecretStatus.Invalid);
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
+            request.Headers.Authorization = authorization;
             cancellationToken.ThrowIfCancellationRequested();
             lock (_gate)
             {

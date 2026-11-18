@@ -309,11 +309,9 @@ public sealed partial class InfisicalClient : IInfisicalSecretReader, IAsyncDisp
                     token.CorrelationId);
             if (access!.ExpiresAt <= _time.GetUtcNow())
                 return SecretOutcome<JsonDocument>.Failure(SecretStatus.Expired, reason: SecretFailureReason.CredentialUnavailable);
-            string bearer = access.Material.Reveal();
-            if (bearer.Length is < 1 or > 16384 ||
-                bearer.AsSpan().ContainsAnyExcept(InfisicalOperationBudget.Rfc6750BearerCharacters))
+            if (InfisicalBearer.CreateHeader(access.Material) is not { } authorization)
                 return SecretOutcome<JsonDocument>.Failure(SecretStatus.Invalid, reason: SecretFailureReason.CredentialUnavailable);
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
+            request.Headers.Authorization = authorization;
             budget.Check();
             if (inventory is not null && !inventory.TryBeginRequest())
                 return SecretOutcome<JsonDocument>.Failure(SecretStatus.Unknown, reason: SecretFailureReason.CollectionLimitExceeded);

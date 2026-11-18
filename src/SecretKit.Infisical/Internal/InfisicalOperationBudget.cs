@@ -76,8 +76,6 @@ internal sealed class InfisicalOperationBudget : IDisposable
     internal static readonly SearchValues<char> VisibleAsciiCharacters =
         SearchValues.Create(Enumerable.Range(0x21, 0x7E - 0x21 + 1).Select(static c => (char)c).ToArray());
 
-    internal static readonly SearchValues<char> Rfc6750BearerCharacters =
-        SearchValues.Create("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-_.~+/=");
 
     internal static async ValueTask<JsonDocument?> ReadJsonAsync(
         HttpResponseMessage response,
@@ -209,10 +207,15 @@ internal sealed class InfisicalOperationBudget : IDisposable
         if (value is { } number) writer.WriteNumber(propertyName, number);
     }
 
-    internal sealed class RequestBuffer(int maximum) : IBufferWriter<byte>, IDisposable
+    // Pooled, bounded request writer. Utf8JsonWriter may write reserved bytes past the
+    // committed count, so every rented array is zeroed in full before it is returned.
+    internal sealed class RequestBuffer(int maximum, ArrayPool<byte>? pool = null) : IBufferWriter<byte>, IDisposable
     {
+        private readonly ArrayPool<byte> _pool = pool ?? ArrayPool<byte>.Shared;
         private byte[] _buffer = [];
         private int _written;
+
+        internal ReadOnlySpan<byte> WrittenSpan => _buffer.AsSpan(0, _written);
 
         public void Advance(int count)
         {
@@ -247,19 +250,26 @@ internal sealed class InfisicalOperationBudget : IDisposable
             if (needed <= _buffer.Length) return;
             int capacity = Math.Min(checked(maximum * 6 + 4096),
                 Math.Max(needed, Math.Max(4096, _buffer.Length * 2)));
-            byte[] replacement = new byte[capacity];
+            byte[] replacement = _pool.Rent(capacity);
             _buffer.AsSpan(0, _written).CopyTo(replacement);
-            CryptographicOperations.ZeroMemory(_buffer);
+            Release(_buffer);
             _buffer = replacement;
         }
 
-        internal byte[] ToArray() => _buffer.AsSpan(0, _written).ToArray();
+        internal byte[] ToArray() => WrittenSpan.ToArray();
 
         public void Dispose()
         {
-            CryptographicOperations.ZeroMemory(_buffer);
+            Release(_buffer);
             _buffer = [];
             _written = 0;
+        }
+
+        private void Release(byte[] buffer)
+        {
+            if (buffer.Length == 0) return;
+            CryptographicOperations.ZeroMemory(buffer);
+            _pool.Return(buffer);
         }
     }
 

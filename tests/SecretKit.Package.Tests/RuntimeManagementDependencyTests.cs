@@ -54,6 +54,14 @@ public sealed class RuntimeManagementDependencyTests
         $"method {I}InfisicalOperationBudget::ReadJsonAsync [0;0;6]({H}HttpResponseMessage,Int32,Int32,Boolean,{S}Func`2<Int32,Boolean>,{S}Threading.CancellationToken)->{S}Threading.Tasks.ValueTask`1<[System.Text.Json]System.Text.Json.JsonDocument>",
         $"method {I}InfisicalOperationBudget::RunAsync [16;1;8]({S}TimeSpan,{S}TimeProvider,{S}Threading.CancellationToken,{S}Nullable`1<{I}InfisicalOperation>,{S}Func`2<{S}Threading.CancellationToken,{S}Threading.Tasks.ValueTask`1<{C}SecretOutcome`1<!!0>>>,{S}Func`1<{C}DispatchEvidence>,{S}Threading.CancellationToken,{I}InfisicalOperationObservation)->{S}Threading.Tasks.ValueTask`1<{C}SecretOutcome`1<!!0>>",
 
+        // One RFC 6750 bearer admission gate and one pooled, wholly zeroed bounded body writer.
+        $"type {I}InfisicalBearer",
+        $"type {I}InfisicalOperationBudget+RequestBuffer",
+        $"method {I}InfisicalBearer::CreateHeader [0;0;1]({C}SecretMaterial)->{H}Headers.AuthenticationHeaderValue",
+        $"method {I}InfisicalOperationBudget+RequestBuffer::.ctor [32;0;2](Int32,{S}Buffers.ArrayPool`1<Byte>)->Void",
+        $"method {I}InfisicalOperationBudget+RequestBuffer::ToArray [32;0;0]()->Byte[]",
+        $"method {I}InfisicalOperationBudget+RequestBuffer::get_WrittenSpan [32;0;0]()->{S}ReadOnlySpan`1<Byte>",
+
         // C14 reuses capture/deferral/observation, not the runtime diagnostic emitter.
         $"type {I}InfisicalDiagnosticStart",
         $"type {I}InfisicalDiagnosticInterval",

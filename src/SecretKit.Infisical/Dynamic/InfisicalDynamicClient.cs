@@ -790,11 +790,9 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
                 linked.Check();
                 if (access.ExpiresAt <= _time.GetUtcNow())
                     return Failure(SecretStatus.Expired, receipt);
-                string bearer = access.Material.Reveal();
-                if (bearer.Length is < 1 or > 16384 ||
-                    !bearer.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_' or '.' or '~' or '+' or '/' or '='))
+                if (InfisicalBearer.CreateHeader(access.Material) is not { } authorization)
                     return Failure(SecretStatus.Invalid, receipt, SecretFailureReason.InvalidResponse);
-                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
+                request.Headers.Authorization = authorization;
                 linked.Check();
                 if (receipt is not null && !receipt.Begin())
                     return Failure(SecretStatus.Invalid, receipt, SecretFailureReason.InvalidResponse);

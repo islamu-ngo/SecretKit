@@ -28,6 +28,11 @@ if (args is ["native", var nativeProvider, var nativeOutput])
 if (args is ["live-infisical"])
 {
     try { await InstalledInfisical.RunAsync(); }
+    catch (InstalledInfisical.LiveContractException failure)
+    {
+        Console.Error.WriteLine(failure.Message);
+        Environment.ExitCode = 1;
+    }
     catch
     {
         Console.Error.WriteLine("Installed live consumer failed; protected diagnostics withheld.");

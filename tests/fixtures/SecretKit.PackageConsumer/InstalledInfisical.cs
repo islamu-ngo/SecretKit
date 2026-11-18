@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using Microsoft.Extensions.Configuration;
 using SecretKit.Core;
@@ -46,13 +47,15 @@ internal static class InstalledInfisical
         using (var first = concurrent[0].Value)
         using (var second = concurrent[1].Value)
             Require(first.Material.Reveal() == expected && second.Material.Reveal() == otherExpected && expected != otherExpected);
-        Require((await runtime.ReadAsync(Reference(runtime, project, "SDK_ABSENT_VALUE"), deadline.Token)).Status == SecretStatus.Absent);
+        // An Infisical 404 cannot distinguish a missing key from a concealed resource or route.
+        var missing = await runtime.ReadAsync(Reference(runtime, project, "SDK_ABSENT_VALUE"), deadline.Token);
+        Require(missing.Status == SecretStatus.Unknown && missing.Reason == SecretFailureReason.NotFoundOrInaccessible);
         Require((await runtime.ReadAsync(Reference(runtime, otherProject), deadline.Token)).Status == SecretStatus.Denied);
         Require((await denied.ReadAsync(Reference(denied, project), deadline.Token)).Status == SecretStatus.Denied);
         var wrongEnvironment = await runtime.ReadAsync(Reference(runtime, project, environment: "sdk-missing"), deadline.Token);
-        Require(wrongEnvironment.Status is SecretStatus.Absent or SecretStatus.Denied or SecretStatus.Invalid);
+        Require(wrongEnvironment.Status == SecretStatus.Unknown && wrongEnvironment.Reason == SecretFailureReason.NotFoundOrInaccessible);
         var wrongPath = await runtime.ReadAsync(Reference(runtime, project, path: "/sdk-missing"), deadline.Token);
-        Require(wrongPath.Status is SecretStatus.Absent or SecretStatus.Denied or SecretStatus.Invalid);
+        Require(wrongPath.Status == SecretStatus.Unknown && wrongPath.Reason == SecretFailureReason.NotFoundOrInaccessible);
         using var replacement = SecretMaterial.FromText(Convert.ToHexString(RandomNumberGenerator.GetBytes(32)));
         var deniedTarget = Reference(runtime, project, "SDK_DENIED_PACKAGE_WRITE");
         var deniedReceipt = runtime.CreateReceipt(deniedTarget);
@@ -66,7 +69,7 @@ internal static class InstalledInfisical
         var missingBootstrap = await BootstrapScenario.PrepareAsync(runtime,
             new Dictionary<string, SecretReference> { ["consumer:required"] = Reference(runtime, project, "SDK_ABSENT_VALUE") },
             deadline.Token);
-        Require(missingBootstrap.Status == SecretStatus.Absent);
+        Require(!missingBootstrap.IsSuccess && missingBootstrap.Status == SecretStatus.Unknown);
         var prepared = await BootstrapScenario.PrepareAsync(runtime,
             new Dictionary<string, SecretReference> { ["consumer:required"] = selected }, deadline.Token);
         Require(prepared.IsSuccess);
@@ -89,7 +92,7 @@ internal static class InstalledInfisical
             [new("optional", false, [new KeyRequirement("optional", optional, DeliveryKind.Direct)])];
         var absent = await assessment.CheckAsync(scope, requirements, deadline.Token);
         Require(absent.CanProceed && !absent.Features.Single().CanEnable &&
-            absent.Features.Single().Keys.Single().State == AssessmentState.Absent);
+            absent.Features.Single().Keys.Single() is { State: AssessmentState.Unverified, ReadStatus: SecretStatus.Unknown });
         var optionalTarget = Reference(admin, project, "SDK_OPTIONAL_PACKAGE_VALUE");
         var optionalReceipt = admin.CreateReceipt(optionalTarget);
         Require((await admin.CreateAsync(optionalTarget, replacement, optionalReceipt, deadline.Token)).IsSuccess);
@@ -116,10 +119,14 @@ internal static class InstalledInfisical
 
     private static string Required(string name) => Environment.GetEnvironmentVariable(name) is { Length: > 0 } value
         ? value : throw new InvalidOperationException("Missing explicit installed live input.");
-    private static void Require(bool value)
+    private static void Require(bool value, [CallerLineNumber] int line = 0)
     {
-        if (!value) throw new InvalidOperationException("Installed live contract failed.");
+        if (!value) throw new LiveContractException(line);
     }
+    // Carries only the failing contract line; protected values never enter the message.
+    internal sealed class LiveContractException(int line)
+        : InvalidOperationException($"Installed live contract failed at InstalledInfisical.cs:{line}.");
+
     private sealed class Tokens : IInfisicalTokenSource, IDisposable
     {
         private readonly SecretMaterial _material;
