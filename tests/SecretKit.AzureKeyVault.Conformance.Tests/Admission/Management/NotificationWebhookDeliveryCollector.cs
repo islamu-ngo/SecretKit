@@ -231,7 +231,6 @@ internal sealed class NotificationWebhookDeliveryCollector : IAsyncDisposable
             entry.Active++;
             if (admittedAt > entry.LatestAdmission) entry.LatestAdmission = admittedAt;
         }
-        byte[]? bytes = null;
         try
         {
             using var deadline = new CancellationTokenSource(limits.Timeout, time);
@@ -239,7 +238,8 @@ internal sealed class NotificationWebhookDeliveryCollector : IAsyncDisposable
             if (authentication is not null &&
                 (!BoundedHeaders(request) || !await authentication.AuthenticateAsync(request, linked.Token).ConfigureAwait(false)))
                 return Error(HttpStatusCode.Unauthorized);
-            bytes = new byte[limits.MaximumBodyBytes + 1];
+            using var body = new PooledPayloadBuffer(limits.MaximumBodyBytes + 1);
+            Memory<byte> bytes = body.Memory;
             var content = request.Content;
             Require(request.Method == HttpMethod.Post && content is not null);
             var headers = Headers(request, entry);
@@ -253,13 +253,13 @@ internal sealed class NotificationWebhookDeliveryCollector : IAsyncDisposable
             int count = 0;
             while (true)
             {
-                int read = await stream.ReadAsync(bytes.AsMemory(count, bytes.Length - count), linked.Token).ConfigureAwait(false);
+                int read = await stream.ReadAsync(bytes[count..], linked.Token).ConfigureAwait(false);
                 linked.Token.ThrowIfCancellationRequested();
                 if (read == 0) break;
                 count += read;
                 Require(count <= limits.MaximumBodyBytes);
             }
-            using var document = JsonDocument.Parse(bytes.AsMemory(0, count), new JsonDocumentOptions { MaxDepth = limits.MaximumDepth });
+            using var document = JsonDocument.Parse(bytes[..count], new JsonDocumentOptions { AllowDuplicateProperties = false, MaxDepth = limits.MaximumDepth });
             int nodes = 0;
             Unique(document.RootElement, ref nodes);
             Require(document.RootElement.ValueKind == JsonValueKind.Array &&
@@ -340,7 +340,6 @@ internal sealed class NotificationWebhookDeliveryCollector : IAsyncDisposable
         }
         finally
         {
-            if (bytes is not null) CryptographicOperations.ZeroMemory(bytes);
             lock (gate) if (--entry.Active == 0 && entry.Closing) entry.Drained.TrySetResult();
         }
     }

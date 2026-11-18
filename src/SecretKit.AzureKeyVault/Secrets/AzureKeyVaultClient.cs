@@ -16,9 +16,18 @@ namespace SecretKit.AzureKeyVault;
 public sealed partial class AzureKeyVaultClient : ISecretReader, ISecretInventory
 {
     private const string ApiRevision = "2025-07-01";
+    private const int MaximumSecretValueBytes = 25 * 1024;
     private static readonly string[] VaultHostSuffixes = [".vault.azure.net", ".vault.usgovcloudapi.net", ".vault.azure.cn"];
+    // Matches the Infisical safe transport: no redirects, cookies or trace-header propagation,
+    // and bounded connection lifetime so DNS changes are observed by the shared pool.
     private static readonly HttpPipelineTransport DefaultTransport =
-        new HttpClientTransport(new HttpClient(new HttpClientHandler { AllowAutoRedirect = false }));
+        new HttpClientTransport(new HttpClient(new SocketsHttpHandler
+        {
+            AllowAutoRedirect = false,
+            UseCookies = false,
+            ActivityHeadersPropagator = null,
+            PooledConnectionLifetime = TimeSpan.FromMinutes(2)
+        }));
     private readonly SecretClient _client;
     private readonly TimeProvider _time;
     private readonly Uri _vault;
@@ -197,11 +206,13 @@ public sealed partial class AzureKeyVaultClient : ISecretReader, ISecretInventor
 
         try
         {
-            string value = request.Material.Reveal();
-            if (new UTF8Encoding(false, true).GetByteCount(value) > 25 * 1024)
+            // Budget and UTF-16 validity are checked on owned material; rejected values are never revealed.
+            if (!WithinValueBudget(request.Material))
             {
                 return SecretOutcome<AzureSetSecretResult>.Failure(SecretStatus.Invalid);
             }
+
+            string value = request.Material.Reveal();
 
             var response = await CreateClient(receipt, request.Target)
                 .SetSecretAsync(address.Name, value, cancellationToken).ConfigureAwait(false);
@@ -231,8 +242,20 @@ public sealed partial class AzureKeyVaultClient : ISecretReader, ISecretInventor
             cancellationToken.ThrowIfCancellationRequested();
             return SecretOutcome<AzureSetSecretResult>.Failure(
                 receipt.Evidence == DispatchEvidence.PossiblyDispatched ? SecretStatus.Unknown :
-                exception is ObjectDisposedException or EncoderFallbackException ? SecretStatus.Invalid :
+                exception is ObjectDisposedException ? SecretStatus.Invalid :
                 Status(exception));
+        }
+    }
+
+    private static bool WithinValueBudget(SecretMaterial material)
+    {
+        try
+        {
+            return material.GetUtf8ByteCount() <= MaximumSecretValueBytes;
+        }
+        catch (ArgumentException)
+        {
+            return false;
         }
     }
 

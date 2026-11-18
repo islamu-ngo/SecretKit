@@ -255,39 +255,22 @@ internal sealed partial class RoleFixtureObserverService : IAsyncDisposable
     private bool Authenticate(HttpRequestMessage request)
     {
         if (request.Headers.Authorization is not { Scheme: "Bearer", Parameter: { Length: > 0 and <= 8192 } token }) return false;
-        char[] expected = capability.ExportCharacters();
-        byte[] expectedBytes = Encoding.UTF8.GetBytes(expected), supplied = Encoding.UTF8.GetBytes(token);
-        try { return CryptographicOperations.FixedTimeEquals(SHA256.HashData(expectedBytes), SHA256.HashData(supplied)); }
-        finally
-        {
-            Array.Clear(expected);
-            CryptographicOperations.ZeroMemory(expectedBytes);
-            CryptographicOperations.ZeroMemory(supplied);
-        }
+        byte[] supplied = Encoding.UTF8.GetBytes(token);
+        try { return capability.UseUtf8(expected => CryptographicOperations.FixedTimeEquals(SHA256.HashData(expected), SHA256.HashData(supplied))); }
+        finally { CryptographicOperations.ZeroMemory(supplied); }
     }
 
     private static async Task<JsonDocument> Body(HttpRequestMessage request, CancellationToken token)
     {
         Require(request.Content is not null && request.Content.Headers.ContentLength is >= 0 and <= 65536);
-        byte[] bytes = new byte[65537];
-        try
-        {
-            using var stream = await request.Content!.ReadAsStreamAsync(token).ConfigureAwait(false);
-            int count = 0, read;
-            while (count < bytes.Length && (read = await stream.ReadAsync(bytes.AsMemory(count), token).ConfigureAwait(false)) != 0)
-                count += read;
-            Require(count <= 65536 && count == request.Content.Headers.ContentLength);
-            var reader = new Utf8JsonReader(bytes.AsSpan(0, count), new JsonReaderOptions { MaxDepth = 32 });
-            JsonDocument document = JsonDocument.ParseValue(ref reader);
-            try
-            {
-                Require(!reader.Read());
-                Unique(document.RootElement);
-                return document;
-            }
-            catch { document.Dispose(); throw; }
-        }
-        finally { CryptographicOperations.ZeroMemory(bytes); }
+        using var buffer = new PooledPayloadBuffer(65536 + 1);
+        using var stream = await request.Content!.ReadAsStreamAsync(token).ConfigureAwait(false);
+        int length = await buffer.ReadAsync(stream, token).ConfigureAwait(false);
+        Require(length <= 65536 && length == request.Content!.Headers.ContentLength);
+        using var payload = new MemoryStream(buffer.Array, 0, length, writable: false);
+        var document = JsonDocument.Parse(payload, new JsonDocumentOptions { AllowDuplicateProperties = false, MaxDepth = 32 });
+        try { Unique(document.RootElement); return document; }
+        catch { document.Dispose(); throw; }
         static void Unique(JsonElement node)
         {
             if (node.ValueKind == JsonValueKind.Object)

@@ -246,7 +246,7 @@ internal sealed partial class RoleAdministrationCollector
         private static JsonDocument Parse(ZeroingStream stream, CancellationToken token)
         {
             token.ThrowIfCancellationRequested();
-            JsonDocument document = JsonDocument.Parse(stream.Bytes, new JsonDocumentOptions { MaxDepth = 32 });
+            JsonDocument document = JsonDocument.Parse(stream.Bytes, new JsonDocumentOptions { AllowDuplicateProperties = false, MaxDepth = 32 });
             try
             {
                 UniqueProperties(document.RootElement);
@@ -276,7 +276,8 @@ internal sealed partial class RoleAdministrationCollector
 
         private async ValueTask<ZeroingStream> Buffer(HttpMessage message)
         {
-            byte[] storage = new byte[limits.MaximumResponseBytes + 1];
+            var payloadBuffer = new PooledPayloadBuffer(limits.MaximumResponseBytes + 1);
+            byte[] storage = payloadBuffer.Array;
             try
             {
                 int count = 0;
@@ -287,20 +288,20 @@ internal sealed partial class RoleAdministrationCollector
                         int read;
                         do
                         {
-                            read = await source.ReadAsync(storage.AsMemory(count), message.CancellationToken).ConfigureAwait(false);
+                            read = await source.ReadAsync(payloadBuffer.Memory[count..], message.CancellationToken).ConfigureAwait(false);
                             message.CancellationToken.ThrowIfCancellationRequested();
                             count += read;
                             if (count > limits.MaximumResponseBytes) throw new Boundary(Failure.Budget);
                         } while (read != 0);
                     }
                 }
-                var buffer = new ZeroingStream(storage, count);
+                var buffer = new ZeroingStream(payloadBuffer, count);
                 message.Response.ContentStream = buffer;
                 return buffer;
             }
             catch
             {
-                CryptographicOperations.ZeroMemory(storage);
+                payloadBuffer.Dispose();
                 throw;
             }
         }
@@ -314,18 +315,18 @@ internal sealed partial class RoleAdministrationCollector
 
     private sealed class ZeroingStream : MemoryStream
     {
-        private readonly byte[] storage;
+        private readonly PooledPayloadBuffer payloadBuffer;
         private readonly int count;
-        internal ZeroingStream(byte[] storage, int count) : base(storage, 0, count, false)
+        internal ZeroingStream(PooledPayloadBuffer payloadBuffer, int count) : base(payloadBuffer.Array, 0, count, false)
         {
-            this.storage = storage;
+            this.payloadBuffer = payloadBuffer;
             this.count = count;
         }
-        internal ReadOnlyMemory<byte> Bytes => storage.AsMemory(0, count);
+        internal ReadOnlyMemory<byte> Bytes => payloadBuffer.Memory[..count];
         protected override void Dispose(bool disposing)
         {
-            if (disposing) CryptographicOperations.ZeroMemory(storage);
-            base.Dispose(disposing);
+            try { base.Dispose(disposing); }
+            finally { if (disposing) payloadBuffer.Dispose(); }
         }
     }
 }

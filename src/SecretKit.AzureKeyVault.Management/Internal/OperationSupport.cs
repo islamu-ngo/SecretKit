@@ -57,6 +57,8 @@ public enum ManagementOperationFamily
     AuditQueryWorkspace,
     /// <summary>Run the bounded audit projection against a vault resource.</summary>
     AuditQueryResource,
+    /// <summary>Enumerate subscriptions visible to the selected administrative identity.</summary>
+    SubscriptionList,
     /// <summary>Create or replace a notification subscription.</summary>
     NotificationCreateOrUpdate,
     /// <summary>Patch a notification subscription.</summary>
@@ -115,9 +117,14 @@ public sealed class OperationSupport
         {
             bool rbac = operation is >= ManagementOperationFamily.RoleAssignmentCreate and <= ManagementOperationFamily.RoleDefinitionList;
             bool notification = operation >= ManagementOperationFamily.NotificationCreateOrUpdate;
-            string revision = rbac ? "2022-04-01" : notification ? "2025-02-15" :
-                operation is ManagementOperationFamily.AuditQueryWorkspace or ManagementOperationFamily.AuditQueryResource
-                    ? "v1" : "2026-02-01";
+            string revision = operation switch
+            {
+                ManagementOperationFamily.SubscriptionList => "2022-12-01",
+                _ when rbac => "2022-04-01",
+                _ when notification => "2025-02-15",
+                ManagementOperationFamily.AuditQueryWorkspace or ManagementOperationFamily.AuditQueryResource => "v1",
+                _ => "2026-02-01"
+            };
             int[] statuses = operation switch
             {
                 ManagementOperationFamily.VaultCreateOrUpdate or ManagementOperationFamily.VaultRecover or

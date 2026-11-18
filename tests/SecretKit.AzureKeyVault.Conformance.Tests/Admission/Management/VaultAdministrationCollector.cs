@@ -313,7 +313,7 @@ internal sealed class VaultAdministrationCollector
                 message.Request.Uri.Reset(new Uri(next));
                 await pipeline.SendAsync(message, linked.Token).ConfigureAwait(false);
                 if (message.Response.Status != 200) throw new RequestFailedException(message.Response);
-                using var document = JsonDocument.Parse(message.Response.ContentStream!);
+                using var document = JsonDocument.Parse(message.Response.ContentStream!, new JsonDocumentOptions { AllowDuplicateProperties = false, MaxDepth = 32 });
                 var values = document.RootElement.GetProperty("value");
                 foreach (var row in values.EnumerateArray())
                 {
@@ -506,7 +506,7 @@ internal sealed class VaultAdministrationCollector
             }
             buffer = await Buffer(message).ConfigureAwait(false);
             if (length is { } expected) Require(expected == buffer.Length);
-            using var document = JsonDocument.Parse(buffer.Bytes, new JsonDocumentOptions { MaxDepth = 32 });
+            using var document = JsonDocument.Parse(buffer.Bytes, new JsonDocumentOptions { AllowDuplicateProperties = false, MaxDepth = 32 });
             JsonElement root = document.RootElement;
             Shape(root);
             Require(root.ValueKind == JsonValueKind.Object);
@@ -572,7 +572,7 @@ internal sealed class VaultAdministrationCollector
             Require(message.Request.Content is not null);
             using var sink = new RequestBuffer();
             await message.Request.Content.WriteToAsync(sink, message.CancellationToken).ConfigureAwait(false);
-            using var doc = JsonDocument.Parse(sink.Written);
+            using var doc = JsonDocument.Parse(sink.Written, new JsonDocumentOptions { AllowDuplicateProperties = false, MaxDepth = 32 });
             Shape(doc.RootElement);
             Require(doc.RootElement.ValueKind == JsonValueKind.Object && doc.RootElement.EnumerateObject().Count() == 2 &&
                 Text(doc.RootElement, "name") == binding.VaultName && Text(doc.RootElement, "type") == "Microsoft.KeyVault/vaults");
@@ -685,7 +685,8 @@ internal sealed class VaultAdministrationCollector
         private async ValueTask<ZeroingStream> Buffer(HttpMessage message)
         {
             Response current = response ?? throw new Boundary();
-            byte[] bytes = new byte[limits.MaximumResponseBytes + 1];
+            var payloadBuffer = new PooledPayloadBuffer(limits.MaximumResponseBytes + 1);
+            byte[] bytes = payloadBuffer.Array;
             try
             {
                 int count = 0;
@@ -696,18 +697,18 @@ internal sealed class VaultAdministrationCollector
                         int read;
                         do
                         {
-                            read = await source.ReadAsync(bytes.AsMemory(count), message.CancellationToken).ConfigureAwait(false);
+                            read = await source.ReadAsync(payloadBuffer.Memory[count..], message.CancellationToken).ConfigureAwait(false);
                             message.CancellationToken.ThrowIfCancellationRequested();
                             count += read;
                             if (count > limits.MaximumResponseBytes) throw new Boundary(Failure.Budget);
                         } while (read != 0);
                     }
                 }
-                var stream = new ZeroingStream(bytes, count);
+                var stream = new ZeroingStream(payloadBuffer, count);
                 current.ContentStream = stream;
                 return stream;
             }
-            catch { CryptographicOperations.ZeroMemory(bytes); throw; }
+            catch { payloadBuffer.Dispose(); throw; }
         }
         public void Dispose()
         {
@@ -809,18 +810,18 @@ internal sealed class VaultAdministrationCollector
     }
     private sealed class ZeroingStream : MemoryStream
     {
-        private readonly byte[] storage;
+        private readonly PooledPayloadBuffer payloadBuffer;
         private readonly int count;
-        internal ZeroingStream(byte[] storage, int count) : base(storage, 0, count, false, true)
+        internal ZeroingStream(PooledPayloadBuffer payloadBuffer, int count) : base(payloadBuffer.Array, 0, count, false, true)
         {
-            this.storage = storage;
+            this.payloadBuffer = payloadBuffer;
             this.count = count;
         }
-        internal ReadOnlyMemory<byte> Bytes => storage.AsMemory(0, count);
+        internal ReadOnlyMemory<byte> Bytes => payloadBuffer.Memory[..count];
         protected override void Dispose(bool disposing)
         {
-            if (disposing) CryptographicOperations.ZeroMemory(storage);
-            base.Dispose(disposing);
+            try { base.Dispose(disposing); }
+            finally { if (disposing) payloadBuffer.Dispose(); }
         }
     }
     private sealed class RequestBuffer : Stream

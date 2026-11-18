@@ -181,7 +181,8 @@ internal sealed class ControlledTransport(HttpPipelineTransport inner, string ho
                 buffer.Position = 0;
                 if (apiVersion is not null && responseStatus < 400 && buffer.Length != 0)
                 {
-                    using var document = JsonDocument.Parse(buffer.ToArray(),
+                    // Parse the buffered body in place; the document is disposed before the stream is published.
+                    using var document = JsonDocument.Parse(buffer.GetBuffer().AsMemory(0, (int)buffer.Length),
                         new JsonDocumentOptions { AllowDuplicateProperties = false, MaxDepth = 32 });
                     var root = document.RootElement;
                     if (statusCheck is not null && root.TryGetProperty("status", out var state) &&
@@ -360,7 +361,7 @@ internal sealed class ControlledTransport(HttpPipelineTransport inner, string ho
     {
         ObservationException observation => observation.Status,
         RequestFailedException { InnerException: BoundaryException } => SecretStatus.Invalid,
-        BoundaryException or ArgumentException => SecretStatus.Invalid,
+        BoundaryException or ArgumentException or FormatException => SecretStatus.Invalid,
         _ => SecretKit.AzureKeyVault.AzureFailureClassification.Status(exception)
     };
 

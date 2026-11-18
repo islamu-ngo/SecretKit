@@ -218,7 +218,8 @@ internal sealed class NotificationAdministrationCollector
         using var deadline = new CancellationTokenSource(budget.Remaining, time);
         budget.Deadline = deadline;
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
-        byte[] storage = new byte[limits.MaximumResponseBytes + 1];
+        var payloadBuffer = new PooledPayloadBuffer(limits.MaximumResponseBytes + 1);
+        byte[] storage = payloadBuffer.Array;
         try
         {
             string path = Path(binding);
@@ -258,7 +259,7 @@ internal sealed class NotificationAdministrationCollector
                     while (true)
                     {
                         budget.Check();
-                        int read = await input.ReadAsync(storage.AsMemory(count), linked.Token).ConfigureAwait(false);
+                        int read = await input.ReadAsync(payloadBuffer.Memory[count..], linked.Token).ConfigureAwait(false);
                         budget.Check();
                         linked.Token.ThrowIfCancellationRequested();
                         if (read == 0) break;
@@ -268,7 +269,7 @@ internal sealed class NotificationAdministrationCollector
                 }
                 Require(count > 0 && (declared is null || declared == count));
                 Shape(storage.AsSpan(0, count));
-                using var document = JsonDocument.Parse(storage.AsMemory(0, count), new JsonDocumentOptions { MaxDepth = 16 });
+                using var document = JsonDocument.Parse(storage.AsMemory(0, count), new JsonDocumentOptions { AllowDuplicateProperties = false, MaxDepth = 16 });
                 var root = document.RootElement;
                 Require(root.ValueKind == JsonValueKind.Object && !root.TryGetProperty("status", out _) &&
                     !root.TryGetProperty("provisioningState", out _));
@@ -359,7 +360,7 @@ internal sealed class NotificationAdministrationCollector
             // Actual credential, send and body tasks have terminated before this
             // runs. No cancellation callback or detached task clears live storage.
             // Native SDK/JSON strings are ordinary immutable strings, not erased.
-            CryptographicOperations.ZeroMemory(storage);
+            payloadBuffer.Dispose();
         }
 
         Measurement Finish(Failure failure, SecretStatus status)

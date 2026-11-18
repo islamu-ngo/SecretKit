@@ -261,7 +261,8 @@ internal sealed class VaultNetworkReadCollector
     private sealed class NativeTransport(Authority authority, BoundCredential credential, Binding binding, Limits limits, Budget budget)
         : HttpPipelineTransport, IDisposable
     {
-        private readonly byte[] storage = new byte[limits.MaximumResponseBytes + 1];
+        private readonly PooledPayloadBuffer payloadBuffer = new(limits.MaximumResponseBytes + 1);
+        private byte[] storage => payloadBuffer.Array;
         private Response? response;
         private Stream? input;
         private MemoryStream? buffered;
@@ -303,7 +304,7 @@ internal sealed class VaultNetworkReadCollector
             while (true)
             {
                 Check();
-                int read = await input.ReadAsync(storage.AsMemory(count), message.CancellationToken).ConfigureAwait(false);
+                int read = await input.ReadAsync(payloadBuffer.Memory[count..], message.CancellationToken).ConfigureAwait(false);
                 Check();
                 if (read == 0) break;
                 count += read;
@@ -312,7 +313,7 @@ internal sealed class VaultNetworkReadCollector
             Require(count > 0 && (length is null || length == count));
             if (count > limits.MaximumRowBytes) throw new Boundary(Failure.Budget);
             Shape(storage.AsSpan(0, count), limits);
-            using (var document = JsonDocument.Parse(storage.AsMemory(0, count), new JsonDocumentOptions { MaxDepth = limits.MaximumDepth }))
+            using (var document = JsonDocument.Parse(storage.AsMemory(0, count), new JsonDocumentOptions { AllowDuplicateProperties = false, MaxDepth = limits.MaximumDepth }))
             {
                 var root = document.RootElement;
                 Require(root.ValueKind == JsonValueKind.Object);
@@ -367,7 +368,7 @@ internal sealed class VaultNetworkReadCollector
                 }
             }
             catch (Exception) { throw new Boundary(); }
-            finally { CryptographicOperations.ZeroMemory(storage); }
+            finally { payloadBuffer.Dispose(); }
         }
         public override string ToString() => "[VaultNetworkReadTransport]";
     }

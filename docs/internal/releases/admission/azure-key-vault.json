@@ -22,7 +22,7 @@
     },
     {
       "file": "src/SecretKit.AzureKeyVault.Management/Internal/ControlledTransport.cs",
-      "sha256": "ccce448d4797c147b93bcad7f3898b772d92a75b7103d8566d6d47306b033acf"
+      "sha256": "1f05f32bb174acdb19c291681da079c0fcfd78449ff7b7725a1157eb75d64293"
     },
     {
       "file": "src/SecretKit.AzureKeyVault.Management/Internal/ManagementOperation.cs",
@@ -30,19 +30,27 @@
     },
     {
       "file": "src/SecretKit.AzureKeyVault.Management/Internal/OperationSupport.cs",
-      "sha256": "0ad610b7cf6ecacf37cead1cf6dfbe0d90e7e324499d15458fd0f1dce983ecdc"
+      "sha256": "7fe91bf4be74ab875187e32b48dd4e29f29d51a208e1947e3438002256560a27"
     },
     {
       "file": "src/SecretKit.AzureKeyVault.Management/Notifications/NotificationAdministration.cs",
-      "sha256": "75215296de48619c2ba2c0c9b458df479745e1f8da05ebfe349459dba16f71f1"
+      "sha256": "58b8df58c186187981c936d73fe8c2dce8dce7f4e76571ce5e8b5e0f44959563"
     },
     {
       "file": "src/SecretKit.AzureKeyVault.Management/Notifications/NotificationModels.cs",
-      "sha256": "d25e4a15b67b1b898db53c51837fd1e5bfd8cfc8eefe59c6839986eb982440ed"
+      "sha256": "5ef28ae14a8f1821e96a474a83e573d9501e6e2db578e48084aef6d029665818"
     },
     {
       "file": "src/SecretKit.AzureKeyVault.Management/Vaults/NativeModels.cs",
       "sha256": "c5e7648c3e1cf2c3563f17b874617dc5fd2f44494c63dda04719e047d2fe232e"
+    },
+    {
+      "file": "src/SecretKit.AzureKeyVault.Management/Vaults/SubscriptionAdministration.cs",
+      "sha256": "7a71a60662536e6182e95247530e53f68f69a9040360619ab6e7dc04ba5725d2"
+    },
+    {
+      "file": "src/SecretKit.AzureKeyVault.Management/Vaults/SubscriptionObservation.cs",
+      "sha256": "1b92b8b75205e941f3e2e1a736f384c5b2948f0d7e56c3390a39df93b877a8db"
     },
     {
       "file": "src/SecretKit.AzureKeyVault.Management/Vaults/VaultAdministration.cs",
@@ -66,7 +74,7 @@
     },
     {
       "file": "src/SecretKit.AzureKeyVault/Secrets/AzureKeyVaultClient.cs",
-      "sha256": "04d249cb84a0a05182cc9923301b830d57f2ae97733bffc71e43d9319893f432"
+      "sha256": "9bd165f448b4f8056a0f5abd7f501fc82af9db679b309ecdf9daefa007bf6fcd"
     },
     {
       "file": "src/SecretKit.AzureKeyVault/Secrets/AzureSecretAddress.cs",
@@ -1282,6 +1290,29 @@
         "approved-sandbox-cleanup",
         "selected-administrative-identity",
         "scoped-administrative-rights",
+        "azure-tenant-subscription",
+        "azure-selected-cloud-endpoint",
+        "azure-arm-public-cloud-rights"
+      ]
+    },
+    {
+      "id": "a.management.VaultAdministration.ListSubscriptionsAsync",
+      "member": "SecretKit.AzureKeyVault.Management.VaultAdministration.ListSubscriptionsAsync(SecretKit.AzureKeyVault.Management.CollectionLimits,System.Threading.CancellationToken)",
+      "variants": [
+        "collection.bounded"
+      ],
+      "contract": "implemented-subset",
+      "effect": "Independently compare subscription metadata visible to the selected administrative identity with native state; bounded enumeration and visibility do not establish vault or secret access.",
+      "requiredCases": [
+        "selected-contract",
+        "denied-authority",
+        "cancellation-boundary",
+        "independent-effect"
+      ],
+      "prerequisites": [
+        "owned-origin-api-revision",
+        "selected-administrative-identity",
+        "separate-observer-identity",
         "azure-tenant-subscription",
         "azure-selected-cloud-endpoint",
         "azure-arm-public-cloud-rights"

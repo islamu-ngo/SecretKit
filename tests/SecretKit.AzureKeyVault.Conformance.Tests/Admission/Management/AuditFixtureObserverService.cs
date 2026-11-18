@@ -862,28 +862,21 @@ internal sealed class AuditFixtureObserverService : AuditDiagnosticsEffects.Sele
     private bool Authenticate(HttpRequestMessage request)
     {
         if (request.Headers.Authorization is not { Scheme: "Bearer", Parameter: { Length: > 0 and <= 8192 } supplied }) return false;
-        char[] expected = capability.ExportCharacters();
-        byte[] left = Encoding.UTF8.GetBytes(expected), right = Encoding.UTF8.GetBytes(supplied);
-        try { return CryptographicOperations.FixedTimeEquals(SHA256.HashData(left), SHA256.HashData(right)); }
-        finally { Array.Clear(expected); CryptographicOperations.ZeroMemory(left); CryptographicOperations.ZeroMemory(right); }
+        byte[] right = Encoding.UTF8.GetBytes(supplied);
+        try { return capability.UseUtf8(expected => CryptographicOperations.FixedTimeEquals(SHA256.HashData(expected), SHA256.HashData(right))); }
+        finally { CryptographicOperations.ZeroMemory(right); }
     }
     private async Task<JsonDocument> ReadBody(HttpRequestMessage request, CancellationToken token)
     {
         Require(request.Content?.Headers.ContentLength is >= 0 && request.Content.Headers.ContentLength <= limits.MaximumBodyBytes);
-        byte[] bytes = new byte[limits.MaximumBodyBytes + 1];
-        try
-        {
-            using var stream = await request.Content!.ReadAsStreamAsync(token).ConfigureAwait(false);
-            int length = 0, read;
-            while (length < bytes.Length && (read = await stream.ReadAsync(bytes.AsMemory(length), token).ConfigureAwait(false)) != 0)
-                length += read;
-            Require(length <= limits.MaximumBodyBytes && length == request.Content.Headers.ContentLength);
-            var reader = new Utf8JsonReader(bytes.AsSpan(0, length), new JsonReaderOptions { MaxDepth = 32 });
-            var document = JsonDocument.ParseValue(ref reader);
-            try { Require(!reader.Read()); Unique(document.RootElement); return document; }
-            catch { document.Dispose(); throw; }
-        }
-        finally { CryptographicOperations.ZeroMemory(bytes); }
+        using var buffer = new PooledPayloadBuffer(limits.MaximumBodyBytes + 1);
+        using var stream = await request.Content!.ReadAsStreamAsync(token).ConfigureAwait(false);
+        int length = await buffer.ReadAsync(stream, token).ConfigureAwait(false);
+        Require(length <= limits.MaximumBodyBytes && length == request.Content.Headers.ContentLength);
+        using var payload = new MemoryStream(buffer.Array, 0, length, writable: false);
+        var document = JsonDocument.Parse(payload, new JsonDocumentOptions { AllowDuplicateProperties = false, MaxDepth = 32 });
+        try { Unique(document.RootElement); return document; }
+        catch { document.Dispose(); throw; }
     }
     private static void Unique(JsonElement node)
     {

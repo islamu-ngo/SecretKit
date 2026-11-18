@@ -98,8 +98,40 @@ public sealed class NotificationDeliveryAttribute : IDisposable
     public override string ToString() => "[NotificationDeliveryAttribute]";
 }
 
+/// <summary>Explicit Microsoft Entra tenant and application audience for webhook delivery.</summary>
+public sealed class NotificationWebhookAuthentication
+{
+    /// <summary>Validates an explicit tenant and a bounded application identifier or URI.</summary>
+    /// <param name="tenantId">The nonempty Microsoft Entra tenant identifier.</param>
+    /// <param name="applicationIdOrUri">A nonempty GUID or absolute HTTPS, API or URN audience without wildcards, whitespace, user information, query or fragment.</param>
+    /// <exception cref="ArgumentOutOfRangeException">The tenant identifier is empty.</exception>
+    /// <exception cref="ArgumentException">The application identifier or URI is invalid.</exception>
+    public NotificationWebhookAuthentication(Guid tenantId, string applicationIdOrUri)
+    {
+        ArgumentOutOfRangeException.ThrowIfEqual(tenantId, Guid.Empty);
+        if (string.IsNullOrEmpty(applicationIdOrUri) || applicationIdOrUri.Length > 2048 ||
+            applicationIdOrUri.Any(c => char.IsWhiteSpace(c) || char.IsControl(c) || c == '*'))
+            throw new ArgumentException("Invalid webhook authentication audience.", nameof(applicationIdOrUri));
+        bool valid = Guid.TryParse(applicationIdOrUri, out var applicationId)
+            ? applicationId != Guid.Empty
+            : Uri.TryCreate(applicationIdOrUri, UriKind.Absolute, out var uri) &&
+                uri.Scheme is "https" or "api" or "urn" &&
+                uri.UserInfo.Length == 0 && uri.Query.Length == 0 && uri.Fragment.Length == 0;
+        if (!valid) throw new ArgumentException("Invalid webhook authentication audience.", nameof(applicationIdOrUri));
+        TenantId = tenantId;
+        ApplicationIdOrUri = applicationIdOrUri;
+    }
+
+    /// <summary>Gets the protected Microsoft Entra tenant identifier.</summary>
+    [JsonIgnore] public Guid TenantId { get; }
+    /// <summary>Gets the protected application identifier or audience URI.</summary>
+    [JsonIgnore] public string ApplicationIdOrUri { get; }
+    /// <summary>Returns a marker without tenant or audience coordinates.</summary>
+    public override string ToString() => "[NotificationWebhookAuthentication]";
+}
+
 /// <summary>
-/// Only HTTPS webhook destination, three secret event types and at most ten static/dynamic headers.
+/// Only HTTPS webhook destination, optional Entra authentication, three secret event types and at most ten static/dynamic headers.
 /// Update replaces destination and filter; other native properties are omitted, not reset.
 /// </summary>
 public sealed class NotificationConfiguration : IDisposable
@@ -108,11 +140,13 @@ public sealed class NotificationConfiguration : IDisposable
     /// <param name="endpointUrl">A bounded absolute HTTPS URL without user information or a fragment.</param>
     /// <param name="eventTypes">One to three distinct supported secret events.</param>
     /// <param name="deliveryAttributes">Up to ten uniquely named attributes to copy; original attributes remain caller-owned.</param>
+    /// <param name="webhookAuthentication">The optional explicit Microsoft Entra delivery binding; null omits authentication fields.</param>
     /// <exception cref="ArgumentException">The endpoint, events or attributes are invalid.</exception>
     /// <exception cref="ArgumentNullException">The event sequence is null.</exception>
     /// <exception cref="ObjectDisposedException">An input attribute's material has been disposed.</exception>
     public NotificationConfiguration(string endpointUrl, IEnumerable<VaultNotificationEvent> eventTypes,
-        IEnumerable<NotificationDeliveryAttribute>? deliveryAttributes = null)
+        IEnumerable<NotificationDeliveryAttribute>? deliveryAttributes = null,
+        NotificationWebhookAuthentication? webhookAuthentication = null)
     {
         ValidateEndpoint(endpointUrl);
         ArgumentNullException.ThrowIfNull(eventTypes);
@@ -137,6 +171,7 @@ public sealed class NotificationConfiguration : IDisposable
             Endpoint = SecretMaterial.FromText(endpointUrl);
             EventTypes = Array.AsReadOnly(events);
             DeliveryAttributes = Array.AsReadOnly(Array.ConvertAll(copies, static copy => copy!));
+            WebhookAuthentication = webhookAuthentication;
         }
         catch
         {
@@ -151,9 +186,16 @@ public sealed class NotificationConfiguration : IDisposable
     [JsonIgnore] public IReadOnlyList<VaultNotificationEvent> EventTypes { get; }
     /// <summary>Gets copied attributes owned and disposed by this configuration.</summary>
     [JsonIgnore] public IReadOnlyList<NotificationDeliveryAttribute> DeliveryAttributes { get; }
+    /// <summary>Gets the selected Microsoft Entra webhook delivery binding, if any.</summary>
+    [JsonIgnore] public NotificationWebhookAuthentication? WebhookAuthentication { get; }
     internal WebHookEventSubscriptionDestination Destination()
     {
         var value = new WebHookEventSubscriptionDestination { Endpoint = new Uri(Endpoint.Reveal()) };
+        if (WebhookAuthentication is { } authentication)
+        {
+            value.AzureActiveDirectoryTenantId = authentication.TenantId;
+            value.UriOrAzureActiveDirectoryApplicationId = authentication.ApplicationIdOrUri;
+        }
         foreach (var attribute in DeliveryAttributes) value.DeliveryAttributeMappings.Add(attribute.ToNative());
         return value;
     }
@@ -184,11 +226,12 @@ public sealed class NotificationConfiguration : IDisposable
 public sealed class NotificationObservation
 {
     internal NotificationObservation(NotificationScope scope, NativeProvisioningState state,
-        NotificationDestinationKind destination)
+        NotificationDestinationKind destination, NotificationWebhookAuthentication? webhookAuthentication = null)
     {
         Scope = scope;
         ProvisioningState = state;
         Destination = destination;
+        WebhookAuthentication = webhookAuthentication;
     }
     /// <summary>Gets the protected subscription coordinates.</summary>
     [JsonIgnore] public NotificationScope Scope { get; }
@@ -196,6 +239,8 @@ public sealed class NotificationObservation
     public NativeProvisioningState ProvisioningState { get; }
     /// <summary>Gets the destination category without endpoint material.</summary>
     public NotificationDestinationKind Destination { get; }
+    /// <summary>Gets the validated Microsoft Entra binding returned by Event Grid; absence proves no delivery authority.</summary>
+    [JsonIgnore] public NotificationWebhookAuthentication? WebhookAuthentication { get; }
     /// <summary>Always false: configured notification metadata does not prove event delivery.</summary>
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1822", Justification = "Unproven runtime delivery belongs to each notification observation's evidence contract.")]
     public bool RuntimeDeliveryProven => false;

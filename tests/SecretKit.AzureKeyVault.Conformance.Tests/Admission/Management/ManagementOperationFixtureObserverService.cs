@@ -101,8 +101,11 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
         internal RoleFixtureJournal.Snapshot Postimage => RoleFixtureJournal.CopyStatusDeniedVaultRecoverSnapshot(source.deniedVaultRecoverFacts[this].After);
     }
     private static bool DeniedVaultRecoverExclusionValid(StatusDeniedVaultRecoverWriterExclusion? exclusion) =>
-        exclusion is { NamespaceEpoch: var epoch, ContinuousWriterExclusion: true, NoOlderInflightInvocations: true,
-            NoNameReuse: true, NoPriorRecoverSinceDeletedBaseline: true } &&
+        exclusion is
+        {
+            NamespaceEpoch: var epoch, ContinuousWriterExclusion: true, NoOlderInflightInvocations: true,
+            NoNameReuse: true, NoPriorRecoverSinceDeletedBaseline: true
+        } &&
         epoch != Guid.Empty && !exclusion.ContinuityToken.IsCancellationRequested;
     private bool ValidateDeniedVaultRecover(object candidate, RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state, int edge, bool post) =>
         ReferenceEquals(journal, provisioner.Journal) && deniedVaultRecoverFacts.TryGetValue(candidate, out var f) &&
@@ -764,8 +767,11 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
         internal RoleFixtureJournal.Snapshot Postimage => RoleFixtureJournal.CopyStatusDeniedVaultUpdateSnapshot(source.deniedVaultUpdateFacts[this].After);
     }
     private static bool DeniedVaultUpdateExclusionValid(StatusDeniedVaultUpdateWriterExclusion? exclusion) =>
-        exclusion is { NamespaceEpoch: var epoch, ContinuousWriterExclusion: true, NoOlderInflightInvocations: true,
-            NoNameReuse: true, SelectedNeverPreviouslyApplied: true } &&
+        exclusion is
+        {
+            NamespaceEpoch: var epoch, ContinuousWriterExclusion: true, NoOlderInflightInvocations: true,
+            NoNameReuse: true, SelectedNeverPreviouslyApplied: true
+        } &&
         epoch != Guid.Empty && !exclusion.ContinuityToken.IsCancellationRequested;
     private bool ValidateDeniedVaultUpdate(object candidate, RoleFixtureJournal journal, RoleFixtureJournal.Snapshot state, int edge, bool post) =>
         ReferenceEquals(journal, provisioner.Journal) && deniedVaultUpdateFacts.TryGetValue(candidate, out var f) &&
@@ -1486,13 +1492,21 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
         var run = deniedPrivateDeleteRuns[session];
         Require(run.Pending is null && (edge == 5 || DeniedPrivateDeleteLive(session)));
         var pre = RoleFixtureJournal.CopyStatusDeniedPrivateConnectionDeleteSnapshot(beforeImage);
-        var post = pre with { Revision = pre.Revision + 1, PrivateEndpoint = pre.PrivateEndpoint! with
+        var post = pre with
         {
-            StatusDeleteSettledDispatch = edge == 4 ? session.Dispatch : pre.PrivateEndpoint.StatusDeleteSettledDispatch,
-            Connection = pre.PrivateEndpoint.Connection! with
-            { SelectedAttempted = true, DeleteAttempted = true, InvocationTerminated = edge is 2 or 4 or 5,
-                ActiveDispatch = edge == 4 ? Guid.Empty : session.Dispatch }
-        } };
+            Revision = pre.Revision + 1,
+            PrivateEndpoint = pre.PrivateEndpoint! with
+            {
+                StatusDeleteSettledDispatch = edge == 4 ? session.Dispatch : pre.PrivateEndpoint.StatusDeleteSettledDispatch,
+                Connection = pre.PrivateEndpoint.Connection! with
+                {
+                    SelectedAttempted = true,
+                    DeleteAttempted = true,
+                    InvocationTerminated = edge is 2 or 4 or 5,
+                    ActiveDispatch = edge == 4 ? Guid.Empty : session.Dispatch
+                }
+            }
+        };
         Task[] tasks = [.. new Task?[] { run.Baseline?.Task, run.Baseline?.EndpointTask, session.StartTask,
             run.Status?.Task, run.Observed?.Task, run.Observed?.EndpointTask, session.StatusTask }.OfType<Task>()];
         Require(tasks.All(t => t.IsCompleted));
@@ -1638,9 +1652,12 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
             var endpointWindow = endpointReader.Arm(binding);
             var endpointTask = endpointReader.CollectAsync(endpointWindow, binding, token).AsTask();
             var endpoint = await endpointTask.ConfigureAwait(false);
-            Require(endpointTask.IsCompletedSuccessfully && endpoint is { ResponseComplete: true, HttpStatus: 200,
+            Require(endpointTask.IsCompletedSuccessfully && endpoint is
+            {
+                ResponseComplete: true, HttpStatus: 200,
                 ResourceStatus: SecretStatus.Success, Kind: PrivateEndpointResourceCollector.ReadKind.Endpoint,
-                NativeState: "Succeeded", MatchesDeclarationConfiguration: true } &&
+                NativeState: "Succeeded", MatchesDeclarationConfiguration: true
+            } &&
                 endpoint.ManualConnectionState == (baseline ? "Pending" : "Disconnected") &&
                 ReferenceEquals(endpoint.Binding, binding) && endpoint.WindowId == endpointWindow.Id &&
                 endpoint.StartedAt >= proof.FinishedAt && endpoint.FinishedAt >= endpoint.StartedAt);
@@ -2018,9 +2035,13 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
         return new(origin, owner, observerIdentity, capability, scope, provisioner, statusReader, resourceReader,
             selectedBackend, statusLimits, resourceLimits, limits, time)
         {
-            failedCancellationProfile = new(), pendingConfiguration = configuration, pendingClockBounds = clockBounds,
-            pendingResourceAuthority = resourceReader, pendingResourceLimits = resourceLimits,
-            pendingStatusAuthority = statusReader, pendingStatusLimits = statusLimits
+            failedCancellationProfile = new(),
+            pendingConfiguration = configuration,
+            pendingClockBounds = clockBounds,
+            pendingResourceAuthority = resourceReader,
+            pendingResourceLimits = resourceLimits,
+            pendingStatusAuthority = statusReader,
+            pendingStatusLimits = statusLimits
         };
     }
     internal static ManagementOperationFixtureObserverService ForStatusFailedPurgeCancellationCleanup(Uri origin, string owner,
@@ -2112,9 +2133,13 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
         return new(origin, owner, observerIdentity, capability, scope, provisioner, statusReader, resourceReader,
             selectedBackend, statusLimits, resourceLimits, limits, time)
         {
-            failedIndependentProfile = new(), pendingConfiguration = configuration, pendingClockBounds = clockBounds,
-            pendingResourceAuthority = resourceReader, pendingResourceLimits = resourceLimits,
-            pendingStatusAuthority = statusReader, pendingStatusLimits = statusLimits
+            failedIndependentProfile = new(),
+            pendingConfiguration = configuration,
+            pendingClockBounds = clockBounds,
+            pendingResourceAuthority = resourceReader,
+            pendingResourceLimits = resourceLimits,
+            pendingStatusAuthority = statusReader,
+            pendingStatusLimits = statusLimits
         };
     }
     internal static ManagementOperationFixtureObserverService ForStatusFailedPurgeIndependentCleanup(Uri origin, string owner,
@@ -2206,9 +2231,13 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
         return new(origin, owner, observerIdentity, capability, scope, provisioner, statusReader, resourceReader,
             selectedBackend, statusLimits, resourceLimits, limits, time)
         {
-            canceledCancellationProfile = new(), pendingConfiguration = configuration, pendingClockBounds = clockBounds,
-            pendingResourceAuthority = resourceReader, pendingResourceLimits = resourceLimits,
-            pendingStatusAuthority = statusReader, pendingStatusLimits = statusLimits
+            canceledCancellationProfile = new(),
+            pendingConfiguration = configuration,
+            pendingClockBounds = clockBounds,
+            pendingResourceAuthority = resourceReader,
+            pendingResourceLimits = resourceLimits,
+            pendingStatusAuthority = statusReader,
+            pendingStatusLimits = statusLimits
         };
     }
     internal static ManagementOperationFixtureObserverService ForStatusCanceledPurgeCancellationCleanup(Uri origin, string owner,
@@ -2299,9 +2328,13 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
         return new(origin, owner, observerIdentity, capability, scope, provisioner, statusReader, resourceReader,
             selectedBackend, statusLimits, resourceLimits, limits, time)
         {
-            canceledIndependentProfile = new(), pendingConfiguration = configuration, pendingClockBounds = clockBounds,
-            pendingResourceAuthority = resourceReader, pendingResourceLimits = resourceLimits,
-            pendingStatusAuthority = statusReader, pendingStatusLimits = statusLimits
+            canceledIndependentProfile = new(),
+            pendingConfiguration = configuration,
+            pendingClockBounds = clockBounds,
+            pendingResourceAuthority = resourceReader,
+            pendingResourceLimits = resourceLimits,
+            pendingStatusAuthority = statusReader,
+            pendingStatusLimits = statusLimits
         };
     }
     internal static ManagementOperationFixtureObserverService ForStatusCanceledPurgeIndependentCleanup(Uri origin, string owner,
@@ -2393,9 +2426,13 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
         return new(origin, owner, observerIdentity, capability, scope, provisioner, statusReader, resourceReader,
             selectedBackend, statusLimits, resourceLimits, limits, time)
         {
-            canceledProfile = new(), pendingConfiguration = configuration, pendingClockBounds = clockBounds,
-            pendingResourceAuthority = resourceReader, pendingResourceLimits = resourceLimits,
-            pendingStatusAuthority = statusReader, pendingStatusLimits = statusLimits
+            canceledProfile = new(),
+            pendingConfiguration = configuration,
+            pendingClockBounds = clockBounds,
+            pendingResourceAuthority = resourceReader,
+            pendingResourceLimits = resourceLimits,
+            pendingStatusAuthority = statusReader,
+            pendingStatusLimits = statusLimits
         };
     }
     internal static ManagementOperationFixtureObserverService ForStatusCanceledPurgeCleanup(Uri origin, string owner,
@@ -2545,9 +2582,12 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
         return new(origin, owner, observerIdentity, capability, scope, provisioner, statusReader, resourceReader,
             selectedBackend, statusLimits, resourceLimits, limits, time ?? TimeProvider.System)
         {
-            deniedProfile = new(), pendingConfiguration = configuration,
-            pendingResourceAuthority = resourceReader, pendingResourceLimits = resourceLimits,
-            pendingStatusAuthority = statusReader, pendingStatusLimits = statusLimits
+            deniedProfile = new(),
+            pendingConfiguration = configuration,
+            pendingResourceAuthority = resourceReader,
+            pendingResourceLimits = resourceLimits,
+            pendingStatusAuthority = statusReader,
+            pendingStatusLimits = statusLimits
         };
     }
     internal static ManagementOperationFixtureObserverService ForStatusDeniedPurgeCleanup(Uri origin, string owner,
@@ -2569,9 +2609,12 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
         return new(origin, owner, observerIdentity, capability, scope, provisioner, statusReader, resourceReader,
             selectedBackend, statusLimits, resourceLimits, limits, time ?? TimeProvider.System)
         {
-            deniedProfile = new("status." + variant), pendingConfiguration = configuration,
-            pendingResourceAuthority = resourceReader, pendingResourceLimits = resourceLimits,
-            pendingStatusAuthority = statusReader, pendingStatusLimits = statusLimits
+            deniedProfile = new("status." + variant),
+            pendingConfiguration = configuration,
+            pendingResourceAuthority = resourceReader,
+            pendingResourceLimits = resourceLimits,
+            pendingStatusAuthority = statusReader,
+            pendingStatusLimits = statusLimits
         };
     }
     internal static ManagementOperationFixtureObserverService ForStatusDeniedPurgeStatusCleanup(Uri origin, string owner,
@@ -2601,9 +2644,13 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
         return new(origin, owner, observerIdentity, capability, scope, provisioner, statusReader, resourceReader,
             selectedBackend, statusLimits, resourceLimits, limits, time)
         {
-            failedProfile = new(), pendingConfiguration = configuration, pendingClockBounds = clockBounds,
-            pendingResourceAuthority = resourceReader, pendingResourceLimits = resourceLimits,
-            pendingStatusAuthority = statusReader, pendingStatusLimits = statusLimits
+            failedProfile = new(),
+            pendingConfiguration = configuration,
+            pendingClockBounds = clockBounds,
+            pendingResourceAuthority = resourceReader,
+            pendingResourceLimits = resourceLimits,
+            pendingStatusAuthority = statusReader,
+            pendingStatusLimits = statusLimits
         };
     }
     internal static ManagementOperationFixtureObserverService ForStatusFailedPurgeCleanup(Uri origin, string owner,
@@ -2713,7 +2760,7 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
             var body = await OwnedArmResponse.CaptureAsync(message, maximum, storage).ConfigureAwait(false);
             Check();
             Require(body.Response.Status == 200);
-            using var document = JsonDocument.Parse(body.Bytes);
+            using var document = JsonDocument.Parse(body.Bytes, new JsonDocumentOptions { AllowDuplicateProperties = false, MaxDepth = 32 });
             Unique(document.RootElement);
             var stateRoot = document.RootElement;
             if (resourceState)
@@ -3112,9 +3159,13 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
         return new(origin, owner, observerIdentity, capability, scope, provisioner, statusReader, resourceReader,
             selectedBackend, statusLimits, resourceLimits, limits, time)
         {
-            statusPendingPurgeProfile = true, pendingConfiguration = configuration, pendingClockBounds = clockBounds,
-            pendingResourceAuthority = resourceReader, pendingResourceLimits = resourceLimits,
-            pendingStatusAuthority = statusReader, pendingStatusLimits = statusLimits
+            statusPendingPurgeProfile = true,
+            pendingConfiguration = configuration,
+            pendingClockBounds = clockBounds,
+            pendingResourceAuthority = resourceReader,
+            pendingResourceLimits = resourceLimits,
+            pendingStatusAuthority = statusReader,
+            pendingStatusLimits = statusLimits
         };
     }
     internal static ManagementOperationFixtureObserverService ForStatusPendingPurgeCleanup(Uri origin, string owner,
@@ -3144,9 +3195,13 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
         return new(origin, owner, observerIdentity, capability, scope, provisioner, statusReader, resourceReader,
             selectedBackend, statusLimits, resourceLimits, limits, time)
         {
-            pendingIndependentProfile = new(), pendingConfiguration = configuration, pendingClockBounds = clockBounds,
-            pendingResourceAuthority = resourceReader, pendingResourceLimits = resourceLimits,
-            pendingStatusAuthority = statusReader, pendingStatusLimits = statusLimits
+            pendingIndependentProfile = new(),
+            pendingConfiguration = configuration,
+            pendingClockBounds = clockBounds,
+            pendingResourceAuthority = resourceReader,
+            pendingResourceLimits = resourceLimits,
+            pendingStatusAuthority = statusReader,
+            pendingStatusLimits = statusLimits
         };
     }
     internal static ManagementOperationFixtureObserverService ForStatusPendingPurgeIndependentCleanup(Uri origin, string owner,
@@ -3176,9 +3231,13 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
         return new(origin, owner, observerIdentity, capability, scope, provisioner, statusReader, resourceReader,
             selectedBackend, statusLimits, resourceLimits, limits, time)
         {
-            pendingCancellationProfile = new(), pendingConfiguration = configuration, pendingClockBounds = clockBounds,
-            pendingResourceAuthority = resourceReader, pendingResourceLimits = resourceLimits,
-            pendingStatusAuthority = statusReader, pendingStatusLimits = statusLimits
+            pendingCancellationProfile = new(),
+            pendingConfiguration = configuration,
+            pendingClockBounds = clockBounds,
+            pendingResourceAuthority = resourceReader,
+            pendingResourceLimits = resourceLimits,
+            pendingStatusAuthority = statusReader,
+            pendingStatusLimits = statusLimits
         };
     }
     internal static ManagementOperationFixtureObserverService ForStatusPendingPurgeCancellationCleanup(Uri origin, string owner,
@@ -4027,19 +4086,22 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
 
     private RoleFixtureJournal.Snapshot PendingImage(RoleFixtureJournal.Snapshot before,
         RoleFixtureJournal.StatusPendingPurgeStage stage, bool terminated, Guid dispatch, bool terminal = false) => before with
-    {
-        Revision = before.Revision + 1,
-        Resources = before.Resources.Select((r, i) => i == 2 ? r with
         {
-            SelectedAttempted = true, InvocationTerminated = terminated, ActiveDispatch = terminal ? Guid.Empty : dispatch
-        } : r).ToArray(),
-        PurgeDeletedVault = before.PurgeDeletedVault! with
-        {
-            PendingStage = stage, InvocationDispatch = dispatch,
-            SettledDispatch = terminal ? dispatch : Guid.Empty,
-            Disposition = terminal ? RoleFixtureJournal.PurgeDeletedVaultDisposition.Purged : RoleFixtureJournal.PurgeDeletedVaultDisposition.None
-        }
-    };
+            Revision = before.Revision + 1,
+            Resources = before.Resources.Select((r, i) => i == 2 ? r with
+            {
+                SelectedAttempted = true,
+                InvocationTerminated = terminated,
+                ActiveDispatch = terminal ? Guid.Empty : dispatch
+            } : r).ToArray(),
+            PurgeDeletedVault = before.PurgeDeletedVault! with
+            {
+                PendingStage = stage,
+                InvocationDispatch = dispatch,
+                SettledDispatch = terminal ? dispatch : Guid.Empty,
+                Disposition = terminal ? RoleFixtureJournal.PurgeDeletedVaultDisposition.Purged : RoleFixtureJournal.PurgeDeletedVaultDisposition.None
+            }
+        };
     private PendingFacts PendingFact(Session session, RoleFixtureJournal.Snapshot before,
         RoleFixtureJournal.StatusPendingPurgeStage stage, bool terminated, CancellationToken token,
         Task[] tasks, object[] proofs, bool cleanup = false, bool terminal = false, bool drain = false)
@@ -4048,8 +4110,11 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
         {
             var image = PendingImage(before, stage, terminated, session.Dispatch,
                 terminal: stage == RoleFixtureJournal.StatusPendingPurgeStage.PendingObserved);
-            image = image with { PurgeDeletedVault = image.PurgeDeletedVault! with
-                { PendingStage = default, DeniedStage = (RoleFixtureJournal.StatusDeniedPurgeStage)(int)stage } };
+            image = image with
+            {
+                PurgeDeletedVault = image.PurgeDeletedVault! with
+                { PendingStage = default, DeniedStage = (RoleFixtureJournal.StatusDeniedPurgeStage)(int)stage }
+            };
             return new(session, RoleFixtureJournal.CopyStatusPendingPurgeSnapshot(before), image,
                 [token], tasks, proofs, cleanup, drain);
         }
@@ -4062,8 +4127,11 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
                 Resources = before.Resources.Select((r, i) => i == 2 ? r with
                 { SelectedAttempted = true, InvocationTerminated = terminated, ActiveDispatch = failed ? Guid.Empty : session.Dispatch } : r).ToArray(),
                 PurgeDeletedVault = before.PurgeDeletedVault! with
-                { FailedStage = (RoleFixtureJournal.StatusFailedPurgeStage)(int)stage,
-                    InvocationDispatch = session.Dispatch, SettledDispatch = failed ? session.Dispatch : Guid.Empty }
+                {
+                    FailedStage = (RoleFixtureJournal.StatusFailedPurgeStage)(int)stage,
+                    InvocationDispatch = session.Dispatch,
+                    SettledDispatch = failed ? session.Dispatch : Guid.Empty
+                }
             };
             return new(session, RoleFixtureJournal.CopyStatusPendingPurgeSnapshot(before), image,
                 [token], tasks, proofs, cleanup, drain);
@@ -4713,7 +4781,7 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
                     ReferenceEquals(status.Window.Target, status.Target) && ReferenceEquals(status.Window.Binding, status.Binding) &&
                     ReferenceEquals(status.Transport, p.StatusTransport) && status.Transport.Valid && !status.Token.IsCancellationRequested &&
                     status.Task is { IsCompletedSuccessfully: true } && status.Task.Result is
-                        { HttpStatus: 200, ResponseComplete: true } measurement && measurement.Failure == S.Failure.None &&
+                    { HttpStatus: 200, ResponseComplete: true } measurement && measurement.Failure == S.Failure.None &&
                     measurement.Terminal == (p.DeniedProfile is not null || (p.CanceledCancellationProfile is not null || p.CanceledIndependentProfile is not null || p.CanceledProfile is not null) || p.FailedProfile is not null || p.FailedIndependentProfile is not null || p.FailedCancellationProfile is not null) &&
                     measurement.Status == (p.DeniedProfile is not null ? SecretStatus.Success : p.CanceledCancellationProfile is null && p.CanceledIndependentProfile is null && p.CanceledProfile is null && p.FailedProfile is null && p.FailedIndependentProfile is null && p.FailedCancellationProfile is null ? SecretStatus.Pending : SecretStatus.Unknown) &&
                     measurement.OperationState == (p.DeniedProfile is not null ? NativeProvisioningState.Succeeded : (p.CanceledCancellationProfile is not null || p.CanceledIndependentProfile is not null || p.CanceledProfile is not null) ? NativeProvisioningState.Canceled : p.FailedProfile is null && p.FailedIndependentProfile is null && p.FailedCancellationProfile is null ? NativeProvisioningState.Pending : NativeProvisioningState.Failed) &&
@@ -4973,7 +5041,7 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
             var snapshot = provisioner.CloseSelectedRoot(owner, selector);
             session.Closed = true;
             p.NeverSelectedClosed = snapshot.PurgeDeletedVault is
-                { FailedStage: RoleFixtureJournal.StatusFailedPurgeStage.Prepared, InvocationDispatch: var dispatch } && dispatch == Guid.Empty;
+            { FailedStage: RoleFixtureJournal.StatusFailedPurgeStage.Prepared, InvocationDispatch: var dispatch } && dispatch == Guid.Empty;
             p.SelectedRevoked = true;
             if (session.Capture is not null && p.Clock is not null) capture.RevokeStatusFailedPurgeCancellationSelected(session.Capture);
             session.Stop.Cancel();
@@ -5095,7 +5163,7 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
             var snapshot = provisioner.CloseSelectedRoot(owner, selector);
             session.Closed = true;
             p.NeverSelectedClosed = snapshot.PurgeDeletedVault is
-                { CanceledStage: RoleFixtureJournal.StatusCanceledPurgeStage.Prepared, InvocationDispatch: var dispatch } && dispatch == Guid.Empty;
+            { CanceledStage: RoleFixtureJournal.StatusCanceledPurgeStage.Prepared, InvocationDispatch: var dispatch } && dispatch == Guid.Empty;
             p.SelectedRevoked = true;
             if (session.Capture is not null && p.Clock is not null) capture.RevokeStatusCanceledPurgeCancellationSelected(session.Capture);
             session.Stop.Cancel();
@@ -5213,7 +5281,7 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
             var snapshot = provisioner.CloseSelectedRoot(owner, selector);
             session.Closed = true;
             p.NeverSelectedClosed = snapshot.PurgeDeletedVault is
-                { CanceledStage: RoleFixtureJournal.StatusCanceledPurgeStage.Prepared, InvocationDispatch: var dispatch } && dispatch == Guid.Empty;
+            { CanceledStage: RoleFixtureJournal.StatusCanceledPurgeStage.Prepared, InvocationDispatch: var dispatch } && dispatch == Guid.Empty;
             p.SelectedRevoked = true;
             if (session.Capture is not null && p.Clock is not null) capture.RevokeStatusCanceledPurgeIndependentSelected(session.Capture);
             session.Stop.Cancel();
@@ -5332,7 +5400,7 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
             var snapshot = provisioner.CloseSelectedRoot(owner, selector);
             session.Closed = true;
             p.NeverSelectedClosed = snapshot.PurgeDeletedVault is
-                { CanceledStage: RoleFixtureJournal.StatusCanceledPurgeStage.Prepared, InvocationDispatch: var dispatch } && dispatch == Guid.Empty;
+            { CanceledStage: RoleFixtureJournal.StatusCanceledPurgeStage.Prepared, InvocationDispatch: var dispatch } && dispatch == Guid.Empty;
             p.SelectedRevoked = true;
             if (session.Capture is not null && p.Clock is not null) capture.RevokeStatusCanceledPurgeSelected(session.Capture);
             session.Stop.Cancel();
@@ -5447,7 +5515,7 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
             var snapshot = provisioner.CloseSelectedRoot(owner, selector);
             session.Closed = true;
             p.NeverSelectedClosed = snapshot.PurgeDeletedVault is
-                { FailedStage: RoleFixtureJournal.StatusFailedPurgeStage.Prepared, InvocationDispatch: var dispatch } && dispatch == Guid.Empty;
+            { FailedStage: RoleFixtureJournal.StatusFailedPurgeStage.Prepared, InvocationDispatch: var dispatch } && dispatch == Guid.Empty;
             p.SelectedRevoked = true;
             if (session.Capture is not null && p.Clock is not null) capture.RevokeStatusFailedPurgeIndependentSelected(session.Capture);
             session.Stop.Cancel();
@@ -5557,7 +5625,7 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
             var snapshot = provisioner.CloseSelectedRoot(owner, selector);
             session.Closed = true;
             p.NeverSelectedClosed = snapshot.PurgeDeletedVault is
-                { DeniedStage: RoleFixtureJournal.StatusDeniedPurgeStage.Prepared, InvocationDispatch: var dispatch } && dispatch == Guid.Empty;
+            { DeniedStage: RoleFixtureJournal.StatusDeniedPurgeStage.Prepared, InvocationDispatch: var dispatch } && dispatch == Guid.Empty;
             p.SelectedRevoked = true;
             if (session.Capture is not null) capture.RevokeStatusDeniedPurgeSelected(session.Capture);
             session.Stop.Cancel();
@@ -5639,7 +5707,7 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
             var snapshot = provisioner.CloseSelectedRoot(owner, selector);
             session.Closed = true;
             p.NeverSelectedClosed = snapshot.PurgeDeletedVault is
-                { FailedStage: RoleFixtureJournal.StatusFailedPurgeStage.Prepared, InvocationDispatch: var dispatch } && dispatch == Guid.Empty;
+            { FailedStage: RoleFixtureJournal.StatusFailedPurgeStage.Prepared, InvocationDispatch: var dispatch } && dispatch == Guid.Empty;
             p.SelectedRevoked = true;
             if (session.Capture is not null && p.Clock is not null) capture.RevokeStatusFailedPurgeSelected(session.Capture);
             session.Stop.Cancel();
@@ -5725,7 +5793,7 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
             session.Closed = true;
             var p = session.Pending!;
             p.NeverSelectedClosed = snapshot.PurgeDeletedVault is
-                { PendingStage: RoleFixtureJournal.StatusPendingPurgeStage.Prepared, InvocationDispatch: var original } &&
+            { PendingStage: RoleFixtureJournal.StatusPendingPurgeStage.Prepared, InvocationDispatch: var original } &&
                 original == Guid.Empty;
             p.SelectedRevoked = true;
             if (session.Capture is not null && p.Clock is not null)
@@ -6497,9 +6565,16 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
             postimage ? f.Postimage : f.Preimage, state);
 
     private static RoleFixtureJournal.Snapshot FreezePrivateUpdateIndependent(RoleFixtureJournal.Snapshot state) =>
-        state with { Selector = state.Selector with { }, Resources = state.Resources.Select(r => r with { }).ToArray(),
-            PrivateEndpoint = state.PrivateEndpoint! with { Declaration = state.PrivateEndpoint.Declaration with { },
-                Connection = state.PrivateEndpoint.Connection is null ? null : state.PrivateEndpoint.Connection with { } } };
+        state with
+        {
+            Selector = state.Selector with { },
+            Resources = state.Resources.Select(r => r with { }).ToArray(),
+            PrivateEndpoint = state.PrivateEndpoint! with
+            {
+                Declaration = state.PrivateEndpoint.Declaration with { },
+                Connection = state.PrivateEndpoint.Connection is null ? null : state.PrivateEndpoint.Connection with { }
+            }
+        };
 
     private void IssuePrivateUpdateIndependent(Session session, object capability, PrivateUpdateIndependentStage stage,
         RoleFixtureJournal.Snapshot state, params Task[] tasks)
@@ -6616,8 +6691,11 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
             var endpointWindow = endpointReader.Arm(endpointBinding);
             var endpointTask = endpointReader.CollectAsync(endpointWindow, endpointBinding, token).AsTask();
             var endpoint = await endpointTask.ConfigureAwait(false);
-            Require(endpoint is { ResponseComplete: true, HttpStatus: 200, ResourceStatus: SecretStatus.Success,
-                Kind: PrivateEndpointResourceCollector.ReadKind.Endpoint, NativeState: "Succeeded", MatchesDeclarationConfiguration: true } &&
+            Require(endpoint is
+            {
+                ResponseComplete: true, HttpStatus: 200, ResourceStatus: SecretStatus.Success,
+                Kind: PrivateEndpointResourceCollector.ReadKind.Endpoint, NativeState: "Succeeded", MatchesDeclarationConfiguration: true
+            } &&
                 endpoint.ManualConnectionState == (baseline ? "Pending" : "Approved") && ReferenceEquals(endpoint.Binding, endpointBinding) &&
                 endpoint.WindowId == endpointWindow.Id && endpoint.StartedAt >= proof.FinishedAt && endpoint.FinishedAt >= endpoint.StartedAt);
             Require(PrivateUpdateIndependentLive(session) && RoleFixtureJournal.SameStatusPrivateConnectionUpdateIndependentSnapshot(preimage, PrivateUpdateIndependentSnapshot(session)));
@@ -6930,14 +7008,20 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
         TimeProvider time, NotificationSource notificationSource, StatusUnknownNotificationUpdateCancellationWriterExclusion writerExclusion)
     {
         Require(notificationSource is { HttpsWebhookReady: true, Baseline: not null, ExclusiveCreation: null } &&
-            writerExclusion is { NamespaceEpoch: var epoch, ContinuousWriterExclusion: true, NoOlderInflightInvocations: true,
-                NoNameReuse: true, SelectedNeverPreviouslyApplied: true } && epoch != Guid.Empty &&
+            writerExclusion is
+            {
+                NamespaceEpoch: var epoch, ContinuousWriterExclusion: true, NoOlderInflightInvocations: true,
+                NoNameReuse: true, SelectedNeverPreviouslyApplied: true
+            } && epoch != Guid.Empty &&
             !writerExclusion.ContinuityToken.IsCancellationRequested);
         var configuration = provisioner.StatusUnknownNotificationUpdateCancellationConfiguration(scope, statusReader, resourceReader, selectedBackend);
         return new(origin, owner, observerIdentity, capability, scope, provisioner, statusReader, resourceReader,
             selectedBackend, statusLimits, resourceLimits, limits, time, notificationSource)
-        { statusUnknownNotificationUpdateCancellationProfile = true, statusUnknownNotificationUpdateCancellationConfiguration = configuration,
-            unknownNotificationUpdateCancellationExclusion = writerExclusion };
+        {
+            statusUnknownNotificationUpdateCancellationProfile = true,
+            statusUnknownNotificationUpdateCancellationConfiguration = configuration,
+            unknownNotificationUpdateCancellationExclusion = writerExclusion
+        };
     }
     internal static ManagementOperationFixtureObserverService ForStatusUnknownNotificationUpdateCancellationCleanup(Uri origin, string owner,
         string observerIdentity, SecretMaterial capability, VaultFixtureProvisioner.HostScope scope,
@@ -7093,14 +7177,20 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
         TimeProvider time, NotificationSource notificationSource, StatusUnknownNotificationUpdateIndependentWriterExclusion writerExclusion)
     {
         Require(notificationSource is { HttpsWebhookReady: true, Baseline: not null, ExclusiveCreation: null } &&
-            writerExclusion is { NamespaceEpoch: var epoch, ContinuousWriterExclusion: true, NoOlderInflightInvocations: true,
-                NoNameReuse: true, SelectedNeverPreviouslyApplied: true } && epoch != Guid.Empty &&
+            writerExclusion is
+            {
+                NamespaceEpoch: var epoch, ContinuousWriterExclusion: true, NoOlderInflightInvocations: true,
+                NoNameReuse: true, SelectedNeverPreviouslyApplied: true
+            } && epoch != Guid.Empty &&
             !writerExclusion.ContinuityToken.IsCancellationRequested);
         var configuration = provisioner.StatusUnknownNotificationUpdateIndependentConfiguration(scope, statusReader, resourceReader, selectedBackend);
         return new(origin, owner, observerIdentity, capability, scope, provisioner, statusReader, resourceReader,
             selectedBackend, statusLimits, resourceLimits, limits, time, notificationSource)
-        { statusUnknownNotificationUpdateIndependentProfile = true, statusUnknownNotificationUpdateIndependentConfiguration = configuration,
-            unknownNotificationUpdateIndependentExclusion = writerExclusion };
+        {
+            statusUnknownNotificationUpdateIndependentProfile = true,
+            statusUnknownNotificationUpdateIndependentConfiguration = configuration,
+            unknownNotificationUpdateIndependentExclusion = writerExclusion
+        };
     }
     internal static ManagementOperationFixtureObserverService ForStatusUnknownNotificationUpdateIndependentCleanup(Uri origin, string owner,
         string observerIdentity, SecretMaterial capability, VaultFixtureProvisioner.HostScope scope,
@@ -7257,14 +7347,20 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
         TimeProvider time, NotificationSource notificationSource, StatusUnknownNotificationUpdateWriterExclusion writerExclusion)
     {
         Require(notificationSource is { HttpsWebhookReady: true, Baseline: not null, ExclusiveCreation: null } &&
-            writerExclusion is { NamespaceEpoch: var epoch, ContinuousWriterExclusion: true, NoOlderInflightInvocations: true,
-                NoNameReuse: true, SelectedNeverPreviouslyApplied: true } && epoch != Guid.Empty &&
+            writerExclusion is
+            {
+                NamespaceEpoch: var epoch, ContinuousWriterExclusion: true, NoOlderInflightInvocations: true,
+                NoNameReuse: true, SelectedNeverPreviouslyApplied: true
+            } && epoch != Guid.Empty &&
             !writerExclusion.ContinuityToken.IsCancellationRequested);
         var configuration = provisioner.StatusUnknownNotificationUpdateConfiguration(scope, statusReader, resourceReader, selectedBackend);
         return new(origin, owner, observerIdentity, capability, scope, provisioner, statusReader, resourceReader,
             selectedBackend, statusLimits, resourceLimits, limits, time, notificationSource)
-        { statusUnknownNotificationUpdateProfile = true, statusUnknownNotificationUpdateConfiguration = configuration,
-            unknownNotificationUpdateExclusion = writerExclusion };
+        {
+            statusUnknownNotificationUpdateProfile = true,
+            statusUnknownNotificationUpdateConfiguration = configuration,
+            unknownNotificationUpdateExclusion = writerExclusion
+        };
     }
     internal static ManagementOperationFixtureObserverService ForStatusUnknownNotificationUpdateCleanup(Uri origin, string owner,
         string observerIdentity, SecretMaterial capability, VaultFixtureProvisioner.HostScope scope,
@@ -7453,24 +7549,33 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
     {
         Require(provisioner.StatusDeniedNotificationDeleteProfile && !provisioner.StatusDeniedNotificationDeleteCleanup);
         Require(notificationSource is { HttpsWebhookReady: true, Baseline: not null, ExclusiveCreation: null } &&
-            writerExclusion is { NamespaceEpoch: var epoch, ContinuousWriterExclusion: true, NoOlderInflightInvocations: true,
-                NoNameReuse: true } && epoch != Guid.Empty &&
+            writerExclusion is
+            {
+                NamespaceEpoch: var epoch, ContinuousWriterExclusion: true, NoOlderInflightInvocations: true,
+                NoNameReuse: true
+            } && epoch != Guid.Empty &&
             !writerExclusion.ContinuityToken.IsCancellationRequested);
         Require(Uri.TryCreate(notificationSource.Baseline.Endpoint.Reveal(), UriKind.Absolute, out var endpoint) &&
             endpoint.Scheme == "https" && endpoint.UserInfo.Length == 0 && endpoint.Fragment.Length == 0 &&
             notificationSource.Baseline.EventTypes.Count() == 1 &&
             notificationSource.Baseline.EventTypes.Single() == VaultNotificationEvent.SecretNearExpiry &&
             notificationSource.Baseline.DeliveryAttributes.Count == 0 &&
-            notificationSource.Limits is { MaximumResponseBytes: >= 1024 and <= 16 * 1024 * 1024,
+            notificationSource.Limits is
+            {
+                MaximumResponseBytes: >= 1024 and <= 16 * 1024 * 1024,
                 MaximumRequestBytes: >= 1024 and <= 1024 * 1024, MaximumRowBytes: >= 1024,
-                MaximumDepth: >= 4 and <= 32, MaximumHeaders: >= 1 and <= 128, MaximumHeaderBytes: >= 128 and <= 64 * 1024 } &&
+                MaximumDepth: >= 4 and <= 32, MaximumHeaders: >= 1 and <= 128, MaximumHeaderBytes: >= 128 and <= 64 * 1024
+            } &&
             notificationSource.Limits.MaximumRowBytes <= notificationSource.Limits.MaximumResponseBytes &&
             notificationSource.Limits.Timeout > TimeSpan.Zero && notificationSource.Limits.Timeout <= TimeSpan.FromMinutes(2));
         var configuration = provisioner.StatusDeniedNotificationDeleteConfiguration(scope, statusReader, resourceReader, selectedBackend);
         return new(origin, owner, observerIdentity, capability, scope, provisioner, statusReader, resourceReader,
             selectedBackend, statusLimits, resourceLimits, limits, time, notificationSource)
-        { statusDeniedNotificationDeleteProfile = true, statusDeniedNotificationDeleteConfiguration = configuration,
-            deniedNotificationDeleteExclusion = writerExclusion };
+        {
+            statusDeniedNotificationDeleteProfile = true,
+            statusDeniedNotificationDeleteConfiguration = configuration,
+            deniedNotificationDeleteExclusion = writerExclusion
+        };
     }
     internal static ManagementOperationFixtureObserverService ForStatusDeniedNotificationDeleteCleanup(Uri origin, string owner,
         string observerIdentity, SecretMaterial capability, VaultFixtureProvisioner.HostScope scope,
@@ -7656,14 +7761,20 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
     {
         Require(provisioner.StatusDeniedNotificationOperation == ManagementMutation.UpdateNotification);
         Require(notificationSource is { HttpsWebhookReady: true, Baseline: not null, ExclusiveCreation: null } &&
-            writerExclusion is { NamespaceEpoch: var epoch, ContinuousWriterExclusion: true, NoOlderInflightInvocations: true,
-                NoNameReuse: true, SelectedNeverPreviouslyApplied: true } && epoch != Guid.Empty &&
+            writerExclusion is
+            {
+                NamespaceEpoch: var epoch, ContinuousWriterExclusion: true, NoOlderInflightInvocations: true,
+                NoNameReuse: true, SelectedNeverPreviouslyApplied: true
+            } && epoch != Guid.Empty &&
             !writerExclusion.ContinuityToken.IsCancellationRequested);
         var configuration = provisioner.StatusDeniedNotificationUpdateConfiguration(scope, statusReader, resourceReader, selectedBackend);
         return new(origin, owner, observerIdentity, capability, scope, provisioner, statusReader, resourceReader,
             selectedBackend, statusLimits, resourceLimits, limits, time, notificationSource)
-        { statusDeniedNotificationUpdateProfile = true, statusDeniedNotificationUpdateConfiguration = configuration,
-            deniedNotificationUpdateExclusion = writerExclusion };
+        {
+            statusDeniedNotificationUpdateProfile = true,
+            statusDeniedNotificationUpdateConfiguration = configuration,
+            deniedNotificationUpdateExclusion = writerExclusion
+        };
     }
     internal static ManagementOperationFixtureObserverService ForStatusDeniedNotificationUpdateCleanup(Uri origin, string owner,
         string observerIdentity, SecretMaterial capability, VaultFixtureProvisioner.HostScope scope,
@@ -7681,15 +7792,21 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
     {
         Require(provisioner.StatusDeniedNotificationOperation == ManagementMutation.CreateOrUpdateNotification);
         Require(notificationSource is { HttpsWebhookReady: true, Baseline: not null, ExclusiveCreation: null } &&
-            writerExclusion is { NamespaceEpoch: var epoch, ContinuousWriterExclusion: true, NoOlderInflightInvocations: true,
-                NoNameReuse: true, SelectedNeverPreviouslyApplied: true } && epoch != Guid.Empty &&
+            writerExclusion is
+            {
+                NamespaceEpoch: var epoch, ContinuousWriterExclusion: true, NoOlderInflightInvocations: true,
+                NoNameReuse: true, SelectedNeverPreviouslyApplied: true
+            } && epoch != Guid.Empty &&
             !writerExclusion.ContinuityToken.IsCancellationRequested);
         var configuration = provisioner.StatusDeniedNotificationUpdateConfiguration(scope, statusReader, resourceReader, selectedBackend);
         return new(origin, owner, observerIdentity, capability, scope, provisioner, statusReader, resourceReader,
             selectedBackend, statusLimits, resourceLimits, limits, time, notificationSource)
-        { statusDeniedNotificationUpdateProfile = true, statusDeniedNotificationUpdateConfiguration = configuration,
+        {
+            statusDeniedNotificationUpdateProfile = true,
+            statusDeniedNotificationUpdateConfiguration = configuration,
             deniedNotificationUpdateExclusion = writerExclusion,
-            statusDeniedNotificationOperation = ManagementMutation.CreateOrUpdateNotification };
+            statusDeniedNotificationOperation = ManagementMutation.CreateOrUpdateNotification
+        };
     }
 
     internal static ManagementOperationFixtureObserverService ForStatusDeniedNotificationPutCleanup(Uri origin, string owner,
@@ -16479,7 +16596,7 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
                     ReferenceEquals(session.StatusTask, session.UnknownNotificationUpdateCancellationCanceledTask) ||
                     session.Handle is not { State: NativeProvisioningState.Unknown } ||
                     !RoleFixtureJournal.SameStatusUnknownNotificationUpdateCancellationSnapshot(observed with
-                        { Closing = true, Revision = observed.Revision + 1 }, snapshot) ||
+                    { Closing = true, Revision = observed.Revision + 1 }, snapshot) ||
                     !capture.TryGetStatusUnknownNotificationUpdateCancellationCompletion(session.Capture!, session.Binding!, session.Client!,
                         session.ActualNotificationScope!, session.Receipt!, session.StartTask, session.Handle, session.UnknownNotificationUpdateCancellationCanceledTask!, session.StatusTask, out var actual) ||
                     !ReferenceEquals(actual, retained) || !ReferenceEquals(actual.Start, observation.Start) ||
@@ -16651,7 +16768,7 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
                     session.StatusTask is not { IsCompletedSuccessfully: true } ||
                     session.Handle is not { State: NativeProvisioningState.Unknown } ||
                     !RoleFixtureJournal.SameStatusUnknownNotificationUpdateIndependentSnapshot(observed with
-                        { Closing = true, Revision = observed.Revision + 1 }, snapshot) ||
+                    { Closing = true, Revision = observed.Revision + 1 }, snapshot) ||
                     !capture.TryGetStatusUnknownNotificationUpdateIndependentCompletion(session.Capture!, session.Binding!, session.Client!,
                         session.ActualNotificationScope!, session.Receipt!, session.StartTask, session.Handle, session.StatusTask, out var actual) ||
                     !ReferenceEquals(actual, retained) || !ReferenceEquals(actual.Start, observation.Start) ||
@@ -16824,7 +16941,7 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
                     session.StatusTask is not { IsCompletedSuccessfully: true } ||
                     session.Handle is not { State: NativeProvisioningState.Unknown } ||
                     !RoleFixtureJournal.SameStatusUnknownNotificationUpdateSnapshot(observed with
-                        { Closing = true, Revision = observed.Revision + 1 }, snapshot) ||
+                    { Closing = true, Revision = observed.Revision + 1 }, snapshot) ||
                     !capture.TryGetStatusUnknownNotificationUpdateCompletion(session.Capture!, session.Binding!, session.Client!,
                         session.ActualNotificationScope!, session.Receipt!, session.StartTask, session.Handle, session.StatusTask, out var actual) ||
                     !ReferenceEquals(actual, retained) || !ReferenceEquals(actual.Start, observation.Start) ||
@@ -17762,10 +17879,9 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
     private bool Authenticate(HttpRequestMessage request)
     {
         if (request.Headers.Authorization is not { Scheme: "Bearer", Parameter: { Length: > 0 and <= 8192 } supplied }) return false;
-        char[] expected = capability.ExportCharacters();
-        byte[] left = Encoding.UTF8.GetBytes(expected), right = Encoding.UTF8.GetBytes(supplied);
-        try { return CryptographicOperations.FixedTimeEquals(SHA256.HashData(left), SHA256.HashData(right)); }
-        finally { Array.Clear(expected); CryptographicOperations.ZeroMemory(left); CryptographicOperations.ZeroMemory(right); }
+        byte[] right = Encoding.UTF8.GetBytes(supplied);
+        try { return capability.UseUtf8(expected => CryptographicOperations.FixedTimeEquals(SHA256.HashData(expected), SHA256.HashData(right))); }
+        finally { CryptographicOperations.ZeroMemory(right); }
     }
     private async Task<JsonDocument> ReadBody(HttpRequestMessage request, CancellationToken token)
     {
@@ -17782,20 +17898,14 @@ internal sealed partial class ManagementOperationFixtureObserverService : E.Sele
             request.Content.Headers.ContentLength <= limits.MaximumBodyBytes &&
             request.Content.Headers.ContentType?.MediaType == "application/json" &&
             request.Content.Headers.ContentEncoding.Count == 0);
-        byte[] bytes = new byte[limits.MaximumBodyBytes + 1];
-        try
-        {
-            var stream = await request.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
-            int length = 0, count;
-            while (length < bytes.Length && (count = await stream.ReadAsync(bytes.AsMemory(length), token).ConfigureAwait(false)) != 0)
-                length += count;
-            Require(length <= limits.MaximumBodyBytes && length == request.Content.Headers.ContentLength);
-            var reader = new Utf8JsonReader(bytes.AsSpan(0, length), new JsonReaderOptions { MaxDepth = 32 });
-            var document = JsonDocument.ParseValue(ref reader);
-            try { Require(!reader.Read()); Unique(document.RootElement); return document; }
-            catch { document.Dispose(); throw; }
-        }
-        finally { CryptographicOperations.ZeroMemory(bytes); }
+        using var buffer = new PooledPayloadBuffer(limits.MaximumBodyBytes + 1);
+        using var stream = await request.Content!.ReadAsStreamAsync(token).ConfigureAwait(false);
+        int length = await buffer.ReadAsync(stream, token).ConfigureAwait(false);
+        Require(length <= limits.MaximumBodyBytes && length == request.Content.Headers.ContentLength);
+        using var payload = new MemoryStream(buffer.Array, 0, length, writable: false);
+        var document = JsonDocument.Parse(payload, new JsonDocumentOptions { AllowDuplicateProperties = false, MaxDepth = 32 });
+        try { Unique(document.RootElement); return document; }
+        catch { document.Dispose(); throw; }
     }
     private static void Unique(JsonElement node)
     {

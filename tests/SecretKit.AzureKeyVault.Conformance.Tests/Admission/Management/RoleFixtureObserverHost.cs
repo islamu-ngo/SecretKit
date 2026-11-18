@@ -145,8 +145,10 @@ internal sealed class RoleFixtureObserverHost : IAsyncDisposable
         Require(tls.NegotiatedApplicationProtocol == default ||
             tls.NegotiatedApplicationProtocol == SslApplicationProtocol.Http11);
         byte[] headers = new byte[maximumHeaderBytes];
-        byte[] body = new byte[maximumBodyBytes + 1];
-        byte[] responseBody = new byte[maximumBodyBytes + 1];
+        using var requestBuffer = new PooledPayloadBuffer(maximumBodyBytes + 1);
+        using var responseBuffer = new PooledPayloadBuffer(maximumBodyBytes + 1);
+        byte[] body = requestBuffer.Array;
+        byte[] responseBody = responseBuffer.Array;
         byte[]? responseHeaders = null;
         try
         {
@@ -182,7 +184,7 @@ internal sealed class RoleFixtureObserverHost : IAsyncDisposable
                 using Stream input = await response.Content.ReadAsStreamAsync(operation.Token).ConfigureAwait(false);
                 while (true)
                 {
-                    int read = await input.ReadAsync(responseBody.AsMemory(responseLength), operation.Token).ConfigureAwait(false);
+                    int read = await input.ReadAsync(responseBuffer.Memory[responseLength..], operation.Token).ConfigureAwait(false);
                     if (read == 0) break;
                     responseLength += read;
                     Require(responseLength <= maximumBodyBytes);
@@ -198,8 +200,6 @@ internal sealed class RoleFixtureObserverHost : IAsyncDisposable
         finally
         {
             CryptographicOperations.ZeroMemory(headers);
-            CryptographicOperations.ZeroMemory(body);
-            CryptographicOperations.ZeroMemory(responseBody);
             if (responseHeaders is not null) CryptographicOperations.ZeroMemory(responseHeaders);
         }
     }

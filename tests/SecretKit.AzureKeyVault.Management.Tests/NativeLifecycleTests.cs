@@ -448,8 +448,8 @@ public sealed class NativeLifecycleTests
     [Test]
     public async Task AvailabilityInventoryCoversEveryAdmittedManagementFamily()
     {
-        await Assert.That(OperationSupport.Inventory.Count).IsEqualTo(34);
-        await Assert.That(OperationSupport.Inventory.Select(o => o.Operation).Distinct().Count()).IsEqualTo(34);
+        await Assert.That(OperationSupport.Inventory.Count).IsEqualTo(35);
+        await Assert.That(OperationSupport.Inventory.Select(o => o.Operation).Distinct().Count()).IsEqualTo(35);
         await Assert.That(OperationSupport.Inventory.Count(o => o.Support == ManagementSupport.ProjectionNotImplemented))
             .IsEqualTo(0);
         await Assert.That(OperationSupport.Inventory.All(o => !o.LiveVerified && !o.PermissionChecked)).IsTrue();

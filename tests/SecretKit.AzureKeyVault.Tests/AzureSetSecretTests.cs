@@ -193,12 +193,19 @@ public sealed class AzureSetSecretTests
         using var oversized = SecretMaterial.FromText(new string('x', 25 * 1024 + 1));
         var tooLarge = await client.SetSecretAsync(new AzureSetSecretRequest(target, oversized),
             client.CreateReceipt(target));
+        // 12,801 two-byte characters fit a character budget but exceed the 25 KiB UTF-8 byte budget.
+        using var multibyte = SecretMaterial.FromText(new string('\u00e9', 12801));
+        var tooManyBytes = await client.SetSecretAsync(new AzureSetSecretRequest(target, multibyte),
+            client.CreateReceipt(target));
+        using var unpaired = SecretMaterial.FromText("canary\ud800");
+        var invalidText = await client.SetSecretAsync(new AzureSetSecretRequest(target, unpaired),
+            client.CreateReceipt(target));
         using var disposed = material.Copy();
         disposed.Dispose();
         var unavailableMaterial = await client.SetSecretAsync(new AzureSetSecretRequest(target, disposed),
             client.CreateReceipt(target));
 
-        foreach (var outcome in new[] { foreignOutcome, wrongReceipt, tooLarge, unavailableMaterial })
+        foreach (var outcome in new[] { foreignOutcome, wrongReceipt, tooLarge, tooManyBytes, invalidText, unavailableMaterial })
         {
             await Assert.That(outcome.Status).IsEqualTo(SecretStatus.Invalid);
             await Assert.That(JsonSerializer.Serialize(outcome).Contains("canary")).IsFalse();

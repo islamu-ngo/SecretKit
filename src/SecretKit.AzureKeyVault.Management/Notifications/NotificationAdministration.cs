@@ -186,11 +186,21 @@ public sealed partial class VaultAdministration
             !string.Equals(data.Name, scope.SubscriptionName, StringComparison.OrdinalIgnoreCase) ||
             !string.Equals(data.Topic, scope.Vault.ResourceId, StringComparison.OrdinalIgnoreCase))
             throw new ControlledTransport.BoundaryException();
+        NotificationWebhookAuthentication? authentication = null;
+        if (data.Destination is WebHookEventSubscriptionDestination webhook)
+        {
+            var tenant = webhook.AzureActiveDirectoryTenantId;
+            var audience = webhook.UriOrAzureActiveDirectoryApplicationId;
+            if (tenant.HasValue != (audience is not null))
+                throw new ControlledTransport.BoundaryException();
+            if (tenant is { } tenantId && audience is not null)
+                authentication = new NotificationWebhookAuthentication(tenantId, audience);
+        }
         return new(scope, Provisioning(data.ProvisioningState?.ToString()), data.Destination switch
         {
             WebHookEventSubscriptionDestination => NotificationDestinationKind.WebHook,
             null => NotificationDestinationKind.Unknown,
             _ => NotificationDestinationKind.Other
-        });
+        }, authentication);
     }
 }

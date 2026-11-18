@@ -95,7 +95,7 @@ internal sealed class NotificationRuntimeTriggerCapture :
         internal readonly string MaterialSha256 = Convert.ToHexString(SHA256.HashData(expected));
         internal readonly DateTimeOffset ArmedAt = armedAt;
         internal readonly long Timestamp = timestamp;
-        internal readonly List<byte[]> Buffers = [];
+        internal readonly List<PooledPayloadBuffer> Buffers = [];
         internal readonly List<IDisposable> Storage = [];
         internal AzureKeyVaultClient? Client;
         internal AzureSetSecretRequest? Request;
@@ -123,7 +123,7 @@ internal sealed class NotificationRuntimeTriggerCapture :
             Storage.Clear();
             CryptographicOperations.ZeroMemory(Expected);
             CryptographicOperations.ZeroMemory(Body);
-            foreach (var bytes in Buffers) CryptographicOperations.ZeroMemory(bytes);
+            foreach (var buffer in Buffers) buffer.Dispose();
             Buffers.Clear();
             Client = null;
             Request = null;
@@ -434,15 +434,16 @@ internal sealed class NotificationRuntimeTriggerCapture :
         var response = message.Response;
         Require(response.Status is 200 or 403);
         long? declared = ResponseHeaders(response, out string requestId);
-        byte[] bytes = new byte[limits.MaximumResponseBytes + 1];
-        call.Buffers.Add(bytes);
+        var buffer = new PooledPayloadBuffer(limits.MaximumResponseBytes + 1);
+        call.Buffers.Add(buffer);
+        byte[] bytes = buffer.Array;
         Stream input = response.ContentStream ?? throw Failure();
         call.Storage.Add(input);
         int count = 0;
         while (true)
         {
             message.CancellationToken.ThrowIfCancellationRequested();
-            int read = await input.ReadAsync(bytes.AsMemory(count), message.CancellationToken).ConfigureAwait(false);
+            int read = await input.ReadAsync(buffer.Memory[count..], message.CancellationToken).ConfigureAwait(false);
             if (read == 0) break;
             count += read;
             Require(count <= limits.MaximumResponseBytes);
@@ -583,7 +584,7 @@ internal sealed class NotificationRuntimeTriggerCapture :
 
     private JsonDocument Parse(ReadOnlyMemory<byte> bytes)
     {
-        var document = JsonDocument.Parse(bytes, new JsonDocumentOptions { MaxDepth = limits.MaximumDepth });
+        var document = JsonDocument.Parse(bytes, new JsonDocumentOptions { AllowDuplicateProperties = false, MaxDepth = limits.MaximumDepth });
         try
         {
             int nodes = 0;
@@ -617,14 +618,11 @@ internal sealed class NotificationRuntimeTriggerCapture :
 
     private byte[] Export(SecretMaterial material)
     {
-        char[] characters = material.ExportCharacters();
-        try
+        return material.UseUtf8(bytes =>
         {
-            var encoding = new UTF8Encoding(false, true);
-            Require(encoding.GetByteCount(characters) <= limits.MaximumRequestBytes);
-            return encoding.GetBytes(characters);
-        }
-        finally { Array.Clear(characters); }
+            Require(bytes.Length <= limits.MaximumRequestBytes);
+            return bytes.ToArray();
+        });
     }
 
     private static void ValidateBinding(Binding b)

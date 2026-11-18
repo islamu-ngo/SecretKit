@@ -189,7 +189,7 @@ internal sealed class AuditIngestionCollector
     private sealed class QueryTransport(HttpPipelineTransport inner, string path, Limits limits) : HttpPipelineTransport, IDisposable
     {
         private int sends;
-        private byte[]? storage;
+        private PooledPayloadBuffer? payloadBuffer;
         private MemoryStream? buffer;
         private Azure.Response? response;
         internal int? Status { get; private set; }
@@ -226,14 +226,15 @@ internal sealed class AuditIngestionCollector
                         throw new InvalidOperationException("audit-collector-length");
                     declared = length;
                 }
-                storage = new byte[limits.MaximumResponseBytes + 1];
+                payloadBuffer = new PooledPayloadBuffer(limits.MaximumResponseBytes + 1);
+                byte[] storage = payloadBuffer.Array;
                 int count = 0;
                 if (message.Response.ContentStream is { } source)
                 {
                     using (source)
                     {
                         int read;
-                        while ((read = await source.ReadAsync(storage.AsMemory(count), message.CancellationToken).ConfigureAwait(false)) != 0)
+                        while ((read = await source.ReadAsync(payloadBuffer.Memory[count..], message.CancellationToken).ConfigureAwait(false)) != 0)
                         {
                             count += read;
                             Require(count <= limits.MaximumResponseBytes);
@@ -241,7 +242,7 @@ internal sealed class AuditIngestionCollector
                     }
                 }
                 Require(declared is null || declared == count);
-                using var document = JsonDocument.Parse(storage.AsMemory(0, count), new JsonDocumentOptions { MaxDepth = 32 });
+                using var document = JsonDocument.Parse(storage.AsMemory(0, count), new JsonDocumentOptions { AllowDuplicateProperties = false, MaxDepth = 32 });
                 Unique(document.RootElement);
                 var tables = document.RootElement.GetProperty("tables");
                 Require(tables.ValueKind == JsonValueKind.Array && tables.GetArrayLength() == 1);
@@ -273,9 +274,12 @@ internal sealed class AuditIngestionCollector
         }
         public void Dispose()
         {
-            buffer?.Dispose();
-            if (storage is not null) CryptographicOperations.ZeroMemory(storage);
-            response?.Dispose();
+            try { buffer?.Dispose(); }
+            finally
+            {
+                try { response?.Dispose(); }
+                finally { payloadBuffer?.Dispose(); }
+            }
         }
     }
 

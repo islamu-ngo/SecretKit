@@ -97,7 +97,7 @@ internal sealed class VaultReadFixtureObserverService : E.ReadSelectedInvocation
         internal M.Measurement? LinkBefore, LinkAfter;
         internal Endpoint.Measurement? EndpointBefore, EndpointAfter;
         internal N.Measurement? NetworkBefore, NetworkAfter;
-        internal readonly List<byte[]> ObservationBuffers = [];
+        internal readonly List<PooledPayloadBuffer> ObservationBuffers = [];
         internal readonly List<IDisposable> ObservationStorage = [];
         internal Guid Subscription;
         internal DateTimeOffset ArmedAt, BaselineAt;
@@ -141,7 +141,7 @@ internal sealed class VaultReadFixtureObserverService : E.ReadSelectedInvocation
         internal bool Attempted, ValidReply, Terminated, Finalized;
         internal int? NativeStatus;
         internal string? NativeRequestId;
-        internal readonly List<byte[]> Buffers = [];
+        internal readonly List<PooledPayloadBuffer> Buffers = [];
         internal readonly List<IDisposable> Storage = [];
         internal void Clear()
         {
@@ -150,7 +150,7 @@ internal sealed class VaultReadFixtureObserverService : E.ReadSelectedInvocation
                 try { item.Dispose(); }
                 catch (Exception) { failed = true; }
             Storage.Clear();
-            foreach (var bytes in Buffers) CryptographicOperations.ZeroMemory(bytes);
+            foreach (var bytes in Buffers) bytes.Dispose();
             Buffers.Clear();
             Require(!failed);
         }
@@ -571,7 +571,7 @@ internal sealed class VaultReadFixtureObserverService : E.ReadSelectedInvocation
                 try { item.Dispose(); }
                 catch (Exception) { disposalFailed = true; }
             session.ObservationStorage.Clear();
-            foreach (var bytes in session.ObservationBuffers) CryptographicOperations.ZeroMemory(bytes);
+            foreach (var bytes in session.ObservationBuffers) bytes.Dispose();
             session.ObservationBuffers.Clear();
             try { Require(!disposalFailed); }
             finally
@@ -1713,8 +1713,9 @@ internal sealed class VaultReadFixtureObserverService : E.ReadSelectedInvocation
         long? declared = ValidateResponseHeaders(response);
         Require(response.Headers.TryGetValue("x-ms-request-id", out var nativeRequestId));
         call.NativeRequestId = nativeRequestId;
-        byte[] bytes = new byte[limits.MaximumBodyBytes + 1];
-        call.Buffers.Add(bytes);
+        var payloadBuffer = new PooledPayloadBuffer(limits.MaximumBodyBytes + 1);
+        byte[] bytes = payloadBuffer.Array;
+        call.Buffers.Add(payloadBuffer);
         int count = 0;
         if (response.ContentStream is { } input)
         {
@@ -1722,7 +1723,7 @@ internal sealed class VaultReadFixtureObserverService : E.ReadSelectedInvocation
             while (true)
             {
                 message.CancellationToken.ThrowIfCancellationRequested();
-                int read = await input.ReadAsync(bytes.AsMemory(count), message.CancellationToken).ConfigureAwait(false);
+                int read = await input.ReadAsync(payloadBuffer.Memory[count..], message.CancellationToken).ConfigureAwait(false);
                 if (read == 0) break;
                 count += read;
                 Require(count <= limits.MaximumBodyBytes);
@@ -1734,7 +1735,7 @@ internal sealed class VaultReadFixtureObserverService : E.ReadSelectedInvocation
         if (IsVaultGroupList(call.Session.Selector) || IsVaultSubscriptionList(call.Session.Selector) ||
             IsDeletedList(call.Session.Selector))
             Require(count <= collectorLimits.MaximumResponseBytes);
-        using (var document = JsonDocument.Parse(bytes.AsMemory(0, count), new JsonDocumentOptions { MaxDepth = 32 }))
+        using (var document = JsonDocument.Parse(bytes.AsMemory(0, count), new JsonDocumentOptions { AllowDuplicateProperties = false, MaxDepth = 32 }))
         {
             Unique(document.RootElement);
             if (response.Status == 200) ValidateSuccess(call, document.RootElement);
@@ -1822,8 +1823,9 @@ internal sealed class VaultReadFixtureObserverService : E.ReadSelectedInvocation
         var response = message.Response;
         long? declared = ValidateResponseHeaders(response);
         Require(response.Headers.TryGetValue("x-ms-request-id", out var requestId));
-        byte[] bytes = new byte[limits.MaximumBodyBytes + 1];
-        session.ObservationBuffers.Add(bytes);
+        var payloadBuffer = new PooledPayloadBuffer(limits.MaximumBodyBytes + 1);
+        byte[] bytes = payloadBuffer.Array;
+        session.ObservationBuffers.Add(payloadBuffer);
         int count = 0;
         if (response.ContentStream is { } input)
         {
@@ -1831,7 +1833,7 @@ internal sealed class VaultReadFixtureObserverService : E.ReadSelectedInvocation
             while (true)
             {
                 message.CancellationToken.ThrowIfCancellationRequested();
-                int read = await input.ReadAsync(bytes.AsMemory(count), message.CancellationToken).ConfigureAwait(false);
+                int read = await input.ReadAsync(payloadBuffer.Memory[count..], message.CancellationToken).ConfigureAwait(false);
                 if (read == 0) break;
                 count += read;
                 Require(count <= limits.MaximumBodyBytes);
@@ -1839,7 +1841,7 @@ internal sealed class VaultReadFixtureObserverService : E.ReadSelectedInvocation
         }
         Require(count > 0 && count <= limits.MaximumBodyBytes && (declared is null || declared == count));
         if (link) Require(count <= privateConnectionSource!.InventoryLimits.MaximumResponseBytes);
-        using (var document = JsonDocument.Parse(bytes.AsMemory(0, count), new JsonDocumentOptions { MaxDepth = 32 }))
+        using (var document = JsonDocument.Parse(bytes.AsMemory(0, count), new JsonDocumentOptions { AllowDuplicateProperties = false, MaxDepth = 32 }))
         {
             if (link) session.RawLink = PrivateLinkCollection(session, document.RootElement);
             else session.RawConnection = IsPrivateList(session.Selector)
@@ -2120,7 +2122,7 @@ internal sealed class VaultReadFixtureObserverService : E.ReadSelectedInvocation
                 IsDeleted(loan.Plan.Selector) ? loan.Plan.DeletedId : loan.Plan.VaultId;
             var content = message.Request.Content;
             var headers = message.Request.Headers.Select(h => (h.Name, h.Value)).ToArray();
-            List<byte[]> buffers;
+            List<PooledPayloadBuffer> buffers;
             List<IDisposable> storage;
             Session current;
             lock (service.gate)
@@ -2191,8 +2193,9 @@ internal sealed class VaultReadFixtureObserverService : E.ReadSelectedInvocation
         var response = message.Response;
         long? declared = ValidateResponseHeaders(response);
         Require(response.Headers.TryGetValue("x-ms-request-id", out var requestId));
-        byte[] bytes = new byte[limits.MaximumBodyBytes + 1];
-        session.ObservationBuffers.Add(bytes);
+        var payloadBuffer = new PooledPayloadBuffer(limits.MaximumBodyBytes + 1);
+        byte[] bytes = payloadBuffer.Array;
+        session.ObservationBuffers.Add(payloadBuffer);
         int count = 0;
         if (response.ContentStream is { } input)
         {
@@ -2200,14 +2203,14 @@ internal sealed class VaultReadFixtureObserverService : E.ReadSelectedInvocation
             while (true)
             {
                 message.CancellationToken.ThrowIfCancellationRequested();
-                int read = await input.ReadAsync(bytes.AsMemory(count), message.CancellationToken).ConfigureAwait(false);
+                int read = await input.ReadAsync(payloadBuffer.Memory[count..], message.CancellationToken).ConfigureAwait(false);
                 if (read == 0) break;
                 count += read;
                 Require(count <= limits.MaximumBodyBytes && count <= collectorLimits.MaximumResponseBytes);
             }
         }
         Require(count > 0 && count <= collectorLimits.MaximumResponseBytes && (declared is null || declared == count));
-        using (var document = JsonDocument.Parse(bytes.AsMemory(0, count), new JsonDocumentOptions { MaxDepth = 32 }))
+        using (var document = JsonDocument.Parse(bytes.AsMemory(0, count), new JsonDocumentOptions { AllowDuplicateProperties = false, MaxDepth = 32 }))
         {
             if (IsDeletedList(session.Selector))
                 session.RawDeletedCollection = DeletedVaultCollection(session, document.RootElement);
@@ -2224,14 +2227,15 @@ internal sealed class VaultReadFixtureObserverService : E.ReadSelectedInvocation
         plan.VaultId[..plan.VaultId.IndexOf("/resourceGroups/", StringComparison.Ordinal)] +
         "/providers/Microsoft.KeyVault/checkNameAvailability";
 
-    private async Task<ReadOnlyMemory<byte>> SnapshotNameRequest(HttpMessage message, P.Plan plan, List<byte[]> buffers)
+    private async Task<ReadOnlyMemory<byte>> SnapshotNameRequest(HttpMessage message, P.Plan plan, List<PooledPayloadBuffer> buffers)
     {
         Require(IsName(plan.Selector));
         ValidateRequest(message, NamePath(plan), name: true);
         var content = message.Request.Content!;
-        byte[] bytes = new byte[limits.MaximumRequestBytes];
-        buffers.Add(bytes);
-        using var sink = new MemoryStream(bytes, 0, bytes.Length, writable: true, publiclyVisible: true);
+        var payloadBuffer = new PooledPayloadBuffer(limits.MaximumRequestBytes);
+        byte[] bytes = payloadBuffer.Array;
+        buffers.Add(payloadBuffer);
+        using var sink = new MemoryStream(bytes, 0, limits.MaximumRequestBytes, writable: true, publiclyVisible: true);
         await content.WriteToAsync(sink, message.CancellationToken).ConfigureAwait(false);
         int count = checked((int)sink.Position);
         Require(count > 0 && count <= limits.MaximumRequestBytes &&
@@ -2239,7 +2243,7 @@ internal sealed class VaultReadFixtureObserverService : E.ReadSelectedInvocation
         if (message.Request.Headers.TryGetValue("Content-Length", out var length))
             Require(int.TryParse(length, NumberStyles.None, CultureInfo.InvariantCulture, out int declared) &&
                 declared == count);
-        using var document = JsonDocument.Parse(bytes.AsMemory(0, count), new JsonDocumentOptions { MaxDepth = 32 });
+        using var document = JsonDocument.Parse(bytes.AsMemory(0, count), new JsonDocumentOptions { AllowDuplicateProperties = false, MaxDepth = 32 });
         var body = document.RootElement;
         Unique(body);
         Require(body.ValueKind == JsonValueKind.Object && body.EnumerateObject().Count() == 2 &&
@@ -2627,10 +2631,9 @@ internal sealed class VaultReadFixtureObserverService : E.ReadSelectedInvocation
     {
         if (request.Headers.Authorization is not { Scheme: "Bearer", Parameter: { Length: > 0 and <= 8192 } supplied })
             return false;
-        char[] expected = capability.ExportCharacters();
-        byte[] left = Encoding.UTF8.GetBytes(expected), right = Encoding.UTF8.GetBytes(supplied);
-        try { return CryptographicOperations.FixedTimeEquals(SHA256.HashData(left), SHA256.HashData(right)); }
-        finally { Array.Clear(expected); CryptographicOperations.ZeroMemory(left); CryptographicOperations.ZeroMemory(right); }
+        byte[] right = Encoding.UTF8.GetBytes(supplied);
+        try { return capability.UseUtf8(expected => CryptographicOperations.FixedTimeEquals(SHA256.HashData(expected), SHA256.HashData(right))); }
+        finally { CryptographicOperations.ZeroMemory(right); }
     }
     private async Task<JsonDocument> ReadBody(HttpRequestMessage request, CancellationToken token)
     {
@@ -2638,20 +2641,14 @@ internal sealed class VaultReadFixtureObserverService : E.ReadSelectedInvocation
             request.Content.Headers.ContentLength <= limits.MaximumRequestBytes &&
             request.Content.Headers.ContentType?.MediaType == "application/json" &&
             request.Content.Headers.ContentEncoding.Count == 0);
-        byte[] bytes = new byte[limits.MaximumRequestBytes + 1];
-        try
-        {
-            using var stream = await request.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
-            int length = 0, count;
-            while (length < bytes.Length && (count = await stream.ReadAsync(bytes.AsMemory(length), token).ConfigureAwait(false)) != 0)
-                length += count;
-            Require(length <= limits.MaximumRequestBytes && length == request.Content.Headers.ContentLength);
-            var reader = new Utf8JsonReader(bytes.AsSpan(0, length), new JsonReaderOptions { MaxDepth = 32 });
-            var document = JsonDocument.ParseValue(ref reader);
-            try { Require(!reader.Read()); Unique(document.RootElement); return document; }
-            catch { document.Dispose(); throw; }
-        }
-        finally { CryptographicOperations.ZeroMemory(bytes); }
+        using var buffer = new PooledPayloadBuffer(limits.MaximumRequestBytes + 1);
+        using var stream = await request.Content!.ReadAsStreamAsync(token).ConfigureAwait(false);
+        int length = await buffer.ReadAsync(stream, token).ConfigureAwait(false);
+        Require(length <= limits.MaximumRequestBytes && length == request.Content.Headers.ContentLength);
+        using var payload = new MemoryStream(buffer.Array, 0, length, writable: false);
+        var document = JsonDocument.Parse(payload, new JsonDocumentOptions { AllowDuplicateProperties = false, MaxDepth = 32 });
+        try { Unique(document.RootElement); return document; }
+        catch { document.Dispose(); throw; }
     }
     private static void Unique(JsonElement node)
     {

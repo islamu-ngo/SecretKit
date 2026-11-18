@@ -150,7 +150,7 @@ internal sealed class PrivateEndpointResourceCollector
         int? status = null;
         string? requestId = null, nativeState = null, manualState = null;
         bool matches = false, matchesConfiguration = false;
-        byte[]? storage = null;
+        PooledPayloadBuffer? payloadBuffer = null;
         CancellationTokenSource? deadline = null, linked = null;
         try
         {
@@ -164,7 +164,8 @@ internal sealed class PrivateEndpointResourceCollector
             linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
             budget.Check();
             linked.Token.ThrowIfCancellationRequested();
-            storage = new byte[limits.MaximumResponseBytes + 1];
+            payloadBuffer = new PooledPayloadBuffer(limits.MaximumResponseBytes + 1);
+            byte[] storage = payloadBuffer.Array;
             string resourceId = window.Kind == ReadKind.NicAbsence ? binding.NicId : binding.EndpointId;
             var uri = new Uri(Origin + resourceId + "?api-version=" + Revision);
             var options = new ArmClientOptions { Transport = new ReadTransport(authority.Transport, uri, budget) };
@@ -193,7 +194,7 @@ internal sealed class PrivateEndpointResourceCollector
                 {
                     budget.Check();
                     linked.Token.ThrowIfCancellationRequested();
-                    int read = await input.ReadAsync(storage.AsMemory(count), linked.Token).ConfigureAwait(false);
+                    int read = await input.ReadAsync(payloadBuffer.Memory[count..], linked.Token).ConfigureAwait(false);
                     budget.Check();
                     linked.Token.ThrowIfCancellationRequested();
                     if (read == 0) break;
@@ -204,7 +205,7 @@ internal sealed class PrivateEndpointResourceCollector
             if (count > limits.MaximumRowBytes) throw new Boundary(Failure.Budget);
             Shape(storage.AsSpan(0, count), status == 200);
             using var document = JsonDocument.Parse(storage.AsMemory(0, count),
-                new JsonDocumentOptions { MaxDepth = limits.MaximumDepth });
+                new JsonDocumentOptions { AllowDuplicateProperties = false, MaxDepth = limits.MaximumDepth });
             var root = document.RootElement;
             Require(root.ValueKind == JsonValueKind.Object);
             if (status != 200)
@@ -262,7 +263,7 @@ internal sealed class PrivateEndpointResourceCollector
                 if (nativeBytes.Length > limits.MaximumRowBytes) throw new Boundary(Failure.Budget);
                 Shape(nativeBytes.Span, true);
                 using var nativeDocument = JsonDocument.Parse(nativeBytes,
-                    new JsonDocumentOptions { MaxDepth = limits.MaximumDepth });
+                    new JsonDocumentOptions { AllowDuplicateProperties = false, MaxDepth = limits.MaximumDepth });
                 Require(JsonElement.DeepEquals(properties.Value, nativeDocument.RootElement));
             }
             budget.Check();
@@ -283,7 +284,7 @@ internal sealed class PrivateEndpointResourceCollector
             // Direct awaits above drain ACTUAL credential, send and body tasks,
             // including uncooperative ones. Native reading is synchronous.
             // Native/JSON immutable strings cannot be erased by clearing storage.
-            if (storage is not null) CryptographicOperations.ZeroMemory(storage);
+            payloadBuffer?.Dispose();
             linked?.Dispose();
             deadline?.Dispose();
         }

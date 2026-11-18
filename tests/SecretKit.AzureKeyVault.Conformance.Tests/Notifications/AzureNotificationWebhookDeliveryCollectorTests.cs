@@ -35,10 +35,14 @@ public sealed partial class AzureVaultFixtureProvisionerTests
                 ["Version"] = version
             }
         });
+        string json = body.ToJsonString();
+        if (fault == "duplicate-property")
+            json = json.Replace("\"id\":\"native-event-id\"",
+                "\"id\":\"native-event-id\",\"\\u0069d\":\"substituted-event-id\"", StringComparison.Ordinal);
         var request = new HttpRequestMessage(HttpMethod.Post,
             fault == "endpoint" ? new Uri(WebhookEndpoint.AbsoluteUri + "-foreign") : WebhookEndpoint)
         {
-            Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json")
+            Content = new StringContent(json, Encoding.UTF8, "application/json")
         };
         request.Headers.Add("aeg-event-type", "Notification");
         request.Headers.Add("aeg-subscription-name", fault == "subscription" ? "foreign" : "owned-notification");
@@ -96,6 +100,7 @@ public sealed partial class AzureVaultFixtureProvisionerTests
     [Arguments("endpoint", HttpStatusCode.Unauthorized)]
     [Arguments("subscription", HttpStatusCode.BadRequest)]
     [Arguments("topic", HttpStatusCode.BadRequest)]
+    [Arguments("duplicate-property", HttpStatusCode.BadRequest)]
     [Arguments("version", HttpStatusCode.OK)]
     public async Task WebhookNeverTurnsForeignOrOldEventsIntoPositiveEvidence(string fault, HttpStatusCode status)
     {

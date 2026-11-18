@@ -107,8 +107,8 @@ internal sealed class NotificationDeliveryAuthentication
             headerBytes = Decode(parts[0]);
             payloadBytes = Decode(parts[1]);
             signatureBytes = Decode(parts[2]);
-            using var headerDocument = JsonDocument.Parse(headerBytes, new JsonDocumentOptions { MaxDepth = 4 });
-            using var payloadDocument = JsonDocument.Parse(payloadBytes, new JsonDocumentOptions { MaxDepth = 8 });
+            using var headerDocument = JsonDocument.Parse(headerBytes, new JsonDocumentOptions { AllowDuplicateProperties = false, MaxDepth = 4 });
+            using var payloadDocument = JsonDocument.Parse(payloadBytes, new JsonDocumentOptions { AllowDuplicateProperties = false, MaxDepth = 8 });
             var header = headerDocument.RootElement;
             var payload = payloadDocument.RootElement;
             int nodes = 0;

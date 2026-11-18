@@ -160,7 +160,7 @@ public sealed class BoundaryBudgetTests
         await Assert.That(result.Status).IsEqualTo(SecretStatus.Unavailable);
     }
 
-    private sealed class ManualTime : TimeProvider
+    internal sealed class ManualTime : TimeProvider
     {
         private readonly List<Timer> _timers = [];
         public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)

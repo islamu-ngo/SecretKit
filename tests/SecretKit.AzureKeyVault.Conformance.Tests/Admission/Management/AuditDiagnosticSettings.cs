@@ -373,7 +373,7 @@ internal sealed class AuditDiagnosticSettings
     }
 
     private static JsonDocument Parse(Azure.Response response) =>
-        JsonDocument.Parse(response.ContentStream ?? throw Failure(), new JsonDocumentOptions { MaxDepth = 32 });
+        JsonDocument.Parse(response.ContentStream ?? throw Failure(), new JsonDocumentOptions { AllowDuplicateProperties = false, MaxDepth = 32 });
     private static bool AsyncHeaders(Azure.Response response) =>
         new[] { "Azure-AsyncOperation", "Operation-Location", "Location" }
             .Any(header => response.Headers.TryGetValue(header, out _));

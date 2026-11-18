@@ -661,7 +661,7 @@ internal sealed class ManagementOperationResourceCollector
             Require(requestId == headerRequestId && (length is null || length == read.Body.Bytes.Length) &&
                 read.Body.Bytes.Length <= limits.MaximumRowBytes);
             Shape(read.Body.Bytes.Span);
-            using var json = JsonDocument.Parse(read.Body.Bytes, new JsonDocumentOptions { MaxDepth = limits.MaximumDepth });
+            using var json = JsonDocument.Parse(read.Body.Bytes, new JsonDocumentOptions { AllowDuplicateProperties = false, MaxDepth = limits.MaximumDepth });
             bool activePresent = selected.Phase is StatusDeniedVaultRecoverReadPhase.ReadyActive or
                 StatusDeniedVaultRecoverReadPhase.SelectedActive or StatusDeniedVaultRecoverReadPhase.CleanupActiveRecovered;
             bool deletedPresent = selected.Phase is StatusDeniedVaultRecoverReadPhase.BaselineDeleted or
@@ -964,7 +964,7 @@ internal sealed class ManagementOperationResourceCollector
             Require(requestId == headerRequestId && (length is null || length == read.Body.Bytes.Length) &&
                 read.Body.Bytes.Length <= limits.MaximumRowBytes);
             Shape(read.Body.Bytes.Span);
-            using var json = JsonDocument.Parse(read.Body.Bytes, new JsonDocumentOptions { MaxDepth = limits.MaximumDepth });
+            using var json = JsonDocument.Parse(read.Body.Bytes, new JsonDocumentOptions { AllowDuplicateProperties = false, MaxDepth = limits.MaximumDepth });
             bool present = selected.Phase is StatusDeniedVaultUpdateReadPhase.ReadyActive or
                 StatusDeniedVaultUpdateReadPhase.BaselineActive or StatusDeniedVaultUpdateReadPhase.SelectedActive or
                 StatusDeniedVaultUpdateReadPhase.CleanupActive;
@@ -1648,7 +1648,7 @@ internal sealed class ManagementOperationResourceCollector
             Require(requestId == headerRequestId && (length is null || length == read.Body.Bytes.Length) &&
                 read.Body.Bytes.Length <= limits.MaximumRowBytes);
             Shape(read.Body.Bytes.Span);
-            using var json = JsonDocument.Parse(read.Body.Bytes, new JsonDocumentOptions { MaxDepth = limits.MaximumDepth });
+            using var json = JsonDocument.Parse(read.Body.Bytes, new JsonDocumentOptions { AllowDuplicateProperties = false, MaxDepth = limits.MaximumDepth });
             bool present = run.Present;
             Require(status == (present ? 200 : 404));
             if (!present)
@@ -1955,7 +1955,7 @@ internal sealed class ManagementOperationResourceCollector
             _ = ResponseHeaders(read.Body.Response, out _);
             Require(read.Body.Bytes.Length <= limits.MaximumRowBytes);
             Shape(read.Body.Bytes.Span);
-            using var json = JsonDocument.Parse(read.Body.Bytes, new JsonDocumentOptions { MaxDepth = limits.MaximumDepth });
+            using var json = JsonDocument.Parse(read.Body.Bytes, new JsonDocumentOptions { AllowDuplicateProperties = false, MaxDepth = limits.MaximumDepth });
             bool expectAbsent = selected.Phase is StatusSucceededDeleteVaultReadPhase.BaselineDeleted or
                 StatusSucceededDeleteVaultReadPhase.SelectedActive;
             Require(status == (expectAbsent ? 404 : 200));
@@ -2180,7 +2180,7 @@ internal sealed class ManagementOperationResourceCollector
             _ = ResponseHeaders(read.Body.Response, out _);
             Require(read.Body.Bytes.Length <= limits.MaximumRowBytes);
             Shape(read.Body.Bytes.Span);
-            using var json = JsonDocument.Parse(read.Body.Bytes, new JsonDocumentOptions { MaxDepth = limits.MaximumDepth });
+            using var json = JsonDocument.Parse(read.Body.Bytes, new JsonDocumentOptions { AllowDuplicateProperties = false, MaxDepth = limits.MaximumDepth });
             bool expectAbsent = selected.Phase is StatusSucceededDeleteVaultIndependentReadPhase.BaselineDeleted or
                 StatusSucceededDeleteVaultIndependentReadPhase.SelectedActive;
             Require(status == (expectAbsent ? 404 : 200));
@@ -2405,7 +2405,7 @@ internal sealed class ManagementOperationResourceCollector
             _ = ResponseHeaders(read.Body.Response, out _);
             Require(read.Body.Bytes.Length <= limits.MaximumRowBytes);
             Shape(read.Body.Bytes.Span);
-            using var json = JsonDocument.Parse(read.Body.Bytes, new JsonDocumentOptions { MaxDepth = limits.MaximumDepth });
+            using var json = JsonDocument.Parse(read.Body.Bytes, new JsonDocumentOptions { AllowDuplicateProperties = false, MaxDepth = limits.MaximumDepth });
             bool expectAbsent = selected.Phase is StatusSucceededDeleteVaultCancellationReadPhase.BaselineDeleted or
                 StatusSucceededDeleteVaultCancellationReadPhase.SelectedActive;
             Require(status == (expectAbsent ? 404 : 200));
@@ -2528,7 +2528,7 @@ internal sealed class ManagementOperationResourceCollector
             native.Properties.PublicNetworkAccess == (baseline.PublicNetworkAccess ? "Enabled" : "Disabled") &&
             native.Properties.AccessPolicies.Count == 0 &&
             Same(native.Properties.CreateMode?.ToString(), OptionalText(p, "createMode")));
-        using var serialized = JsonDocument.Parse(ModelReaderWriter.Write(native).ToMemory());
+        using var serialized = JsonDocument.Parse(ModelReaderWriter.Write(native).ToMemory(), new JsonDocumentOptions { AllowDuplicateProperties = false, MaxDepth = 32 });
         var model = Object(serialized.RootElement, "properties");
         Require(model.TryGetProperty("privateEndpointConnections", out var children) &&
             children.ValueKind == JsonValueKind.Array && children.GetArrayLength() == 0);
@@ -3203,7 +3203,7 @@ internal sealed class ManagementOperationResourceCollector
             _ = ResponseHeaders(read.Body.Response, out _);
             Require(read.Body.Bytes.Length <= limits.MaximumRowBytes);
             Shape(read.Body.Bytes.Span);
-            using var json = JsonDocument.Parse(read.Body.Bytes, new JsonDocumentOptions { MaxDepth = limits.MaximumDepth });
+            using var json = JsonDocument.Parse(read.Body.Bytes, new JsonDocumentOptions { AllowDuplicateProperties = false, MaxDepth = limits.MaximumDepth });
             if (status == 200)
             {
                 Require(native is not null && error is null && read.Parser.Owns(native.GetRawResponse()));
@@ -3484,7 +3484,8 @@ internal sealed class ManagementOperationResourceCollector
         using var deadline = new CancellationTokenSource(budget.Remaining, time);
         budget.Deadline = deadline;
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
-        byte[] storage = new byte[limits.MaximumResponseBytes + 1];
+        var payloadBuffer = new PooledPayloadBuffer(limits.MaximumResponseBytes + 1);
+        byte[] storage = payloadBuffer.Array;
         bool updateCancellation = VaultFixtureProvisioner.StatusVaultUpdateCancellationSelector(binding.Selector);
         try
         {
@@ -3516,7 +3517,7 @@ internal sealed class ManagementOperationResourceCollector
                 while (true)
                 {
                     budget.Check();
-                    int read = await input.ReadAsync(storage.AsMemory(count), linked.Token).ConfigureAwait(false);
+                    int read = await input.ReadAsync(payloadBuffer.Memory[count..], linked.Token).ConfigureAwait(false);
                     budget.Check();
                     linked.Token.ThrowIfCancellationRequested();
                     if (read == 0) break;
@@ -3533,7 +3534,7 @@ internal sealed class ManagementOperationResourceCollector
             Require(count > 0 && (length is null || length == count));
             if (count > limits.MaximumRowBytes) throw new Boundary(Failure.Budget);
             Shape(storage.AsSpan(0, count));
-            using var document = JsonDocument.Parse(storage.AsMemory(0, count), new JsonDocumentOptions { MaxDepth = limits.MaximumDepth });
+            using var document = JsonDocument.Parse(storage.AsMemory(0, count), new JsonDocumentOptions { AllowDuplicateProperties = false, MaxDepth = limits.MaximumDepth });
             var root = document.RootElement;
             Require(root.ValueKind == JsonValueKind.Object);
             if (status != 200)
@@ -3607,7 +3608,7 @@ internal sealed class ManagementOperationResourceCollector
                                 "Succeeded", recover: recoveryCancellation);
                             if (updateCancellation)
                             {
-                                using var serialized = JsonDocument.Parse(ModelReaderWriter.Write(native).ToMemory());
+                                using var serialized = JsonDocument.Parse(ModelReaderWriter.Write(native).ToMemory(), new JsonDocumentOptions { AllowDuplicateProperties = false, MaxDepth = 32 });
                                 Require(serialized.RootElement.GetProperty("properties")
                                     .GetProperty("privateEndpointConnections") is { ValueKind: JsonValueKind.Array } children &&
                                     children.GetArrayLength() == 0 && vault.CreateMode is null or "default");
@@ -3735,7 +3736,7 @@ internal sealed class ManagementOperationResourceCollector
             // Only after ACTUAL credential, send, body and native reader work.
             // No WaitAsync/cancellation callback detaches work or clears live
             // storage. Immutable native/JSON strings are ordinary managed strings.
-            CryptographicOperations.ZeroMemory(storage);
+            payloadBuffer.Dispose();
         }
 
         Measurement Finish(Failure failure, SecretStatus resourceStatus)

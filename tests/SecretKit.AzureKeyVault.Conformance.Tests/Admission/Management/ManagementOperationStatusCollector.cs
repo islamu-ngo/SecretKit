@@ -140,7 +140,8 @@ internal sealed class ManagementOperationStatusCollector
         using var deadline = new CancellationTokenSource(limits.Timeout -
             (elapsed > wallElapsed ? elapsed : wallElapsed), time);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
-        byte[] storage = new byte[limits.MaximumResponseBytes + 1];
+        var payloadBuffer = new PooledPayloadBuffer(limits.MaximumResponseBytes + 1);
+        byte[] storage = payloadBuffer.Array;
         try
         {
             var boundary = new ReadTransport(authority.Transport, window.Target);
@@ -191,7 +192,7 @@ internal sealed class ManagementOperationStatusCollector
             if (message.Response.ContentStream is { } input)
             {
                 int read;
-                while ((read = await input.ReadAsync(storage.AsMemory(count), linked.Token).ConfigureAwait(false)) != 0)
+                while ((read = await input.ReadAsync(payloadBuffer.Memory[count..], linked.Token).ConfigureAwait(false)) != 0)
                 {
                     count += read;
                     if (count > limits.MaximumResponseBytes) throw new Boundary(Failure.Budget);
@@ -203,7 +204,7 @@ internal sealed class ManagementOperationStatusCollector
             Require(count > 0);
             if (count > limits.MaximumRowBytes) throw new Boundary(Failure.Budget);
             Shape(storage.AsSpan(0, count), limits.MaximumRows);
-            using var document = JsonDocument.Parse(storage.AsMemory(0, count), new JsonDocumentOptions { MaxDepth = 16 });
+            using var document = JsonDocument.Parse(storage.AsMemory(0, count), new JsonDocumentOptions { AllowDuplicateProperties = false, MaxDepth = 16 });
             JsonElement root = document.RootElement;
             Require(root.ValueKind == JsonValueKind.Object && !root.TryGetProperty("nextLink", out _) &&
                 !root.TryGetProperty("value", out _) && !root.TryGetProperty("partial", out _) && !root.TryGetProperty("errors", out _));
@@ -239,7 +240,7 @@ internal sealed class ManagementOperationStatusCollector
         {
             // This is reached only after the actual pipeline and parser terminate.
             // No send-return or cancellation callback erases a still-borrowed buffer.
-            CryptographicOperations.ZeroMemory(storage);
+            payloadBuffer.Dispose();
         }
 
         Measurement Finish(Failure failure, NativeProvisioningState state)
@@ -298,8 +299,11 @@ internal sealed class ManagementOperationStatusCollector
         {
             Require(binding.Operation == ManagementMutation.DeleteNotification &&
                 binding.Resource is NotificationScope &&
-                binding.Selector is { Operation: "a.management.ManagementOperation.CheckStatusAsync",
-                    Variant: "operation.DeleteNotification", Case: "denied-authority" } &&
+                binding.Selector is
+                {
+                    Operation: "a.management.ManagementOperation.CheckStatusAsync",
+                    Variant: "operation.DeleteNotification", Case: "denied-authority"
+                } &&
                 !uri.OriginalString.Contains('%'));
             var notification = (NotificationScope)binding.Resource;
             var group = notification.Vault.ResourceGroup;
