@@ -111,6 +111,24 @@ public sealed class InfisicalRevisionTests
     }
 
     [Test]
+    [Arguments("environment", "source-environment", SecretStatus.Success)]
+    [Arguments("secretPath", "/source-folder", SecretStatus.Success)]
+    [Arguments("workspace", "foreign-project", SecretStatus.Invalid)]
+    [Arguments("type", "personal", SecretStatus.Invalid)]
+    public async Task ImportedReadsAcceptResolvedSourceButNotForeignProjectOrPersonalValue(
+        string field, string returned, SecretStatus expected)
+    {
+        var wire = new Wire();
+        wire.Fields[field] = returned;
+        await using InfisicalClient client = Client(wire);
+        var reference = new SecretReference(client.Authority, new InfisicalSecretAddress(
+            "project-canary", "environment-canary", "/folder-canary", "key-canary", includeImports: true));
+        SecretOutcome<SecretRead> result = await client.ReadAsync(reference);
+        if (result.IsSuccess) result.Value.Dispose();
+        await Assert.That(result.Status).IsEqualTo(expected);
+    }
+
+    [Test]
     public async Task CommonAndNativeReadsHaveOneAcquisitionAndSeparateMaterialOwners()
     {
         var wire = new Wire();

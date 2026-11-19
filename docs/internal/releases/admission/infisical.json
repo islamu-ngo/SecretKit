@@ -422,7 +422,7 @@
     },
     {
       "file": "src/SecretKit.Infisical/Secrets/InfisicalClient.cs",
-      "sha256": "5a9f761bdf727e87d5a3455dd60d616a1b3b168c415ce593a9b131d905927677"
+      "sha256": "b3d252ff1460ad179f7b9d618088a3fb902ae6d4899536e78ddb80ea9f3cfbb8"
     },
     {
       "file": "src/SecretKit.Infisical/Secrets/InfisicalInventory.cs",

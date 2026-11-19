@@ -192,7 +192,7 @@ public sealed partial class InfisicalClient : IInfisicalSecretReader, IAsyncDisp
             }
 
             SecretStatus provenance = ReadScope(secret, address.ProjectId, address.Environment,
-                address.Folder, qualifyRevision);
+                address.Folder, qualifyRevision, address.IncludeImports);
             if (provenance != SecretStatus.Success)
                 return SecretOutcome<AcquiredRead>.Failure(provenance);
 
@@ -402,8 +402,10 @@ public sealed partial class InfisicalClient : IInfisicalSecretReader, IAsyncDisp
             version.TryGetInt32(out int number) && number > 0
             ? number.ToString(CultureInfo.InvariantCulture) : null;
 
+    // An imported read is resolved by the server's import graph: the winning value may report its
+    // source environment and folder, but never another project or a personal override.
     private static SecretStatus ReadScope(JsonElement secret, string project, string environment,
-        string folder, bool required)
+        string folder, bool required, bool imported = false)
     {
         bool complete = true;
         foreach ((string field, string expected) in new[]
@@ -417,6 +419,7 @@ public sealed partial class InfisicalClient : IInfisicalSecretReader, IAsyncDisp
                 continue;
             }
             if (value.ValueKind != JsonValueKind.String) { complete = false; continue; }
+            if (imported && field is "environment" or "secretPath") continue;
             if (!string.Equals(value.GetString(), expected, StringComparison.Ordinal)) return SecretStatus.Invalid;
         }
         return complete ? SecretStatus.Success : SecretStatus.Unknown;
