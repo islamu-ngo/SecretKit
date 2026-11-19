@@ -13,7 +13,9 @@ internal static class InstalledInfisical
     internal static async Task RunAsync()
     {
         var origin = new Uri(Required("SECRETKIT_LIVE_ORIGIN"));
-        Require(origin.Scheme == "http" && origin.Host == "127.0.0.1" && origin.AbsolutePath == "/");
+        // HTTPS exercises the SDK's default secure transport; loopback HTTP needs the explicit development allowance.
+        bool loopback = origin.Scheme == "http" && origin.Host == "127.0.0.1";
+        Require((loopback || origin.Scheme == "https") && origin.AbsolutePath == "/");
         string project = Required("SECRETKIT_LIVE_PROJECT");
         string otherProject = Required("SECRETKIT_LIVE_OTHER_PROJECT");
         string expected = Required("SECRETKIT_LIVE_EXPECTED");
@@ -21,7 +23,7 @@ internal static class InstalledInfisical
         using var adminTokens = new Tokens(Required("SECRETKIT_LIVE_ADMIN_TOKEN"));
         using var runtimeTokens = new Tokens(Required("SECRETKIT_LIVE_RUNTIME_TOKEN"));
         using var deniedTokens = new Tokens(Required("SECRETKIT_LIVE_DENIED_TOKEN"));
-        var network = new InfisicalNetworkOptions { AllowLoopbackDevelopmentHttp = true };
+        var network = loopback ? new InfisicalNetworkOptions { AllowLoopbackDevelopmentHttp = true } : new InfisicalNetworkOptions();
         await using var admin = new InfisicalClient(origin, adminTokens, network);
         await using var runtime = new InfisicalClient(origin, runtimeTokens, network);
         await using var denied = new InfisicalClient(origin, deniedTokens, network);
