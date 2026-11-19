@@ -102,6 +102,11 @@ internal sealed class OrganizationGroupOwner
         return result.Value;
     }
 
+    private async ValueTask<bool> AbsentAsync<TRead, TItem>(SecretOutcome<TRead> exact,
+        Func<ManagementRequest<ManagementPage<TItem>>> inventory, AbsenceTarget<TItem> target, CancellationToken token)
+        where TRead : notnull where TItem : notnull =>
+        AbsenceWitness.Concealed(exact) && AbsenceWitness.Omits(await ExecuteAsync(inventory, false, token), target);
+
     internal async ValueTask<GroupMetadata> SeedAsync(CancellationToken token, string? selectedName = null,
         bool linkRuntime = true)
     {
@@ -117,7 +122,8 @@ internal sealed class OrganizationGroupOwner
             if (found.Length != 1 || ownership.GroupId is not null && found[0].Id != ownership.GroupId) return false;
             var deleted = await ExecuteAsync(() => ScopedAccessOperations.DeleteGroup(OrganizationId, found[0].Id), true, ct);
             var absent = await ExecuteAsync(() => ScopedAccessOperations.GetGroup(OrganizationId, found[0].Id), false, ct);
-            return deleted.IsSuccess && absent.Status == SecretStatus.Absent;
+            return deleted.IsSuccess && await AbsentAsync(absent, () => ScopedAccessOperations.ListGroups(OrganizationId),
+                new AbsenceTarget<GroupMetadata>(found[0].Id, name, g => g.Id, g => g.Slug), ct);
         });
         var group = await NeedAsync(() => ScopedAccessOperations.CreateGroup(OrganizationId, name, name, "no-access"),
             true, token);
@@ -159,16 +165,19 @@ internal sealed class OrganizationGroupOwner
     {
         context.Cleanup(async token =>
         {
+            ValueTask<bool> Absent(SecretOutcome<MembershipSummary> exact, string? membershipId) => context.AbsentAsync(exact,
+                () => MembershipOperations.ListOrganizationGroups(context.OrganizationId),
+                new AbsenceTarget<MembershipSummary>(membershipId, group.Id, m => m.Id, m => m.PrincipalId), token);
             var found = await context.ExecuteAsync(() => MembershipOperations.GetOrganizationGroup(
                 context.OrganizationId, group.Id), NativeIdentityRole.Observer, token);
-            if (found.Status == SecretStatus.Absent) return true;
+            if (await Absent(found, expected())) return true;
             if (!found.IsSuccess || !Parent(found.Value, group.Id, OrganizationId) ||
                 found.Value.Id == MembershipId(group) || expected() is { } id && found.Value.Id != id) return false;
             var removed = await context.ExecuteAsync(() => MembershipOperations.RemoveOrganizationGroup(
                 context.OrganizationId, group.Id), NativeIdentityRole.Setup, token);
             var absent = await context.ExecuteAsync(() => MembershipOperations.GetOrganizationGroup(
                 context.OrganizationId, group.Id), NativeIdentityRole.Observer, token);
-            return removed.IsSuccess && removed.Value.Id == found.Value.Id && absent.Status == SecretStatus.Absent;
+            return removed.IsSuccess && removed.Value.Id == found.Value.Id && await Absent(absent, found.Value.Id);
         });
     }
 

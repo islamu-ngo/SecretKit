@@ -59,15 +59,18 @@ internal static class TemporalOrganizationGroupEffects
         string? roleId = null;
         c.Cleanup(async ct =>
         {
+            ValueTask<bool> Absent(SecretOutcome<RoleSummary> exact) => c.AbsentAsync(exact,
+                () => ScopedAccessOperations.ListOrganizationRoles(c.OrganizationId),
+                new AbsenceTarget<RoleSummary>(roleId, roleName, r => r.Id, r => r.Slug), ct);
             var found = await c.ExecuteAsync(() => ScopedAccessOperations.GetOrganizationRoleBySlug(c.OrganizationId, roleName),
                 NativeIdentityRole.Observer, ct);
-            if (found.Status == SecretStatus.Absent) return true;
+            if (await Absent(found)) return true;
             if (!found.IsSuccess || roleId is not null && found.Value.Id != roleId) return false;
             var removed = await c.ExecuteAsync(() => ScopedAccessOperations.DeleteOrganizationRole(c.OrganizationId, found.Value.Id),
                 NativeIdentityRole.Setup, ct);
             var absent = await c.ExecuteAsync(() => ScopedAccessOperations.GetOrganizationRoleBySlug(c.OrganizationId, roleName),
                 NativeIdentityRole.Observer, ct);
-            return removed.IsSuccess && absent.Status == SecretStatus.Absent;
+            return removed.IsSuccess && await Absent(absent);
         });
         var role = await c.NeedAsync(() => RoleChangeOperations.CreateOrganizationRole(c.OrganizationId,
             new(roleName, roleName, permissions: [new(OrganizationRoleSubject.Groups, OrganizationRoleAction.Read)])),
@@ -80,7 +83,8 @@ internal static class TemporalOrganizationGroupEffects
         {
             var row = await c.ExecuteAsync(() => MembershipOperations.GetOrganizationGroup(c.OrganizationId, group.Id),
                 NativeIdentityRole.Observer, ct);
-            if (row.Status == SecretStatus.Absent) return null;
+            if (await c.AbsentAsync(row, () => MembershipOperations.ListOrganizationGroups(c.OrganizationId),
+                new AbsenceTarget<MembershipSummary>(targetId, group.Id, m => m.Id, m => m.PrincipalId), ct)) return null;
             c.Probe.Contract(row.IsSuccess && OrganizationGroupOwner.Parent(row.Value, group.Id, owner.OrganizationId) &&
                 row.Value.Id != owner.MembershipId(group) && (targetId is null || row.Value.Id == targetId) &&
                 row.Value.Roles.IsPresent && !row.Value.Roles.IsNull, NativeFailure.ContractMismatch);

@@ -357,7 +357,10 @@ internal sealed class IdentityAuthContext : IAsyncDisposable
                 () => IdentityOperations.DeleteOrganizationIdentity(OrganizationId, id), NativeIdentityRole.Setup, ct);
             SecretOutcome<IdentitySummary> remaining = await ExecuteAsync(
                 () => IdentityOperations.GetOrganizationIdentity(OrganizationId, id), NativeIdentityRole.Observer, ct);
-            return deleted.IsSuccess && remaining.Status == SecretStatus.Absent;
+            SecretOutcome<ManagementPage<IdentitySummary>> inventory = await ExecuteAsync(
+                () => IdentityOperations.ListOrganizationIdentities(OrganizationId), NativeIdentityRole.Observer, ct);
+            return deleted.IsSuccess && AbsenceWitness.Holds(remaining, inventory,
+                new AbsenceTarget<IdentitySummary>(id, IdentityName, i => i.Id, i => i.Name));
         });
         IdentitySummary created = await NeedAsync(() => IdentityOperations.CreateOrganizationIdentity(
             OrganizationId, IdentityName, "member"), NativeIdentityRole.Setup, token);
@@ -377,16 +380,20 @@ internal sealed class IdentityAuthContext : IAsyncDisposable
         string? acknowledgedRoleId = null;
         Core.Cleanup(async ct =>
         {
+            async ValueTask<bool> Absent(SecretOutcome<RoleSummary> exact) => AbsenceWitness.Holds(exact,
+                await ExecuteAsync(() => ProjectOperations.ListProjectRoles(OrganizationId, allowedProject),
+                    NativeIdentityRole.Observer, ct),
+                new AbsenceTarget<RoleSummary>(acknowledgedRoleId, roleSlug, r => r.Id, r => r.Slug));
             SecretOutcome<RoleSummary> found = await ExecuteAsync(
                 () => ProjectOperations.GetProjectRoleBySlug(OrganizationId, allowedProject, roleSlug), NativeIdentityRole.Observer, ct);
-            if (found.Status == SecretStatus.Absent) return true;
+            if (await Absent(found)) return true;
             if (!found.IsSuccess) return false;
             if (acknowledgedRoleId is not null && found.Value.Id != acknowledgedRoleId) return false;
             SecretOutcome<RoleSummary> deleted = await ExecuteAsync(
                 () => ProjectOperations.DeleteProjectRole(OrganizationId, allowedProject, found.Value.Id), NativeIdentityRole.Setup, ct);
             SecretOutcome<RoleSummary> absent = await ExecuteAsync(
                 () => ProjectOperations.GetProjectRoleBySlug(OrganizationId, allowedProject, roleSlug), NativeIdentityRole.Observer, ct);
-            return deleted.IsSuccess && absent.Status == SecretStatus.Absent;
+            return deleted.IsSuccess && await Absent(absent);
         });
         acknowledgedRoleId = (await NeedAsync(() => RoleChangeOperations.CreateProjectRole(OrganizationId, allowedProject,
             new ProjectRoleChange(roleSlug, roleSlug,
@@ -600,18 +607,23 @@ internal sealed class IdentityAuthContext : IAsyncDisposable
 
     internal JsonElement TlsSettings(bool baseline) => issuer.GetProperty(baseline ? "baselineParameters" : "configuration");
 
-    public async ValueTask RejectionAsync<T>(Action construct, Func<ManagementRequest<T>> get,
+    public async ValueTask RejectionAsync<T>(string strategy, Action construct, Func<ManagementRequest<T>> get,
         CancellationToken token) where T : notnull
     {
         bool rejected = false;
         try { construct(); } catch (ArgumentException) { rejected = true; }
         Probe.Contract(rejected, NativeFailure.ContractMismatch);
         // This is an explicit input-rejection branch. No request or receipt can be
-        // dispatched; independent observation still proves absence on a fresh owner.
+        // dispatched; independent observation still proves the method stayed unattached on a fresh owner.
         SecretOutcome<T> absent = await ExecuteAsync(get, NativeIdentityRole.Observer, token);
         if (absent.IsSuccess && absent.Value is IDisposable owned) owned.Dispose();
-        Probe.Effect(absent.Status == SecretStatus.Absent ? NativeObservation.Matched : NativeObservation.Mismatched);
+        Probe.Effect(await UnattachedAsync(absent, strategy, token) ? NativeObservation.Matched : NativeObservation.Mismatched);
     }
+
+    public async ValueTask<bool> UnattachedAsync<T>(SecretOutcome<T> exact, string strategy, CancellationToken token)
+        where T : notnull => AbsenceWitness.Unattached(exact, await ExecuteAsync(
+            () => IdentityOperations.GetOrganizationIdentity(OrganizationId, IdentityId), NativeIdentityRole.Observer, token),
+            strategy + "-auth");
 
     public bool PolicyMatches(WorkloadAuthConfiguration config, WorkloadAuthTokenPolicy input)
     {
@@ -657,7 +669,7 @@ internal sealed class IdentityAuthContext : IAsyncDisposable
         {
             SecretOutcome<T> absent = await ExecuteAsync(get, NativeIdentityRole.Observer, token);
             if (absent.IsSuccess && absent.Value is IDisposable owned) owned.Dispose();
-            Probe.Contract(absent.Status == SecretStatus.Absent, NativeFailure.MissingPrerequisite);
+            Probe.Contract(await UnattachedAsync(absent, strategy, token), NativeFailure.MissingPrerequisite);
         }
         await CaseAsync(attaching ? attach : updating ? update : deleting ? delete : get,
             value => match(value, attaching || updating), async (applied, ct) =>
@@ -669,7 +681,7 @@ internal sealed class IdentityAuthContext : IAsyncDisposable
                 try
                 {
                     state = present ? observed.IsSuccess && match(observed.Value, applied && (attaching || updating)) :
-                    observed.Status == SecretStatus.Absent;
+                    await UnattachedAsync(observed, strategy, ct);
                     if (state && present) issuedPolicy = CapturePolicy(observed.Value);
                 }
                 finally { if (observed.IsSuccess && observed.Value is IDisposable owned) owned.Dispose(); }

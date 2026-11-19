@@ -46,7 +46,7 @@ internal static class ProxyPatchEffects
             {
                 var current = await c.ExecuteAsync(() => ProxiedServiceAdministrationOperations.GetByName(
                     c.OrganizationId, c.ProjectId, environment, candidate), NativeIdentityRole.Observer, ct);
-                if (current.Status == SecretStatus.Absent) continue;
+                // Absence unestablished: no complete observer inventory for proxied services.
                 if (!current.IsSuccess) return false;
                 using var found = current.Value;
                 if (id is not null && found.Id != id) return false;
@@ -56,7 +56,8 @@ internal static class ProxyPatchEffects
                 var absent = await c.ExecuteAsync(() => ProxiedServiceAdministrationOperations.Get(
                     c.OrganizationId, c.ProjectId, found.Id), NativeIdentityRole.Observer, ct);
                 if (absent.IsSuccess) absent.Value.Dispose();
-                if (!deleted.IsSuccess || absent.Status != SecretStatus.Absent) return false;
+                // Absence unestablished: no complete observer inventory for proxied services.
+                return false;
             }
             return true;
         });

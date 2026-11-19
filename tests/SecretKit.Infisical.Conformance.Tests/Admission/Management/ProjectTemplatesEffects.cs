@@ -59,7 +59,9 @@ internal static class ProjectTemplatesEffects
                 () => ProjectTemplateOperations.DeleteProjectTemplate(c.OrganizationId, id), NativeIdentityRole.Setup, token);
             SecretOutcome<ProjectTemplateSummary> observed = await c.ExecuteAsync(
                 () => ProjectTemplateOperations.GetProjectTemplate(c.OrganizationId, id), NativeIdentityRole.Observer, token);
-            return deleted.IsSuccess && observed.Status == SecretStatus.Absent;
+            return deleted.IsSuccess && await c.AbsentAsync(observed,
+                () => ProjectTemplateOperations.ListProjectTemplates(c.OrganizationId),
+                new AbsenceTarget<ProjectTemplateSummary>(id, name, t => t.Id, t => t.Name), token);
         });
     }
 
@@ -197,8 +199,10 @@ internal static class ProjectTemplatesEffects
                         template: before!.Id), NativeIdentityRole.Setup, ct);
                 SecretOutcome<ProjectSummary> absent = await c.ExecuteAsync(
                     () => ProjectOperations.GetProjectBySlug(c.OrganizationId, rejectedSlug), NativeIdentityRole.Observer, ct);
-                return rejected.Status is SecretStatus.Absent or SecretStatus.Invalid &&
-                    absent.Status == SecretStatus.Absent && retained is not null && retainedOutside is not null &&
+                return (AbsenceWitness.Concealed(rejected) || rejected.Status == SecretStatus.Invalid) &&
+                    await c.AbsentAsync(absent, () => ProjectOperations.ListProjects(c.OrganizationId),
+                        new AbsenceTarget<ProjectSummary>(null, rejectedSlug, p => p.Id, p => p.Slug), ct) &&
+                    retained is not null && retainedOutside is not null &&
                     await retained.ReadAsync(NativeIdentityRole.Runtime, true, ct) &&
                     await retainedOutside.ReadAsync(NativeIdentityRole.Runtime, false, ct);
             }
@@ -225,7 +229,10 @@ internal static class ProjectTemplatesEffects
                 SecretOutcome<ProjectIdentityMembershipSummary> absent = await c.ExecuteAsync(
                     () => MembershipOperations.GetProjectIdentityMembership(c.OrganizationId, project.Id, runtime),
                     NativeIdentityRole.Observer, ct);
-                if (absent.Status != SecretStatus.Absent) return false;
+                if (!await c.AbsentAsync(absent,
+                    () => ProjectMembershipOperations.ListProjectIdentityMemberships(c.OrganizationId, project.Id, limit: 100),
+                    new AbsenceTarget<ProjectIdentityMembershipSummary>(null, runtime, m => m.Id, m => m.IdentityId), ct))
+                    return false;
                 await c.NeedAsync(() => MembershipOperations.AddProjectIdentity(c.OrganizationId, project.Id, runtime,
                     new MembershipRoleSelection(roles: [new(baseline ? role : assignedRole)])), NativeIdentityRole.Setup, ct);
             }

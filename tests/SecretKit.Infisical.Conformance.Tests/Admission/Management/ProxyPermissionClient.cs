@@ -90,7 +90,7 @@ internal static class ProxyPermissionClient
             using var get = ProxiedServiceAdministrationOperations.Get(root.Organization, issued.Id(row.Project), issued.Id(row.Target));
             var result = await client.ExecuteAsync(get, authority, authority.IssueGrant(get.OperationId, get.Target), cancellationToken: token);
             if (result.IsSuccess) result.Value.Dispose();
-            ProxyPermissionContract.Require(result.Status == SecretStatus.Absent, "effect-mismatch");
+            ProxyPermissionContract.Require(AbsenceWitness.Concealed(result), "effect-mismatch");
         }
     }
 }

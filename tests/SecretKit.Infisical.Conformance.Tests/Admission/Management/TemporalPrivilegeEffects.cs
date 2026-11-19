@@ -116,7 +116,9 @@ internal static class TemporalPrivilegeEffects
             var absent = await c.ExecuteAsync(() => legacy ? LegacyIdentityPrivilegeOperations.GetPrivilege(selection, current.Slug) :
                 IdentityPrivilegeOperations.GetProjectPrivilege(c.OrganizationId, c.ProjectId, principal, current.Id),
                 NativeIdentityRole.Observer, ct);
-            return removed.IsSuccess && absent.Status == SecretStatus.Absent;
+            return removed.IsSuccess && await c.AbsentAsync(absent,
+                () => IdentityPrivilegeOperations.ListProjectPrivileges(c.OrganizationId, c.ProjectId, principal),
+                new AbsenceTarget<IdentityPrivilegeSummary>(current.Id, current.Slug, p => p.Id, p => p.Slug), ct);
         });
         if (update)
         {

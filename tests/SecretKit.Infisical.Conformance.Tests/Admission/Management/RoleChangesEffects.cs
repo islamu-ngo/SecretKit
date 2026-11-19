@@ -127,7 +127,10 @@ internal sealed class PermissionRoleScenario
             SecretOutcome<MembershipSummary> existing = await context.ExecuteAsync(() =>
                 MembershipOperations.GetOrganizationGroup(context.OrganizationId, group!.Id),
                 NativeIdentityRole.Observer, token);
-            context.Probe.Contract(existing.IsSuccess || existing.Status == SecretStatus.Absent, NativeFailure.MissingPrerequisite);
+            context.Probe.Contract(existing.IsSuccess || await context.AbsentAsync(existing,
+                () => MembershipOperations.ListOrganizationGroups(context.OrganizationId),
+                new AbsenceTarget<MembershipSummary>(null, group!.Id, m => m.Id, m => m.PrincipalId), token),
+                NativeFailure.MissingPrerequisite);
             await context.NeedAsync(() => existing.IsSuccess ?
                 MembershipOperations.UpdateOrganizationGroupRoles(context.OrganizationId, group!.Id, [new(Slug)]) :
                 MembershipOperations.AddOrganizationGroup(context.OrganizationId, group!.Id, [new(Slug)]),
@@ -147,7 +150,7 @@ internal sealed class PermissionRoleScenario
             ProjectOperations.GetProjectRoleBySlug(context.OrganizationId, context.ProjectId, Slug),
             NativeIdentityRole.Observer, token);
         if (!present)
-            return observed.Status == SecretStatus.Absent && (organization ?
+            return await RoleAbsentAsync(observed, token) && (organization ?
                 await ReadGroupAsync(false, token) : await witness!.ObserveAsync(false, token));
         if (!observed.IsSuccess || Id.Length != 0 && observed.Value.Id != Id) return false;
         Id = observed.Value.Id;
@@ -193,7 +196,7 @@ internal sealed class PermissionRoleScenario
             ScopedAccessOperations.GetOrganizationRoleBySlug(context.OrganizationId, Slug) :
             ProjectOperations.GetProjectRoleBySlug(context.OrganizationId, context.ProjectId, Slug),
             NativeIdentityRole.Observer, token);
-        if (found.Status == SecretStatus.Absent) return true;
+        if (await RoleAbsentAsync(found, token)) return true;
         if (!found.IsSuccess || Id.Length != 0 && found.Value.Id != Id) return false;
         if (!organization && assigned)
             await context.NeedAsync(() => MembershipOperations.UpdateProjectIdentityRoles(context.OrganizationId,
@@ -208,6 +211,12 @@ internal sealed class PermissionRoleScenario
             ScopedAccessOperations.GetOrganizationRole(context.OrganizationId, id) :
             ProjectOperations.GetProjectRole(context.OrganizationId, context.ProjectId, id),
             NativeIdentityRole.Observer, token);
-        return deleted.IsSuccess && absent.Status == SecretStatus.Absent;
+        return deleted.IsSuccess && await RoleAbsentAsync(absent, token);
     }
+
+    private ValueTask<bool> RoleAbsentAsync(SecretOutcome<RoleSummary> exact, CancellationToken token) =>
+        context.AbsentAsync(exact, () => organization ?
+            ScopedAccessOperations.ListOrganizationRoles(context.OrganizationId) :
+            ProjectOperations.ListProjectRoles(context.OrganizationId, context.ProjectId),
+            new AbsenceTarget<RoleSummary>(Id, Slug, r => r.Id, r => r.Slug), token);
 }

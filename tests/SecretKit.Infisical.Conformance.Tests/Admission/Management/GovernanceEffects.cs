@@ -292,22 +292,26 @@ internal static class GovernanceEffects
             _ => null
         };
         string? id = null;
+        // The recipient channel's lookup is corroborated by the SDK observer's exact read and complete share inventory.
+        async ValueTask<bool> ShareAbsent(string? shareId, CancellationToken ct)
+        {
+            if (shareId is not null && !AbsenceWitness.Concealed(await c.ExecuteAsync(
+                () => SharingOperations.GetShare(c.OrganizationId, shareId), NativeIdentityRole.Observer, ct))) return false;
+            return AbsenceWitness.Omits(await c.ExecuteAsync(() => SharingOperations.ListShares(c.OrganizationId),
+                NativeIdentityRole.Observer, ct), new AbsenceTarget<SharedSecretMetadata>(shareId, name, s => s.Id, s => s.Name));
+        }
         c.Cleanup(async ct =>
         {
             SecretOutcome<SharedSecretMetadata> found = await observer.FindOwnedAsync(c.OrganizationId, name,
                 c.Environment.Tokens(NativeIdentityRole.Observer), ct);
-            if (found.Status == SecretStatus.Absent)
-                return id is null || (await c.ExecuteAsync(
-                    () => SharingOperations.GetShare(c.OrganizationId, id), NativeIdentityRole.Observer, ct)).Status == SecretStatus.Absent;
+            if (found.Status == SecretStatus.Absent) return await ShareAbsent(id, ct);
             if (!found.IsSuccess) return false;
             if (id is not null && found.Value.Id != id) return false;
             SecretOutcome<SharedSecretMetadata> removed = await c.ExecuteAsync(
                 () => SharingOperations.DeleteShare(c.OrganizationId, found.Value.Id), NativeIdentityRole.Setup, ct);
             SecretOutcome<SharedSecretMetadata> absent = await observer.FindOwnedAsync(c.OrganizationId, name,
                 c.Environment.Tokens(NativeIdentityRole.Observer), ct);
-            return removed.IsSuccess && absent.Status == SecretStatus.Absent &&
-                (await c.ExecuteAsync(() => SharingOperations.GetShare(c.OrganizationId, found.Value.Id),
-                    NativeIdentityRole.Observer, ct)).Status == SecretStatus.Absent;
+            return removed.IsSuccess && absent.Status == SecretStatus.Absent && await ShareAbsent(found.Value.Id, ct);
         });
         Func<ManagementRequest<CreatedShare>> create = () => SharingOperations.CreateShare(c.OrganizationId, name,
             material, 5, audience, views, password, external, emails);
@@ -328,7 +332,7 @@ internal static class GovernanceEffects
             SecretOutcome<SharedSecretMetadata> found = await observer.FindOwnedAsync(c.OrganizationId, name,
                 c.Environment.Tokens(NativeIdentityRole.Observer), ct);
             bool absent = c.Operation == "CreateShare" && !applied || c.Operation == "DeleteShare" && applied;
-            if (absent) return found.Status == SecretStatus.Absent;
+            if (absent) return found.Status == SecretStatus.Absent && await ShareAbsent(id, ct);
             if (!found.IsSuccess || !Match(found.Value)) return false;
             if (c.Operation == "AccessShare")
             {

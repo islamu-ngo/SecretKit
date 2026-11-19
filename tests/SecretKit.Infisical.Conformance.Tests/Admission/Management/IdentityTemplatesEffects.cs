@@ -132,7 +132,9 @@ internal static class IdentityTemplatesEffects
             }
             var read = await c.ExecuteAsync(() => IdentityTemplateOperations.GetIdentityTemplate(c.OrganizationId, id),
                 NativeIdentityRole.Observer, t);
-            if (delete && applied) return read.Status == SecretStatus.Absent;
+            if (delete && applied)
+                return await c.AbsentAsync(read, () => IdentityTemplateOperations.ListIdentityTemplates(c.OrganizationId, method),
+                    new AbsenceTarget<IdentityTemplateSummary>(id, name, x => x.Id, x => x.Name), t);
             if (!read.IsSuccess || read.Value.AuthMethod != method ||
                 read.Value.Name != (applied && update ? newName ?? name : name)) return false;
             if (collection)
@@ -370,7 +372,8 @@ internal static class IdentityTemplatesEffects
             {
                 var missing = await c.ExecuteAsync(() => IdentityTemplateOperations.GetIdentityTemplate(
                     c.OrganizationId, acknowledgedId), NativeIdentityRole.Observer, token);
-                return missing.Status == SecretStatus.Absent;
+                return AbsenceWitness.Holds(missing, list,
+                    new AbsenceTarget<IdentityTemplateSummary>(acknowledgedId, null, x => x.Id, x => x.Name));
             }
             foreach (var template in owned)
             {
@@ -381,11 +384,12 @@ internal static class IdentityTemplatesEffects
                     template.Id), NativeIdentityRole.Setup, token);
                 var absent = await c.ExecuteAsync(() => IdentityTemplateOperations.GetIdentityTemplate(c.OrganizationId,
                     template.Id), NativeIdentityRole.Observer, token);
-                if (!deleted.IsSuccess || absent.Status != SecretStatus.Absent) return false;
+                if (!deleted.IsSuccess || !AbsenceWitness.Concealed(absent)) return false;
             }
             var observed = await c.ExecuteAsync(() => IdentityTemplateOperations.ListIdentityTemplates(c.OrganizationId, method),
                 NativeIdentityRole.Observer, token);
-            return observed.IsSuccess && observed.Value.IsComplete && observed.Value.Items.All(x => !names.Contains(x.Name));
+            return observed.IsSuccess && observed.Value.IsComplete && observed.Value.Items.All(x => !names.Contains(x.Name) &&
+                owned.All(o => o.Id != x.Id));
         });
         return id => acknowledgedId = id;
     }
@@ -418,6 +422,9 @@ internal static class IdentityTemplatesEffects
         IdentityTemplateConfigurationSummary settings = (await c.NeedAsync(
             () => IdentityTemplateOperations.GetIdentityTemplate(c.OrganizationId, template),
             NativeIdentityRole.Observer, token)).Configuration;
+        async ValueTask<bool> Unattached<T>(SecretOutcome<T> exact, string strategy) where T : notnull =>
+            AbsenceWitness.Unattached(exact, await c.ExecuteAsync(() => IdentityOperations.GetOrganizationIdentity(
+                c.OrganizationId, identity), NativeIdentityRole.Observer, token), strategy + "-auth");
         if (method == IdentityTemplateAuthMethod.Oidc)
         {
             var result = await c.ExecuteAsync(() => WorkloadIdentityAuthenticationOperations.GetOidcAuth(
@@ -426,7 +433,7 @@ internal static class IdentityTemplatesEffects
                 result.Value.BoundIssuer != settings.BoundIssuer ||
                 settings.BoundAudiences is not null && result.Value.BoundAudiences != settings.BoundAudiences ||
                 settings.CaCertificate is not null && result.Value.CaCert != settings.CaCertificate)) return false;
-            return !expected && result.Status == SecretStatus.Absent || result.IsSuccess &&
+            return !expected && await Unattached(result, "oidc") || result.IsSuccess &&
                 (result.Value.TemplateId.IsPresent && !result.Value.TemplateId.IsNull &&
                     result.Value.TemplateId.Value == template) == expected;
         }
@@ -434,7 +441,7 @@ internal static class IdentityTemplatesEffects
         {
             var result = await c.ExecuteAsync(() => WorkloadIdentityAuthenticationOperations.GetKubernetesAuth(
                 c.OrganizationId, identity), NativeIdentityRole.Observer, token);
-            if (!result.IsSuccess) return !expected && result.Status == SecretStatus.Absent;
+            if (!result.IsSuccess) return !expected && await Unattached(result, "kubernetes");
             using var owned = result.Value;
             if (expected && (settings.AllowedAudience is not null && owned.AllowedAudience != settings.AllowedAudience ||
                 settings.TokenReviewMode is not null && owned.TokenReviewMode != settings.TokenReviewMode ||
@@ -456,7 +463,7 @@ internal static class IdentityTemplatesEffects
         }
         var ldap = await c.ExecuteAsync(() => ExternalIdentityAuthenticationOperations.GetLdapAuth(
             c.OrganizationId, identity), NativeIdentityRole.Observer, token);
-        if (!ldap.IsSuccess) return !expected && ldap.Status == SecretStatus.Absent;
+        if (!ldap.IsSuccess) return !expected && await Unattached(ldap, "ldap");
         using var configuration = ldap.Value;
         if (expected && (settings.Url is not null && configuration.Url != settings.Url ||
             settings.BindDn is not null && configuration.BindDN != settings.BindDn ||

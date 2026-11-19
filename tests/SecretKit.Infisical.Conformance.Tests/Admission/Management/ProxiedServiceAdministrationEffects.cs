@@ -106,7 +106,7 @@ internal static class ProxiedServiceAdministrationEffects
             SecretOutcome<ProxiedServiceSummary> found = await c.ExecuteAsync(
                 () => ProxiedServiceAdministrationOperations.GetByName(c.OrganizationId, c.ProjectId, environment, name, path),
                 NativeIdentityRole.Observer, ct);
-            if (found.Status == SecretStatus.Absent) return true;
+            // Absence unestablished: no complete observer inventory for proxied services.
             if (!found.IsSuccess) return false;
             using ProxiedServiceSummary service = found.Value;
             string selectedId = service.Id;
@@ -119,7 +119,8 @@ internal static class ProxiedServiceAdministrationEffects
                 () => ProxiedServiceAdministrationOperations.Get(c.OrganizationId, c.ProjectId, selectedId),
                 NativeIdentityRole.Observer, ct);
             if (absent.IsSuccess) absent.Value.Dispose();
-            return removed.IsSuccess && absent.Status == SecretStatus.Absent;
+            // Absence unestablished: no complete observer inventory for proxied services.
+            return false;
         });
         if (c.Operation != "Create")
         {
@@ -155,7 +156,8 @@ internal static class ProxiedServiceAdministrationEffects
                 () => ProxiedServiceAdministrationOperations.GetByName(c.OrganizationId, c.ProjectId, environment, name, path),
                 NativeIdentityRole.Observer, ct);
             bool absent = c.Operation == "Create" && !applied || c.Operation == "Delete" && applied;
-            if (absent && found.Status != SecretStatus.Absent || !absent && (!found.IsSuccess || !Match(found.Value)))
+            // Absence unestablished: no complete observer inventory for proxied services.
+            if (absent || !found.IsSuccess || !Match(found.Value))
             {
                 if (found.IsSuccess) found.Value.Dispose();
                 return false;
@@ -170,7 +172,7 @@ internal static class ProxiedServiceAdministrationEffects
             if (denied.ServiceId != serviceId || denied.Challenge != challenge || denied.Status != SecretStatus.Denied ||
                 denied.BackendRequests != 0 || denied.SubstitutedValue is not null) return false;
             if (allowed.ServiceId != serviceId || allowed.Challenge != challenge) return false;
-            if (absent || enabled == false)
+            if (enabled == false)
                 return allowed.Status is SecretStatus.Denied or SecretStatus.Absent &&
                     allowed.BackendRequests == 0 && allowed.SubstitutedValue is null;
             bool matched = allowed.Status == SecretStatus.Success && allowed.BackendRequests == 1 &&

@@ -24,7 +24,7 @@ internal static class WorkloadIdentityAuthenticationEffects
         if (c.Variant.EndsWith(".rejected", StringComparison.Ordinal))
         {
             await c.EnsureIdentityAsync(token);
-            await c.RejectionAsync(() =>
+            await c.RejectionAsync("kubernetes", () =>
             {
                 using var input = new KubernetesAuthConfigurationInput(
                     allowedNames: c.Variant.Contains("allowedNames", StringComparison.Ordinal) ? null : "owned-name",

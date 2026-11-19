@@ -85,7 +85,9 @@ internal static class ProjectMembershipsEffects
                 () => IdentityOperations.DeleteOrganizationIdentity(c.OrganizationId, selected), NativeIdentityRole.Setup, ct);
             SecretOutcome<IdentitySummary> absent = await c.ExecuteAsync(
                 () => IdentityOperations.GetOrganizationIdentity(c.OrganizationId, selected), NativeIdentityRole.Observer, ct);
-            return deleted.IsSuccess && absent.Status == SecretStatus.Absent;
+            return deleted.IsSuccess && await c.AbsentAsync(absent,
+                () => IdentityOperations.ListOrganizationIdentities(c.OrganizationId),
+                new AbsenceTarget<IdentitySummary>(selected, name, i => i.Id, i => i.Name), ct);
         });
         IdentitySummary identity = await c.NeedAsync(() => IdentityOperations.CreateOrganizationIdentity(
             c.OrganizationId, name, "no-access"), NativeIdentityRole.Setup, token);
@@ -104,7 +106,9 @@ internal static class ProjectMembershipsEffects
                 SecretOutcome<ProjectIdentityMembershipSummary> absent = await c.ExecuteAsync(
                     () => MembershipOperations.GetProjectIdentityMembership(c.OrganizationId, c.ProjectId, id),
                     NativeIdentityRole.Observer, ct);
-                return page.IsSuccess && Match(page.Value) && absent.Status == SecretStatus.Absent;
+                return page.IsSuccess && Match(page.Value) && await c.AbsentAsync(absent,
+                    () => ProjectMembershipOperations.ListProjectIdentityMemberships(c.OrganizationId, c.ProjectId, limit: 100),
+                    new AbsenceTarget<ProjectIdentityMembershipSummary>(null, id, m => m.Id, m => m.IdentityId), ct);
             }, token);
         }
         else

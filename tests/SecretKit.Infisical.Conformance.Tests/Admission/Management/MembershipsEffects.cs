@@ -65,7 +65,8 @@ internal static class MembershipsEffects
                     observed.Value.Group?.Id == principal && observed.Value.Roles.IsPresent &&
                     (access ? observed.Value.Roles.Value.Any(r => r.Role == "viewer" && r.IsTemporary != true) :
                         !empty || observed.Value.Roles.Value.Count == 0) :
-                    observed.Status == SecretStatus.Absent;
+                    await c.AbsentAsync(observed, () => MembershipOperations.ListProjectGroups(org, project),
+                        new AbsenceTarget<MembershipSummary>(before?.Id, principal, m => m.Id, m => m.PrincipalId), ct);
             }
             else
             {
@@ -75,7 +76,9 @@ internal static class MembershipsEffects
                     (before is null || observed.Value.Id == before.Id) &&
                     (access ? observed.Value.Roles.Any(r => r.Role == "viewer" && r.IsTemporary != true) :
                         !empty || observed.Value.Roles.Count == 0) :
-                    observed.Status == SecretStatus.Absent;
+                    await c.AbsentAsync(observed,
+                        () => ProjectMembershipOperations.ListProjectIdentityMemberships(org, project, limit: 100),
+                        new AbsenceTarget<ProjectIdentityMembershipSummary>(before?.Id, principal, m => m.Id, m => m.IdentityId), ct);
             }
             bool matched = state && await canary.ReadAsync(NativeIdentityRole.Runtime, access, ct) &&
                 await canary.ReadAsync(NativeIdentityRole.Denied, false, ct);
@@ -128,15 +131,18 @@ internal static class MembershipsEffects
             permissions: [new(OrganizationRoleSubject.Groups, OrganizationRoleAction.Read)]);
         c.Cleanup(async ct =>
         {
+            ValueTask<bool> Absent(SecretOutcome<RoleSummary> exact) => c.AbsentAsync(exact,
+                () => ScopedAccessOperations.ListOrganizationRoles(org),
+                new AbsenceTarget<RoleSummary>(roleId, roleName, r => r.Id, r => r.Slug), ct);
             SecretOutcome<RoleSummary> found = await c.ExecuteAsync(
                 () => ScopedAccessOperations.GetOrganizationRoleBySlug(org, roleName), NativeIdentityRole.Observer, ct);
-            if (found.Status == SecretStatus.Absent) return true;
+            if (await Absent(found)) return true;
             if (!found.IsSuccess || roleId is not null && found.Value.Id != roleId) return false;
             SecretOutcome<RoleSummary> deleted = await c.ExecuteAsync(
                 () => ScopedAccessOperations.DeleteOrganizationRole(org, found.Value.Id), NativeIdentityRole.Setup, ct);
             SecretOutcome<RoleSummary> absent = await c.ExecuteAsync(
                 () => ScopedAccessOperations.GetOrganizationRoleBySlug(org, roleName), NativeIdentityRole.Observer, ct);
-            return deleted.IsSuccess && absent.Status == SecretStatus.Absent;
+            return deleted.IsSuccess && await Absent(absent);
         });
         var custom = await c.NeedAsync(() => RoleChangeOperations.CreateOrganizationRole(org, roleChange), NativeIdentityRole.Setup, token);
         roleId = custom.Id;
@@ -146,7 +152,10 @@ internal static class MembershipsEffects
         // Parent ownership is separate from the sub-organization assignment.
         SecretOutcome<MembershipSummary> existing = await c.ExecuteAsync(
             () => MembershipOperations.GetOrganizationGroup(org, group.Id), NativeIdentityRole.Observer, token);
-        c.Probe.Contract(existing.Status == SecretStatus.Absent, NativeFailure.MissingPrerequisite);
+        ValueTask<bool> MembershipAbsent(SecretOutcome<MembershipSummary> exact, string? membershipId, CancellationToken ct) =>
+            c.AbsentAsync(exact, () => MembershipOperations.ListOrganizationGroups(org),
+                new AbsenceTarget<MembershipSummary>(membershipId, group.Id, m => m.Id, m => m.PrincipalId), ct);
+        c.Probe.Contract(await MembershipAbsent(existing, null, token), NativeFailure.MissingPrerequisite);
         string? targetId = null;
         owner.CleanupTarget(group, () => targetId);
         MembershipSummary? before = null;
@@ -179,7 +188,7 @@ internal static class MembershipsEffects
             SecretOutcome<GroupMetadata> denied = await c.ExecuteAsync(
                 () => ScopedAccessOperations.GetGroup(owner.OrganizationId, group.Id), NativeIdentityRole.Denied, ct);
             bool matched = (present ? membership.IsSuccess && Match(membership.Value) && Role(membership.Value, access) :
-                    membership.Status == SecretStatus.Absent) &&
+                    await MembershipAbsent(membership, targetId, ct)) &&
                 (access ? allowed.IsSuccess && allowed.Value.Id == group.Id : allowed.Status == SecretStatus.Denied) &&
                 denied.Status == SecretStatus.Denied && await owner.ObserveAsync(group, ct);
             if (matched && present) targetId ??= membership.Value.Id;
@@ -274,7 +283,8 @@ internal static class MembershipsEffects
                 () => ScopedAccessOperations.DeleteGroup(c.OrganizationId, id), NativeIdentityRole.Setup, ct);
             SecretOutcome<GroupMetadata> absent = await c.ExecuteAsync(
                 () => ScopedAccessOperations.GetGroup(c.OrganizationId, id), NativeIdentityRole.Observer, ct);
-            return deleted.IsSuccess && absent.Status == SecretStatus.Absent;
+            return deleted.IsSuccess && await c.AbsentAsync(absent, () => ScopedAccessOperations.ListGroups(c.OrganizationId),
+                new AbsenceTarget<GroupMetadata>(id, name, g => g.Id, g => g.Slug), ct);
         });
         return await c.NeedAsync(() => ScopedAccessOperations.CreateGroup(c.OrganizationId, name, name, "no-access"),
             NativeIdentityRole.Setup, token);

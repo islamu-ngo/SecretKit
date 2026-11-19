@@ -14,14 +14,14 @@ internal static class CloudIdentityAuthenticationEffects
         {
             await c.EnsureIdentityAsync(token);
             if (c.Operation.Contains("Azure", StringComparison.Ordinal))
-                await c.RejectionAsync(() =>
+                await c.RejectionAsync("azure", () =>
                 {
                     using var rejected = CloudIdentityAuthenticationOperations.AttachAzureAuth(c.OrganizationId, c.IdentityId,
                         new(c.Variant.Contains("tenantId", StringComparison.Ordinal) ? null : "owned-tenant",
                             c.Variant.Contains("resource", StringComparison.Ordinal) ? null : "owned-resource"));
                 }, () => CloudIdentityAuthenticationOperations.GetAzureAuth(c.OrganizationId, c.IdentityId), token);
             else
-                await c.RejectionAsync(() =>
+                await c.RejectionAsync("gcp", () =>
                 {
                     using var rejected = CloudIdentityAuthenticationOperations.AttachGcpAuth(c.OrganizationId, c.IdentityId, new());
                 }, () => CloudIdentityAuthenticationOperations.GetGcpAuth(c.OrganizationId, c.IdentityId), token);

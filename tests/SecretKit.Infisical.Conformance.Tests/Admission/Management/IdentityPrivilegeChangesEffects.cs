@@ -162,6 +162,9 @@ internal sealed class PermissionPrivilegeScenario
             LegacyIdentityPrivilegeOperations.GetPrivilege(Selection, Slug) :
             IdentityPrivilegeOperations.GetProjectPrivilege(Selection.OrganizationId, Selection.ProjectId,
                 Selection.IdentityId, id), NativeIdentityRole.Observer, token);
-        return removed.IsSuccess && absent.Status == SecretStatus.Absent;
+        return removed.IsSuccess && await context.AbsentAsync(absent, () => legacy ?
+            LegacyIdentityPrivilegeOperations.ListPrivileges(Selection) :
+            IdentityPrivilegeOperations.ListProjectPrivileges(Selection.OrganizationId, Selection.ProjectId, Selection.IdentityId),
+            new AbsenceTarget<IdentityPrivilegeSummary>(id, Slug, p => p.Id, p => p.Slug), token);
     }
 }

@@ -101,7 +101,7 @@ internal static class ManagementTlsAuthenticationEffects
         if (attaching && Omitted("caCertificate"))
         {
             await c.EnsureIdentityAsync(token);
-            await c.RejectionAsync(() =>
+            await c.RejectionAsync("tls-cert", () =>
             {
                 using var input = Input(false);
                 using var rejected = ExternalIdentityAuthenticationOperations.AttachTlsCertAuth(c.OrganizationId, c.IdentityId, input);

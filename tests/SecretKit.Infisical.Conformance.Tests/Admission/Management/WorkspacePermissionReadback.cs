@@ -23,7 +23,8 @@ internal static class WorkspacePermissionReadback
             var authority = new ManagementAuthority(client.Authority, env.Tokens(NativeIdentityRole.Observer), root.Organization, binding.CanonicalId);
             var result = await client.ExecuteAsync(get, authority, authority.IssueGrant(get.OperationId, get.Target), cancellationToken: token);
             var state = expected.SingleOrDefault(s => s.Target == binding.CanonicalId);
-            WorkspacePermissionContract.Require(result.Status == (state is null ? SecretStatus.Absent : SecretStatus.Success), "effect-mismatch");
+            WorkspacePermissionContract.Require(state is null ? AbsenceWitness.Holds(result, inventory,
+                new AbsenceTarget<ProjectSummary>(binding.CanonicalId, null, p => p.Id, p => p.Slug)) : result.IsSuccess, "effect-mismatch");
             if (state is null) continue;
             var value = result.Value;
             WorkspacePermissionContract.Require(value.Environments.IsPresent && value.Environments.Value.Count == 0 &&

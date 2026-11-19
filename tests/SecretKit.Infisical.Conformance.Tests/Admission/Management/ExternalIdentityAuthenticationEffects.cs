@@ -23,7 +23,7 @@ internal static class ExternalIdentityAuthenticationEffects
         if (c.Variant.EndsWith(".rejected", StringComparison.Ordinal))
         {
             await c.EnsureIdentityAsync(token);
-            await c.RejectionAsync(() =>
+            await c.RejectionAsync("spiffe", () =>
             {
                 using SecretMaterial bundle = SecretMaterial.FromText("owned-bundle");
                 using SpiffeTrustBundleInput distribution = SpiffeTrustBundleInput.Static(bundle);

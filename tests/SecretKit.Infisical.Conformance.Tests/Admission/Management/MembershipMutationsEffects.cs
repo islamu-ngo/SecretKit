@@ -37,7 +37,7 @@ internal static class MembershipMutationsEffects
         SecretOutcome<ProjectMembershipSummary> before = await c.ExecuteAsync(
             () => ProjectMembershipOperations.InspectProjectMembershipByUsername(c.OrganizationId, c.ProjectId, username),
             NativeIdentityRole.Observer, token);
-        c.Probe.Contract(invite ? before.Status == SecretStatus.Absent :
+        c.Probe.Contract(invite ? await UserAbsentAsync(c, before, userId, token) :
             before.IsSuccess && before.Value.UserId == userId, NativeFailure.MissingPrerequisite);
         c.Probe.Contract(await canary.ReadAsync(NativeIdentityRole.Runtime, !invite, token) &&
             await canary.ReadAsync(NativeIdentityRole.Denied, false, token), NativeFailure.MissingPrerequisite);
@@ -56,7 +56,7 @@ internal static class MembershipMutationsEffects
                 bool matched = (present ? observed.IsSuccess && observed.Value.UserId == userId &&
                     observed.Value.User.Username == username &&
                     (roles is null || observed.Value.Roles.Any(r => r.Role == "viewer" && r.IsTemporary != true)) :
-                    observed.Status == SecretStatus.Absent) &&
+                    await UserAbsentAsync(c, observed, userId, ct)) &&
                     await canary.ReadAsync(NativeIdentityRole.Runtime, present, ct) &&
                     await canary.ReadAsync(NativeIdentityRole.Denied, false, ct);
                 if (matched) c.Environment.ConfirmPrerequisite(c.Definition.Key.Scope,
@@ -64,6 +64,11 @@ internal static class MembershipMutationsEffects
                 return matched;
             }, token);
     }
+
+    private static ValueTask<bool> UserAbsentAsync(ProjectFamilyContext c, SecretOutcome<ProjectMembershipSummary> exact,
+        string userId, CancellationToken token) => c.AbsentAsync(exact,
+        () => ProjectMembershipOperations.ListProjectMemberships(c.OrganizationId, c.ProjectId),
+        new AbsenceTarget<ProjectMembershipSummary>(null, userId, m => m.Id, m => m.UserId), token);
 
     private static async ValueTask ExecuteMixedAsync(ProjectFamilyContext c, CancellationToken token)
     {
@@ -104,8 +109,10 @@ internal static class MembershipMutationsEffects
             result.IsSuccess && result.Value.UserId == users[index] &&
             result.Value.User.Username == usernames[index] &&
             result.Value.Roles.Any(r => r.Role == "viewer" && r.IsTemporary != true);
-        c.Probe.Contract((await Inspect(0, token)).Status == SecretStatus.Absent &&
-            (await Inspect(1, token)).Status == SecretStatus.Absent && await Access(false, false, token),
+        async ValueTask<bool> Absent(SecretOutcome<ProjectMembershipSummary> result, int index, CancellationToken ct) =>
+            await UserAbsentAsync(c, result, users[index], ct);
+        c.Probe.Contract(await Absent(await Inspect(0, token), 0, token) &&
+            await Absent(await Inspect(1, token), 1, token) && await Access(false, false, token),
             NativeFailure.MissingPrerequisite);
         // Token text is not principal evidence. Asymmetric access binds both
         // selected credential sources before the case can mutate memberships.
@@ -116,7 +123,7 @@ internal static class MembershipMutationsEffects
                 c.ProjectId, selection, ["viewer"]), NativeIdentityRole.Setup, token);
             int active = firstOnly ? 0 : 1;
             c.Probe.Contract(Member(await Inspect(active, token), active) &&
-                (await Inspect(1 - active, token)).Status == SecretStatus.Absent &&
+                await Absent(await Inspect(1 - active, token), 1 - active, token) &&
                 await Access(firstOnly, !firstOnly, token), NativeFailure.MissingPrerequisite);
             await c.NeedAsync(() => MembershipMutationOperations.RemoveProjectMembers(c.OrganizationId,
                 c.ProjectId, selection), NativeIdentityRole.Setup, token);
@@ -127,7 +134,8 @@ internal static class MembershipMutationsEffects
             await c.NeedAsync(() => MembershipMutationOperations.InviteProjectMembers(c.OrganizationId,
                 c.ProjectId, principals, ["viewer"]), NativeIdentityRole.Setup, token);
         var before = new[] { await Inspect(0, token), await Inspect(1, token) };
-        c.Probe.Contract(Enumerable.Range(0, 2).All(i => invite ? before[i].Status == SecretStatus.Absent :
+        bool[] priorAbsence = [await Absent(before[0], 0, token), await Absent(before[1], 1, token)];
+        c.Probe.Contract(Enumerable.Range(0, 2).All(i => invite ? priorAbsence[i] :
             Member(before[i], i)) && await Access(!invite, !invite, token), NativeFailure.MissingPrerequisite);
         Func<ManagementRequest<ManagementPage<ProjectMembershipMutationSummary>>> request = invite ?
             () => MembershipMutationOperations.InviteProjectMembers(c.OrganizationId, c.ProjectId, principals, ["viewer"]) :
@@ -142,8 +150,8 @@ internal static class MembershipMutationsEffects
             {
                 bool present = applied ? invite : !invite;
                 var observed = new[] { await Inspect(0, ct), await Inspect(1, ct) };
-                bool state = Enumerable.Range(0, 2).All(i =>
-                    present ? Member(observed[i], i) : observed[i].Status == SecretStatus.Absent);
+                bool[] absence = present ? [false, false] : [await Absent(observed[0], 0, ct), await Absent(observed[1], 1, ct)];
+                bool state = Enumerable.Range(0, 2).All(i => present ? Member(observed[i], i) : absence[i]);
                 bool access = await Access(present, present, ct);
                 if (state && access) c.Environment.ConfirmPrerequisite(c.Definition.Key.Scope,
                     "membership-principal-observer", NativeObservation.Matched);

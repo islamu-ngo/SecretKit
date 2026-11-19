@@ -441,6 +441,12 @@ internal sealed class ProjectFamilyContext
         return result.Value;
     }
 
+    public async ValueTask<bool> AbsentAsync<TRead, TItem>(SecretOutcome<TRead> exact,
+        Func<ManagementRequest<ManagementPage<TItem>>> inventory, AbsenceTarget<TItem> target, CancellationToken token)
+        where TRead : notnull where TItem : notnull =>
+        AbsenceWitness.Concealed(exact) &&
+        AbsenceWitness.Omits(await ExecuteAsync(inventory, NativeIdentityRole.Observer, token), target);
+
     public async ValueTask CaseAsync<T>(Func<ManagementRequest<T>> factory, Func<T, bool> match,
         Func<bool, CancellationToken, ValueTask<bool>> observe, CancellationToken token,
         Func<DispatchEvidence, CancellationToken, ValueTask>? complete = null) where T : notnull
@@ -584,9 +590,12 @@ internal sealed class ProjectFamilyContext
         // Register before dispatch: even a lost setup acknowledgement must be inspected.
         Cleanup(async token =>
         {
+            ValueTask<bool> Absent(SecretOutcome<ProjectSummary> exact) => AbsentAsync(exact,
+                () => ProjectOperations.ListProjects(OrganizationId),
+                new AbsenceTarget<ProjectSummary>(ownedProjects[slug], slug, p => p.Id, p => p.Slug), token);
             SecretOutcome<ProjectSummary> found = await ExecuteAsync(
                 () => ProjectOperations.GetProjectBySlug(OrganizationId, slug), NativeIdentityRole.Observer, token);
-            if (found.Status == SecretStatus.Absent) return true;
+            if (await Absent(found)) return true;
             if (!found.IsSuccess) return false;
             string id = found.Value.Id;
             if (ownedProjects[slug] is { } expected && id != expected) return false;
@@ -602,7 +611,7 @@ internal sealed class ProjectFamilyContext
                 () => ProjectOperations.DeleteProject(OrganizationId, id), NativeIdentityRole.Setup, token);
             SecretOutcome<ProjectSummary> observed = await ExecuteAsync(
                 () => ProjectOperations.GetProject(OrganizationId, id), NativeIdentityRole.Observer, token);
-            return deleted.IsSuccess && observed.Status == SecretStatus.Absent;
+            return deleted.IsSuccess && await Absent(observed);
         });
     }
 

@@ -70,7 +70,8 @@ internal static class TemporalMembershipEffects
             {
                 var r = await c.ExecuteAsync(() => MembershipOperations.GetProjectGroup(c.OrganizationId,
                     project, principal), NativeIdentityRole.Observer, ct);
-                if (r.Status == SecretStatus.Absent) return null;
+                if (await c.AbsentAsync(r, () => MembershipOperations.ListProjectGroups(c.OrganizationId, project),
+                    new AbsenceTarget<MembershipSummary>(null, principal, m => m.Id, m => m.PrincipalId), ct)) return null;
                 c.Probe.Contract(r.IsSuccess && r.Value.Group?.Id == principal && r.Value.Roles.IsPresent &&
                     !r.Value.Roles.IsNull, NativeFailure.ContractMismatch);
                 return new(r.Value.Id, r.Value.PrincipalId, r.Value.Roles.Value);
@@ -79,13 +80,16 @@ internal static class TemporalMembershipEffects
             {
                 var r = await c.ExecuteAsync(() => ProjectMembershipOperations.InspectProjectMembershipByUsername(
                     c.OrganizationId, project, username!), NativeIdentityRole.Observer, ct);
-                if (r.Status == SecretStatus.Absent) return null;
+                if (await c.AbsentAsync(r, () => ProjectMembershipOperations.ListProjectMemberships(c.OrganizationId, project),
+                    new AbsenceTarget<ProjectMembershipSummary>(null, principal, m => m.Id, m => m.UserId), ct)) return null;
                 c.Probe.Contract(r.IsSuccess && r.Value.User.Username == username, NativeFailure.ContractMismatch);
                 return new(r.Value.Id, r.Value.UserId, r.Value.Roles);
             }
             var identity = await c.ExecuteAsync(() => MembershipOperations.GetProjectIdentityMembership(
                 c.OrganizationId, project, principal), NativeIdentityRole.Observer, ct);
-            if (identity.Status == SecretStatus.Absent) return null;
+            if (await c.AbsentAsync(identity,
+                () => ProjectMembershipOperations.ListProjectIdentityMemberships(c.OrganizationId, project, limit: 100),
+                new AbsenceTarget<ProjectIdentityMembershipSummary>(null, principal, m => m.Id, m => m.IdentityId), ct)) return null;
             c.Probe.Contract(identity.IsSuccess, NativeFailure.ContractMismatch);
             return new(identity.Value.Id, identity.Value.IdentityId, identity.Value.Roles);
         }

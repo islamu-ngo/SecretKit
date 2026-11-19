@@ -20,7 +20,7 @@ internal sealed record ValidationPermissionBackendChange(string Request, string 
 internal sealed record ValidationPermissionBackendHistory(ValidationPermissionSecret[] Seeds, ValidationPermissionBackendChange[] Changes,
     ValidationPermissionSecret[] Inventory, MemberPermissionBorrowed[] Borrowed, bool Fenced, int Pending);
 internal sealed record ValidationPermissionWriteAttempt(ValidationPermissionProbe Probe, string InputHash, SecretStatus Status, MutationReceipt Receipt,
-    DispatchEvidence Evidence, string? Version, SecretStatus ReadStatus, string? ReadHash, string? ReadVersion);
+    DispatchEvidence Evidence, string? Version, SecretStatus ReadStatus, string? ReadHash, string? ReadVersion, bool ReadAbsent);
 
 // A verifier joins independently authored decisions, never recomputes provider regex.
 // Expected outcomes are fixed canaries for a bounded profile, not SDK enforcement.
@@ -101,7 +101,7 @@ internal sealed class ValidationPermissionCausality
                 a.Status == (!authorized ? SecretStatus.Denied : applied ? SecretStatus.Success : SecretStatus.Invalid) &&
                 a.Evidence == (applied ? DispatchEvidence.Applied : DispatchEvidence.Rejected) && a.Receipt.Evidence == a.Evidence &&
                 a.Version == (applied ? next!.Version.ToString(System.Globalization.CultureInfo.InvariantCulture) : null) &&
-                a.ReadStatus == (next is null ? SecretStatus.Absent : SecretStatus.Success) && a.ReadHash == next?.ValueHash &&
+                (next is null ? a.ReadAbsent : a.ReadStatus == SecretStatus.Success) && a.ReadHash == next?.ValueHash &&
                 a.ReadVersion == next?.Version.ToString(System.Globalization.CultureInfo.InvariantCulture), "effect-mismatch");
             if (next is not null) states[p.Key] = next;
             if (applied && before is null)

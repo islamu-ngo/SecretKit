@@ -53,7 +53,9 @@ internal static class ProjectsEffects
         {
             SecretOutcome<ProjectSummary> observed = await c.ExecuteAsync(
                 () => ProjectOperations.GetProjectBySlug(c.OrganizationId, slug), NativeIdentityRole.Observer, ct);
-            if (!applied) return observed.Status == SecretStatus.Absent;
+            if (!applied)
+                return await c.AbsentAsync(observed, () => ProjectOperations.ListProjects(c.OrganizationId),
+                    new AbsenceTarget<ProjectSummary>(null, slug, p => p.Id, p => p.Slug), ct);
             if (!observed.IsSuccess || !Match(observed.Value) || !observed.Value.Environments.IsPresent ||
                 observed.Value.Environments.IsNull) return false;
             IReadOnlyList<ProjectEnvironmentReference> environments = observed.Value.Environments.Value;
@@ -119,7 +121,9 @@ internal static class ProjectsEffects
         {
             SecretOutcome<ProjectSummary> observed = await c.ExecuteAsync(
                 () => ProjectOperations.GetProject(org, id), NativeIdentityRole.Observer, ct);
-            return applied && c.Operation == "DeleteProject" ? observed.Status == SecretStatus.Absent :
+            return applied && c.Operation == "DeleteProject" ?
+                await c.AbsentAsync(observed, () => ProjectOperations.ListProjects(org),
+                    new AbsenceTarget<ProjectSummary>(id, before.Slug, p => p.Id, p => p.Slug), ct) :
                 observed.IsSuccess && observed.Value.Id == id && observed.Value.Name == before.Name && observed.Value.Slug == before.Slug;
         }, token);
     }
@@ -208,7 +212,9 @@ internal static class ProjectsEffects
             string selectedSlug = applied && c.Operation == "UpdateEnvironment" ? changedSlug ?? slug : slug;
             SecretOutcome<ProjectEnvironment> observed = await c.ExecuteAsync(
                 () => ProjectOperations.GetEnvironmentBySlug(org, project, selectedSlug), NativeIdentityRole.Observer, ct);
-            return creating && !applied ? observed.Status == SecretStatus.Absent :
+            return creating && !applied ? AbsenceWitness.Concealed(observed) &&
+                state.Environments.Value.All(e => e.Slug != selectedSlug) &&
+                state.DeletedEnvironments.Value.All(e => e.Slug != selectedSlug) :
                 observed.IsSuccess && Match(observed.Value, applied) && observed.Value.SoftDeletedAt is null &&
                 state.Environments.Value.Any(e => e.Id == observed.Value.Id && e.Slug == selectedSlug);
         }, token);
@@ -250,7 +256,9 @@ internal static class ProjectsEffects
             SecretOutcome<ProjectTag> observed = await c.ExecuteAsync(
                 () => ProjectOperations.GetTagBySlug(org, project, selectedSlug), NativeIdentityRole.Observer, ct);
             return creating && !applied || applied && c.Operation == "DeleteTag" ?
-                observed.Status == SecretStatus.Absent : observed.IsSuccess && Match(observed.Value, applied);
+                await c.AbsentAsync(observed, () => ProjectOperations.ListTags(org, project),
+                    new AbsenceTarget<ProjectTag>(id, selectedSlug, t => t.Id, t => t.Slug), ct) :
+                observed.IsSuccess && Match(observed.Value, applied);
         }, token);
     }
 
@@ -276,7 +284,9 @@ internal static class ProjectsEffects
             SecretOutcome<RoleSummary> observed = await c.ExecuteAsync(
                 () => ProjectOperations.GetProjectRole(org, project, seeded.Id), NativeIdentityRole.Observer, ct);
             bool deleted = applied && c.Operation == "DeleteProjectRole";
-            return (deleted ? observed.Status == SecretStatus.Absent : observed.IsSuccess && Match(observed.Value)) &&
+            return (deleted ? await c.AbsentAsync(observed, () => ProjectOperations.ListProjectRoles(org, project),
+                    new AbsenceTarget<RoleSummary>(seeded.Id, slug, r => r.Id, r => r.Slug), ct) :
+                    observed.IsSuccess && Match(observed.Value)) &&
                 await canary.ReadAsync(NativeIdentityRole.Runtime, !deleted, ct) &&
                 await outside.ReadAsync(NativeIdentityRole.Runtime, false, ct);
         }
@@ -422,7 +432,8 @@ internal sealed class ProjectCanary(ProjectFamilyContext context, string project
         if (allowed && action == ProjectRoleAction.Delete || !allowed && action == ProjectRoleAction.Create)
         {
             if (observed.IsSuccess) observed.Value.Dispose();
-            return matched && observed.Status == SecretStatus.Absent;
+            return matched && await AbsenceWitness.SecretAbsentAsync(observer, observed,
+                new InfisicalSecretAddress(project, environment, "/", selectedKey), token);
         }
         if (!observed.IsSuccess) return false;
         using SecretRead read = observed.Value;

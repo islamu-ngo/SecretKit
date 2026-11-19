@@ -160,9 +160,12 @@ internal sealed class LdapLoginTrial
         // Remove only this owned attachment before the identity/template cleanup.
         c.Cleanup(async cleanupToken =>
         {
+            async ValueTask<bool> Unattached(SecretOutcome<LdapAuthConfiguration> exact) => AbsenceWitness.Unattached(exact,
+                await c.ExecuteAsync(() => IdentityOperations.GetOrganizationIdentity(c.OrganizationId, identity),
+                    NativeIdentityRole.Observer, cleanupToken), "ldap-auth");
             var read = await c.ExecuteAsync(() => ExternalIdentityAuthenticationOperations.GetLdapAuth(
                 c.OrganizationId, identity), NativeIdentityRole.Observer, cleanupToken);
-            if (read.Status == SecretStatus.Absent) return true;
+            if (await Unattached(read)) return true;
             if (!read.IsSuccess) return false;
             using var config = read.Value;
             if (!config.TemplateId.IsPresent || config.TemplateId.IsNull || config.TemplateId.Value != template)
@@ -171,7 +174,7 @@ internal sealed class LdapLoginTrial
                 c.OrganizationId, identity), NativeIdentityRole.Setup, cleanupToken);
             var absent = await c.ExecuteAsync(() => ExternalIdentityAuthenticationOperations.GetLdapAuth(
                 c.OrganizationId, identity), NativeIdentityRole.Observer, cleanupToken);
-            return absent.Status == SecretStatus.Absent;
+            return await Unattached(absent);
         });
         using var input = LdapAuthConfigurationInput.FromTemplate(template, settings: new(searchFilter: filter));
         using var result = await c.NeedAsync(() => ExternalIdentityAuthenticationOperations.AttachLdapAuth(
@@ -184,7 +187,7 @@ internal sealed class LdapLoginTrial
     {
         var before = await c.ExecuteAsync(() => MembershipOperations.GetProjectIdentityMembership(
             c.OrganizationId, allowed.Project, identity), NativeIdentityRole.Observer, token);
-        Require(before.Status == SecretStatus.Absent);
+        Require(await MembershipAbsentAsync(before, allowed.Project, identity, token));
         var grant = await c.NeedAsync(() => MembershipOperations.AddProjectIdentity(c.OrganizationId,
             allowed.Project, identity, new MembershipRoleSelection(roles: [new("viewer")])),
             NativeIdentityRole.Setup, token);
@@ -196,8 +199,13 @@ internal sealed class LdapLoginTrial
             observed.Roles[0].Role == "viewer" && observed.Roles[0].IsTemporary != true);
         var outside = await c.ExecuteAsync(() => MembershipOperations.GetProjectIdentityMembership(
             c.OrganizationId, denied.Project, identity), NativeIdentityRole.Observer, token);
-        Require(outside.Status == SecretStatus.Absent);
+        Require(await MembershipAbsentAsync(outside, denied.Project, identity, token));
     }
+
+    private ValueTask<bool> MembershipAbsentAsync(SecretOutcome<ProjectIdentityMembershipSummary> exact, string project,
+        string identity, CancellationToken token) => c.AbsentAsync(exact,
+        () => ProjectMembershipOperations.ListProjectIdentityMemberships(c.OrganizationId, project, limit: 100),
+        new AbsenceTarget<ProjectIdentityMembershipSummary>(null, identity, m => m.Id, m => m.IdentityId), token);
 
     internal async ValueTask<LdapLoginFence> LoginAsync(string identity, string template,
         LdapServiceCredential credential, bool wrongUser, bool expectedSuccess, CancellationToken token)

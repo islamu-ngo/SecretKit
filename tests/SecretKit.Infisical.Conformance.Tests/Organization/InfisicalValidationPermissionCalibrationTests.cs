@@ -178,7 +178,8 @@ public sealed class InfisicalValidationPermissionCalibrationTests
                 var write = p.Update ? await c.UpdateValueAsync(target, value, receipt, deadline.Token) : await c.CreateAsync(target, value, receipt, deadline.Token);
                 var read = await observer.ReadAsync(new(observer.Authority, address), deadline.Token); string? actual = null, version = null;
                 if (read.IsSuccess) { using var material = read.Value; actual = ValidationPermissionContract.Hash(material.Material.Reveal()); version = material.Observation.Version; }
-                result.Add(new(p, hash, write.Status, receipt, receipt.Evidence, write.IsSuccess ? write.Value.Version : null, read.Status, actual, version));
+                bool absent = await AbsenceWitness.SecretAbsentAsync(observer, read, address, deadline.Token);
+                result.Add(new(p, hash, write.Status, receipt, receipt.Evidence, write.IsSuccess ? write.Value.Version : null, read.Status, actual, version, absent));
             }
             return result.ToArray();
         }

@@ -286,15 +286,19 @@ internal static class InfisicalDatabaseFamilies
         await using var observer = c.Environment.CreateObserverClient();
         foreach (InfisicalClient client in new[] { consumer, observer })
         {
-            var user = await client.ReadAsync(new(client.Authority, new InfisicalSecretAddress(c.ProjectId,
-                environment, path, usernameKey ?? f.UsernameKey)), token);
+            var userAddress = new InfisicalSecretAddress(c.ProjectId, environment, path, usernameKey ?? f.UsernameKey);
+            var passAddress = new InfisicalSecretAddress(c.ProjectId, environment, path, passwordKey ?? f.PasswordKey);
+            var user = await client.ReadAsync(new(client.Authority, userAddress), token);
             using SecretRead? ownedUser = user.IsSuccess ? user.Value : null;
-            var pass = await client.ReadAsync(new(client.Authority, new InfisicalSecretAddress(c.ProjectId,
-                environment, path, passwordKey ?? f.PasswordKey)), token);
+            var pass = await client.ReadAsync(new(client.Authority, passAddress), token);
+            bool absent = !present && (ReferenceEquals(client, observer)
+                ? await AbsenceWitness.SecretAbsentAsync(observer, user, userAddress, token) &&
+                    await AbsenceWitness.SecretAbsentAsync(observer, pass, passAddress, token)
+                : AbsenceWitness.Concealed(user) && AbsenceWitness.Concealed(pass));
             try
             {
                 c.Probe.Contract(present ? user.IsSuccess && pass.IsSuccess && SameMaterial(user.Value.Material, username) &&
-                    SameMaterial(pass.Value.Material, password) : user.Status == SecretStatus.Absent && pass.Status == SecretStatus.Absent,
+                    SameMaterial(pass.Value.Material, password) : absent,
                     NativeFailure.EffectMismatch);
             }
             finally

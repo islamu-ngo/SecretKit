@@ -145,7 +145,8 @@ internal static class IdentityAuthenticationEffects
             else
             {
                 SecretOutcome<IdentityAuthenticationConfiguration> absent = await c.ExecuteAsync(get, NativeIdentityRole.Observer, token);
-                c.Probe.Contract(absent.Status == SecretStatus.Absent, NativeFailure.MissingPrerequisite);
+                c.Probe.Contract(await c.UnattachedAsync(absent, universal ? "universal" : "token", token),
+                    NativeFailure.MissingPrerequisite);
             }
             Func<ManagementRequest<IdentityAuthenticationConfiguration>> request = attach ? configure : update ? () => universal ?
                 IdentityAuthenticationOperations.UpdateUniversalAuth(org, id, changedUniversal) :
@@ -156,7 +157,7 @@ internal static class IdentityAuthenticationEffects
                 bool present = attach ? applied : !(delete && applied);
                 SecretOutcome<IdentityAuthenticationConfiguration> observed = await c.ExecuteAsync(get, NativeIdentityRole.Observer, ct);
                 return (present ? observed.IsSuccess && Match(observed.Value, applied && (attach || update)) :
-                    observed.Status == SecretStatus.Absent) && await Authentication(present, ct);
+                    await c.UnattachedAsync(observed, universal ? "universal" : "token", ct)) && await Authentication(present, ct);
             }, token);
         }
         finally { credential?.Dispose(); }

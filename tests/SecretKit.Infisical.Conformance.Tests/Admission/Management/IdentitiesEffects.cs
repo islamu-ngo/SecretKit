@@ -99,7 +99,11 @@ internal static class IdentitiesEffects
                 id = found[0].Id;
             }
             SecretOutcome<IdentitySummary> result = await c.ExecuteAsync(read, NativeIdentityRole.Observer, t);
-            if (delete && applied) return result.Status == SecretStatus.Absent;
+            if (delete && applied)
+                return await c.AbsentAsync(result, () => project
+                    ? IdentityOperations.ListProjectIdentities(c.OrganizationId, c.ProjectId, search: name)
+                    : IdentityOperations.ListOrganizationIdentities(c.OrganizationId),
+                    new AbsenceTarget<IdentitySummary>(id, name, x => x.Id, x => x.Name), t);
             if (!result.IsSuccess) return false;
             IdentitySummary observed = result.Value;
             IdentityAttribute[] expectedMetadata = applied && (create || update) ? metadata ?? (create ? [] : baseline) : baseline;
@@ -215,11 +219,12 @@ internal static class IdentitiesEffects
             var observed = await c.ExecuteAsync(() => project
                 ? IdentityOperations.GetProjectIdentity(c.OrganizationId, c.ProjectId, identity.Id)
                 : IdentityOperations.GetOrganizationIdentity(c.OrganizationId, identity.Id), NativeIdentityRole.Observer, token);
-            if (!deleted.IsSuccess || observed.Status != SecretStatus.Absent) return false;
+            if (!deleted.IsSuccess || !AbsenceWitness.Concealed(observed)) return false;
         }
         var absent = await c.ExecuteAsync(() => project
             ? IdentityOperations.ListProjectIdentities(c.OrganizationId, c.ProjectId, search: name)
             : IdentityOperations.ListOrganizationIdentities(c.OrganizationId), NativeIdentityRole.Observer, token);
-        return absent.IsSuccess && absent.Value.IsComplete && absent.Value.Items.All(x => x.Name != name);
+        return AbsenceWitness.Omits(absent,
+            new AbsenceTarget<IdentitySummary>(owned.SingleOrDefault()?.Id, name, x => x.Id, x => x.Name));
     });
 }

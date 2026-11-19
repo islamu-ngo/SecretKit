@@ -15,15 +15,19 @@ internal static class IdentityPrivilegesEffects
             string? acknowledgedId = null;
             c.Cleanup(async ct =>
             {
+                ValueTask<bool> Absent(SecretOutcome<IdentityPrivilegeSummary> exact) => c.AbsentAsync(exact,
+                    () => IdentityPrivilegeOperations.ListProjectPrivileges(c.OrganizationId, c.ProjectId,
+                        scenario.Selection.IdentityId),
+                    new AbsenceTarget<IdentityPrivilegeSummary>(acknowledgedId, slug, p => p.Id, p => p.Slug), ct);
                 var found = await c.ExecuteAsync(() => IdentityPrivilegeChangeOperations.GetProjectPrivilegeBySlug(
                     scenario.Selection, slug), NativeIdentityRole.Observer, ct);
-                if (found.Status == SecretStatus.Absent) return true;
+                if (await Absent(found)) return true;
                 if (!found.IsSuccess || acknowledgedId is not null && found.Value.Id != acknowledgedId) return false;
                 var deleted = await c.ExecuteAsync(() => IdentityPrivilegeOperations.DeleteProjectPrivilege(
                     c.OrganizationId, c.ProjectId, scenario.Selection.IdentityId, found.Value.Id), NativeIdentityRole.Setup, ct);
                 var absent = await c.ExecuteAsync(() => IdentityPrivilegeChangeOperations.GetProjectPrivilegeBySlug(
                     scenario.Selection, slug), NativeIdentityRole.Observer, ct);
-                return deleted.IsSuccess && absent.Status == SecretStatus.Absent;
+                return deleted.IsSuccess && await Absent(absent);
             });
             var peer = await c.NeedAsync(() => IdentityPrivilegeChangeOperations.CreateProjectPrivilege(
                 scenario.Selection, new([], PrivilegeLifetime.Permanent(), slug)), NativeIdentityRole.Setup, token);

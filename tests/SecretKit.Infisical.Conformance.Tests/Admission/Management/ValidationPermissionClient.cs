@@ -103,7 +103,8 @@ internal static class ValidationPermissionClient
                 using var read = fetched.Value; hash = ValidationPermissionContract.Hash(read.Material.Reveal()); version = read.Observation.Version;
             }
             ValidationPermissionContract.Require(!result.IsSuccess || result.Value.Disposition == InfisicalChangeDisposition.Applied, "effect-mismatch");
-            results.Add(new(p, input, result.Status, receipt, receipt.Evidence, result.IsSuccess ? result.Value.Version : null, fetched.Status, hash, version));
+            bool absent = await AbsenceWitness.SecretAbsentAsync(observer, fetched, address, token);
+            results.Add(new(p, input, result.Status, receipt, receipt.Evidence, result.IsSuccess ? result.Value.Version : null, fetched.Status, hash, version, absent));
         }
         return results.ToArray();
     }

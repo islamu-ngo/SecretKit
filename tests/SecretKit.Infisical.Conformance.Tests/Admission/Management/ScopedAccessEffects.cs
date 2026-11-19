@@ -53,7 +53,8 @@ internal static class ScopedAccessEffects
                 () => ScopedAccessOperations.DeleteGroup(c.OrganizationId, id), NativeIdentityRole.Setup, token);
             SecretOutcome<GroupMetadata> absent = await c.ExecuteAsync(
                 () => ScopedAccessOperations.GetGroup(c.OrganizationId, id), NativeIdentityRole.Observer, token);
-            return removed.IsSuccess && absent.Status == SecretStatus.Absent;
+            return removed.IsSuccess && await c.AbsentAsync(absent, () => ScopedAccessOperations.ListGroups(c.OrganizationId),
+                new AbsenceTarget<GroupMetadata>(id, name, g => g.Id, g => g.Name), token);
         });
     }
 
@@ -73,16 +74,19 @@ internal static class ScopedAccessEffects
         string? acknowledgedId = null;
         c.Cleanup(async ct =>
         {
+            ValueTask<bool> Absent(SecretOutcome<RoleSummary> exact) => c.AbsentAsync(exact,
+                () => ScopedAccessOperations.ListOrganizationRoles(c.OrganizationId),
+                new AbsenceTarget<RoleSummary>(acknowledgedId, slug, r => r.Id, r => r.Slug), ct);
             SecretOutcome<RoleSummary> found = await c.ExecuteAsync(
                 () => ScopedAccessOperations.GetOrganizationRoleBySlug(c.OrganizationId, slug), NativeIdentityRole.Observer, ct);
-            if (found.Status == SecretStatus.Absent) return true;
+            if (await Absent(found)) return true;
             if (!found.IsSuccess || found.Value.Name != slug || found.Value.Slug != slug ||
                 acknowledgedId is not null && found.Value.Id != acknowledgedId) return false;
             SecretOutcome<RoleSummary> removed = await c.ExecuteAsync(
                 () => ScopedAccessOperations.DeleteOrganizationRole(c.OrganizationId, found.Value.Id), NativeIdentityRole.Setup, ct);
             SecretOutcome<RoleSummary> absent = await c.ExecuteAsync(
                 () => ScopedAccessOperations.GetOrganizationRoleBySlug(c.OrganizationId, slug), NativeIdentityRole.Observer, ct);
-            return removed.IsSuccess && absent.Status == SecretStatus.Absent;
+            return removed.IsSuccess && await Absent(absent);
         });
         RoleSummary created = await c.NeedAsync(() => RoleChangeOperations.CreateOrganizationRole(c.OrganizationId,
             new(slug, slug, permissions: [new(OrganizationRoleSubject.Groups, OrganizationRoleAction.Read)])),
@@ -457,7 +461,9 @@ internal static class ScopedAccessEffects
                 () => IdentityOperations.DeleteOrganizationIdentity(c.OrganizationId, id), NativeIdentityRole.Setup, ct);
             SecretOutcome<IdentitySummary> absent = await c.ExecuteAsync(
                 () => IdentityOperations.GetOrganizationIdentity(c.OrganizationId, id), NativeIdentityRole.Observer, ct);
-            return removed.IsSuccess && absent.Status == SecretStatus.Absent;
+            return removed.IsSuccess && await c.AbsentAsync(absent,
+                () => IdentityOperations.ListOrganizationIdentities(c.OrganizationId),
+                new AbsenceTarget<IdentitySummary>(id, name, i => i.Id, i => i.Name), ct);
         });
         IdentitySummary identity = await c.NeedAsync(() => IdentityOperations.CreateOrganizationIdentity(
             c.OrganizationId, name, "no-access"), NativeIdentityRole.Setup, token);
