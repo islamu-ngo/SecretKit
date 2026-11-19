@@ -72,6 +72,7 @@ public sealed class NativeCaseProbe
     private readonly object gate = new();
     private bool contract;
     private bool effect;
+    private bool cleanupIncomplete;
     private string? failure;
 
     public void Contract(bool matched, NativeFailure reason)
@@ -113,10 +114,9 @@ public sealed class NativeCaseProbe
     private void Fail(NativeFailure reason)
     {
         string code = Reason(reason);
-        if (failure is null || reason == NativeFailure.CleanupIncomplete)
-        {
-            failure = code;
-        }
+        // The first failure is the case's diagnosis; a later cleanup failure must not mask it.
+        cleanupIncomplete |= reason == NativeFailure.CleanupIncomplete;
+        failure ??= code;
 
         throw new NativeCaseFailureException(code);
     }
@@ -127,7 +127,7 @@ public sealed class NativeCaseProbe
         {
             string code = failure ?? executionFailure ?? (!contract ? "missing-contract" : !effect ? "missing-effect" : "observed");
             return new(key.Provider, key.Operation, key.Variant, key.Scope, key.Case,
-                code == "observed", effect, code);
+                code == "observed", effect, code, cleanupIncomplete);
         }
     }
 
@@ -148,7 +148,7 @@ public sealed class NativeCaseProbe
 public sealed class NativeCaseFailureException(string reasonCode) : Exception(reasonCode);
 
 public sealed record NativeCaseResult(string Provider, string Operation, string Variant, string Scope,
-    string Case, bool Passed, bool EffectObserved, string ReasonCode);
+    string Case, bool Passed, bool EffectObserved, string ReasonCode, bool CleanupIncomplete = false);
 
 public static class NativeCaseRunner
 {
