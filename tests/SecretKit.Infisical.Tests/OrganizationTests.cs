@@ -9,7 +9,7 @@ public sealed class OrganizationTests
     [Test]
     [Arguments(false)]
     [Arguments(true)]
-    public async Task FolderQueryRetainsExplicitRecursionAndExactModificationTime(bool recursive)
+    public async Task FolderQueryRetainsExplicitRecursionAndSendsModificationTimeAsUtc(bool recursive)
     {
         var backend = new QueryBackend();
         await using InfisicalClient client = Phase5TestSupport.Client(backend);
@@ -23,7 +23,7 @@ public sealed class OrganizationTests
         await Assert.That(backend.Destination!.AbsolutePath).IsEqualTo("/api/v2/folders");
         await Assert.That(backend.Destination.Query).IsEqualTo(
             "?projectId=project&environment=dev&path=%2Fa%20b%26c&recursive=" +
-            (recursive ? "true" : "false") + "&lastSecretModified=2026-10-09T10%3A11%3A12.0000000%2B05%3A30");
+            (recursive ? "true" : "false") + "&lastSecretModified=2026-10-09T04%3A41%3A12.0000000Z");
     }
 
     [Test]

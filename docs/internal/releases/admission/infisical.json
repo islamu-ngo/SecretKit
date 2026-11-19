@@ -386,7 +386,7 @@
     },
     {
       "file": "src/SecretKit.Infisical/Internal/NativeWireBindings.cs",
-      "sha256": "ab32101770a24638b8295ee6a375ec261cab91707820d52481f83ee700e96081"
+      "sha256": "fe6587e5755477d34a442a8e39d1b07f406528e572fbfb3de7c5a6e7081a5665"
     },
     {
       "file": "src/SecretKit.Infisical/Organization/InfisicalOrganizationWire.cs",

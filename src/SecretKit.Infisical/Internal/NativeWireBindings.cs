@@ -111,7 +111,7 @@ public sealed partial class InfisicalClient
         {
             ("GET", InfisicalNativeOperationKind.ListFolders) =>
                 OrganizationWire.ListFoldersAsync(address.ProjectId, address.Environment!, address.Folder!,
-                    Boolean(operation.Recursive), operation.LastSecretModified?.ToString("O", CultureInfo.InvariantCulture), cancellationToken),
+                    Boolean(operation.Recursive), operation.LastSecretModified?.UtcDateTime.ToString("O", CultureInfo.InvariantCulture), cancellationToken),
             ("GET", InfisicalNativeOperationKind.Standard) => OrganizationWire.GetFolderAsync(address.Id!, cancellationToken),
             ("POST", InfisicalNativeOperationKind.MoveFolder) => OrganizationWire.MoveFolderAsync(content!, cancellationToken),
             ("POST", InfisicalNativeOperationKind.Standard) => OrganizationWire.CreateFolderAsync(content!, cancellationToken),
