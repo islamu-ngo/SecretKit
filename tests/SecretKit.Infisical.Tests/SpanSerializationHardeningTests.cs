@@ -189,6 +189,8 @@ public sealed class SpanSerializationHardeningTests
         }
 
         using var secret = SecretMaterial.FromText("proof-canary");
+        // Warm once so JIT and type initialization are not counted as per-proof allocation.
+        using (InfisicalLoginProof.Oidc("identity-1", secret)) { }
         long before = GC.GetAllocatedBytesForCurrentThread();
         using var proof = InfisicalLoginProof.Oidc("identity-1", secret);
         long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
