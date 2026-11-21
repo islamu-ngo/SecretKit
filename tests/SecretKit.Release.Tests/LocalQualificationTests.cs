@@ -541,6 +541,49 @@ public sealed class LocalQualificationTests
             .IsEqualTo(0);
     }
 
+    [Test]
+    [Arguments(".env")]
+    [Arguments(".env.local")]
+    [Arguments(".env.remote.local")]
+    public async Task LocalEnvironmentFilesDoNotInvalidateSourceContent(string name)
+    {
+        using var fixture = new LocalFixture();
+        await Assert.That(await Program.Main(["local-prepare", fixture.Source, fixture.Packages, fixture.Output]))
+            .IsEqualTo(0);
+        string path = Path.Combine(fixture.Source, name);
+        File.WriteAllText(path, "SYNTHETIC_VALUE=first");
+        await Assert.That(await Program.Main(["local-check", fixture.Source, fixture.Packages, fixture.Output]))
+            .IsEqualTo(0);
+        File.WriteAllText(path, "SYNTHETIC_VALUE=second");
+        await Assert.That(await Program.Main(["local-check", fixture.Source, fixture.Packages, fixture.Output]))
+            .IsEqualTo(0);
+    }
+
+    [Test]
+    [Arguments(".env.example")]
+    [Arguments("src/.env")]
+    public async Task EnvironmentTemplatesAndNestedFilesRemainSourceInputs(string name)
+    {
+        using var fixture = new LocalFixture();
+        string path = Path.Combine(fixture.Source, name);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, "SYNTHETIC_VALUE=first");
+        await Assert.That(await Program.Main(["local-prepare", fixture.Source, fixture.Packages, fixture.Output]))
+            .IsEqualTo(0);
+        File.WriteAllText(path, "SYNTHETIC_VALUE=second");
+        await Assert.That(await Program.Main(["local-check", fixture.Source, fixture.Packages, fixture.Output]))
+            .IsEqualTo(1);
+    }
+
+    [Test]
+    public async Task ExcludedEnvironmentFileCannotHideASymbolicLink()
+    {
+        using var fixture = new LocalFixture();
+        File.CreateSymbolicLink(Path.Combine(fixture.Source, ".env"), Path.Combine(fixture.Source, "input.cs"));
+        await Assert.That(await Program.Main(["local-prepare", fixture.Source, fixture.Packages, fixture.Output]))
+            .IsEqualTo(1);
+    }
+
     internal sealed class LocalFixture : IDisposable
     {
         public string Root { get; } = Path.Combine(Path.GetTempPath(), "secretkit-local-" + Guid.NewGuid().ToString("N"));

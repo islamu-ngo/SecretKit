@@ -361,7 +361,13 @@ public static partial class LocalQualification
             foreach (string path in Directory.EnumerateFileSystemEntries(directory).Order(StringComparer.Ordinal))
             {
                 string relative = Path.GetRelativePath(root, path).Replace(Path.DirectorySeparatorChar, '/');
-                if (Excluded(relative)) continue;
+                if (Excluded(relative))
+                {
+                    if (LocalEnvironmentFile(relative))
+                        Guard.Require((File.GetAttributes(path) & (FileAttributes.ReparsePoint | FileAttributes.Directory)) == 0,
+                            "local-source-link");
+                    continue;
+                }
                 FileAttributes attributes = File.GetAttributes(path);
                 Guard.Require((attributes & FileAttributes.ReparsePoint) == 0, "local-source-link");
                 if ((attributes & FileAttributes.Directory) != 0)
@@ -388,9 +394,14 @@ public static partial class LocalQualification
     private static bool Excluded(string relative)
     {
         string[] parts = relative.Split('/');
-        return parts[0] is ".git" or "artifacts" or "dev" or ".worktrees" ||
+        return LocalEnvironmentFile(relative) ||
+            parts[0] is ".git" or "artifacts" or "dev" or ".worktrees" ||
             parts.Any(p => p is "bin" or "obj" or "TestResults");
     }
+
+    private static bool LocalEnvironmentFile(string relative) =>
+        !relative.Contains('/') && (relative is ".env" or ".env.local" ||
+            relative.StartsWith(".env.", StringComparison.Ordinal) && relative.EndsWith(".local", StringComparison.Ordinal));
 
     private static bool Within(string root, string path) =>
         Path.GetRelativePath(Path.GetFullPath(root), path) is string relative &&
