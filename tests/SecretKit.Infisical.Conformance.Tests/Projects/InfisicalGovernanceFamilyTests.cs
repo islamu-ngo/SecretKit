@@ -295,8 +295,26 @@ public sealed class InfisicalGovernanceFamilyTests
         var definition = kind == "share" ? Definition("SharingOperations.GetShare", "selector.exact") :
             Definition("ProxiedServiceAdministrationOperations.Get", "selector.exact");
         var result = await RunAsync(environment, definition, backend.Observers);
-        await Assert.That(result.ReasonCode).IsEqualTo("cleanup-incomplete");
+        await Assert.That(result.ReasonCode).IsEqualTo("effect-mismatch");
+        await Assert.That(result.CleanupIncomplete).IsTrue();
         await Assert.That(kind == "share" ? backend.ShareCount : backend.ProxyCount).IsEqualTo(2);
+    }
+
+    [Test]
+    [Arguments("proxy-inventory-scope")]
+    [Arguments("proxy-inventory-id")]
+    [Arguments("proxy-inventory-name")]
+    public async Task ProxyAbsenceRequiresMatchingScopeAndOmissionByIdAndName(string mode)
+    {
+        await using var backend = new Backend(mode);
+        using NativeEnvironment environment = Environment(backend.Origin);
+        var definition = Definition("ProxiedServiceAdministrationOperations.Get", "selector.exact");
+
+        var result = await RunAsync(environment, definition, backend.Observers);
+
+        await Assert.That(result.ReasonCode).IsEqualTo("cleanup-incomplete");
+        await Assert.That(result.CleanupIncomplete).IsTrue();
+        await Assert.That(backend.ProxyCount).IsEqualTo(0);
     }
 
     [Test]
@@ -496,6 +514,7 @@ public sealed class InfisicalGovernanceFamilyTests
         private readonly ConcurrentBag<Task> connections = [];
         private readonly object gate = new();
         private readonly Dictionary<string, JsonObject> gateways = [], shares = [], projects = [], services = [];
+        private JsonObject? deletedService;
         private readonly Dictionary<string, string> shareValues = [], enrollmentTokens = [], proxyValues = [];
         private readonly Dictionary<string, int> issued = [], enrolled = [], views = [];
         private readonly HashSet<string> expiredShares = [];
@@ -768,6 +787,12 @@ public sealed class InfisicalGovernanceFamilyTests
 
         private (int, JsonObject) ProjectResponse(string method, string[] p, JsonObject body)
         {
+            if (p.Length == 3 && method == "GET")
+                return (200, new()
+                {
+                    ["projects"] = new JsonArray(projects.Values.Select(v => v.DeepClone()).ToArray()),
+                    ["totalCount"] = projects.Count
+                });
             if (p.Length == 3 && method == "POST")
             {
                 string id = Guid.NewGuid().ToString();
@@ -787,12 +812,6 @@ public sealed class InfisicalGovernanceFamilyTests
                     ["description"] = null,
                     ["auditLogsRetentionDays"] = 30,
                     ["secretSharing"] = false,
-            if (p.Length == 3 && method == "GET")
-                return (200, new()
-                {
-                    ["projects"] = new JsonArray(projects.Values.Select(v => v.DeepClone()).ToArray()),
-                    ["totalCount"] = projects.Count
-                });
                     ["autoCapitalization"] = false,
                     ["enforceEncryptedSecretManagerSecretMetadata"] = false,
                     ["pitVersionLimit"] = 10,
@@ -881,7 +900,25 @@ public sealed class InfisicalGovernanceFamilyTests
             {
                 var query = Query(uri);
                 string slug = Text(projects[query["projectId"]], "slug");
-                return (200, new() { ["projectSlug"] = slug, ["services"] = new JsonArray(services.Values.Select(s => s.DeepClone()).ToArray()) });
+                var rows = new JsonArray(services.Values.Select(s => s.DeepClone()).ToArray());
+                if (deletedService is not null && mode is "proxy-inventory-id" or "proxy-inventory-name")
+                {
+                    var retained = Clone(deletedService);
+                    if (mode == "proxy-inventory-id") retained["name"] = "renamed";
+                    else
+                    {
+                        string replacementId = Guid.NewGuid().ToString();
+                        retained["id"] = replacementId;
+                        foreach (var credential in retained["credentials"]!.AsArray())
+                            credential!["serviceId"] = replacementId;
+                    }
+                    rows.Add(retained);
+                }
+                return (200, new()
+                {
+                    ["projectSlug"] = mode == "proxy-inventory-scope" ? "foreign" : slug,
+                    ["services"] = rows
+                });
             }
             string? key = p[3] == "slug" ? services.Keys.SingleOrDefault(id => Text(services[id], "name") == p[4]) : p[3];
             if (key is null || !services.TryGetValue(key, out JsonObject? service)) return (404, new());
@@ -891,7 +928,12 @@ public sealed class InfisicalGovernanceFamilyTests
                 result["id"] = ForeignId;
                 foreach (var credential in result["credentials"]!.AsArray()) credential!["serviceId"] = ForeignId;
             }
-            if (method == "DELETE") { services.Remove(key); result.Remove("credentials"); }
+            if (method == "DELETE")
+            {
+                deletedService = Clone(service);
+                services.Remove(key);
+                result.Remove("credentials");
+            }
             return (200, new() { ["service"] = result });
         }
 

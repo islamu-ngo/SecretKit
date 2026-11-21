@@ -101,13 +101,24 @@ internal static class ProxiedServiceAdministrationEffects
             [credential], path, enabled);
         string? id = null;
         // Resolve by the fresh owned name before cleanup. No create replay after an uncertain result.
+        async ValueTask<bool> AbsentAsync(SecretOutcome<ProxiedServiceSummary> exact, string? selectedId,
+            CancellationToken ct)
+        {
+            using var selected = exact.IsSuccess ? exact.Value : null;
+            if (!AbsenceWitness.Concealed(exact)) return false;
+            var listed = await c.ExecuteAsync(
+                () => ProxiedServiceAdministrationOperations.List(c.OrganizationId, c.ProjectId, environment, path),
+                NativeIdentityRole.Observer, ct);
+            using var inventory = listed.IsSuccess ? listed.Value : null;
+            return AbsenceWitness.Holds(exact, listed, c.ProjectSlug,
+                new AbsenceTarget<ProxiedServiceSummary>(selectedId, name, s => s.Id, s => s.Name));
+        }
         c.Cleanup(async ct =>
         {
             SecretOutcome<ProxiedServiceSummary> found = await c.ExecuteAsync(
                 () => ProxiedServiceAdministrationOperations.GetByName(c.OrganizationId, c.ProjectId, environment, name, path),
                 NativeIdentityRole.Observer, ct);
-            // Absence unestablished: no complete observer inventory for proxied services.
-            if (!found.IsSuccess) return false;
+            if (!found.IsSuccess) return await AbsentAsync(found, id, ct);
             using ProxiedServiceSummary service = found.Value;
             string selectedId = service.Id;
             if (id is not null && selectedId != id) return false;
@@ -118,9 +129,8 @@ internal static class ProxiedServiceAdministrationEffects
             SecretOutcome<ProxiedServiceSummary> absent = await c.ExecuteAsync(
                 () => ProxiedServiceAdministrationOperations.Get(c.OrganizationId, c.ProjectId, selectedId),
                 NativeIdentityRole.Observer, ct);
-            if (absent.IsSuccess) absent.Value.Dispose();
-            // Absence unestablished: no complete observer inventory for proxied services.
-            return false;
+            return (removed.IsSuccess || AbsenceWitness.Concealed(removed)) &&
+                await AbsentAsync(absent, selectedId, ct);
         });
         if (c.Operation != "Create")
         {
@@ -156,8 +166,8 @@ internal static class ProxiedServiceAdministrationEffects
                 () => ProxiedServiceAdministrationOperations.GetByName(c.OrganizationId, c.ProjectId, environment, name, path),
                 NativeIdentityRole.Observer, ct);
             bool absent = c.Operation == "Create" && !applied || c.Operation == "Delete" && applied;
-            // Absence unestablished: no complete observer inventory for proxied services.
-            if (absent || !found.IsSuccess || !Match(found.Value))
+            if (absent) return await AbsentAsync(found, id, ct);
+            if (!found.IsSuccess || !Match(found.Value))
             {
                 if (found.IsSuccess) found.Value.Dispose();
                 return false;
