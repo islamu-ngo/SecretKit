@@ -24,6 +24,13 @@ dotnet run --project samples/ProviderAssessment --configuration Release --no-bui
 
 The samples are offline demonstrations. They do not require provider accounts or prove live provider compatibility.
 
+For authorized live Infisical work, follow the
+[provisioning guide](docs/internal/LIVE_INFISICAL_PROVISIONING.md).
+The [LiveProvisioner](tools/SecretKit.LiveProvisioner/) uses the private
+clone-root `.env` described by [`.env.example`](.env.example);
+[local Podman scripts](eng/live-infisical/) provide a disposable loopback sandbox.
+Select remote authority explicitly and retain entitlement failures as open gates.
+
 ## Make a focused change
 
 Keep Core BCL-only and provider-native features typed. Preserve explicit identity selection, material ownership, cancellation, bounded responses, and mutation uncertainty. Do not introduce hidden workers, principal fallback, mutation replay, or plaintext logging.

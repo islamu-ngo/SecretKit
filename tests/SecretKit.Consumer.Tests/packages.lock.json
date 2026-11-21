@@ -180,6 +180,24 @@
           "SecretKit.Infisical": "[0.1.0-preview.1, )"
         }
       },
+      "secretkit.liveprovisioner": {
+        "type": "Project",
+        "dependencies": {
+          "SecretKit.Core": "[0.1.0-preview.1, )",
+          "SecretKit.Infisical": "[0.1.0-preview.1, )",
+          "SecretKit.Infisical.Management": "[0.1.0-preview.1, )",
+          "SecretKit.TestHarness": "[0.1.0-preview.1, )"
+        }
+      },
+      "secretkit.release": {
+        "type": "Project"
+      },
+      "secretkit.testharness": {
+        "type": "Project",
+        "dependencies": {
+          "SecretKit.Release": "[0.1.0-preview.1, )"
+        }
+      },
       "Microsoft.Extensions.Configuration": {
         "type": "CentralTransitive",
         "requested": "[10.0.12, )",

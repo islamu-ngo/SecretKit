@@ -63,6 +63,13 @@ and [current support](docs/public/provider-support.md) before extending a provid
 
 ## Samples and tools
 
+- [LiveProvisioner](tools/SecretKit.LiveProvisioner/): nonpackable host for
+  private clone-root configuration, SDK-backed fixture provisioning and explicit
+  live runners. Start with the [provisioning guide](docs/internal/LIVE_INFISICAL_PROVISIONING.md),
+  [environment template](.env.example) and [local Podman lifecycle](eng/live-infisical/).
+  Offline checks, local Community Edition observations, remote deployment
+  evidence and release qualification remain separate.
+
 - [Infisical.ConsoleDemo](tests/PackageQualification/Infisical.ConsoleDemo/): package-only console
   read/explicit-write consumer; pack/select a candidate before restoring it.
   It is deliberately outside the pre-pack solution build. Its process tests

@@ -37,6 +37,7 @@ invent compatibility aliases, deprecated wrappers or migration guarantees.
 | Multi-key collection/export | [Configuration and runtime](configuration-and-runtime.md) | [configuration package](../../src/SecretKit.Extensions.Configuration/), [configuration tests](../../tests/SecretKit.Configuration.Tests/) |
 | Application activation/leases | [Demos](demos-and-recovery.md) | [offline sample](../../samples/RuntimeConfiguration/), [web sample](../../tests/PackageQualification/Infisical.WebDemo/), [consumer tests](../../tests/SecretKit.Consumer.Tests/) |
 | Local archives/profile/locks | [Local packages](local-packages.md) | [profile](../internal/local/infisical-runtime.json), [release tool](../../tools/SecretKit.Release/), [package tests](../../tests/SecretKit.Package.Tests/) |
+| Live Infisical setup and execution | [Provisioning guide](../internal/LIVE_INFISICAL_PROVISIONING.md) | [environment template](../../.env.example), [provisioner](../../tools/SecretKit.LiveProvisioner/), [Podman lifecycle](../../eng/live-infisical/), [consumer tests](../../tests/SecretKit.Consumer.Tests/) |
 | Broader engineering decisions | [Internal hub](../internal/README.md) | [architecture](../internal/SDK_ARCHITECTURE.md), [runtime contracts](../internal/RUNTIME_CONTRACTS.md), [ADRs](../internal/adr/) |
 
 ## Preserve these distinctions

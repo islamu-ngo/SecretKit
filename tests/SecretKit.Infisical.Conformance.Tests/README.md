@@ -53,8 +53,15 @@ with a nondefault port. Before live work it checks the pod's
 `secretkit-sdk-owned=true` label, the pinned app image digest and the sole
 loopback port mapping. Server-only initial bootstrap is setup, not SDK proof.
 
-The admitted local image is Infisical v0.166.3 at
-`sha256:c063089e4525b033fe6ab9e6858c3afb395ad38d363dcbfa6cbb6122a99a4eea`.
+The admitted local image is Infisical v0.167.12 at the Linux amd64 manifest
+`sha256:44cf26b0b556bc340fd6f86c17404a2ae9ed73e783d3dcd3a53977c54c9c5e83`.
+Use the [repo-owned Podman lifecycle](../../eng/live-infisical/) and
+[LiveProvisioner](../../tools/SecretKit.LiveProvisioner/) through the
+[provisioning guide](../../docs/internal/LIVE_INFISICAL_PROVISIONING.md).
+The [environment template](../../.env.example) describes private clone-root
+Universal Auth configuration. Runner artifacts belong under ignored
+`artifacts/live/`; temporary credential inputs are private and removed on exit.
+Historical v0.166.3 results below retain their original version and scope.
 Loopback ingress is not an egress firewall. Do not configure production or
 external connection targets. SQL effects require a separate owned test database,
 never Infisical's platform database.
