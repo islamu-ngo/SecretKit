@@ -165,7 +165,8 @@ internal sealed class OwnedRotationValidation : IAsyncDisposable
         var receipt = mutation ? management.CreateReceipt(request) : null;
         var result = await management.ExecuteAsync(request, authority,
             authority.IssueGrant(request.OperationId, request.Target), receipt, token);
-        if (result.Status == SecretStatus.Absent) return null;
+        // Concealed is not absence; callers that claim absence also require RotationOmittedAsync.
+        if (AbsenceWitness.Concealed(result)) return null;
         probe.Contract(result.IsSuccess, role == NativeIdentityRole.Setup ?
             NativeFailure.MissingPrerequisite : NativeFailure.ObserverUnavailable);
         using var value = result.Value;
@@ -197,6 +198,17 @@ internal sealed class OwnedRotationValidation : IAsyncDisposable
                     return await ExecuteAsync(r, NativeIdentityRole.Setup, true, Project, token);
             default: throw new NativeCaseFailureException("observer-unavailable");
         }
+    }
+
+    private async ValueTask<bool> RotationOmittedAsync(CancellationToken token)
+    {
+        var authority = env.CreateManagementAuthority(management, NativeIdentityRole.Observer, input.OrganizationId,
+            folder.Input.ProjectId);
+        using var request = AbsenceWitness.RotationInventory(input.Profile, input.OrganizationId, folder.Input.ProjectId);
+        var inventory = await management.ExecuteAsync(request, authority,
+            authority.IssueGrant(request.OperationId, request.Target), cancellationToken: token);
+        try { return AbsenceWitness.Omits(inventory, AbsenceWitness.Rotation(address?.RotationId, name)); }
+        finally { if (inventory.IsSuccess) inventory.Value.Dispose(); }
     }
 
     private async ValueTask<State?> ReadAsync(NativeIdentityRole role, CancellationToken token,
@@ -328,14 +340,16 @@ internal sealed class OwnedRotationValidation : IAsyncDisposable
                         address ??= new(folder.Input.ProjectId, folder.Input.Environment, folder.Folder,
                             input.Profile, current.Id);
                         await ReadAsync(NativeIdentityRole.Administrative, deadline.Token, delete: true);
-                        clean &= await ReadAsync(NativeIdentityRole.Observer, deadline.Token) is null;
+                        clean &= await ReadAsync(NativeIdentityRole.Observer, deadline.Token) is null &&
+                            await RotationOmittedAsync(deadline.Token);
                     }
                 }
                 foreach (string key in new[] { UserKey, PasswordKey })
                 {
                     var gone = await folder.Observer.ReadAsync(folder.Secret(folder.Observer, key), deadline.Token);
                     if (gone.IsSuccess) gone.Value.Dispose();
-                    clean &= gone.Status == SecretStatus.Absent;
+                    clean &= await AbsenceWitness.SecretAbsentAsync(folder.Observer, gone,
+                        (InfisicalSecretAddress)folder.Secret(folder.Observer, key).Address, deadline.Token);
                 }
             }
         }

@@ -339,8 +339,19 @@ internal static class InfisicalRotationClientEffects
                 probe.Contract(!mutation || receipt!.Evidence == DispatchEvidence.Applied, NativeFailure.ContractMismatch);
                 return project(result);
             }
-            if (outcome.Status == SecretStatus.Absent) return null;
+            // Concealed is not absence; callers that claim absence also require RotationOmittedAsync.
+            if (AbsenceWitness.Concealed(outcome)) return null;
             throw new NativeCaseFailureException("observer-unavailable");
+        }
+        private async ValueTask<bool> RotationOmittedAsync(CancellationToken token)
+        {
+            var authority = env.CreateManagementAuthority(management, NativeIdentityRole.Observer,
+                input.OrganizationId, input.Sandbox.ProjectId);
+            using var request = AbsenceWitness.RotationInventory(input.Profile, input.OrganizationId, input.Sandbox.ProjectId);
+            var inventory = await management.ExecuteAsync(request, authority,
+                authority.IssueGrant(request.OperationId, request.Target), cancellationToken: token);
+            try { return AbsenceWitness.Omits(inventory, AbsenceWitness.Rotation(address?.RotationId, name)); }
+            finally { if (inventory.IsSuccess) inventory.Value.Dispose(); }
         }
         private async ValueTask<State?> ReadAsync(NativeIdentityRole role, CancellationToken token, bool delete = false)
         {
@@ -386,7 +397,7 @@ internal static class InfisicalRotationClientEffects
                         await ReadAsync(NativeIdentityRole.Administrative, deadline.Token, delete: true);
                     }
                     var remaining = await ReadAsync(NativeIdentityRole.Observer, deadline.Token);
-                    clean &= remaining is null;
+                    clean &= remaining is null && await RotationOmittedAsync(deadline.Token);
                 }
             }
             catch (Exception) { clean = false; }

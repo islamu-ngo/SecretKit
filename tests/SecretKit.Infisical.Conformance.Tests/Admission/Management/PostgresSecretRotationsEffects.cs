@@ -28,8 +28,8 @@ internal static class PostgresSecretRotationsEffects
                         f.Environment, f.SourcePath, f.Name), NativeIdentityRole.Observer, ct);
                     if (!changed)
                     {
-                        if (found.IsSuccess) found.Value.Dispose();
-                        return found.Status == SecretStatus.Absent;
+                        return await InfisicalDatabaseFamilies.RotationAbsentAsync(c, found, () => PostgresSecretRotationOperations.List(org, project),
+                            f.Environment, f.SourcePath, f.Name, ct);
                     }
                     if (!found.IsSuccess) c.Probe.Effect(NativeObservation.Unavailable);
                     using var owned = found.Value;
@@ -145,8 +145,8 @@ internal static class PostgresSecretRotationsEffects
             {
                 var absent = await c.ExecuteAsync(() => PostgresSecretRotationOperations.GetByName(org, project,
                     f.Environment, f.SourcePath, f.Name), NativeIdentityRole.Observer, ct);
-                if (absent.IsSuccess) absent.Value.Dispose();
-                if (absent.Status != SecretStatus.Absent) return false;
+                if (!await InfisicalDatabaseFamilies.RotationAbsentAsync(c, absent, () => PostgresSecretRotationOperations.List(org, project),
+                    f.Environment, f.SourcePath, f.Name, ct)) return false;
                 await InfisicalDatabaseFamilies.MappingAsync(c, f, f.Environment, f.SourcePath,
                     active.Username, active.Password, !deleteExpected, ct);
                 DatabaseAuthenticationMeasurement measured = rejected is null ?
@@ -163,8 +163,8 @@ internal static class PostgresSecretRotationsEffects
             {
                 var old = await c.ExecuteAsync(() => PostgresSecretRotationOperations.GetByName(org, project,
                     f.Environment, f.SourcePath, f.Name), NativeIdentityRole.Observer, ct);
-                if (old.IsSuccess) old.Value.Dispose();
-                if (old.Status != SecretStatus.Absent) return false;
+                if (!await InfisicalDatabaseFamilies.RotationAbsentAsync(c, old, () => PostgresSecretRotationOperations.List(org, project),
+                    f.Environment, f.SourcePath, f.Name, ct)) return false;
                 await InfisicalDatabaseFamilies.MappingAsync(c, f, f.Environment, f.SourcePath, active.Username, active.Password, false, ct);
             }
             await CredentialsAsync(c, f, destination, true, false, ct);

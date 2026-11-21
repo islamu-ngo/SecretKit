@@ -220,6 +220,23 @@ internal static class InfisicalDatabaseFamilies
         return value == "omitted" ? null : value == "true";
     }
 
+    // A SQL rotation is absent at an exact coordinate only when the observer's by-name lookup there is
+    // concealed and the observer's complete project rotation inventory lists no rotation with that name in
+    // that environment and path. A moved rotation legitimately keeps its name at the destination.
+    internal static async ValueTask<bool> RotationAbsentAsync(ProjectFamilyContext c,
+        SecretOutcome<SqlSecretRotationSummary> exact, Func<ManagementRequest<SqlSecretRotationList>> inventory,
+        string environment, string path, string name, CancellationToken token)
+    {
+        if (exact.IsSuccess) exact.Value.Dispose();
+        var listed = await c.ExecuteAsync(inventory, NativeIdentityRole.Observer, token);
+        try
+        {
+            return AbsenceWitness.Concealed(exact) && listed.IsSuccess && listed.Value.IsComplete &&
+                !listed.Value.Items.Any(r => r.Name == name && r.Environment == environment && r.SecretPath == path);
+        }
+        finally { if (listed.IsSuccess) listed.Value.Dispose(); }
+    }
+
     internal static bool SameMaterial(SecretMaterial? left, SecretMaterial? right)
     {
         if (left is null || right is null) return left is null && right is null;
