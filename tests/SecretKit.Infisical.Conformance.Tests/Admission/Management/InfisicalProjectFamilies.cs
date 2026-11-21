@@ -378,7 +378,8 @@ internal sealed class ProjectFamilyContext
 {
     private readonly ManagementClient client;
     private readonly Stack<Func<CancellationToken, ValueTask<bool>>> cleanup = new();
-    private readonly Dictionary<string, string?> ownedProjects = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, (string? Id, NativeIdentityRole Owner)> ownedProjects = new(StringComparer.Ordinal);
+    private readonly HashSet<(string Project, string Identity)> enrolledProjectIdentities = [];
     public NativeEnvironment Environment { get; }
     public NativeCaseDefinition Definition { get; }
     public NativeCaseProbe Probe { get; }
@@ -541,7 +542,6 @@ internal sealed class ProjectFamilyContext
                     NativeFailure.ContractMismatch);
                 if (applied)
                 {
-                    Environment.ConfirmPrerequisite(Definition.Key.Scope, "selected-administrative-identity", NativeObservation.Matched);
                     Environment.ConfirmPrerequisite(Definition.Key.Scope, "scoped-administrative-rights", NativeObservation.Matched);
                 }
             }
@@ -566,49 +566,79 @@ internal sealed class ProjectFamilyContext
                 NativeIdentityRole.Setup, token);
     }
 
-    public async ValueTask AddObserversAsync(string projectId, CancellationToken token)
+    public async ValueTask AddObserversAsync(string projectId, CancellationToken token,
+        NativeIdentityRole owner = NativeIdentityRole.Setup)
     {
         string admin = Required("administrativeIdentityId");
         string observer = Required("observerIdentityId");
         Probe.Contract(admin != observer && admin != Optional("runtimeIdentityId") &&
             observer != Optional("runtimeIdentityId"), NativeFailure.MissingInput);
-        await NeedAsync(() => MembershipOperations.AddProjectIdentity(OrganizationId, projectId,
-            admin, new MembershipRoleSelection(roles: [new("admin")])), NativeIdentityRole.Setup, token);
-        await NeedAsync(() => MembershipOperations.AddProjectIdentity(OrganizationId, projectId,
-            observer, new MembershipRoleSelection(roles: [new("viewer")])), NativeIdentityRole.Setup, token);
+        if (owner != NativeIdentityRole.Administrative && !enrolledProjectIdentities.Contains((projectId, admin)))
+        {
+            await NeedAsync(() => MembershipOperations.AddProjectIdentity(OrganizationId, projectId,
+                admin, new MembershipRoleSelection(roles: [new("admin")])), owner, token);
+            enrolledProjectIdentities.Add((projectId, admin));
+        }
+        if (!enrolledProjectIdentities.Contains((projectId, observer)))
+        {
+            await NeedAsync(() => MembershipOperations.AddProjectIdentity(OrganizationId, projectId,
+                observer, new MembershipRoleSelection(roles: [new("viewer")])), owner, token);
+            enrolledProjectIdentities.Add((projectId, observer));
+        }
     }
 
     internal void RememberProject<T>(T value) where T : notnull
     {
-        if (value is ProjectSummary project && ownedProjects.TryGetValue(project.Slug, out string? id) && id is null)
-            ownedProjects[project.Slug] = project.Id;
+        if (value is ProjectSummary project && ownedProjects.TryGetValue(project.Slug, out var owned) && owned.Id is null)
+            ownedProjects[project.Slug] = (project.Id, owned.Owner);
     }
 
-    public void OwnProject(string slug, string? acknowledgedId = null)
+    public async ValueTask<SecretOutcome<ProjectSummary>> FindOwnedProjectAsync(string slug, CancellationToken token)
     {
-        ownedProjects.Add(slug, acknowledgedId);
-        // Register before dispatch: even a lost setup acknowledgement must be inspected.
+        var owned = ownedProjects[slug];
+        SecretOutcome<ProjectSummary> found = await ExecuteAsync(
+            () => ProjectOperations.GetProjectBySlug(OrganizationId, slug), owned.Owner, token);
+        if (found.IsSuccess)
+        {
+            if (found.Value.Slug != slug || owned.Id is { } expected && found.Value.Id != expected)
+                throw new NativeCaseFailureException("contract-mismatch");
+            ownedProjects[slug] = (found.Value.Id, owned.Owner);
+        }
+        return found;
+    }
+
+    public void OwnProject(string slug, string? acknowledgedId = null,
+        NativeIdentityRole owner = NativeIdentityRole.Setup)
+    {
+        ownedProjects.Add(slug, (acknowledgedId, owner));
+        // Register the selector and dispatch authority before a possibly lost acknowledgement.
         Cleanup(async token =>
         {
             ValueTask<bool> Absent(SecretOutcome<ProjectSummary> exact) => AbsentAsync(exact,
                 () => ProjectOperations.ListProjects(OrganizationId),
-                new AbsenceTarget<ProjectSummary>(ownedProjects[slug], slug, p => p.Id, p => p.Slug), token);
-            SecretOutcome<ProjectSummary> found = await ExecuteAsync(
-                () => ProjectOperations.GetProjectBySlug(OrganizationId, slug), NativeIdentityRole.Observer, token);
-            if (await Absent(found)) return true;
+                new AbsenceTarget<ProjectSummary>(ownedProjects[slug].Id, slug, p => p.Id, p => p.Slug), token);
+            SecretOutcome<ProjectSummary> found = await FindOwnedProjectAsync(slug, token);
+            if (AbsenceWitness.Concealed(found))
+            {
+                SecretOutcome<ProjectSummary> absent = await ExecuteAsync(
+                    () => ownedProjects[slug].Id is { } knownId ?
+                        ProjectOperations.GetProject(OrganizationId, knownId) :
+                        ProjectOperations.GetProjectBySlug(OrganizationId, slug), NativeIdentityRole.Observer, token);
+                return await Absent(absent);
+            }
             if (!found.IsSuccess) return false;
             string id = found.Value.Id;
-            if (ownedProjects[slug] is { } expected && id != expected) return false;
+            await AddObserversAsync(id, token, owner);
             if (found.Value.HasDeleteProtection.IsPresent && !found.Value.HasDeleteProtection.IsNull &&
                 found.Value.HasDeleteProtection.Value)
             {
                 SecretOutcome<ProjectSummary> cleared = await ExecuteAsync(
                     () => ProjectOperations.UpdateProject(OrganizationId, id, deleteProtection: false),
-                    NativeIdentityRole.Setup, token);
+                    owner, token);
                 if (!cleared.IsSuccess) return false;
             }
             SecretOutcome<ProjectSummary> deleted = await ExecuteAsync(
-                () => ProjectOperations.DeleteProject(OrganizationId, id), NativeIdentityRole.Setup, token);
+                () => ProjectOperations.DeleteProject(OrganizationId, id), owner, token);
             SecretOutcome<ProjectSummary> observed = await ExecuteAsync(
                 () => ProjectOperations.GetProject(OrganizationId, id), NativeIdentityRole.Observer, token);
             return deleted.IsSuccess && await Absent(observed);

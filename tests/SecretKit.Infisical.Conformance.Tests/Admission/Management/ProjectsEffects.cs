@@ -44,19 +44,27 @@ internal static class ProjectsEffects
                     .FromValues([new("Witness", "witness", 1)])), token);
             template = seeded.Id;
         }
-        c.OwnProject(slug);
+        c.OwnProject(slug, owner: NativeIdentityRole.Administrative);
         Func<ManagementRequest<ProjectSummary>> request = () => ProjectOperations.CreateProject(c.OrganizationId,
             slug, slug, description, protection, defaults, template, kms);
         bool Match(ProjectSummary p) => p.Slug == slug && p.Name == slug && p.Description == description &&
             Field(p.HasDeleteProtection, protection) && (kms is null || Field(p.KmsSecretManagerKeyId, kms));
         await c.CaseAsync(request, Match, async (applied, ct) =>
         {
+            string? id = null;
+            if (applied)
+            {
+                SecretOutcome<ProjectSummary> owned = await c.FindOwnedProjectAsync(slug, ct);
+                if (!owned.IsSuccess) return false;
+                id = owned.Value.Id;
+                await c.AddObserversAsync(id, ct, NativeIdentityRole.Administrative);
+            }
             SecretOutcome<ProjectSummary> observed = await c.ExecuteAsync(
                 () => ProjectOperations.GetProjectBySlug(c.OrganizationId, slug), NativeIdentityRole.Observer, ct);
             if (!applied)
                 return await c.AbsentAsync(observed, () => ProjectOperations.ListProjects(c.OrganizationId),
                     new AbsenceTarget<ProjectSummary>(null, slug, p => p.Id, p => p.Slug), ct);
-            if (!observed.IsSuccess || !Match(observed.Value) || !observed.Value.Environments.IsPresent ||
+            if (!observed.IsSuccess || observed.Value.Id != id || !Match(observed.Value) || !observed.Value.Environments.IsPresent ||
                 observed.Value.Environments.IsNull) return false;
             IReadOnlyList<ProjectEnvironmentReference> environments = observed.Value.Environments.Value;
             return template is not null ? environments.Any(e => e.Slug == "witness") :

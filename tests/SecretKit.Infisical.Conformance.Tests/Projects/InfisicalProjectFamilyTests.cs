@@ -394,8 +394,10 @@ public sealed class InfisicalProjectFamilyTests
         var ownerMembership = (await Call(MembershipOperations.GetOrganizationGroup(OwnerOrg, group.Id),
             "owner-observer", OwnerOrg)).Value;
         await Assert.That(ownerMembership.Group!.OrganizationId.Value).IsEqualTo(OwnerOrg);
-        await Assert.That((await Call(MembershipOperations.GetOrganizationGroup(Org, group.Id),
-            "observer", Org)).Status).IsEqualTo(SecretStatus.Absent);
+        var targetAbsent = await Call(MembershipOperations.GetOrganizationGroup(Org, group.Id), "observer", Org);
+        var targetInventory = await Call(MembershipOperations.ListOrganizationGroups(Org), "observer", Org);
+        await Assert.That(AbsenceWitness.Holds(targetAbsent, targetInventory,
+            new AbsenceTarget<MembershipSummary>(null, group.Id, m => m.Id, m => m.PrincipalId))).IsTrue();
         await Assert.That((await Call(ScopedAccessOperations.GetGroup(OwnerOrg, group.Id),
             "runtime", OwnerOrg)).Status).IsEqualTo(SecretStatus.Denied);
         RoleSummary custom = (await Call(RoleChangeOperations.CreateOrganizationRole(Org,
@@ -448,8 +450,10 @@ public sealed class InfisicalProjectFamilyTests
             "owner-observer", OwnerOrg)).Value.Id).IsEqualTo(ownerMembership.Id);
         await Assert.That((await Call(ScopedAccessOperations.DeleteGroup(OwnerOrg, group.Id),
             "owner-setup", OwnerOrg)).Status).IsEqualTo(SecretStatus.Success);
-        await Assert.That((await Call(ScopedAccessOperations.GetGroup(OwnerOrg, group.Id),
-            "owner-observer", OwnerOrg)).Status).IsEqualTo(SecretStatus.Absent);
+        var ownerAbsent = await Call(ScopedAccessOperations.GetGroup(OwnerOrg, group.Id), "owner-observer", OwnerOrg);
+        var ownerInventory = await Call(ScopedAccessOperations.ListGroups(OwnerOrg), "owner-observer", OwnerOrg);
+        await Assert.That(AbsenceWitness.Holds(ownerAbsent, ownerInventory,
+            new AbsenceTarget<GroupMetadata>(group.Id, group.Slug, g => g.Id, g => g.Slug))).IsTrue();
         await Assert.That((await Call(ScopedAccessOperations.DeleteOrganizationRole(Org, custom.Id),
             "setup", Org)).IsSuccess).IsTrue();
         await Assert.That(backend.OwnerUnlinkDispatches).IsEqualTo(0);
@@ -570,6 +574,116 @@ public sealed class InfisicalProjectFamilyTests
         await Assert.That(result.Passed).IsEqualTo(reason == "observed");
         await Assert.That(backend.AdministrativeTagCreates).IsEqualTo(caseName is "denied-authority" or "cancellation-boundary" ? 0 : 1);
         if (mode != "cleanup") await Assert.That(backend.ProjectCount).IsEqualTo(0);
+    }
+
+    [Test]
+    [Arguments("selected-contract")]
+    [Arguments("independent-effect")]
+    [Arguments("lost-response-no-replay")]
+    [Arguments("denied-authority")]
+    [Arguments("cancellation-boundary")]
+    public async Task ProjectCreationEnrolsObserverFromCreatorAndCleansWithoutReplay(string caseName)
+    {
+        await using var backend = new Backend("good");
+        using NativeEnvironment environment = Environment(backend.Origin);
+
+        NativeCaseResult result = await RunAsync(environment, Definition("ProjectOperations.CreateProject",
+            "createDefaultEnvironments.false", caseName));
+
+        bool created = caseName is not ("denied-authority" or "cancellation-boundary");
+        await Assert.That(result.ReasonCode).IsEqualTo("observed");
+        await Assert.That(result.CleanupIncomplete).IsFalse();
+        await Assert.That(backend.AdministrativeProjectCreates).IsEqualTo(created ? 1 : 0);
+        await Assert.That(backend.ProjectObserverEnrollments).IsEqualTo(created ? 1 : 0);
+        await Assert.That(backend.ProjectCount).IsEqualTo(0);
+        await Assert.That(environment.PrerequisiteResults([
+            new("Infisical", "local", "selected-administrative-identity"),
+            new("Infisical", "local", "separate-observer-identity"),
+            new("Infisical", "local", "selected-runtime-identity")]).All(p => !p.Confirmed)).IsTrue();
+        if (caseName is "selected-contract" or "independent-effect")
+            await Assert.That(environment.PrerequisiteResults([
+                new("Infisical", "local", "scoped-administrative-rights")]).Single().Confirmed).IsTrue();
+    }
+
+    [Test]
+    public async Task ProjectFixtureRequiresCreatorAuthorityAndExplicitObserverMembership()
+    {
+        await using var backend = new Backend("good");
+        using NativeEnvironment environment = Environment(backend.Origin);
+        var probe = new NativeCaseProbe();
+        var context = new ProjectFamilyContext(environment, "Projects",
+            Definition("ProjectOperations.CreateProject", "createDefaultEnvironments.false"), probe);
+        string slug = ProjectFamilyContext.FreshName();
+        context.OwnProject(slug, owner: NativeIdentityRole.Administrative);
+        ProjectSummary created = await context.NeedAsync(() => ProjectOperations.CreateProject(Org,
+            slug, slug, deleteProtection: true, createDefaultEnvironments: false),
+            NativeIdentityRole.Administrative, CancellationToken.None);
+        var hidden = await context.ExecuteAsync(() => ProjectOperations.GetProject(Org, created.Id),
+            NativeIdentityRole.Observer, CancellationToken.None);
+        await Assert.That(hidden.Status).IsEqualTo(SecretStatus.Denied);
+        var inventory = await context.NeedAsync(() => ProjectOperations.ListProjects(Org),
+            NativeIdentityRole.Observer, CancellationToken.None);
+        await Assert.That(inventory.IsComplete && inventory.Items.All(p => p.Id != created.Id && p.Slug != slug)).IsTrue();
+        var forbiddenClear = await context.ExecuteAsync(
+            () => ProjectOperations.UpdateProject(Org, created.Id, deleteProtection: false),
+            NativeIdentityRole.Setup, CancellationToken.None);
+        var forbiddenDelete = await context.ExecuteAsync(() => ProjectOperations.DeleteProject(Org, created.Id),
+            NativeIdentityRole.Setup, CancellationToken.None);
+        await Assert.That(forbiddenClear.Status).IsEqualTo(SecretStatus.Denied);
+        await Assert.That(forbiddenDelete.Status).IsEqualTo(SecretStatus.Denied);
+
+        await context.AddObserversAsync(created.Id, CancellationToken.None, NativeIdentityRole.Administrative);
+        ProjectSummary visible = await context.NeedAsync(() => ProjectOperations.GetProject(Org, created.Id),
+            NativeIdentityRole.Observer, CancellationToken.None);
+        await Assert.That(visible.Id == created.Id && visible.Slug == slug).IsTrue();
+        await context.CleanupAsync();
+
+        await Assert.That(backend.ProjectCount).IsEqualTo(0);
+        await Assert.That(backend.ProjectObserverEnrollments).IsEqualTo(1);
+        var absent = await context.ExecuteAsync(() => ProjectOperations.GetProject(Org, created.Id),
+            NativeIdentityRole.Observer, CancellationToken.None);
+        await Assert.That(AbsenceWitness.Concealed(absent)).IsTrue();
+    }
+
+    [Test]
+    [Arguments("project-create-malformed")]
+    [Arguments("project-create-foreign-id")]
+    public async Task InvalidCreateAcknowledgementsCannotAdoptAnotherProject(string mode)
+    {
+        await using var backend = new Backend(mode);
+        using NativeEnvironment environment = Environment(backend.Origin);
+
+        NativeCaseResult result = await RunAsync(environment, Definition("ProjectOperations.CreateProject",
+            "createDefaultEnvironments.false"));
+
+        await Assert.That(result.Passed).IsFalse();
+        await Assert.That(result.ReasonCode).IsEqualTo("contract-mismatch");
+        await Assert.That(backend.AdministrativeProjectCreates).IsEqualTo(1);
+        await Assert.That(result.CleanupIncomplete).IsEqualTo(mode == "project-create-foreign-id");
+        await Assert.That(backend.ProjectCount).IsEqualTo(mode == "project-create-foreign-id" ? 2 : 0);
+        if (mode == "project-create-foreign-id")
+        {
+            await Assert.That(backend.ForeignProjectProtected).IsTrue();
+            await Assert.That(backend.ProjectObserverEnrollments).IsEqualTo(0);
+        }
+    }
+
+    [Test]
+    [Arguments("project-absence-denied")]
+    [Arguments("project-absence-id")]
+    [Arguments("project-absence-slug")]
+    [Arguments("project-incomplete-inventory")]
+    public async Task ProjectCleanupRequiresExactAbsenceAndCompleteObserverOmission(string mode)
+    {
+        await using var backend = new Backend(mode);
+        using NativeEnvironment environment = Environment(backend.Origin);
+
+        NativeCaseResult result = await RunAsync(environment, Definition("ProjectOperations.CreateProject",
+            "createDefaultEnvironments.false"));
+
+        await Assert.That(result.ReasonCode).IsEqualTo("cleanup-incomplete");
+        await Assert.That(result.CleanupIncomplete).IsTrue();
+        await Assert.That(backend.ProjectCount).IsEqualTo(0);
     }
 
     [Test]
@@ -837,12 +951,13 @@ public sealed class InfisicalProjectFamilyTests
         NativeCaseResult result = await RunAsync(environment,
             Definition("ProjectTemplateOperations.CreateProjectTemplate", "permissions.literal"));
         await Assert.That(result.Passed).IsTrue();
-        string[] measured = ["selected-administrative-identity", "scoped-administrative-rights",
+        string[] measured = ["scoped-administrative-rights",
             "selected-runtime-identity", "permission-policy-entitlement",
             "intended-principal-permission-observer", "approved-sandbox-cleanup"];
         await Assert.That(environment.PrerequisiteResults(measured.Select(p =>
             new NativePrerequisiteKey("Infisical", "local", p)).ToArray()).All(p => p.Confirmed)).IsTrue();
         await Assert.That(environment.PrerequisiteResults([
+            new("Infisical", "local", "selected-administrative-identity"),
             new("Infisical", "local", "separate-observer-identity"),
             new("Infisical", "local", "primary-permission-response-shapes"),
             new("Infisical", "local", "owned-origin-api-revision")]).All(p => !p.Confirmed)).IsTrue();
@@ -2381,6 +2496,8 @@ public sealed class InfisicalProjectFamilyTests
         private readonly CancellationTokenSource shutdown = new();
         private readonly ConcurrentBag<Task> connections = [];
         private readonly Dictionary<string, JsonObject> projects = [];
+        private readonly Dictionary<string, string> projectCreators = [];
+        private JsonObject? deletedProject;
         private readonly Dictionary<string, JsonObject> tags = [];
         private readonly Dictionary<string, JsonObject> environments = [];
         private readonly Dictionary<string, JsonObject> templates = [];
@@ -2402,6 +2519,8 @@ public sealed class InfisicalProjectFamilyTests
         internal ControlledOrganizationExpiryObserver? OrganizationExpiryObserver { get; set; }
         internal Uri Origin { get; }
         internal int AdministrativeTagCreates { get; private set; }
+        internal int AdministrativeProjectCreates { get; private set; }
+        internal int ProjectObserverEnrollments { get; private set; }
         internal int RuntimeReads { get; private set; }
         internal int AdministrativeMemberMutations { get; private set; }
         internal int FirstAllowedReads { get; private set; }
@@ -2711,7 +2830,10 @@ public sealed class InfisicalProjectFamilyTests
                     else
                     {
                         secrets[(project, environment, key)] = input["secretValue"]!.GetValue<string>();
+                        string secretId = attributes.TryGetValue((project, environment, key), out var previous) ?
+                            Text(previous, "id") : Guid.NewGuid().ToString();
                         attributes[(project, environment, key)] = (JsonObject)input.DeepClone();
+                        attributes[(project, environment, key)]["id"] = secretId;
                     }
                     results.Add(new JsonObject
                     {
@@ -2763,11 +2885,22 @@ public sealed class InfisicalProjectFamilyTests
                     {
                         ["secrets"] = new JsonArray(secrets.Keys
                         .Where(s => s.Project == project && s.Environment == env)
-                        .Select(s => new JsonObject { ["secretKey"] = s.Key, ["version"] = 1 }).ToArray())
+                        .Select(s => new JsonObject
+                        {
+                            ["id"] = attributes[s]["id"]!.DeepClone(),
+                            ["secretKey"] = s.Key,
+                            ["version"] = 1,
+                            ["workspace"] = project,
+                            ["environment"] = env,
+                            ["secretPath"] = "/",
+                            ["type"] = "shared"
+                        }).ToArray()),
+                        ["imports"] = new JsonArray()
                     });
                 if (method == "POST")
                 {
                     secrets.Add((project, env, key), Text(body, "secretValue"));
+                    attributes.Add((project, env, key), new JsonObject { ["id"] = Guid.NewGuid().ToString() });
                     canaryKeys.Add((project, env, key));
                 }
                 if (method == "PATCH" && secrets.ContainsKey((project, env, key))) secrets[(project, env, key)] = Text(body, "secretValue");
@@ -2776,7 +2909,7 @@ public sealed class InfisicalProjectFamilyTests
                 {
                     ["secret"] = new JsonObject
                     {
-                        ["id"] = Guid.NewGuid().ToString(),
+                        ["id"] = attributes[(project, env, key)]["id"]!.DeepClone(),
                         ["secretKey"] = key,
                         ["secretValue"] = value,
                         ["workspace"] = project,
@@ -2826,6 +2959,8 @@ public sealed class InfisicalProjectFamilyTests
                         ["secretDetectionIgnoreValues"] = new JsonArray()
                     };
                     projects.Add(id, project);
+                    projectCreators.Add(id, role);
+                    if (role == "administrative") AdministrativeProjectCreates++;
                     if (mode == "cleanup-substitution" && projects.Count == 1)
                     {
                         var foreign = project.DeepClone().AsObject();
@@ -2873,19 +3008,53 @@ public sealed class InfisicalProjectFamilyTests
                                     }).ToArray())
                                 });
                     }
+                    if (mode is "project-create-malformed" or "project-create-foreign-id")
+                    {
+                        var acknowledgement = project.DeepClone().AsObject();
+                        string responseId = mode == "project-create-malformed" ? "" : ForeignProjectId;
+                        acknowledgement["id"] = responseId;
+                        acknowledgement["_id"] = responseId;
+                        if (mode == "project-create-foreign-id")
+                        {
+                            var foreign = project.DeepClone().AsObject();
+                            foreign["id"] = ForeignProjectId;
+                            foreign["_id"] = ForeignProjectId;
+                            foreign["slug"] = "unrelated";
+                            foreign["hasDeleteProtection"] = true;
+                            projects.Add(ForeignProjectId, foreign);
+                        }
+                        return (200, Wrap("project", acknowledgement));
+                    }
                     return (200, Wrap("project", project));
+                }
+                var visible = projects.Values.Where(p => CanProject(Text(p, "id"), role))
+                    .Select(p => p.DeepClone()).ToArray();
+                if (role == "observer" && deletedProject is not null &&
+                    mode is "project-absence-id" or "project-absence-slug")
+                {
+                    var retained = deletedProject.DeepClone().AsObject();
+                    if (mode == "project-absence-id") retained["slug"] = "renamed";
+                    else
+                    {
+                        string replacementId = Guid.NewGuid().ToString();
+                        retained["id"] = replacementId;
+                        retained["_id"] = replacementId;
+                    }
+                    visible = [retained];
                 }
                 return (200, new JsonObject
                 {
                     ["projects"] = mode == "empty-project-list" ? new JsonArray() :
-                    new JsonArray(projects.Values.Select(p => p.DeepClone()).ToArray()),
-                    ["totalCount"] = projects.Count
+                    new JsonArray(visible),
+                    ["totalCount"] = visible.Length +
+                        (role == "observer" && deletedProject is not null && mode == "project-incomplete-inventory" ? 1 : 0)
                 });
             }
             if (path[3] == "slug")
             {
                 JsonObject? project = projects.Values.SingleOrDefault(p => Text(p, "slug") == path[4]);
-                if (project is not null && mode == "cleanup-substitution" && role == "observer")
+                if (project is not null && !CanProject(Text(project, "id"), role)) return (403, new JsonObject());
+                if (project is not null && mode == "cleanup-substitution")
                 {
                     var substituted = projects[ForeignProjectId].DeepClone().AsObject();
                     substituted["slug"] = project["slug"]!.DeepClone();
@@ -2894,7 +3063,11 @@ public sealed class InfisicalProjectFamilyTests
                 return project is null ? (404, new JsonObject()) : (200, project.DeepClone());
             }
             string projectId = path[3];
-            if (!projects.TryGetValue(projectId, out JsonObject? owner)) return (404, new JsonObject());
+            if (!projects.TryGetValue(projectId, out JsonObject? owner))
+                return (mode == "project-absence-denied" && deletedProject is not null && role == "observer" ? 403 : 404, new JsonObject());
+            if (!CanProject(projectId, role) || role == "observer" && method != "GET" &&
+                !(method == "POST" && path.Length == 6 && path[4] == "memberships" && path[5] == "details"))
+                return (403, new JsonObject());
             if (path.Length == 4)
             {
                 if (method == "PATCH")
@@ -2905,6 +3078,8 @@ public sealed class InfisicalProjectFamilyTests
                 if (method == "DELETE")
                 {
                     if (mode == "cleanup") return (403, new JsonObject());
+                    if (owner["hasDeleteProtection"]!.GetValue<bool>()) return (403, new JsonObject());
+                    deletedProject = owner.DeepClone().AsObject();
                     projects.Remove(projectId);
                     if (projectId != ForeignProjectId) OwnedProjectDeletes++;
                     if (mode.StartsWith("mixed-", StringComparison.Ordinal) || mode.StartsWith("temporal-", StringComparison.Ordinal))
@@ -2920,7 +3095,7 @@ public sealed class InfisicalProjectFamilyTests
                 }
                 return (200, Wrap("project", result));
             }
-            if (path[4] == "memberships") return Membership(method, path, projectId, body, role);
+            if (path[4] == "memberships") return Membership(method, path, projectId, body, role, uri);
             if (path[4] == "tags")
             {
                 string? id = path.Length == 5 ? null : path[5] == "slug" ?
@@ -2958,6 +3133,19 @@ public sealed class InfisicalProjectFamilyTests
             }
             if (path[4] == "environments") return EnvironmentResponse(method, uri, path, projectId, owner, body);
             return (404, new JsonObject());
+        }
+        private bool CanProject(string project, string credential)
+        {
+            if (projectCreators.GetValueOrDefault(project) == credential) return true;
+            string principal = credential switch
+            {
+                "setup" => Setup,
+                "administrative" => Admin,
+                "observer" => Observer,
+                "runtime" => Runtime,
+                _ => ""
+            };
+            return members.ContainsKey((project, principal));
         }
         private bool CanSecret(string project, string env, string key, string action, string? selectedUser = null)
         {
@@ -3046,10 +3234,39 @@ public sealed class InfisicalProjectFamilyTests
             if (method == "DELETE") templates.Remove(id);
             return (200, Wrap("projectTemplate", found));
         }
-        private (int, JsonNode) Membership(string method, string[] path, string project, JsonObject body, string credential)
+        private (int, JsonNode) Membership(string method, string[] path, string project, JsonObject body, string credential, Uri uri)
         {
             bool identity = path.Length > 5 && path[5] == "identities";
             bool group = path.Length > 5 && path[5] == "groups";
+            if (identity && path.Length == 6 && method == "GET")
+            {
+                var query = uri.Query.TrimStart('?').Split('&').Select(p => p.Split('=', 2))
+                    .ToDictionary(p => Uri.UnescapeDataString(p[0]), p => Uri.UnescapeDataString(p[1]));
+                var rows = members.Where(m => m.Key.Project == project &&
+                    m.Key.Principal is Setup or Admin or Observer or Runtime).Select(m => new JsonObject
+                    {
+                        ["id"] = m.Value["id"]!.DeepClone(),
+                        ["identityId"] = m.Key.Principal,
+                        ["createdAt"] = Date,
+                        ["updatedAt"] = Date,
+                        ["roles"] = m.Value["roles"]!.DeepClone(),
+                        ["identity"] = new JsonObject
+                        {
+                            ["id"] = m.Key.Principal,
+                            ["name"] = "fixture",
+                            ["orgId"] = Org,
+                            ["projectId"] = null,
+                            ["authMethods"] = new JsonArray(),
+                            ["activeLockoutAuthMethods"] = new JsonArray()
+                        }
+                    }).ToArray();
+                return (200, new JsonObject
+                {
+                    ["identityMemberships"] = new JsonArray(rows.Skip(int.Parse(query["offset"]))
+                        .Take(int.Parse(query["limit"])).Select(r => (JsonNode)r).ToArray()),
+                    ["totalCount"] = rows.Length
+                });
+            }
             if (mode.StartsWith("mixed-", StringComparison.Ordinal) && !identity && !group)
             {
                 if (path.Length > 5 && path[5] == "details")
@@ -3133,6 +3350,10 @@ public sealed class InfisicalProjectFamilyTests
                     .Select(m => GroupMembership(m.Key.Principal, m.Value, project)).ToArray())
                 });
             string principal = identity || group ? path[^1] : User;
+            if (identity && method == "POST" &&
+                projectCreators.GetValueOrDefault(project) == (principal == Admin ? "administrative" :
+                    principal == Setup ? "setup" : ""))
+                return (409, new JsonObject());
             if (!identity && path.Length == 5 && method == "GET")
                 return (200, new JsonObject
                 {
@@ -3157,6 +3378,7 @@ public sealed class InfisicalProjectFamilyTests
                             .AddMinutes(1).ToString("O");
                 }
                 members.Add((project, principal), new JsonObject { ["id"] = Guid.NewGuid().ToString(), ["roles"] = roles });
+                if (identity && principal == Observer) ProjectObserverEnrollments++;
             }
             if (!members.TryGetValue((project, principal), out JsonObject? member)) return (404, new JsonObject());
             if (method == "PATCH")
@@ -3299,6 +3521,16 @@ public sealed class InfisicalProjectFamilyTests
         }
         private (int, JsonNode) OrganizationRoleResponse(string method, string[] path, JsonObject body)
         {
+            if (method == "GET" && path.Length == 4)
+                return (200, new JsonObject
+                {
+                    ["roles"] = new JsonArray(organizationRoles.Values.Select(role =>
+                    {
+                        var row = role.DeepClone().AsObject();
+                        row.Remove("permissions");
+                        return (JsonNode)row;
+                    }).ToArray())
+                });
             string? id = path.Length == 4 ? null : path[4] == "slug" ?
                 organizationRoles.Keys.SingleOrDefault(k => Text(organizationRoles[k], "slug") == path[5]) : path[4];
             if (method == "POST")
