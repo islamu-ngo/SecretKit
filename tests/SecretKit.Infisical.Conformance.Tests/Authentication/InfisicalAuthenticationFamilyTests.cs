@@ -94,6 +94,7 @@ public sealed class InfisicalAuthenticationFamilyTests
         await Assert.That(backend.IssuedAllowedReads).IsEqualTo(1);
         await Assert.That(backend.IssuedDeniedReads).IsEqualTo(1);
         await Assert.That(backend.IdentityExists).IsFalse();
+        await Assert.That(result.CleanupIncomplete).IsFalse();
         await Assert.That(backend.Proof!.Value.GetProperty("identityId").GetString()).IsEqualTo(Identity);
         if (variant.StartsWith("proof.Aws.", StringComparison.Ordinal))
             await Assert.That(backend.Proof.Value.TryGetProperty("iamHttpRequestMethod", out _))
@@ -156,7 +157,7 @@ public sealed class InfisicalAuthenticationFamilyTests
     [Arguments("universal", "bad-scope", "effect-mismatch")]
     [Arguments("universal", "bad-metadata", "effect-mismatch")]
     [Arguments("universal", "observer", "observer-unavailable")]
-    [Arguments("universal", "cleanup", "cleanup-incomplete")]
+    [Arguments("universal", "cleanup", "observer-unavailable")]
     [Arguments("proof", "lost", "observer-unavailable")]
     [Arguments("proof", "cancel", "observer-unavailable")]
     [Arguments("universal", "lost", "observer-unavailable")]
@@ -185,6 +186,7 @@ public sealed class InfisicalAuthenticationFamilyTests
         NativeCaseResult result = (await RunAsync(environment, [definition])).Single();
         await Assert.That(result.ReasonCode).IsEqualTo(reason);
         await Assert.That(result.Passed).IsEqualTo(reason == "observed");
+        await Assert.That(result.CleanupIncomplete).IsEqualTo(mode == "cleanup");
         if (mode is not ("observer" or "cleanup"))
             await Assert.That(backend.IdentityExists).IsFalse();
         if (mode == "lost")
@@ -1125,6 +1127,8 @@ public sealed class InfisicalAuthenticationFamilyTests
         {
             if (role == "observer" && mode == "observer" && path.Contains("/tokens", StringComparison.Ordinal))
                 return (403, new { });
+            if (verb == "GET" && path == "/api/v1/identities" && !IdentityExists)
+                return (200, new { identities = Array.Empty<object>(), totalCount = 0 });
             if (path == "/api/v1/identities/" + Identity)
             {
                 if (verb == "GET") IdentityReads++;

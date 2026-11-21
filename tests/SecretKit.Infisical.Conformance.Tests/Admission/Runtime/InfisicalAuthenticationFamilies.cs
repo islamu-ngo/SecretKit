@@ -158,7 +158,7 @@ internal sealed class AuthenticationFixture : IAsyncDisposable
     {
         ManagementAuthority authority = environment.CreateManagementAuthority(management, role, input.OrganizationId);
         return await management.ExecuteAsync(request, authority,
-            authority.IssueGrant(request.OperationId, new(input.OrganizationId, resourceId: input.IdentityId)),
+            authority.IssueGrant(request.OperationId, request.Target),
             cancellationToken: token);
     }
 
@@ -323,8 +323,11 @@ internal sealed class AuthenticationFixture : IAsyncDisposable
                     receipt, deadline.Token);
                 using var inspect = IdentityOperations.GetOrganizationIdentity(input.OrganizationId, input.IdentityId);
                 SecretOutcome<IdentitySummary> remaining = await ReadAsync(inspect, NativeIdentityRole.Observer, deadline.Token);
-                clean = (deleted.IsSuccess || deleted.Status == SecretStatus.Absent) &&
-                    remaining.Status == SecretStatus.Absent;
+                using var inventory = IdentityOperations.ListOrganizationIdentities(input.OrganizationId);
+                var identities = await ReadAsync(inventory, NativeIdentityRole.Observer, deadline.Token);
+                clean = (deleted.IsSuccess || AbsenceWitness.Concealed(deleted)) &&
+                    AbsenceWitness.Holds(remaining, identities, new AbsenceTarget<IdentitySummary>(
+                        input.IdentityId, null, x => x.Id, _ => null));
             }
         }
         catch (Exception) { clean = false; }
