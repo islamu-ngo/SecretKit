@@ -787,6 +787,12 @@ public sealed class InfisicalGovernanceFamilyTests
                     ["description"] = null,
                     ["auditLogsRetentionDays"] = 30,
                     ["secretSharing"] = false,
+            if (p.Length == 3 && method == "GET")
+                return (200, new()
+                {
+                    ["projects"] = new JsonArray(projects.Values.Select(v => v.DeepClone()).ToArray()),
+                    ["totalCount"] = projects.Count
+                });
                     ["autoCapitalization"] = false,
                     ["enforceEncryptedSecretManagerSecretMetadata"] = false,
                     ["pitVersionLimit"] = 10,

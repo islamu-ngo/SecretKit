@@ -182,7 +182,7 @@
     },
     {
       "file": "src/SecretKit.Infisical.Management/Projects/Projects.cs",
-      "sha256": "fe0a23b99342fc0d919a4f77a6699b764f9da3432e17e18c7dc22f69c47529a2"
+      "sha256": "ebecc5d1353330fd174248bf748f984ecca3adc8fe03d023f4f442e7648a9622"
     },
     {
       "file": "src/SecretKit.Infisical.Management/Rotations/MsSqlSecretRotations.cs",
@@ -238,7 +238,7 @@
     },
     {
       "file": "src/SecretKit.Infisical.Management/Transport/ManagementResponseContracts.cs",
-      "sha256": "743b8d5a6e81fe6206ee302bd4c6152454824f1a4940d85e78aee82113af55c7"
+      "sha256": "acafa7bb8f2b746ecb4012e61a8b9bbe757b2a953a8e9509dfd685189c10086c"
     },
     {
       "file": "src/SecretKit.Infisical.Management/Transport/ManagementResponseDates.cs",

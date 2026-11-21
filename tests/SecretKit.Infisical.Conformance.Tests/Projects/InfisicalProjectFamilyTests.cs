@@ -2878,7 +2878,8 @@ public sealed class InfisicalProjectFamilyTests
                 return (200, new JsonObject
                 {
                     ["projects"] = mode == "empty-project-list" ? new JsonArray() :
-                    new JsonArray(projects.Values.Select(p => p.DeepClone()).ToArray())
+                    new JsonArray(projects.Values.Select(p => p.DeepClone()).ToArray()),
+                    ["totalCount"] = projects.Count
                 });
             }
             if (path[3] == "slug")

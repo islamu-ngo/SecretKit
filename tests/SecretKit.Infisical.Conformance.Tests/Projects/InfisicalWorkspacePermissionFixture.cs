@@ -534,7 +534,8 @@ internal sealed class InfisicalWorkspacePermissionFixture : IAsyncDisposable
     {
         if (actor.Principal == Authorities.Observer && method == "GET")
         {
-            if (path == "/api/v1/projects") return (200, new { projects = states.Values.Select(s => ProjectRow(s)).ToArray() });
+            if (path == "/api/v1/projects")
+                return (200, new { projects = states.Values.Select(s => ProjectRow(s)).ToArray(), totalCount = states.Count });
             bool slug = path.StartsWith("/api/v1/projects/slug/", StringComparison.Ordinal);
             var value = states.Values.SingleOrDefault(s => slug ? s.Slug == path.Split('/').Last() : s.Target == path.Split('/').Last());
             return value is null ? (404, new { }) : slug ? (200, ProjectRow(value)) : (200, new { project = ProjectRow(value) });

@@ -15,6 +15,8 @@ public sealed class ProjectSummary
         if (id is not null) ManagementJson.RequireEqual(value, "id", id);
         if (slug is not null) ManagementJson.RequireEqual(value, "slug", slug);
         Id = ManagementJson.Required(value, "id");
+        if (string.IsNullOrWhiteSpace(Id))
+            throw new ManagementContractException(SecretStatus.Unknown);
         Name = ManagementJson.Required(value, "name");
         Slug = ManagementJson.Required(value, "slug");
         Description = ManagementJson.Optional(value, "description");
@@ -217,8 +219,15 @@ public static class ProjectOperations
         if (includeRoles is { } roles) path += (typeName is null ? "?" : "&") + "includeRoles=" + (roles ? "true" : "false");
         return new("infisical.get.v1.projects",
             (apis, body, token) => apis.Projects.List(typeName, includeRoles is { } selectedRoles ? selectedRoles ? "true" : "false" : null, token), HttpMethod.Get, path,
-            ProjectListTarget(organizationId, type, includeRoles), null, root => new(ManagementJson.Array(root, "projects")
-                .Select(value => new ProjectSummary(value, organizationId, expectedType: typeName, includesRoles: true)), true), false);
+            ProjectListTarget(organizationId, type, includeRoles), null, root =>
+            {
+                ProjectSummary[] projects = ManagementJson.Array(root, "projects")
+                    .Select(value => new ProjectSummary(value, organizationId, expectedType: typeName, includesRoles: true)).ToArray();
+                int total = ManagementJson.Integer(root, "totalCount");
+                if (total < projects.Length)
+                    throw new ManagementContractException(SecretStatus.Unknown);
+                return new(projects, total == projects.Length);
+            }, false);
     }
 
     /// <summary>Builds independent inventory approval preserving omitted product and role-inclusion selectors.</summary>

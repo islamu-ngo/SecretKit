@@ -20,6 +20,82 @@ public sealed class ProjectContractTests
     private const string Role = "00000025-0000-0000-0000-000000000025";
 
     [Test]
+    [Arguments("")]
+    [Arguments(" ")]
+    public async Task ProjectCreationRejectsBlankIdentityWithoutAppliedReceipt(string id)
+    {
+        var state = FullProject();
+        state["id"] = id;
+        state["_id"] = id;
+        using var transport = Transport(new StatefulServer(state));
+        var client = new ManagementClient(transport);
+        var authority = new ManagementAuthority(client.Authority, new Tokens(), Org);
+        using var request = ProjectOperations.CreateProject(Org, "private-project", "project");
+        var receipt = client.CreateReceipt(request);
+
+        var result = await client.ExecuteAsync(request, authority,
+            authority.IssueGrant(request.OperationId, request.Target), receipt);
+
+        await Assert.That(result.Status).IsEqualTo(SecretStatus.Unknown);
+        await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.PossiblyDispatched);
+    }
+
+    [Test]
+    [Arguments(0, true)]
+    [Arguments(1, false)]
+    public async Task NativeProjectCountDeterminesInventoryCompleteness(int totalCount, bool complete)
+    {
+        using var transport = Transport(new Server(
+            $$"""{"projects":[],"totalCount":{{totalCount}}}"""));
+        var client = new ManagementClient(transport);
+        var authority = new ManagementAuthority(client.Authority, new Tokens(), Org);
+        using var request = ProjectOperations.ListProjects(Org);
+
+        var result = await client.ExecuteAsync(request, authority,
+            authority.IssueGrant(request.OperationId, request.Target));
+
+        await Assert.That(result.Status).IsEqualTo(SecretStatus.Success);
+        await Assert.That(result.Value.Items.Count).IsEqualTo(0);
+        await Assert.That(result.Value.IsComplete).IsEqualTo(complete);
+    }
+
+    [Test]
+    [Arguments("missing")]
+    [Arguments("-1")]
+    [Arguments("0.5")]
+    [Arguments("null")]
+    [Arguments("\"0\"")]
+    [Arguments("2147483648")]
+    public async Task MissingOrInvalidProjectCountCannotCertifyInventory(string count)
+    {
+        string body = count == "missing" ? """{"projects":[]}""" :
+            $$"""{"projects":[],"totalCount":{{count}}}""";
+        using var transport = Transport(new Server(body));
+        var client = new ManagementClient(transport);
+        var authority = new ManagementAuthority(client.Authority, new Tokens(), Org);
+        using var request = ProjectOperations.ListProjects(Org);
+
+        var result = await client.ExecuteAsync(request, authority,
+            authority.IssueGrant(request.OperationId, request.Target));
+
+        await Assert.That(result.Status).IsEqualTo(SecretStatus.Unknown);
+    }
+
+    [Test]
+    public async Task ProjectCountBelowReturnedRowsCannotCertifyInventory()
+    {
+        using var transport = Transport(new StatefulServer(FullProject()) { ProjectTotalCount = 0 });
+        var client = new ManagementClient(transport);
+        var authority = new ManagementAuthority(client.Authority, new Tokens(), Org);
+        using var request = ProjectOperations.ListProjects(Org);
+
+        var result = await client.ExecuteAsync(request, authority,
+            authority.IssueGrant(request.OperationId, request.Target));
+
+        await Assert.That(result.Status).IsEqualTo(SecretStatus.Unknown);
+    }
+
+    [Test]
     [Arguments(404, SecretStatus.Unknown, SecretFailureReason.NotFoundOrInaccessible)]
     [Arguments(403, SecretStatus.Denied, SecretFailureReason.PermissionDenied)]
     [Arguments(429, SecretStatus.Throttled, SecretFailureReason.None)]
@@ -994,6 +1070,7 @@ public sealed class ProjectContractTests
 
     private sealed class StatefulServer(JsonObject project, JsonObject? environment = null) : HttpMessageHandler
     {
+        public int ProjectTotalCount { get; init; } = 1;
         public JsonObject? Body { get; private set; }
         public Dictionary<string, string>? Query { get; private set; }
         public bool Hold { get; init; }
@@ -1033,7 +1110,7 @@ public sealed class ProjectContractTests
             JsonNode response = path switch
             {
                 "/api/v1/projects" when request.Method == HttpMethod.Get =>
-                    new JsonObject { ["projects"] = new JsonArray(projectResponse) },
+                    new JsonObject { ["projects"] = new JsonArray(projectResponse), ["totalCount"] = ProjectTotalCount },
                 "/api/v1/projects/project/tags" when request.Method == HttpMethod.Get =>
                     new JsonObject { ["tags"] = new JsonArray(tag) },
                 _ when path.Contains("/environments", StringComparison.Ordinal) =>

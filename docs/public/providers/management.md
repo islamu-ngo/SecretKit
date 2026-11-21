@@ -42,6 +42,14 @@ and [network options](../../../src/SecretKit.Infisical/Transport/InfisicalNetwor
 Named static factories construct disposable `ManagementRequest<T>` objects;
 there is no public arbitrary HTTP/JSON executor.
 
+`ProjectOperations.ListProjects` requires the native `totalCount` response
+field. Its inventory is complete only when that count equals the returned row
+count; a larger count leaves `IsComplete` false. Missing, malformed or
+contradictory counts return `Unknown`. Completion describes the selected
+credential's visible inventory, not access to every project in the organization.
+A creation acknowledgement with a blank project ID is rejected; its receipt
+remains `PossiblyDispatched`.
+
 1. Select `ManagementAuthority(client.Authority, administrativeTokens,
    organizationId, projectId: null)`. Null project means exact organization
    scope, not a wildcard for every project.

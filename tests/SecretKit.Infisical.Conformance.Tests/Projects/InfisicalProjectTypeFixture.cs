@@ -248,7 +248,11 @@ internal sealed class InfisicalProjectTypeFixture : IAsyncDisposable
             string id = borrowedBaseline.First(b => b.Kind == "project").Id;
             projects[id] = projects[id] with { Description = "damaged-borrowed-project" };
         }
-        return (200, new { projects = rows.Select(p => Wire(p, includeRoles == true || Fault == "ignored-roles-filter")).ToArray() });
+        return (200, new
+        {
+            projects = rows.Select(p => Wire(p, includeRoles == true || Fault == "ignored-roles-filter")).ToArray(),
+            totalCount = rows.Count
+        });
     }
     private object Wire(ProjectTypeState p, bool includeRoles)
     {
