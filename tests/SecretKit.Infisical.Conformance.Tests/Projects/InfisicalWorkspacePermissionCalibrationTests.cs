@@ -40,6 +40,7 @@ public sealed class InfisicalWorkspacePermissionCalibrationTests
             privilege = operation.Contains("IdentityPrivilegeChange", StringComparison.Ordinal), create = operation.Split('.').Last().StartsWith("Create", StringComparison.Ordinal),
             applied = boundary is not ("denied-authority" or "cancellation-boundary");
         var expected = new Dictionary<string, WorkspacePermissionState>();
+        var knownSlugs = new Dictionary<string, string>();
         try
         {
             Check(await source.StepAsync(root, WorkspacePermissionStep.Reserve, cap, deadline.Token), WorkspacePermissionStep.Reserve);
@@ -47,6 +48,7 @@ public sealed class InfisicalWorkspacePermissionCalibrationTests
             var opened = await source.StepAsync(root, WorkspacePermissionStep.Open, null, deadline.Token);
             issued = new(opened.Owner.Payload.Content.Actors, opened.Storage.Payload.Content.Bindings); Check(opened, WorkspacePermissionStep.Open);
             foreach (var row in plan.Rows.Where(r => r.Window != "copy" && r.Action != WorkspacePermissionAction.Create).DistinctBy(r => r.Target)) expected.Add(row.Target, Initial(row));
+            foreach (var state in expected.Values) knownSlugs.Add(state.Target, state.Slug);
             await Witness(false);
             Check(await source.StepAsync(root, WorkspacePermissionStep.Arm, null, deadline.Token), WorkspacePermissionStep.Arm);
             WorkspacePermissionReceipt original;
@@ -257,7 +259,12 @@ public sealed class InfisicalWorkspacePermissionCalibrationTests
                     }
                 }
                 await Assert.That(packet.Storage.Payload.Content.Changes.Single(c => c.Request == decision.Request)).IsEqualTo(new WorkspacePermissionChange(decision.Request, row.Key, before, next));
-                if (next is null) expected.Remove(row.Target); else expected[row.Target] = next;
+                if (next is null) expected.Remove(row.Target);
+                else
+                {
+                    expected[row.Target] = next;
+                    knownSlugs[next.Target] = next.Slug;
+                }
             }
             await Assert.That(packet.Storage.Payload.Content.Inventory.OrderBy(s => s.Row).SequenceEqual(expected.Values.OrderBy(s => s.Row))).IsTrue();
             var observer = env.CreateManagementClient(); using var list = ProjectOperations.ListProjects(root.Organization);
@@ -271,8 +278,14 @@ public sealed class InfisicalWorkspacePermissionCalibrationTests
                 var authority = new ManagementAuthority(observer.Authority, env.Tokens(NativeIdentityRole.Observer), root.Organization, binding.CanonicalId);
                 var result = await observer.ExecuteAsync(get, authority, authority.IssueGrant(get.OperationId, get.Target), cancellationToken: deadline.Token);
                 var state = expected.Values.SingleOrDefault(s => s.Target == binding.CanonicalId);
-                await Assert.That(result.Status).IsEqualTo(state is null ? SecretStatus.Absent : SecretStatus.Success);
-                if (state is null) continue;
+                if (state is null)
+                {
+                    await Assert.That(AbsenceWitness.Holds(result, inventory,
+                        new AbsenceTarget<ProjectSummary>(binding.CanonicalId, knownSlugs.GetValueOrDefault(binding.CanonicalId),
+                            p => p.Id, p => p.Slug))).IsTrue();
+                    continue;
+                }
+                await Assert.That(result.Status).IsEqualTo(SecretStatus.Success);
                 await Assert.That(result.Value.Environments.IsPresent && result.Value.Environments.Value.Count == 0 && result.Value.DeletedEnvironments.IsPresent && result.Value.DeletedEnvironments.Value.Count == 0).IsTrue();
                 await Assert.That(result.Value.Name).IsEqualTo(state.Name); await Assert.That(result.Value.Slug).IsEqualTo(state.Slug);
                 using var bySlug = ProjectOperations.GetProjectBySlug(root.Organization, state.Slug);
