@@ -46,7 +46,9 @@ implemented subset.
 | [SDK architecture](SDK_ARCHITECTURE.md) | Seven packages, inward dependencies, narrow BCL-only Core and application boundaries |
 | [Runtime contracts](RUNTIME_CONTRACTS.md) | Material, generations, receipts, cancellation, transports, authentication and bounded bulk operations |
 | [Core scope/roadmap](CORE_SCOPE_AND_ROADMAP.md) | Core-first scope and deferred orchestration |
+| [Positioning and strategy](POSITIONING_AND_STRATEGY.md) | Value proposition, moat analysis (including AKV-only buyers), strategic options and pre-1.0 unlocks |
 | [Infisical local readiness](INFISICAL_LOCAL_READINESS.md), [ADR-002](adr/ADR-002-infisical-local-qualification.md) | Accepted 2026-10-23 local direction and four-package qualification boundaries |
+| [Live Infisical provisioning](LIVE_INFISICAL_PROVISIONING.md) | Private [environment template](../../.env.example), nonpackable [provisioner](../../tools/SecretKit.LiveProvisioner/) and disposable [Podman sandbox](../../eng/live-infisical/); explicit local/remote evidence boundaries |
 | [Runtime adoption security](RUNTIME_ADOPTION_SECURITY.md), [ADR-003](adr/ADR-003-runtime-adoption-security-evidence.md) | Installed apps, causal actor/effect proof, lifetime, cleanup and evidence requirements |
 | [Local profile](local/infisical-runtime.json) | Exact local version, package IDs, selected members and S01-S16 denominator |
 | [Delivery/maintenance](DELIVERY_AND_MAINTENANCE.md), [publication protocol](releases/PUBLICATION_PROTOCOL.md) | Release evidence and publication authority, distinct from local evaluation |

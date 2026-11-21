@@ -3,10 +3,11 @@
 > **Audience:** Application developers and technical evaluators
 > **Status:** Implemented development subsets; value requires application evaluation
 > **Owner:** SecretKit maintainers
-> **Last verified:** 2026-10-25 (local source/documentation review only)
+> **Last verified:** 2026-11-21 (source and documentation review; no build or tests run)
 > **Source anchors:** [Project map](../../PROJECTS.md), [Core](../../src/SecretKit.Core/),
 > [Configuration](../../src/SecretKit.Extensions.Configuration/README.md),
-> [Hosting](../../src/SecretKit.Extensions.Hosting/README.md)
+> [Hosting](../../src/SecretKit.Extensions.Hosting/README.md),
+> [Positioning and strategy](../internal/POSITIONING_AND_STRATEGY.md)
 
 SecretKit provides an implemented in-process boundary for selected Infisical and
 Azure Key Vault operations. It makes authority selection, material ownership,
@@ -34,29 +35,93 @@ surface does not turn them into universal contracts.
 
 ## When the extra boundary earns its cost
 
-SecretKit can help when several consumers need the same explicit ownership and
-failure-handling rules, or an application supports operator-selected providers.
-The application can consume common read outcomes while keeping provider-native
-features typed and separately reviewed. Install only needed packages: management
-is not a runtime prerequisite, and Configuration/Hosting are independent options.
+SecretKit is **not** an anti-vendor-lock-in CRUD wrapper designed to make
+Azure Key Vault and Infisical drop-in interchangeable:
+
+- `SecretKit.Core` deliberately abstracts only reads (`ISecretReader`),
+  value-free inventory (`ISecretInventory`), authority-bound references,
+  bounded outcomes and pre-dispatch mutation receipts.
+- Secret coordinates (`AzureSecretAddress` vs `InfisicalSecretAddress`), writes,
+  dynamic credential leases, rotations, backups and authentication remain
+  provider-native ([ADR-001](../internal/adr/ADR-001-capability-aware-secret-sdk.md)).
+  `SecretKit.Extensions.Hosting` currently targets Infisical only.
+- In real deployments, migrating secret managers is dominated by IAM/RBAC,
+  infrastructure provisioning, key/folder topology changes and Keys/Certificates/HSM
+  features (which SecretKit excludes) rather than swapping a read call.
+
+Instead, SecretKit's concrete value depends on which problem you actually have:
+
+| Buyer scenario | Fit today | Concrete value delivered | Honest caveats and alternatives |
+| --- | --- | --- | --- |
+| **Multi-backend self-hosted products or operator tools** (for example ISLAMU Event or Configurator) | **Strong** | One explicit ownership, generation-replacement, outcome and redaction model across operator-selected Infisical and Azure Key Vault backends without fragile CLI wrappers ([ADR-006](../internal/adr/ADR-006-configurator-provisioning-and-credential-sources.md)) | Unpublished preview; live provider qualification gates remain open |
+| **Infisical `.NET 10` applications** | **Moderate-High** *(after preview fixes)* | Per-call `CancellationToken`, cooperative timeouts, private-CA/proxy `HttpMessageHandler` control, bounded payloads and typed dynamic/rotation/import/bulk/proof-auth coverage missing from `Infisical.Sdk` `3.0.4` ([SDK assessment](../internal/providers/infisical-sdk-assessment.md)) | Current preview still calls `.GetString()` before `SecretMaterial.FromText`; feature parity gaps can narrow if upstream updates its SDK |
+| **Simple single-provider startup configuration or CRUD** (for example AKV-only web APIs) | **Poor** | Thin safety wrappers over `SecretClient` | Direct `Azure.Security.KeyVault.Secrets` + `AddAzureKeyVault` is simpler, Microsoft-backed and covers Keys/Certificates/HSMs |
+| **High-assurance or live-rotating single-provider apps** (including closed-source AKV-only teams) | **Potentially Strong, Currently Blocked** | Coordinated multi-key validation and lease-drained client replacement (`SecretGenerationCoordinator<TClient>`) plus fail-closed guardrails (`SecretAuthority`, disabled write retries, consumption validity gating and redacted defaults) | See current blockers below before adopting for an AKV-only workload |
+
+### What differentiates SecretKit even for single-provider apps
+
+Microsoft's `Azure.Security.KeyVault.Secrets` and
+`Azure.Extensions.AspNetCore.Configuration.Secrets` cover basic HTTP CRUD and
+timer-based string reloads well, but leave two production gaps:
+
+1. **Zero-downtime live secret rotation and client drain:** `AddAzureKeyVault`
+   with `ReloadInterval` pushes plain strings into `IConfiguration` on a timer.
+   Separate indexer lookups can mix old and new keys mid-reload, invalid rotated
+   secrets are published without pre-cutover validation, and `IOptionsMonitor`
+   does not wait for in-flight work using an old database or HTTP client to
+   drain before disposal. `SecretSnapshotLoader` and
+   `SecretGenerationCoordinator<TClient>` collect a complete valid generation,
+   construct and validate the replacement client before cutover, enforce
+   `FailClosed` or `BoundedLastKnown` policies, and retire old clients only
+   after active `SecretGenerationLease<TClient>` handles finish.
+2. **Fail-closed guardrails by construction:** Out of the box, official
+   defaults invite `DefaultAzureCredential` probing traps, cross-vault reference
+   mix-ups, silent duplicate secret versions from default write retries,
+   consumption of expired or `NotBefore`-future secrets (`SecretClient` returns
+   them unless callers inspect `SecretProperties`), accidental clearing-omission
+   of empty tags (`EmptyTagsPolicy` in
+   [AzureKeyVaultClient](../../src/SecretKit.AzureKeyVault/Secrets/AzureKeyVaultClient.cs#L102-L130)),
+   and accidental leakage through `ToString()` or JSON serialization. As shown
+   empirically in
+   [`DirectAzurePath`](../../tools/SecretKit.ConsumerBaseline/Workflows.cs#L90-L224),
+   matching these guardrails directly over `SecretClient` requires ~135 lines of
+   defensive boilerplate per workflow.
+
+### Why AKV-only closed-source teams should wait today
+
+For an Azure-Key-Vault-only closed-source application, current preview gaps
+neutralize much of that advantage right now:
+
+- **Heap strings remain on AKV and Infisical wire edges:** `SecretMaterial`
+  currently stores an unpinned `char[]` and rents unpinned `ArrayPool` slices,
+  while `AzureKeyVaultClient` wraps `SecretClient` (which requires `string` on
+  `GetSecretAsync` and `SetSecretAsync`). See
+  [Security and resource ownership](security-and-ownership.md#plaintext-is-an-explicit-boundary).
+- **Asymmetric AOT and Hosting support:** `SecretKit.AzureKeyVault` and
+  `SecretKit.AzureKeyVault.Management` do not set `<IsAotCompatible>true</IsAotCompatible>`,
+  and `SecretKit.Extensions.Hosting` depends on `SecretKit.Infisical` directly.
+- **Unresolved preview bugs and missing live Azure checks:** Open source-level
+  defects (including `SecretGenerationCoordinator` revision/retirement races,
+  `AzureKeyVaultClient` post-dispatch error masking, plaintext download in
+  `CheckLifecycleStatusAsync`, and unverified live Azure execution) plus solo
+  maintainer scope remain active pre-1.0 blockers documented in
+  [Positioning and strategy](../internal/POSITIONING_AND_STRATEGY.md).
 
 For a single provider with extensive native requirements, a direct vendor client
-may be simpler. SecretKit adds another dependency, narrower supported subsets
-and an additional maintenance surface. It does not eliminate deployment setup,
-grant permissions, create remote atomic reads or activate an integration.
-Current evidence does not establish comparative speed, cost, safety or engineering
-time savings.
+remains simpler today. SecretKit adds another dependency, narrower supported
+subsets and an additional maintenance surface. Current evidence does not
+establish comparative speed, cost, safety or engineering time savings.
 
 | Approach | Fit to evaluate | Cost or boundary to inspect |
 | --- | --- | --- |
-| Direct provider client | A provider-specific application needing broad native functionality | Application-owned material, diagnostics, identity and lifecycle handling |
-| String-valued configuration integration | Consumers already designed around configuration strings | Plaintext exposure, precedence, refresh and options/client convergence |
+| Direct provider client | A provider-specific application needing broad native functionality (or Keys/Certs/HSM) | Application-owned material, diagnostics, identity, validity gating, lifecycle and rotation-drain handling |
+| String-valued configuration integration | Consumers already designed around startup configuration strings | Plaintext exposure, precedence, mid-reload tearing and options/client convergence |
 | External agent, sidecar, environment or files | Deployment owns retrieval outside the application process | Delivery permissions, availability, refresh signals and stale-value policy |
-| SecretKit in-process adapters | Shared ownership/outcome contracts plus selected native capabilities | Adapter maintenance, admitted subsets, explicit generation ownership and remaining live qualification |
+| SecretKit in-process adapters | Multi-backend apps, Infisical `.NET 10` consumers, or apps requiring explicit ownership/generation contracts | Adapter maintenance, admitted subsets, preview bugs/heap-string boundaries and remaining live qualification |
 
 These are architectural choices, not benchmark rankings or externally verified
-recommendations. No vendor/adopter outreach or comparative test was performed
-for this documentation update.
+recommendations. No vendor/adopter outreach or comparative runtime study was
+performed for this documentation update.
 
 ## Working examples and evidence
 

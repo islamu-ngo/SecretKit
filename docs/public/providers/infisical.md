@@ -3,7 +3,7 @@
 > **Audience:** .NET developers and AI coding assistants using `SecretKit.Infisical`
 > **Status:** Implemented subsets; in development, not ready for production
 > **Owner:** SecretKit maintainers
-> **Last verified:** 2026-10-25, source inspection at `e6fe6b864420d9c8035395fa6c70a9c4ab1e67dd`; not a new live run
+> **Last verified:** 2026-11-21, source and documentation review; not a new live run
 > **SQL lifecycle update:** 2026-11-06, source and controlled offline verification; no new native qualification
 > **Source anchors:** [client](../../../src/SecretKit.Infisical/Secrets/InfisicalClient.cs), [addresses](../../../src/SecretKit.Infisical/Secrets/InfisicalSecretAddress.cs), [tests](../../../tests/SecretKit.Infisical.Tests/)
 
@@ -11,6 +11,34 @@ Use `InfisicalClient` for common secret reads, direct-folder inventory, selected
 shared-secret writes and the native organization/import operations below. Use
 the separate dynamic and rotation clients for their native lifecycle contracts.
 Administration factories live in [the management package](management.md).
+
+## Why use `SecretKit.Infisical` instead of `Infisical.Sdk`
+
+SecretKit implements handwritten typed HTTP/Refit contracts rather than
+wrapping the official `Infisical.Sdk` (`3.0.4`, assessed in
+[the SDK assessment](../../internal/providers/infisical-sdk-assessment.md))
+because `Infisical.Sdk` lacked per-request `CancellationToken` support on secret
+and login methods, exposed no injectable `HttpMessageHandler` or private-CA
+trust seam, and omitted most native auth, dynamic-lease, rotation and
+administration families. `SecretKit.Infisical` adds:
+
+- **Per-call `CancellationToken` and cooperative budgets:** Caller cancellation
+  propagates, and `InfisicalNetworkOptions` bounds request bytes, response bytes,
+  `OperationTimeout` and `ShutdownTimeout`.
+- **Explicit transport and TLS control:** Choose `SafeDefault`,
+  `SafeWithPrivateTrust(roots)` for self-hosted internal CAs, explicit proxies,
+  or `HostControlled(clientOrHandler)` with redirects, cookies and trace-header
+  propagation disabled by default.
+- **Broader typed native semantics and AOT metadata:** Supports 11 host-supplied
+  proof exchanges, finite vs periodic token lifetime enforcement, `ReadNativeAsync`
+  resource revisions, bulk receipts, imports, dynamic SQL leases and rotation
+  clients, with `<IsAotCompatible>true</IsAotCompatible>`.
+
+**Current preview caveats:** Secret JSON payloads are currently decoded via
+`.GetString()` before entering `SecretMaterial.FromText`
+([InfisicalClient.cs](../../../src/SecretKit.Infisical/Secrets/InfisicalClient.cs#L224))
+inside an unpinned `char[]` buffer, and multi-edition, external-issuer, SQL
+backend and multi-OS live qualification gates remain open.
 
 For an operator workflow, follow [interactive hosts](../interactive-hosts.md).
 Native inventory is value-free evidence, not readiness or ACL completeness.

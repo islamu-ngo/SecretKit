@@ -3,7 +3,7 @@
 > **Audience:** .NET developers and AI coding assistants using `SecretKit.AzureKeyVault`
 > **Status:** Implemented/offline-tested subset; in development, not ready for production
 > **Owner:** SecretKit maintainers
-> **Last verified:** 2026-10-25, source inspection at `e6fe6b864420d9c8035395fa6c70a9c4ab1e67dd`; Azure live behavior unverified
+> **Last verified:** 2026-11-21, source inspection of `AzureKeyVaultClient` and `AzureNativeLifecycle`; Azure live behavior unverified
 > **Source anchors:** [client](../../../src/SecretKit.AzureKeyVault/Secrets/AzureKeyVaultClient.cs), [native lifecycle](../../../src/SecretKit.AzureKeyVault/Lifecycle/AzureNativeLifecycle.cs), [tests](../../../tests/SecretKit.AzureKeyVault.Tests/)
 
 `AzureKeyVaultClient` owns secret **data-plane** reads, writes and lifecycle.
@@ -211,3 +211,44 @@ Remote permissions, propagation, regions/clouds, retention behavior and backup
 placement still require owned native qualification. Keys, certificates and HSM
 operations are outside this secret data-plane surface. Consult
 [current support](../provider-support.md) before making deployment claims.
+
+## Comparison with direct `SecretClient`
+
+| Concern | Direct `Azure.Security.KeyVault.Secrets.SecretClient` | `SecretKit.AzureKeyVault` (`AzureKeyVaultClient`) |
+| --- | --- | --- |
+| Identity default | Commonly paired with `DefaultAzureCredential` probing chains | Explicit `TokenCredential` only; no credential probing |
+| Scope isolation | Caller owns vault/name checks | `SecretAuthority` (`ReferenceEquals`) prevents cross-client reference mix-ups |
+| SDK retries & diagnostics | Enabled by default (retries can duplicate `SetSecret` versions) | `Retry.MaxRetries = 0` and SDK logging/tracing disabled; `MutationReceipt` tracks uncertain dispatches |
+| Consumption validity | Returns expired and `NotBefore`-future secrets unless checked manually | `ReadAsync` rejects disabled, not-yet-valid and expired secrets |
+| Empty tag clearing | Pinned `SecretClient` `4.11.2` omits `{}` for empty tag maps | `EmptyTagsPolicy` emits `"tags": {}` to clear tags |
+| Generation rotation | `AddAzureKeyVault` uses timer string reloads into `IConfiguration` | Composes with `SecretSnapshotLoader` and `SecretGenerationCoordinator<TClient>` |
+| Keys, certificates, HSM | Supported via sibling `Azure.Security.KeyVault.*` packages | Out of scope (secret values and metadata only) |
+
+## Known preview limitations and gaps
+
+Inspect these source-level boundaries before adopting `SecretKit.AzureKeyVault`
+in an Azure-only codebase:
+
+- **No zero-string or NativeAOT edge yet:** Because `AzureKeyVaultClient` wraps
+  `SecretClient`, reads materialize `KeyVaultSecret.Value` as a `string` before
+  `SecretMaterial.FromText` ([AzureKeyVaultClient.cs](../../../src/SecretKit.AzureKeyVault/Secrets/AzureKeyVaultClient.cs#L316))
+  and writes call `Reveal()` ([line 215](../../../src/SecretKit.AzureKeyVault/Secrets/AzureKeyVaultClient.cs#L215)).
+  Neither Azure package sets `<IsAotCompatible>true</IsAotCompatible>`.
+- **No Hosting package integration:** `SecretKit.Extensions.Hosting` depends on
+  `SecretKit.Infisical` and does not currently register or refresh Azure Key
+  Vault runtimes.
+- **Write failure granularity (`SetSecretAsync`):** After `OriginTransport`
+  marks `PossiblyDispatched`, `SetSecretAsyncCore` catches provider exceptions
+  and returns `SecretStatus.Unknown` rather than distinguishing `400`, `401`,
+  `403`, `409`, or `429` status codes
+  ([AzureKeyVaultClient.cs](../../../src/SecretKit.AzureKeyVault/Secrets/AzureKeyVaultClient.cs#L240-L247)).
+- **Lifecycle recovery status read:** `CheckLifecycleStatusAsyncCore` checks
+  recovery completion by calling `SecretClient.GetSecretAsync`
+  ([AzureNativeLifecycle.cs](../../../src/SecretKit.AzureKeyVault/Lifecycle/AzureNativeLifecycle.cs#L360)),
+  which downloads the secret value, requires data-plane `get` permission, and
+  fails with `403` when the recovered secret is disabled.
+- **Per-write client allocation & no SDK timeout knob:** Write/mutation calls
+  construct a `new SecretClient` instance per call and rely on caller
+  cancellation tokens rather than an SDK-level `OperationTimeout` option.
+- **Unverified live Azure behavior:** No live Azure Key Vault data-plane,
+  lifecycle, or management suite has executed against an Azure tenant.

@@ -22,7 +22,7 @@
 [![Last commit][commit-shield]][commit-link]
 [![Discord][discord-shield]][discord-link]
 
-[**Quick Start**](#quick-start) · [**Packages**](#packages) · [**Architecture**](#architecture) · [**Provider Support**](#provider-support) · [**Security**](#security-and-ownership) · [**Documentation**](#documentation-public-guides-vs-internal-contracts) · [**Contributing**](#contributing) · [**License**](#license-and-provenance)
+[**Quick Start**](#quick-start) · [**Packages**](#packages) · [**Architecture**](#architecture) · [**Provider Support**](#provider-support) · [**Security**](#security-and-ownership) · [**FAQ**](#faq) · [**Documentation**](#documentation-public-guides-vs-internal-contracts) · [**Contributing**](#contributing) · [**License**](#license-and-provenance)
 
 </div>
 
@@ -246,6 +246,32 @@ The broad third-party connection and sync catalog is [removed](docs/public/conne
 - Offline success is not live provider, entitlement, platform or production qualification.
 
 Review host diagnostics, configuration debug views, exception sinks and downstream clients before exporting plaintext. Default-surface capture does not authorize recording complete requests, authorization headers, exported values or process memory. The nonpackable demo diagnostic observer is a test fixture, not a production redaction component. The tested surfaces and unqualified combinations are recorded in the [runtime adoption security contract](docs/internal/RUNTIME_ADOPTION_SECURITY.md); the full reasoning is in [security and resource ownership](docs/public/security-and-ownership.md).
+
+### FAQ
+
+#### Why use SecretKit when `Infisical.Sdk` and `Azure.Security.KeyVault.Secrets` already exist?
+
+SecretKit is not pitched as a generic CRUD wrapper for simple startup settings. Its concrete value depends on the workload:
+
+- **Multi-backend self-hosted applications and operator tools** (such as ISLAMU Event or ISLAMU Configurator): operators pick Infisical or Azure Key Vault, and the application keeps one explicit material-ownership, outcome, redaction and generation-reload discipline without spawning vendor CLIs ([ADR-006](docs/internal/adr/ADR-006-configurator-provisioning-and-credential-sources.md)).
+- **Infisical `.NET 10` applications:** `SecretKit.Infisical` provides per-call `CancellationToken` propagation, cooperative `OperationTimeout` budgets, injectable `HttpMessageHandler` / private-CA trust options (`SafeWithPrivateTrust`, `HostControlled`), and typed auth/dynamic/rotation/import/bulk contracts that were missing from `Infisical.Sdk` `3.0.4` ([SDK assessment](docs/internal/providers/infisical-sdk-assessment.md)).
+- **Live-rotating or high-assurance apps (including single-provider Azure Key Vault workloads):** Unlike `AddAzureKeyVault` timer reloads (`ReloadInterval`), `SecretSnapshotLoader` and `SecretGenerationCoordinator<TClient>` collect complete valid secret sets, validate replacement clients before cutover, enforce `FailClosed` or `BoundedLastKnown` policies, and wait for active `SecretGenerationLease<TClient>` work to drain before disposing old clients — paired with fail-closed guardrails (`SecretAuthority`, disabled write retries, `MutationReceipt`, `Enabled`/`NotBefore`/`ExpiresOn` consumption checks, `EmptyTagsPolicy` and redacted formatting).
+
+#### Does SecretKit eliminate vendor lock-in?
+
+**No.** `SecretKit.Core` intentionally abstracts only reads (`ISecretReader`), value-free metadata inventory (`ISecretInventory`), authority-bound references, bounded outcomes and dispatch receipts. Coordinates (`InfisicalSecretAddress` vs `AzureSecretAddress`), writes, dynamic credential leases, rotation, backups and authentication stay provider-native ([ADR-001](docs/internal/adr/ADR-001-capability-aware-secret-sdk.md)). Real-world migrations remain dominated by IAM/RBAC, infrastructure and key/folder topology.
+
+#### Does `SecretMaterial` guarantee secrets never appear as `string`s in process memory?
+
+**No.** In the current preview, `SecretMaterial` provides **logical ownership, disposal gating, default `ToString()`/JSON redaction and explicit reveal boundaries**, not zero-string GC immunity or enclave secrecy. `SecretMaterial` currently stores an unpinned `char[]` and rents unpinned `ArrayPool` snapshots, `InfisicalClient` decodes JSON values via `.GetString()` before wrapping, and `AzureKeyVaultClient` wraps `SecretClient` whose API requires `System.String` on both reads and `SetSecret` writes. See [plaintext boundaries](docs/public/security-and-ownership.md#plaintext-is-an-explicit-boundary).
+
+#### When should a closed-source, Azure-Key-Vault-only team *not* adopt SecretKit today?
+
+If you only need simple startup configuration or basic Key Vault CRUD (or Keys, Certificates and Managed HSM, which SecretKit excludes), Microsoft's `Azure.Security.KeyVault.Secrets` + `AddAzureKeyVault` is simpler and officially supported. Even for live-rotating Azure-only teams, inspect the current preview blockers in [Adoption and value](docs/public/adoption-and-value.md#why-akv-only-closed-source-teams-should-wait-today) and [Azure Key Vault](docs/public/providers/azure-key-vault.md#known-preview-limitations-and-gaps) first: `SecretKit.AzureKeyVault` currently wraps `SecretClient` (allocating heap strings and omitting `<IsAotCompatible>`), `SecretKit.Extensions.Hosting` is Infisical-only, live Azure verification is open, and preview concurrency/error-mapping fixes remain pre-1.0 gates ([Positioning and strategy](docs/internal/POSITIONING_AND_STRATEGY.md)).
+
+#### Does SecretKit cover Keys, Certificates, Managed HSM or database drivers?
+
+**No.** SecretKit covers secret values/metadata and provider-native secret lifecycle or credential-generation APIs only. No database driver ships in any package; see [database credentials](docs/public/database-credentials.md).
 
 ---
 

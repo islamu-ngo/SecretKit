@@ -159,3 +159,11 @@ Excluded by the same decision: CLI wrappers or process execution in any
 package, a common Core writer before shared write semantics are demonstrated,
 restoration of the connector/sync catalog, and trimming/AOT work for
 Configurator's browser client.
+
+## Strategic positioning and pre-1.0 unlocks
+
+See [Positioning and strategy](POSITIONING_AND_STRATEGY.md) for the concrete
+value-proposition analysis outside Event/Configurator (including why anti-lock-in
+is not the moat, what differentiates SecretKit for Infisical and Azure Key
+Vault consumers, verified preview blockers in memory/concurrency/error mapping,
+and the pre-1.0 unlocks required before targeting closed-source external teams).

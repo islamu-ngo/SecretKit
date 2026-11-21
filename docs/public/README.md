@@ -56,8 +56,9 @@ overload signatures and provider model fields.
 
 ## Understand the design
 
-- [Adoption and value](adoption-and-value.md): when the library helps and what it
-  leaves to a consumer.
+- [Adoption and value](adoption-and-value.md): what SecretKit's moat is (and is
+  not), comparison with `Infisical.Sdk` and direct Azure `SecretClient`, and
+  honest preview blockers.
 - [Scope and orchestration](scope-and-orchestration.md): application access,
   optional administration and future deployment tooling.
 - [Connector scope decision](connector-scope-decision.md): why broad third-party

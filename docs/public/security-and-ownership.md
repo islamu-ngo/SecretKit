@@ -3,7 +3,7 @@
 > **Audience:** Application developers, operators, and security reviewers
 > **Status:** Implemented library boundaries and consumer responsibilities
 > **Owner:** SecretKit maintainers
-> **Last verified:** 2026-10-25 against linked source and runtime contracts
+> **Last verified:** 2026-11-21 against linked source and runtime contracts
 > **SQL lifecycle update:** 2026-11-06, controlled ownership, cancellation and transport verification
 > **Source anchors:** [security policy](../../SECURITY.md), [runtime contracts](../internal/RUNTIME_CONTRACTS.md), [Core](core-api.md)
 
@@ -89,10 +89,30 @@ an independent array that the caller must clear. Configuration export, JSON
 parsers, HTTP headers, database connection strings and downstream libraries may
 also create copies.
 
+**Important current-preview memory reality:** In the current implementation,
+`SecretMaterial` provides **logical ownership, disposal state gating, redaction
+from default formatting/JSON serialization, and explicit reveal boundaries** — not
+zero-string GC immunity or enclave memory secrecy:
+
+- [`SecretMaterial`](../../src/SecretKit.Core/Material/SecretMaterial.cs) stores
+  its character buffer in an unpinned `char[]` and rents unpinned
+  `ArrayPool<char>.Shared` / `ArrayPool<byte>.Shared` snapshots during `Use` and
+  `UseUtf8`, so compacting garbage collection can relocate bytes and leave
+  earlier copies in heap pages until overwritten.
+- [`InfisicalClient`](../../src/SecretKit.Infisical/Secrets/InfisicalClient.cs#L224)
+  currently decodes JSON secret strings with `.GetString()` before copying into
+  `SecretMaterial`, and `InfisicalBearer` materializes a `string` header via
+  `Reveal()`.
+- [`AzureKeyVaultClient`](../../src/SecretKit.AzureKeyVault/Secrets/AzureKeyVaultClient.cs#L215)
+  wraps Azure's `SecretClient`, whose `KeyVaultSecret.Value` (`string`) and
+  `SetSecretAsync` (`string`) signatures require immutable `System.String`
+  values on both reads and writes.
+
 SDK disposal clears only storage it owns. It cannot erase pre-existing strings,
-exported values, old options, process dumps, debugger captures or host logs.
-Default SDK formatting/serialization omits protected material and coordinates;
-that protection does not carry over to strings or arbitrary host serializers.
+GC-relocated copies, exported values, old options, process dumps, debugger
+captures or host logs. Default SDK formatting/serialization omits protected
+material and coordinates; that protection does not carry over to strings or
+arbitrary host serializers.
 
 For explicit `IConfiguration` export:
 
