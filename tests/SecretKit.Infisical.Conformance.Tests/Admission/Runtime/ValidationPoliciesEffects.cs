@@ -346,8 +346,11 @@ internal static class ValidationPoliciesEffects
                     var removed = await f.Administrative.DeleteValidationRuleAsync(owned,
                         Authority(f.Administrative, NativeIdentityRole.Administrative), f.Administrative.CreateReceipt(owned), cleanup.Token);
                     var gone = await f.Observer.GetValidationRuleAsync(new(f.Observer.Authority, owned.Address), cleanup.Token);
-                    p.Contract((removed.IsSuccess || removed.Status == SecretStatus.Absent) &&
-                        gone.Status == SecretStatus.Absent, NativeFailure.CleanupIncomplete);
+                    var remainingRules = await f.Observer.ListValidationRulesAsync(Target(f.Observer, collection: true),
+                        cancellationToken: cleanup.Token);
+                    p.Contract((removed.IsSuccess || AbsenceWitness.Concealed(removed)) &&
+                        AbsenceWitness.Holds(gone, remainingRules, new AbsenceTarget<InfisicalValidationRule>(
+                            rule.Id, rule.Name, x => x.Id, x => x.Name)), NativeFailure.CleanupIncomplete);
                 }
                 if (dynamic is not null || rotation is not null)
                 {
