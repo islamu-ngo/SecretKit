@@ -44,7 +44,10 @@ internal static class ImportEffectObservationEffects
                 f.Destination.Authority(f.Destination.Setup, NativeIdentityRole.Setup), receipt, token);
             p.Contract(removed.IsSuccess && receipt.Evidence == DispatchEvidence.Applied, NativeFailure.MissingPrerequisite);
             var absence = await f.Destination.Observer.GetImportAsync(f.Target(f.Destination.Observer, f.ImportId), token);
-            p.Contract(absence.Status == SecretStatus.Absent, NativeFailure.ObserverUnavailable);
+            var remaining = await f.Destination.Observer.ListImportsAsync(f.Target(f.Destination.Observer),
+                cancellationToken: token);
+            p.Contract(AbsenceWitness.Holds(absence, remaining, new AbsenceTarget<InfisicalImport>(
+                f.ImportId, null, x => x.Id, _ => null)), NativeFailure.ObserverUnavailable);
         }
         InfisicalClient c = InfisicalImportPolicyFamilies.Denied(d) ? f.Destination.Denied : f.Destination.Runtime;
         InfisicalClient intended = i.DeliveryDenied ? f.Destination.Denied : f.Destination.Runtime;
@@ -58,10 +61,12 @@ internal static class ImportEffectObservationEffects
         {
             p.Contract(dispatch.Outcome!.IsSuccess, NativeFailure.ContractMismatch);
             var observed = dispatch.Outcome.Value;
+            // A removed import and its undelivered value are 404s, which the SDK reports as Unknown;
+            // their absence is proven separately by the observer witnesses around this dispatch.
             SecretStatus visibility = InfisicalImportPolicyFamilies.Denied(d) ? SecretStatus.Denied :
-                i.RemoveImport ? SecretStatus.Absent : SecretStatus.Success;
+                i.RemoveImport ? SecretStatus.Unknown : SecretStatus.Success;
             SecretStatus delivery = i.DeliveryDenied ? SecretStatus.Denied :
-                i.RemoveImport ? SecretStatus.Absent : SecretStatus.Success;
+                i.RemoveImport ? SecretStatus.Unknown : SecretStatus.Success;
             p.Contract(observed.VisibilityStatus == visibility && observed.DeliveryStatus == delivery &&
                 observed.ImportCreated == (visibility == SecretStatus.Success ?
                     InfisicalEffectEvidence.Observed : InfisicalEffectEvidence.Unknown) &&

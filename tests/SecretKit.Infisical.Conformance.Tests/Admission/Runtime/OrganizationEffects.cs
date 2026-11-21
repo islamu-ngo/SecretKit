@@ -1,4 +1,5 @@
 using SecretKit.Core;
+using SecretKit.Infisical.Management;
 using SecretKit.TestFixtures;
 
 namespace SecretKit.Infisical.Conformance.Tests;
@@ -81,7 +82,7 @@ internal static class OrganizationEffects
     internal sealed record OrganizationInput(StaticFixtureInput Fixture, string? Description,
         bool ClearDescription, double? Position, string? Name, bool RenameSlug, bool ForceDelete,
         bool HardDelete, bool Recursive, DateTimeOffset? LastSecretModified, int MaximumItems,
-        bool ExpectedApplied, bool PartialBatch, bool[]? BatchApplied = null)
+        bool ExpectedApplied, bool PartialBatch, bool[]? BatchApplied = null, string? OrganizationId = null)
     {
         public override string ToString() => "[OrganizationInput]";
     }
@@ -113,6 +114,9 @@ internal static class OrganizationEffects
         p.Contract(v != "result.partial" || i.PartialBatch, NativeFailure.MissingInput);
         p.Contract(v != "result.all-selected" || !i.PartialBatch, NativeFailure.MissingInput);
         p.Contract(!i.PartialBatch || i.BatchApplied is { Length: 2 }, NativeFailure.MissingInput);
+        // Environment absence is witnessed through the project's complete environment inventory.
+        p.Contract(!d.Key.Operation.Contains("Environment", StringComparison.Ordinal) ||
+            !string.IsNullOrWhiteSpace(i.OrganizationId), NativeFailure.MissingInput);
         return i;
     }
 
@@ -129,11 +133,45 @@ internal static class OrganizationEffects
         bool get = d.Key.Operation.EndsWith(".GetEnvironmentAsync", StringComparison.Ordinal);
         bool update = d.Key.Operation.EndsWith(".UpdateEnvironmentAsync", StringComparison.Ordinal);
         bool delete = d.Key.Operation.EndsWith(".DeleteEnvironmentAsync", StringComparison.Ordinal);
+        bool restore = !create && !get && !update && !delete;
         SecretReference Target(InfisicalClient c, bool bySlug = false) => new(c.Authority,
             new InfisicalEnvironmentAddress(i.Fixture.ProjectId, bySlug || id is null ? slug : id,
                 bySlug || id is null ? InfisicalOrganizationSelector.Slug : InfisicalOrganizationSelector.Id));
         InfisicalNativeAuthority Authority(InfisicalClient c, NativeIdentityRole role) =>
             new(c.Authority, env.Tokens(role), i.Fixture.ProjectId);
+        // The runtime API has no environment inventory: the observer's project read lists every live and
+        // soft-deleted environment, so absence needs a concealed exact read and an omission from both.
+        async ValueTask<SecretOutcome<ProjectSummary>> ProjectAsync(CancellationToken t)
+        {
+            ManagementClient management = env.CreateManagementClient();
+            ManagementAuthority authority = env.CreateManagementAuthority(management, NativeIdentityRole.Observer,
+                i.OrganizationId!, i.Fixture.ProjectId);
+            using var request = ProjectOperations.GetProject(i.OrganizationId!, i.Fixture.ProjectId);
+            return await management.ExecuteAsync(request, authority,
+                authority.IssueGrant(request.OperationId, new ManagementTarget(i.OrganizationId!, i.Fixture.ProjectId)),
+                cancellationToken: t);
+        }
+        bool Owned(string environmentId, string environmentSlug) =>
+            id is not null && environmentId == id || environmentSlug == slug || environmentSlug == renamed;
+        async ValueTask<bool> EnvironmentAbsentAsync(SecretOutcome<InfisicalEnvironment> exact, CancellationToken t)
+        {
+            if (!AbsenceWitness.Concealed(exact)) return false;
+            SecretOutcome<ProjectSummary> project = await ProjectAsync(t);
+            if (!project.IsSuccess || !project.Value.Environments.IsPresent || !project.Value.DeletedEnvironments.IsPresent)
+                return false;
+            return !project.Value.Environments.Value.Any(e => Owned(e.Id, e.Slug)) &&
+                !project.Value.DeletedEnvironments.Value.Any(e => Owned(e.Id, e.Slug));
+        }
+        async ValueTask<bool> EnvironmentSoftDeletedAsync(SecretOutcome<InfisicalEnvironment> exact, CancellationToken t)
+        {
+            if (!AbsenceWitness.Concealed(exact)) return false;
+            SecretOutcome<ProjectSummary> project = await ProjectAsync(t);
+            return project.IsSuccess && project.Value.Environments.IsPresent && project.Value.DeletedEnvironments.IsPresent &&
+                !project.Value.Environments.Value.Any(e => Owned(e.Id, e.Slug)) &&
+                project.Value.DeletedEnvironments.Value.Count(e => Owned(e.Id, e.Slug)) == 1 &&
+                project.Value.DeletedEnvironments.Value.Any(e => e.Id == id && e.Name == "seed" && e.Slug == slug &&
+                    !string.IsNullOrWhiteSpace(e.SoftDeletedAt) && !string.IsNullOrWhiteSpace(e.DeleteAfter));
+        }
         try
         {
             if (!create)
@@ -145,7 +183,8 @@ internal static class OrganizationEffects
                 p.Contract(result.IsSuccess && receipt.Evidence == DispatchEvidence.Applied, NativeFailure.MissingPrerequisite);
                 id = result.Value.Id;
                 SecretOutcome<InfisicalEnvironment> initial = await f.Observer.GetEnvironmentAsync(Target(f.Observer), token);
-                p.Contract(initial.IsSuccess && initial.Value.Slug == slug && initial.Value.Name == "seed",
+                p.Contract(initial.IsSuccess && initial.Value.Id == id && initial.Value.Slug == slug &&
+                    initial.Value.Name == "seed" && initial.Value.Position == 1 && initial.Value.SoftDeletedAt is null,
                     NativeFailure.ObserverUnavailable);
                 if (!get && !update && !delete)
                 {
@@ -156,7 +195,7 @@ internal static class OrganizationEffects
                     p.Contract(softResult.IsSuccess && softReceipt.Evidence == DispatchEvidence.Applied,
                         NativeFailure.MissingPrerequisite);
                     var softObserved = await f.Observer.GetEnvironmentAsync(Target(f.Observer), token);
-                    p.Contract(softObserved.IsSuccess && softObserved.Value.SoftDeletedAt is not null,
+                    p.Contract(await EnvironmentSoftDeletedAsync(softObserved, token),
                         NativeFailure.ObserverUnavailable);
                 }
             }
@@ -192,13 +231,17 @@ internal static class OrganizationEffects
             bool absent = create && !i.ExpectedApplied || delete && i.HardDelete && i.ExpectedApplied;
             bool softDeleted = delete && !i.HardDelete && i.ExpectedApplied ||
                 !create && !get && !update && !delete && !i.ExpectedApplied;
-            p.Effect(absent ? observed.Status == SecretStatus.Absent ? NativeObservation.Matched : NativeObservation.Mismatched :
+            bool witnessedAbsent = absent && await EnvironmentAbsentAsync(observed, token);
+            bool witnessedSoftDeleted = softDeleted && await EnvironmentSoftDeletedAsync(observed, token);
+            p.Effect(absent ? witnessedAbsent ? NativeObservation.Matched : NativeObservation.Mismatched :
+                softDeleted ? witnessedSoftDeleted ? NativeObservation.Matched : NativeObservation.Mismatched :
                 observed.IsSuccess && observed.Value.Slug == expectedSlug &&
                 observed.Value.Name == (i.ExpectedApplied && (create || update) ? i.Name ?? (create ? "created" : "seed") : "seed") &&
-                (create && i.ExpectedApplied ? i.Position is null || observed.Value.Position == i.Position :
-                    observed.Value.Position == (i.ExpectedApplied && update ? i.Position ?? 1 : 1)) &&
+                // Restore chooses a native position; its acknowledged value is checked against the independent read below.
+                (restore || (create && i.ExpectedApplied ? i.Position is null || observed.Value.Position == i.Position :
+                    observed.Value.Position == (i.ExpectedApplied && update ? i.Position ?? 1 : 1))) &&
                 (observed.Value.SoftDeletedAt is not null) == softDeleted ? NativeObservation.Matched : NativeObservation.Mismatched);
-            if (get && dispatch.Outcome is { IsSuccess: true } read)
+            if ((get || restore) && dispatch.Outcome is { IsSuccess: true } read)
                 p.Contract(observed.IsSuccess && read.Value.Id == observed.Value.Id &&
                     read.Value.Slug == observed.Value.Slug && read.Value.Name == observed.Value.Name &&
                     read.Value.Position == observed.Value.Position, NativeFailure.ContractMismatch);
@@ -211,20 +254,23 @@ internal static class OrganizationEffects
             using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(20));
             try
             {
-                // ID is retained on acknowledged updates. A lost create is located by its owned slug.
+                // A seeded or acknowledged ID remains owned when soft deletion conceals its exact read.
+                // A lost create is located by its owned slug before hard deletion.
                 var found = await f.Observer.GetEnvironmentAsync(Target(f.Observer), cleanup.Token);
-                if (found.IsSuccess)
+                bool absent = await EnvironmentAbsentAsync(found, cleanup.Token);
+                if (!absent)
                 {
-                    id = found.Value.Id;
+                    p.Contract(found.IsSuccess || id is not null && AbsenceWitness.Concealed(found),
+                        NativeFailure.CleanupIncomplete);
+                    if (found.IsSuccess) id = found.Value.Id;
                     var owned = Target(f.Administrative);
                     var r = f.Administrative.CreateReceipt(owned);
                     var removed = await f.Administrative.DeleteEnvironmentAsync(owned,
                         Authority(f.Administrative, NativeIdentityRole.Administrative), r, true, cleanup.Token);
                     var gone = await f.Observer.GetEnvironmentAsync(Target(f.Observer), cleanup.Token);
-                    p.Contract((removed.IsSuccess || removed.Status == SecretStatus.Absent) &&
-                        gone.Status == SecretStatus.Absent, NativeFailure.CleanupIncomplete);
+                    p.Contract((removed.IsSuccess || AbsenceWitness.Concealed(removed)) &&
+                        await EnvironmentAbsentAsync(gone, cleanup.Token), NativeFailure.CleanupIncomplete);
                 }
-                else p.Contract(found.Status == SecretStatus.Absent, NativeFailure.CleanupIncomplete);
             }
             catch (Exception)
             {
@@ -252,6 +298,9 @@ internal static class OrganizationEffects
                 bySlug || id is null ? InfisicalOrganizationSelector.Slug : InfisicalOrganizationSelector.Id));
         InfisicalNativeAuthority Authority(InfisicalClient c, NativeIdentityRole role) =>
             new(c.Authority, env.Tokens(role), i.Fixture.ProjectId);
+        async ValueTask<bool> TagAbsentAsync(SecretOutcome<InfisicalTag> exact, CancellationToken t) =>
+            AbsenceWitness.Holds(exact, await f.Observer.ListTagsAsync(Target(f.Observer, collection: true),
+                cancellationToken: t), new AbsenceTarget<InfisicalTag>(id, slug, tag => tag.Id, tag => tag.Slug));
         try
         {
             if (!create)
@@ -305,7 +354,8 @@ internal static class OrganizationEffects
             }
             var observed = await f.Observer.GetTagAsync(Target(f.Observer), token);
             bool absent = create && !i.ExpectedApplied || delete && i.ExpectedApplied;
-            p.Effect(absent ? observed.Status == SecretStatus.Absent ? NativeObservation.Matched : NativeObservation.Mismatched :
+            bool witnessedAbsent = absent && await TagAbsentAsync(observed, token);
+            p.Effect(absent ? witnessedAbsent ? NativeObservation.Matched : NativeObservation.Mismatched :
                 observed.IsSuccess && observed.Value.Slug == (update && i.ExpectedApplied ? renamed : slug) &&
                 observed.Value.Color == (update && i.ExpectedApplied ? "#654321" : color) ?
                     NativeObservation.Matched : NativeObservation.Mismatched);
@@ -323,10 +373,10 @@ internal static class OrganizationEffects
                     var removed = await f.Administrative.DeleteTagAsync(owned,
                         Authority(f.Administrative, NativeIdentityRole.Administrative), f.Administrative.CreateReceipt(owned), cleanup.Token);
                     var gone = await f.Observer.GetTagAsync(Target(f.Observer), cleanup.Token);
-                    p.Contract((removed.IsSuccess || removed.Status == SecretStatus.Absent) &&
-                        gone.Status == SecretStatus.Absent, NativeFailure.CleanupIncomplete);
+                    p.Contract((removed.IsSuccess || AbsenceWitness.Concealed(removed)) &&
+                        await TagAbsentAsync(gone, cleanup.Token), NativeFailure.CleanupIncomplete);
                 }
-                else p.Contract(found.Status == SecretStatus.Absent, NativeFailure.CleanupIncomplete);
+                else p.Contract(await TagAbsentAsync(found, cleanup.Token), NativeFailure.CleanupIncomplete);
             }
             catch (Exception)
             {

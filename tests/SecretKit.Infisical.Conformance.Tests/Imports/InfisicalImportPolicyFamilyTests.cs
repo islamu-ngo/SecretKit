@@ -14,6 +14,7 @@ public sealed class InfisicalImportPolicyFamilyTests
 {
     private const string EnvironmentId = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
     private const string ReplacementEnvironmentId = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
+    private const string OrganizationId = "cccccccc-cccc-cccc-cccc-cccccccccccc";
     private static readonly string[] OrganizationMethods = ["CreateEnvironmentAsync", "CreateFolderAsync",
         "CreateTagAsync", "DeleteEnvironmentAsync", "DeleteFolderAsync", "DeleteTagAsync",
         "GetEnvironmentAsync", "GetFolderAsync", "GetTagAsync", "ListFoldersAsync", "ListTagsAsync",
@@ -94,6 +95,62 @@ public sealed class InfisicalImportPolicyFamilyTests
         await Assert.That(backend.ResourceCount).IsEqualTo(0);
         await Assert.That(backend.Roles.Contains("observer")).IsTrue();
         await Assert.That(backend.Roles.Contains("runtime")).IsTrue();
+    }
+
+    [Test]
+    [Arguments("DeleteEnvironmentAsync", false)]
+    [Arguments("RestoreEnvironmentAsync", false)]
+    [Arguments("DeleteEnvironmentAsync", true)]
+    [Arguments("RestoreEnvironmentAsync", true)]
+    public async Task EnvironmentObservationRequiresExactConcealmentAndDeletedMetadata(string method, bool invalidRead)
+    {
+        await using var backend = new Backend
+        {
+            WrongDeletedEnvironmentName = !invalidRead,
+            InvalidSoftDeletedRead = invalidRead
+        };
+        var d = await DefinitionAsync(method, "independent-effect");
+        using NativeEnvironment env = Environment(backend.Origin,
+            Family("C08-IR-Organization", d, OrganizationInput(true)));
+
+        var result = await RunAsync(env, d);
+
+        await Assert.That(result.Passed).IsFalse();
+        await Assert.That(result.ReasonCode).IsEqualTo(method == "RestoreEnvironmentAsync" ?
+            "observer-unavailable" : "effect-mismatch");
+        await Assert.That(result.CleanupIncomplete).IsEqualTo(invalidRead);
+        await Assert.That(backend.ResourceCount).IsEqualTo(invalidRead ? 1 : 0);
+    }
+
+    [Test]
+    [Arguments("GetEnvironmentAsync")]
+    [Arguments("DeleteEnvironmentAsync")]
+    public async Task EnvironmentCleanupRejectsRetainedLiveOrDeletedInventory(string method)
+    {
+        await using var backend = new Backend { RetainEnvironmentOnHardDelete = true };
+        var d = await DefinitionAsync(method, "independent-effect");
+        using NativeEnvironment env = Environment(backend.Origin,
+            Family("C08-IR-Organization", d, OrganizationInput(true)));
+
+        var result = await RunAsync(env, d);
+
+        await Assert.That(result.ReasonCode).IsEqualTo("cleanup-incomplete");
+        await Assert.That(backend.ResourceCount).IsEqualTo(1);
+    }
+
+    [Test]
+    public async Task RestoredPositionMustMatchIndependentRead()
+    {
+        await using var backend = new Backend { WrongRestorePosition = true };
+        var d = await DefinitionAsync("RestoreEnvironmentAsync", "independent-effect");
+        using NativeEnvironment env = Environment(backend.Origin,
+            Family("C08-IR-Organization", d, OrganizationInput(true)));
+
+        var result = await RunAsync(env, d);
+
+        await Assert.That(result.ReasonCode).IsEqualTo("contract-mismatch");
+        await Assert.That(result.CleanupIncomplete).IsFalse();
+        await Assert.That(backend.ResourceCount).IsEqualTo(0);
     }
 
     [Test]
@@ -489,7 +546,8 @@ public sealed class InfisicalImportPolicyFamilyTests
     private static StaticFixtureInput Fixture(params StaticSeed[] seeds) =>
         new("project", "env", EnvironmentId, "/owned", seeds, StaticApiRevision.SecretsV4FoldersV2);
     private static OrganizationEffects.OrganizationInput OrganizationInput(bool applied) =>
-        new(Fixture(), null, false, null, null, false, false, false, false, null, 1000, applied, false);
+        new(Fixture(), null, false, null, null, false, false, false, false, null, 1000, applied, false,
+            OrganizationId: OrganizationId);
     private static ImportsEffects.ImportInput ImportInput(bool applied) =>
         new(Fixture(), Fixture(new StaticSeed("TARGET", "source-value")), Fixture(new StaticSeed("TARGET", "replacement-value")),
             false, false, false, false, null, 1000, applied, false);
@@ -575,7 +633,7 @@ public sealed class InfisicalImportPolicyFamilyTests
         private readonly Dictionary<string, JsonObject> tags = [];
         private readonly Dictionary<string, JsonObject> imports = [];
         private readonly Dictionary<string, JsonObject> rules = [];
-        private readonly Dictionary<(string Project, string Environment, string Folder, string Key), (string Value, int Version)> secrets = [];
+        private readonly Dictionary<(string Project, string Environment, string Folder, string Key), (string Value, int Version, string Id)> secrets = [];
         private readonly Task accept;
         private int requestCount, runtimeMutations, selectedMutations;
         internal int RequestCount => requestCount;
@@ -601,6 +659,10 @@ public sealed class InfisicalImportPolicyFamilyTests
         internal bool DuplicateOrganizationInventory { get; init; }
         internal bool IgnoreValidation { get; init; }
         internal bool DenyCleanup { get; init; }
+        internal bool WrongDeletedEnvironmentName { get; init; }
+        internal bool InvalidSoftDeletedRead { get; init; }
+        internal bool RetainEnvironmentOnHardDelete { get; init; }
+        internal bool WrongRestorePosition { get; init; }
         internal bool PartialBatch { get; init; }
         internal Uri Origin { get; }
 
@@ -683,6 +745,31 @@ public sealed class InfisicalImportPolicyFamilyTests
                 if (path == SelectedPath) selectedMutations++;
             }
             if (path.StartsWith("/api/v2/folders", StringComparison.Ordinal)) return Folder(method, uri, b);
+            if (method == "GET" && path == "/api/v1/projects/project")
+            {
+                if (role != "observer") return (403, new());
+                JsonObject project = Stamp();
+                project["id"] = "project"; project["orgId"] = OrganizationId;
+                project["name"] = "Project"; project["slug"] = "project"; project["type"] = "secret-manager";
+                project["environments"] = new JsonArray(environments.Values
+                    .Where(e => e["softDeletedAt"] is null).Select(e => (JsonNode)new JsonObject
+                    {
+                        ["id"] = e["id"]!.DeepClone(),
+                        ["name"] = e["name"]!.DeepClone(),
+                        ["slug"] = e["slug"]!.DeepClone()
+                    }).ToArray());
+                project["deletedEnvironments"] = new JsonArray(environments.Values
+                    .Where(e => e["softDeletedAt"] is not null).Select(e => (JsonNode)new JsonObject
+                    {
+                        ["id"] = e["id"]!.DeepClone(),
+                        ["slug"] = e["slug"]!.DeepClone(),
+                        ["name"] = WrongDeletedEnvironmentName ? JsonValue.Create("wrong") : e["name"]!.DeepClone(),
+                        ["softDeletedAt"] = e["softDeletedAt"]!.DeepClone(),
+                        ["deleteAfter"] = e["deleteAfter"]!.DeepClone(),
+                        ["deletedBy"] = null
+                    }).ToArray());
+                return (200, Response("project", project));
+            }
             if (path.Contains("/environments", StringComparison.Ordinal))
                 return EnvironmentState(method, path, b, uri.Query.Contains("hardDelete=true", StringComparison.Ordinal));
             if (path.Contains("/tags", StringComparison.Ordinal)) return TagState(method, path, b);
@@ -802,17 +889,29 @@ public sealed class InfisicalImportPolicyFamilyTests
             }
             JsonObject? found = environments.Values.SingleOrDefault(e => Text(e, "id") == selector || Text(e, "slug") == selector);
             if (found is null) return (404, new());
+            if (method == "GET" && found["softDeletedAt"] is not null)
+                return (InvalidSoftDeletedRead ? 200 : 404, new());
             foreach (string field in new[] { "name", "slug", "position" })
                 if (b.ContainsKey(field)) found[field] = b[field]!.DeepClone();
-            if (restore) found["softDeletedAt"] = null;
+            if (restore)
+            {
+                found["softDeletedAt"] = null;
+                found["deleteAfter"] = null;
+                found["position"] = 5;
+            }
             JsonObject result;
             if (method == "DELETE")
             {
-                found["softDeletedAt"] = "2026-10-12T00:00:00Z";
+                if (!hardDelete)
+                {
+                    found["softDeletedAt"] = "2026-10-12T00:00:00Z";
+                    found["deleteAfter"] = "2026-11-12T00:00:00Z";
+                }
                 result = Response("environment", found);
-                if (hardDelete) environments.Remove(Text(found, "id"));
+                if (hardDelete && !RetainEnvironmentOnHardDelete) environments.Remove(Text(found, "id"));
             }
             else result = Response("environment", found);
+            if (restore && WrongRestorePosition) result["environment"]!["position"] = 6;
             return (200, result);
         }
         private (int, JsonObject) TagState(string method, string path, JsonObject b)
@@ -952,6 +1051,36 @@ public sealed class InfisicalImportPolicyFamilyTests
             {
                 string folder = Query(uri, "secretPath");
                 string project = Query(uri, "projectId"), environment = Query(uri, "environment");
+                if (uri.AbsolutePath == "/api/v4/secrets")
+                {
+                    JsonArray Rows(string selectedProject, string selectedEnvironment, string selectedPath) =>
+                        new(secrets.Where(s => s.Key.Project == selectedProject &&
+                            s.Key.Environment == selectedEnvironment && s.Key.Folder == selectedPath)
+                            .Select(s => (JsonNode)new JsonObject
+                            {
+                                ["id"] = s.Value.Id,
+                                ["secretKey"] = s.Key.Key,
+                                ["version"] = s.Value.Version,
+                                ["workspace"] = selectedProject,
+                                ["environment"] = selectedEnvironment,
+                                ["secretPath"] = selectedPath,
+                                ["type"] = "shared"
+                            }).ToArray());
+                    var groups = new JsonArray();
+                    if (Query(uri, "includeImports") == "true")
+                        foreach (JsonObject import in imports.Values.Where(i => Text(i, "secretPath") == folder))
+                        {
+                            JsonObject source = import["importEnv"]!.AsObject();
+                            string sourceEnvironment = Text(source, "slug"), sourcePath = Text(import, "importPath");
+                            groups.Add(new JsonObject
+                            {
+                                ["environment"] = sourceEnvironment,
+                                ["secretPath"] = sourcePath,
+                                ["secrets"] = Rows(Text(source, "projectId"), sourceEnvironment, sourcePath)
+                            });
+                        }
+                    return (200, new JsonObject { ["secrets"] = Rows(project, environment, folder), ["imports"] = groups });
+                }
                 if (secrets.TryGetValue((project, environment, folder, key), out var value))
                     return (200, Response("secret", Secret(key, value.Value, value.Version, project, environment)));
                 foreach (JsonObject import in imports.Values.Where(i => Text(i, "secretPath") == folder))
@@ -986,7 +1115,7 @@ public sealed class InfisicalImportPolicyFamilyTests
                 }
             var coordinate = (Text(b, "projectId"), Text(b, "environment"), selectedFolder, key);
             int version = secrets.TryGetValue(coordinate, out var old) ? old.Version + 1 : 1;
-            secrets[coordinate] = (material, version);
+            secrets[coordinate] = (material, version, old.Id ?? Guid.NewGuid().ToString());
             return (200, Response("secret", Secret(key, material, version, Text(b, "projectId"), Text(b, "environment"))));
         }
         public async ValueTask DisposeAsync()

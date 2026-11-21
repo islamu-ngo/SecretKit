@@ -1276,7 +1276,7 @@ internal sealed class LifecycleOwnedFolder : IAsyncDisposable
                 var remaining = await observer.ListFoldersAsync(new(observer.Authority,
                     new InfisicalFolderAddress(input.ProjectId, input.Environment, input.EnvironmentId,
                         input.Parent)), cancellationToken: deadline.Token);
-                clean = (result.IsSuccess || result.Status == SecretStatus.Absent) &&
+                clean = (result.IsSuccess || AbsenceWitness.Concealed(result)) &&
                     remaining.IsSuccess && remaining.Value.IsComplete &&
                     !remaining.Value.Items.Any(f => f.Name == name);
             }

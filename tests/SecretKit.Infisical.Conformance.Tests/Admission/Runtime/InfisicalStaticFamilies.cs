@@ -229,10 +229,14 @@ internal sealed class StaticOwnedFixture : IAsyncDisposable
                     (state.Version is null || read.Observation.Version == state.Version.Value.ToString(CultureInfo.InvariantCulture))
                     ? NativeObservation.Matched : NativeObservation.Mismatched, recordEffect);
             }
+            else if (state.Status == SecretStatus.Absent && AbsenceWitness.Concealed(observation))
+                // A concealed read alone is not absence; the observer's complete folder inventory must omit the key.
+                Observation(await AbsenceWitness.SecretAbsentAsync(Observer, observation, new InfisicalSecretAddress(
+                    Input.ProjectId, Input.Environment, folder ?? Folder, state.Key, version, resolution, imports), token)
+                    ? NativeObservation.Matched : NativeObservation.Mismatched, recordEffect);
             else
-                Observation(observation.Status == state.Status ? NativeObservation.Matched :
-                    observation.Status is SecretStatus.Denied or SecretStatus.Unavailable or SecretStatus.Unknown
-                        ? NativeObservation.Unavailable : NativeObservation.Mismatched, recordEffect);
+                Observation(observation.Status is SecretStatus.Denied or SecretStatus.Unavailable or SecretStatus.Unknown
+                    ? NativeObservation.Unavailable : NativeObservation.Mismatched, recordEffect);
 
             InfisicalClient reader = denied ? Denied : Runtime;
             SecretOutcome<SecretRead> delivered = await reader.ReadAsync(
@@ -244,7 +248,9 @@ internal sealed class StaticOwnedFixture : IAsyncDisposable
                     read.Material.Reveal() == state.Value ? NativeObservation.Matched : NativeObservation.Mismatched, recordEffect);
             }
             else
-                Observation(delivered.Status == (denied ? SecretStatus.Denied : state.Status)
+                // Absence was proven by the observer above; the delivering principal must see it concealed.
+                Observation((denied ? delivered.Status == SecretStatus.Denied :
+                    state.Status == SecretStatus.Absent && AbsenceWitness.Concealed(delivered))
                     ? NativeObservation.Matched : NativeObservation.Mismatched, recordEffect);
         }
         // Principal identity needs its own authority-bound witness; token selection
@@ -283,7 +289,7 @@ internal sealed class StaticOwnedFixture : IAsyncDisposable
                         Input.ProjectId, Input.Environment, Input.EnvironmentId, folder.Parent));
                     SecretOutcome<InfisicalNativeList<InfisicalFolder>> remaining =
                         await Observer.ListFoldersAsync(scopeTarget, cancellationToken: deadline.Token);
-                    clean &= (result.IsSuccess || result.Status == SecretStatus.Absent) &&
+                    clean &= (result.IsSuccess || AbsenceWitness.Concealed(result)) &&
                         remaining.IsSuccess && remaining.Value.IsComplete &&
                         !remaining.Value.Items.Any(f => f.Name == folder.Name);
                 }
