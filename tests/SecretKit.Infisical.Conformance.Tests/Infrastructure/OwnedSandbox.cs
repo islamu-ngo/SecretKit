@@ -7,7 +7,8 @@ namespace SecretKit.Infisical.Conformance.Tests;
 /// <summary>Test-only ownership boundary; it never provisions or retries a resource.</summary>
 internal sealed partial class OwnedSandbox : IDisposable
 {
-    internal const string AppDigest = "sha256:c063089e4525b033fe6ab9e6858c3afb395ad38d363dcbfa6cbb6122a99a4eea";
+    // Docker Hub linux/amd64 image manifest, not the multi-platform index.
+    internal const string AppDigest = "sha256:44cf26b0b556bc340fd6f86c17404a2ae9ed73e783d3dcd3a53977c54c9c5e83";
     private readonly SecretMaterial _setupToken;
 
     internal OwnedSandbox(Uri origin, string owner, string organizationId, SecretMaterial setupToken)
@@ -36,9 +37,11 @@ internal sealed partial class OwnedSandbox : IDisposable
 
     internal async Task VerifyAsync(string workingDirectory, CancellationToken cancellationToken)
     {
+        Verified = false;
+        nativeInspection = null;
         var pod = await OwnedProcess.RunAsync("podman",
             ["pod", "inspect", Owner, "--format", "{{json .Labels}}"], workingDirectory, cancellationToken: cancellationToken);
-        var image = await OwnedProcess.RunAsync("podman", ["inspect", Owner + "-app", "--format", "{{.ImageDigest}}"],
+        var image = await OwnedProcess.RunAsync("podman", ["container", "inspect", Owner + "-app", "--format", "{{.ImageDigest}}"],
             workingDirectory, cancellationToken: cancellationToken);
         var ports = await OwnedProcess.RunAsync("podman", ["port", Owner + "-app"],
             workingDirectory, cancellationToken: cancellationToken);
@@ -50,11 +53,39 @@ internal sealed partial class OwnedSandbox : IDisposable
 
     internal void ObserveInspection(string podLabels, string digest, string ingress)
     {
-        using var labels = JsonDocument.Parse(podLabels);
-        if (!labels.RootElement.TryGetProperty("secretkit-sdk-owned", out var owned) || owned.GetString() != "true" ||
+        Verified = false;
+        if (!HasOwnershipLabel(podLabels) ||
             digest.Trim() != AppDigest || ingress.Trim() != $"8080/tcp -> 127.0.0.1:{Origin.Port}")
+        {
+            nativeInspection = null;
             throw new InvalidOperationException("Sandbox ownership was not established.");
+        }
         Verified = true;
+    }
+
+    private static bool HasOwnershipLabel(string podLabels)
+    {
+        try
+        {
+            using var labels = JsonDocument.Parse(podLabels);
+            if (labels.RootElement.ValueKind != JsonValueKind.Object)
+                return false;
+
+            var owned = false;
+            foreach (var label in labels.RootElement.EnumerateObject())
+            {
+                if (!label.NameEquals("secretkit-sdk-owned"))
+                    continue;
+                if (owned || label.Value.ValueKind != JsonValueKind.String || label.Value.GetString() != "true")
+                    return false;
+                owned = true;
+            }
+            return owned;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
     }
 
     public void Dispose() => _setupToken.Dispose();
