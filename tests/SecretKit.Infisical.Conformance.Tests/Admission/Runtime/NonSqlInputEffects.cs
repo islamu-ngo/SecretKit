@@ -171,13 +171,16 @@ internal static class NonSqlInputEffects
             identities.Role = NativeIdentityRole.Setup;
             string currentName = fence.Applied && renamed is not null ? renamed : name;
             var current = await observer.InspectDefinitionAsync(observer.Definition(currentName), token);
-            probe.Contract(fence.DefinitionAbsent ? current.Status == SecretStatus.Absent :
+            probe.Contract(fence.DefinitionAbsent ?
+                await AbsenceWitness.DefinitionAbsentAsync(observer, current, currentName, null, token) :
                 current.IsSuccess && current.Value.Id == fence.DefinitionId &&
                     current.Value.Provider == provider, NativeFailure.EffectMismatch);
             if (renamed is not null)
-                probe.Contract((await observer.InspectDefinitionAsync(observer.Definition(
-                    currentName == name ? renamed : name), token)).Status == SecretStatus.Absent,
-                    NativeFailure.EffectMismatch);
+            {
+                string formerName = currentName == name ? renamed : name;
+                probe.Contract(await AbsenceWitness.DefinitionAbsentAsync(observer, await observer.InspectDefinitionAsync(
+                    observer.Definition(formerName), token), formerName, null, token), NativeFailure.EffectMismatch);
+            }
             if (current.IsSuccess)
             {
                 int expectedDefault = method is "UpdateDefinitionAsync" or "UpdateDefinitionPolicyAsync" &&
@@ -217,9 +220,9 @@ internal static class NonSqlInputEffects
                             new(current.Value.Target, InfisicalDynamicOperation.DeleteDefinition),
                             cancellationToken: cleanup.Token)).IsSuccess;
                     }
-                    else cleanupComplete &= current.Status == SecretStatus.Absent;
-                    cleanupComplete &= (await observer.InspectDefinitionAsync(observer.Definition(ownedName),
-                        cleanup.Token)).Status == SecretStatus.Absent;
+                    else cleanupComplete &= AbsenceWitness.Concealed(current);
+                    cleanupComplete &= await AbsenceWitness.DefinitionAbsentAsync(observer, await observer.InspectDefinitionAsync(
+                        observer.Definition(ownedName), cleanup.Token), ownedName, null, cleanup.Token);
                 }
                 var remaining = await observer.ListDefinitionsAsync(cleanup.Token);
                 cleanupComplete &= remaining.IsSuccess && remaining.Value.IsComplete && remaining.Value.Items.Count == 0;

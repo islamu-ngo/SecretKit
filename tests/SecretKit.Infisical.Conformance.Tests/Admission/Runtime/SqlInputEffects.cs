@@ -133,7 +133,8 @@ internal static class SqlInputEffects
             var current = await observer.InspectDefinitionAsync(observer.Definition(currentName), token);
             if (method == "CreateDefinitionAsync" && !fence.Applied)
             {
-                probe.Contract(fence.DefinitionAbsent && current.Status == SecretStatus.Absent, NativeFailure.EffectMismatch);
+                probe.Contract(fence.DefinitionAbsent &&
+                    await AbsenceWitness.DefinitionAbsentAsync(observer, current, currentName, null, token), NativeFailure.EffectMismatch);
                 // Retained baseline credentials still authenticate after nonapplication.
                 await AuthenticateAsync(retained[0], token);
                 probe.Effect(NativeObservation.Matched);
@@ -212,9 +213,9 @@ internal static class SqlInputEffects
                             new(current.Value.Target, InfisicalDynamicOperation.DeleteDefinition),
                             cancellationToken: cleanup.Token)).IsSuccess;
                     }
-                    else cleanupComplete &= current.Status == SecretStatus.Absent;
-                    cleanupComplete &= (await observer.InspectDefinitionAsync(observer.Definition(ownedName),
-                        cleanup.Token)).Status == SecretStatus.Absent;
+                    else cleanupComplete &= AbsenceWitness.Concealed(current);
+                    cleanupComplete &= await AbsenceWitness.DefinitionAbsentAsync(observer, await observer.InspectDefinitionAsync(
+                        observer.Definition(ownedName), cleanup.Token), ownedName, null, cleanup.Token);
                 }
             }
             catch (Exception) { cleanupComplete = false; }

@@ -189,9 +189,9 @@ internal sealed class OwnedDynamicValidation : IAsyncDisposable
                         new(current.Value.Target, InfisicalDynamicOperation.DeleteDefinition), cancellationToken: deadline.Token);
                     clean &= deleted.IsSuccess;
                 }
-                else clean &= current.Status == SecretStatus.Absent;
+                else clean &= AbsenceWitness.Concealed(current);
                 var absence = await observer.InspectDefinitionAsync(observer.Definition(name), deadline.Token);
-                clean &= absence.Status == SecretStatus.Absent;
+                clean &= await AbsenceWitness.DefinitionAbsentAsync(observer, absence, name, null, deadline.Token);
             }
         }
         catch (Exception) { clean = false; }

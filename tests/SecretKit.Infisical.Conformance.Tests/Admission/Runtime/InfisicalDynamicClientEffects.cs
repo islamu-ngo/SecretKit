@@ -507,11 +507,13 @@ internal static class InfisicalDynamicClientEffects
             {
                 string absentName = currentName == name ? renamedName : name;
                 var absent = await observer.InspectDefinitionAsync(observer.Definition(absentName), token);
-                probe.Contract(absent.Status == SecretStatus.Absent, NativeFailure.EffectMismatch);
+                probe.Contract(await AbsenceWitness.DefinitionAbsentAsync(observer, absent, absentName, null, token),
+                    NativeFailure.EffectMismatch);
             }
             bool removed = method == "DeleteDefinitionAsync" && !denied && !cancel;
             bool notCreated = method == "CreateDefinitionAsync" && (denied || cancel);
-            probe.Contract(removed || notCreated ? independentlyObserved.Status == SecretStatus.Absent :
+            probe.Contract(removed || notCreated ?
+                await AbsenceWitness.DefinitionAbsentAsync(observer, independentlyObserved, currentName, null, token) :
                 independentlyObserved.IsSuccess, NativeFailure.ObserverUnavailable);
             if (!removed && independentlyObserved.IsSuccess)
             {
@@ -705,9 +707,9 @@ internal static class InfisicalDynamicClientEffects
                                 cancellationToken: cleanup.Token);
                             cleanupComplete &= removedDefinition.IsSuccess;
                         }
-                        else cleanupComplete &= current.Status == SecretStatus.Absent;
+                        else cleanupComplete &= AbsenceWitness.Concealed(current);
                         var absence = await observer.InspectDefinitionAsync(observer.Definition(ownedName), cleanup.Token);
-                        cleanupComplete &= absence.Status == SecretStatus.Absent;
+                        cleanupComplete &= await AbsenceWitness.DefinitionAbsentAsync(observer, absence, ownedName, null, cleanup.Token);
                     }
                     if (!passwordWitness && !usernameWitness && backend is not null && username is not null && password is not null &&
                         definition is not null && lease is not null)
