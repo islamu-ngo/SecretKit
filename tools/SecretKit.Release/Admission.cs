@@ -11,15 +11,30 @@ public sealed record AdmissionInventory(int SchemaVersion, string Kind, string P
 
 public static class Admission
 {
+    internal static IReadOnlyList<string> ArmContractInputs { get; } = Array.AsReadOnly<string>(
+        ["eng/ArmContracts/Bindings.txt", "eng/ArmContracts/ArmContractReader.cs", "eng/ArmContracts/Generate.cs",
+         "eng/ArmContracts/LockedPackage.fsx", "eng/ArmContracts/ArmContracts.targets",
+         "src/SecretKit.AzureKeyVault.Management/packages.lock.json"]);
+
     public static void Validate(AdmissionInventory inventory, IReadOnlyCollection<string> currentMembers)
+    {
+        ValidateRefreshInput(inventory, currentMembers);
+        if (inventory.Provider == "AzureKeyVault")
+            Guard.Require(!ArmContractInputs.Except(inventory.Sources.Select(s => s.File), StringComparer.Ordinal).Any(),
+                "admission-arm-contract-inputs");
+    }
+
+    // A pre-refresh inventory may lack newly required sources, not semantic policy.
+    internal static void ValidateRefreshInput(AdmissionInventory inventory, IReadOnlyCollection<string> currentMembers)
     {
         Guard.Require(inventory.SchemaVersion == 1 && inventory.Kind == "current-admission" &&
             inventory.Provider is "Infisical" or "AzureKeyVault" &&
             inventory.Policy == "complete-live", "admission-policy");
         Guard.Require(inventory.Sources.Length > 0 &&
-            inventory.Sources.All(s => s.File.StartsWith("src/", StringComparison.Ordinal) &&
-                !s.File.Contains("..", StringComparison.Ordinal) && s.File.EndsWith(".cs", StringComparison.Ordinal) &&
-                Manifest.IsHash(s.Sha256)) &&
+            inventory.Sources.All(s => Manifest.IsHash(s.Sha256) &&
+                ((s.File.StartsWith("src/", StringComparison.Ordinal) && !s.File.Contains("..", StringComparison.Ordinal) &&
+                  s.File.EndsWith(".cs", StringComparison.Ordinal)) ||
+                 (inventory.Provider == "AzureKeyVault" && ArmContractInputs.Contains(s.File, StringComparer.Ordinal)))) &&
             inventory.Sources.Select(s => s.File).Distinct(StringComparer.Ordinal).Count() == inventory.Sources.Length,
             "admission-sources");
         Guard.Require(inventory.Operations.Length is > 0 and <= 4096 &&

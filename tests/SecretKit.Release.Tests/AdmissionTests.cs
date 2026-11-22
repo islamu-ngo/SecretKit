@@ -47,12 +47,17 @@ public sealed class AdmissionTests
         await Assert.That(inventory.Operations.Length).IsEqualTo(members.Length);
 
         // The native assembly references, not cases or inventory contents, select
-        // both the member denominator and the complete handwritten source roots.
+        // both the member denominator and provider roots. The repository-owned
+        // shared source root is also bound, independently of inventory claims.
         string root = RepositoryRoot();
         string[] sourceRoots = NativeAssemblies()
             .Where(a => a.GetName().Name!.StartsWith("SecretKit." + provider, StringComparison.Ordinal))
-            .Select(a => Path.Combine(root, "src", a.GetName().Name!)).ToArray();
-        AdmissionSourceCoverage.Verify(root, sourceRoots, inventory.Sources);
+            .Select(a => Path.Combine(root, "src", a.GetName().Name!))
+            .Append(Path.Combine(root, "src", "Shared")).ToArray();
+        AdmissionSourceCoverage.Verify(root, sourceRoots, inventory.Sources, provider == "AzureKeyVault" ?
+            ["eng/ArmContracts/Bindings.txt", "eng/ArmContracts/ArmContractReader.cs", "eng/ArmContracts/Generate.cs",
+             "eng/ArmContracts/LockedPackage.fsx", "eng/ArmContracts/ArmContracts.targets",
+             "src/SecretKit.AzureKeyVault.Management/packages.lock.json"] : []);
 
         using JsonDocument schema = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(root,
             "docs", "internal", "releases", "admission", "admission.schema.json")));
@@ -161,6 +166,23 @@ public sealed class AdmissionTests
     [Arguments("src/SecretKit.Infisical/Client.cs", true)]
     [Arguments("src/SecretKit.Infisical/Dynamic/Profiles/Profile.cs", true)]
     [Arguments("src/SecretKit.AzureKeyVault.Management/Access/Scopes.cs", true)]
+    [Arguments("eng/ArmContracts/Bindings.txt", true)]
+    [Arguments("eng/ArmContracts/ArmContractReader.cs", true)]
+    [Arguments("eng/ArmContracts/Generate.cs", true)]
+    [Arguments("eng/ArmContracts/LockedPackage.fsx", true)]
+    [Arguments("eng/ArmContracts/ArmContracts.targets", true)]
+    [Arguments("src/SecretKit.AzureKeyVault.Management/packages.lock.json", true)]
+    [Arguments("eng/ArmContracts/Unowned.cs", false)]
+    [Arguments("eng/ArmContracts/../ArmContracts/Generate.cs", false)]
+    [Arguments("src/SecretKit.AzureKeyVault/packages.lock.json", false)]
+    [Arguments("src/Shared/SecretKit.Http.Internal/OperationBudget.cs", true)]
+    [Arguments("src/Shared/SecretKit.Telemetry.Internal/SecretKitTelemetry.cs", true)]
+    [Arguments("src/Shared/Other/Policy.cs", false)]
+    [Arguments("src/Shared/SecretKit.Http.Internal/../Policy.cs", false)]
+    [Arguments("src/Shared/SecretKit.Http.Internal/bin/Policy.cs", false)]
+    [Arguments("src/Shared/SecretKit.Http.Internal/OBJ/Policy.cs", false)]
+    [Arguments("src/Shared/SecretKit.Telemetry.Internal//Policy.cs", false)]
+    [Arguments("src/Shared/SecretKit.Telemetry.Internal\\Policy.cs", false)]
     [Arguments("src/SecretKit.Infisical/../Client.cs", false)]
     [Arguments("src/SecretKit.Infisical/Secrets//Client.cs", false)]
     [Arguments("src/SecretKit.Infisical/bin/Client.cs", false)]
@@ -170,7 +192,7 @@ public sealed class AdmissionTests
     [Arguments("src/SecretKit.Infisical/Secrets\\Client.cs", false)]
     [Arguments("src/SecretKit.Core/Client.cs", false)]
     [Arguments("/src/SecretKit.Infisical/Client.cs", false)]
-    public async Task SourcePathSchemaAdmitsOnlyHandwrittenProviderPaths(string file, bool valid)
+    public async Task SourcePathSchemaAdmitsOnlyReviewedHandwrittenRoots(string file, bool valid)
     {
         using JsonDocument schema = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(RepositoryRoot(),
             "docs", "internal", "releases", "admission", "admission.schema.json")));
@@ -334,11 +356,12 @@ public sealed class AdmissionTests
 
 internal static class AdmissionSourceCoverage
 {
-    internal static void Verify(string root, IEnumerable<string> sourceRoots, IEnumerable<FileDigest> sources)
+    internal static void Verify(string root, IEnumerable<string> sourceRoots, IEnumerable<FileDigest> sources,
+        IEnumerable<string>? additionalFiles = null)
     {
         FileDigest[] inventory = sources.ToArray();
         string[] files = sourceRoots.SelectMany(HandwrittenFiles)
-            .Select(file => Path.GetRelativePath(root, file).Replace('\\', '/')).ToArray();
+            .Select(file => Path.GetRelativePath(root, file).Replace('\\', '/')).Concat(additionalFiles ?? []).ToArray();
         Manifest.ExactSet(inventory.Select(source => source.File), files, "admission-source-coverage");
         foreach (FileDigest source in inventory)
             if (source.Sha256 != Manifest.Hash(File.ReadAllBytes(Path.Combine(root, source.File))))

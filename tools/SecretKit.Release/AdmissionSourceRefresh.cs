@@ -28,20 +28,31 @@ public static class AdmissionSourceRefresh
             NoLinks(assembly);
             return Admission.PublicRemoteMembers(assembly);
         }).ToArray();
-        Admission.Validate(inventory, members);
+        Admission.ValidateRefreshInput(inventory, members);
+        IReadOnlyList<string> fixedInputs = inventory.Provider == "AzureKeyVault" ? Admission.ArmContractInputs : [];
         foreach (FileDigest item in inventory.Sources)
         {
             string[] segments = item.File.Split('/');
-            Guard.Require(segments.Length >= 3 && segments[0] == "src" && owners.Contains(segments[1]) &&
+            Guard.Require(fixedInputs.Contains(item.File, StringComparer.Ordinal) || (segments.Length >= 3 && segments[0] == "src" &&
+                (owners.Contains(segments[1]) || segments[1] == "Shared") &&
                 segments.All(segment => segment.Length > 0 && segment is not "." and not ".." &&
                     !segment.Contains('\\') && !segment.Contains(':') &&
                     !segment.Equals("obj", StringComparison.OrdinalIgnoreCase) &&
-                    !segment.Equals("bin", StringComparison.OrdinalIgnoreCase)), "admission-source-owner");
+                    !segment.Equals("bin", StringComparison.OrdinalIgnoreCase))), "admission-source-owner");
             string path = Path.Combine(source, item.File);
             NoLinks(path);
             Guard.Require(File.Exists(path), "admission-source-missing");
         }
-        FileDigest[] sources = owners.SelectMany(owner => Discover(Path.Combine(source, "src", owner)))
+        var roots = owners.Select(owner => Path.Combine(source, "src", owner)).ToList();
+        string shared = Path.Combine(source, "src", "Shared");
+        if (Directory.EnumerateFileSystemEntries(Path.Combine(source, "src"), "Shared").Any())
+        {
+            NoLinks(shared);
+            Guard.Require(Directory.Exists(shared), "admission-source-owner");
+            roots.Add(shared);
+        }
+        foreach (string fileName in fixedInputs) NoLinks(Path.Combine(source, fileName));
+        FileDigest[] sources = roots.SelectMany(Discover).Concat(fixedInputs.Select(fileName => Path.Combine(source, fileName)))
             .Select(path => new FileDigest(Path.GetRelativePath(source, path).Replace('\\', '/'),
                 Manifest.Hash(Manifest.ReadLocalFile(path, 4 * 1024 * 1024))))
             .OrderBy(item => item.File, StringComparer.Ordinal).ToArray();

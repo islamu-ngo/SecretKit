@@ -301,15 +301,17 @@ public sealed class CandidateTests
         {
             AdmissionInventory inventory = Manifest.Parse<AdmissionInventory>(
                 File.ReadAllBytes(Path.Combine(fixture.Bundle.Root, file)));
-            string source = inventory.Sources[0].File;
-            string path = Path.Combine(fixture.Observations, source);
-            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             byte[] sourceBytes = System.Text.Encoding.UTF8.GetBytes("// Controlled test source; no remote evidence.");
-            File.WriteAllBytes(path, sourceBytes);
+            foreach (FileDigest source in inventory.Sources)
+            {
+                string path = Path.Combine(fixture.Observations, source.File);
+                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                File.WriteAllBytes(path, sourceBytes);
+            }
             File.WriteAllBytes(Path.Combine(proposalDirectory, "admission", file),
                 JsonSerializer.SerializeToUtf8Bytes(inventory with
                 {
-                    Sources = [new(source, Manifest.Hash(sourceBytes))]
+                    Sources = inventory.Sources.Select(source => new FileDigest(source.File, Manifest.Hash(sourceBytes))).ToArray()
                 }, Manifest.JsonOptions));
         }
         File.Copy(Path.Combine(fixture.Bundle.Root, "THIRD-PARTY-NOTICES.md"),

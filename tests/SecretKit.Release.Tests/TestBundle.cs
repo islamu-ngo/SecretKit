@@ -40,7 +40,14 @@ internal sealed class TestBundle : IDisposable
         }).ToArray();
         AdmissionInventory[] inventories = new[] { "Infisical", "AzureKeyVault" }.Select(provider =>
             new AdmissionInventory(1, "current-admission", provider, "complete-live",
-                [new($"src/SecretKit.{provider}/Client.cs", new string('a', 64))],
+                [new($"src/SecretKit.{provider}/Client.cs", new string('a', 64)),
+                 .. (provider == "AzureKeyVault" ? new[]
+                 {
+                     "eng/ArmContracts/Bindings.txt", "eng/ArmContracts/ArmContractReader.cs",
+                     "eng/ArmContracts/Generate.cs", "eng/ArmContracts/LockedPackage.fsx",
+                     "eng/ArmContracts/ArmContracts.targets",
+                     "src/SecretKit.AzureKeyVault.Management/packages.lock.json"
+                 }.Select(file => new FileDigest(file, new string('a', 64))) : [])],
                 [new("read", $"SecretKit.{provider}.Client.ReadAsync", ["selected-version", "current-version"],
                     "implemented-subset", "Independently witnessed selected read outcome.",
                     ["read-effect", "denied-read"], ["owned-environment", "runtime-identity", "observer-identity"])],

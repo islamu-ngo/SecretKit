@@ -475,6 +475,58 @@
     {
       "file": "src/SecretKit.Infisical/Transport/InfisicalTransportOptions.cs",
       "sha256": "ada4a6d4cec965b613f50db25f02ef52b60fb3bf3847fc2e916176e59be39f54"
+    },
+    {
+      "file": "src/Shared/SecretKit.Http.Internal/AsyncOperationDrain.cs",
+      "sha256": "a2a151299ad59139c15c9ba039b76effbdbdb05debc46bf327316bed6d6c665c"
+    },
+    {
+      "file": "src/Shared/SecretKit.Http.Internal/BearerHeader.cs",
+      "sha256": "5ce3348e8b8af639a81856c0ec707491b6e81b626c14b72ddccddf87bf06288d"
+    },
+    {
+      "file": "src/Shared/SecretKit.Http.Internal/BoundedJson.cs",
+      "sha256": "6b690d11e942acbe10ad6ab55376c0934fc33539c41a4a59de9816a72651bdfc"
+    },
+    {
+      "file": "src/Shared/SecretKit.Http.Internal/BoundedRequestBuffer.cs",
+      "sha256": "df575530bc3037d0d41fd663549fa82ba41746e1381b8c9979d089d1852da0a7"
+    },
+    {
+      "file": "src/Shared/SecretKit.Http.Internal/BoundedResponseStream.cs",
+      "sha256": "ec04604b027ba263844a581c14a55710e28ba6d9bcc81a78cf74c49c46924353"
+    },
+    {
+      "file": "src/Shared/SecretKit.Http.Internal/HttpFailureResponse.cs",
+      "sha256": "6e90a3b559774f559565898103a0b97f639bdb0d6f0fad61e3ff1018c4292d9e"
+    },
+    {
+      "file": "src/Shared/SecretKit.Http.Internal/HttpTransportBinding.cs",
+      "sha256": "dfa165fafa664418b2068d94be7aa0402797e40b48f53e0a5de5feed9314424f"
+    },
+    {
+      "file": "src/Shared/SecretKit.Http.Internal/OperationBudget.cs",
+      "sha256": "c5f2c9c59ea03352d68d3fa38769eda568ac9898740b4ed2ba7d4c9ea28f3c25"
+    },
+    {
+      "file": "src/Shared/SecretKit.Http.Internal/OperationTiming.cs",
+      "sha256": "daf95e09f757bed8133ac48437c69507820cb269a983a318cacd5affb7ff8530"
+    },
+    {
+      "file": "src/Shared/SecretKit.Http.Internal/OriginPolicy.cs",
+      "sha256": "92c686e9cde359ee43a70584c52ece6d4d06abd01f58d73054d880c35ce8a96e"
+    },
+    {
+      "file": "src/Shared/SecretKit.Http.Internal/SecretKitSocketsHandlerFactory.cs",
+      "sha256": "8e0cf9e200d66608918f1078c04fbfc559dbba309af1ac1c7f0a4a35f43d0328"
+    },
+    {
+      "file": "src/Shared/SecretKit.Http.Internal/TransferLimits.cs",
+      "sha256": "310204ef6b6cc426ff107d4cacf3105ac0a41dccd895d20a8ea4668efef6b759"
+    },
+    {
+      "file": "src/Shared/SecretKit.Telemetry.Internal/SecretKitTelemetry.cs",
+      "sha256": "fbd43f84a8377583f8753c9df186ff994ffb3614f09d3e7f8aa7244424a67aa1"
     }
   ],
   "operations": [

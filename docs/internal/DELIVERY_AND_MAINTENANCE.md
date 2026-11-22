@@ -211,7 +211,16 @@ dotnet tools/SecretKit.Release/bin/Release/net10.0/SecretKit.Release.dll admissi
 The command compares the existing operation inventory with both provider
 assemblies' compiled public remote members before writing. Missing or linked
 sources and foreign inventory paths fail. It independently discovers handwritten
-sources, excluding `bin` and `obj`, and updates only source paths and digests.
+sources, including the complete repository-owned `src/Shared` tree when present,
+excluding `bin` and `obj`, and updates only source paths and digests. Both provider
+inventories bind shared internals, even when an individual package uses only a
+subset. A shared source change therefore requires refreshing both inventories.
+Azure admission additionally hashes the five ARM contract generator inputs in
+`eng/ArmContracts` (`Bindings.txt`, `ArmContractReader.cs`, `Generate.cs`,
+`LockedPackage.fsx`, `ArmContracts.targets`) and `src/SecretKit.AzureKeyVault.Management/packages.lock.json`.
+That lock selects the SDK package content from which wire contracts are generated.
+These are exact file owners, not directory globs; generated `obj` output is not an
+input. Refreshing these digests records source provenance, not native qualification.
 Operation identities, variants, required cases, prerequisites and exclusions
 remain unchanged. A new remote member requires a separately reviewed admission
 change; stale assemblies cannot establish coverage of an unbuilt source change.
