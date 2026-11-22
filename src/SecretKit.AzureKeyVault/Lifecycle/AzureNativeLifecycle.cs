@@ -3,6 +3,7 @@ using Azure;
 using Azure.Core;
 using Azure.Security.KeyVault.Secrets;
 using SecretKit.Core;
+using SecretKit.Internal;
 
 namespace SecretKit.AzureKeyVault;
 
@@ -20,16 +21,8 @@ public sealed partial class AzureKeyVaultClient
     public async ValueTask<SecretOutcome<SecretRead>> GetSecretVersionAsync(
         SecretReference target, CancellationToken cancellationToken = default)
     {
-        using var observation = new AzureDiagnostics.Observation(AzureDiagnosticOperation.NativeRead, _time, cancellationToken);
-        try
-        {
-            return observation.Record(await GetSecretVersionAsyncCore(target, cancellationToken).ConfigureAwait(false));
-        }
-        catch (OperationCanceledException)
-        {
-            observation.Cancel();
-            throw;
-        }
+        return await RunAsync(AzureDiagnosticOperation.NativeRead, token => GetSecretVersionAsyncCore(target, token),
+            null, cancellationToken).ConfigureAwait(false);
     }
 
     private async ValueTask<SecretOutcome<SecretRead>> GetSecretVersionAsyncCore(
@@ -79,16 +72,8 @@ public sealed partial class AzureKeyVaultClient
     public async ValueTask<SecretOutcome<AzureNativeInventory>> GetSecretVersionsAsync(
         SecretReference target, AzureInventoryScope scope, CancellationToken cancellationToken = default)
     {
-        using var observation = new AzureDiagnostics.Observation(AzureDiagnosticOperation.NativeInventory, _time, cancellationToken);
-        try
-        {
-            return observation.Record(await GetSecretVersionsAsyncCore(target, scope, cancellationToken).ConfigureAwait(false));
-        }
-        catch (OperationCanceledException)
-        {
-            observation.Cancel();
-            throw;
-        }
+        return await RunAsync(AzureDiagnosticOperation.NativeInventory, token => GetSecretVersionsAsyncCore(target, scope, token),
+            null, cancellationToken).ConfigureAwait(false);
     }
 
     private async ValueTask<SecretOutcome<AzureNativeInventory>> GetSecretVersionsAsyncCore(
@@ -120,16 +105,8 @@ public sealed partial class AzureKeyVaultClient
     public async ValueTask<SecretOutcome<AzureSecretMetadata>> UpdatePropertiesAsync(
         AzureUpdatePropertiesRequest request, MutationReceipt receipt, CancellationToken cancellationToken = default)
     {
-        using var observation = new AzureDiagnostics.Observation(AzureDiagnosticOperation.NativeMutation, _time, cancellationToken, receipt);
-        try
-        {
-            return observation.Record(await UpdatePropertiesAsyncCore(request, receipt, cancellationToken).ConfigureAwait(false));
-        }
-        catch (OperationCanceledException)
-        {
-            observation.Cancel();
-            throw;
-        }
+        return await RunAsync(AzureDiagnosticOperation.NativeMutation, token => UpdatePropertiesAsyncCore(request, receipt, token),
+            receipt, cancellationToken).ConfigureAwait(false);
     }
 
     private ValueTask<SecretOutcome<AzureSecretMetadata>> UpdatePropertiesAsyncCore(
@@ -168,16 +145,8 @@ public sealed partial class AzureKeyVaultClient
     public async ValueTask<SecretOutcome<AzureSecretMetadata>> GetDeletedSecretAsync(
         SecretReference target, CancellationToken cancellationToken = default)
     {
-        using var observation = new AzureDiagnostics.Observation(AzureDiagnosticOperation.NativeRead, _time, cancellationToken);
-        try
-        {
-            return observation.Record(await GetDeletedSecretAsyncCore(target, cancellationToken).ConfigureAwait(false));
-        }
-        catch (OperationCanceledException)
-        {
-            observation.Cancel();
-            throw;
-        }
+        return await RunAsync(AzureDiagnosticOperation.NativeRead, token => GetDeletedSecretAsyncCore(target, token),
+            null, cancellationToken).ConfigureAwait(false);
     }
 
     private async ValueTask<SecretOutcome<AzureSecretMetadata>> GetDeletedSecretAsyncCore(
@@ -221,16 +190,8 @@ public sealed partial class AzureKeyVaultClient
     public async ValueTask<SecretOutcome<AzureNativeInventory>> GetDeletedSecretsAsync(
         AzureInventoryScope scope, CancellationToken cancellationToken = default)
     {
-        using var observation = new AzureDiagnostics.Observation(AzureDiagnosticOperation.NativeInventory, _time, cancellationToken);
-        try
-        {
-            return observation.Record(await GetDeletedSecretsAsyncCore(scope, cancellationToken).ConfigureAwait(false));
-        }
-        catch (OperationCanceledException)
-        {
-            observation.Cancel();
-            throw;
-        }
+        return await RunAsync(AzureDiagnosticOperation.NativeInventory, token => GetDeletedSecretsAsyncCore(scope, token),
+            null, cancellationToken).ConfigureAwait(false);
     }
 
     private ValueTask<SecretOutcome<AzureNativeInventory>> GetDeletedSecretsAsyncCore(
@@ -256,16 +217,8 @@ public sealed partial class AzureKeyVaultClient
     public async ValueTask<SecretOutcome<AzureLifecycleResult>> StartDeleteSecretAsync(
         SecretReference target, MutationReceipt receipt, CancellationToken cancellationToken = default)
     {
-        using var observation = new AzureDiagnostics.Observation(AzureDiagnosticOperation.NativeMutation, _time, cancellationToken, receipt);
-        try
-        {
-            return observation.Record(await StartDeleteSecretAsyncCore(target, receipt, cancellationToken).ConfigureAwait(false));
-        }
-        catch (OperationCanceledException)
-        {
-            observation.Cancel();
-            throw;
-        }
+        return await RunAsync(AzureDiagnosticOperation.NativeMutation, token => StartDeleteSecretAsyncCore(target, receipt, token),
+            receipt, cancellationToken).ConfigureAwait(false);
     }
 
     private ValueTask<SecretOutcome<AzureLifecycleResult>> StartDeleteSecretAsyncCore(
@@ -289,16 +242,8 @@ public sealed partial class AzureKeyVaultClient
     public async ValueTask<SecretOutcome<AzureLifecycleResult>> StartRecoverDeletedSecretAsync(
         SecretReference target, MutationReceipt receipt, CancellationToken cancellationToken = default)
     {
-        using var observation = new AzureDiagnostics.Observation(AzureDiagnosticOperation.NativeMutation, _time, cancellationToken, receipt);
-        try
-        {
-            return observation.Record(await StartRecoverDeletedSecretAsyncCore(target, receipt, cancellationToken).ConfigureAwait(false));
-        }
-        catch (OperationCanceledException)
-        {
-            observation.Cancel();
-            throw;
-        }
+        return await RunAsync(AzureDiagnosticOperation.NativeMutation, token => StartRecoverDeletedSecretAsyncCore(target, receipt, token),
+            receipt, cancellationToken).ConfigureAwait(false);
     }
 
     private ValueTask<SecretOutcome<AzureLifecycleResult>> StartRecoverDeletedSecretAsyncCore(
@@ -325,16 +270,8 @@ public sealed partial class AzureKeyVaultClient
     public async ValueTask<SecretOutcome<AzureLifecycleResult>> CheckLifecycleStatusAsync(
         AzureLifecycleOperation operation, CancellationToken cancellationToken = default)
     {
-        using var observation = new AzureDiagnostics.Observation(AzureDiagnosticOperation.LifecycleCheck, _time, cancellationToken);
-        try
-        {
-            return observation.Record(await CheckLifecycleStatusAsyncCore(operation, cancellationToken).ConfigureAwait(false));
-        }
-        catch (OperationCanceledException)
-        {
-            observation.Cancel();
-            throw;
-        }
+        return await RunAsync(AzureDiagnosticOperation.LifecycleCheck, token => CheckLifecycleStatusAsyncCore(operation, token),
+            null, cancellationToken).ConfigureAwait(false);
     }
 
     private async ValueTask<SecretOutcome<AzureLifecycleResult>> CheckLifecycleStatusAsyncCore(
@@ -346,40 +283,27 @@ public sealed partial class AzureKeyVaultClient
         {
             return SecretOutcome<AzureLifecycleResult>.Failure(SecretStatus.Invalid);
         }
-        try
-        {
-            AzureSecretMetadata metadata;
-            if (operation.Kind == AzureLifecycleKind.Delete)
-            {
-                var deleted = (await _client.GetDeletedSecretAsync(address.Name, cancellationToken)
-                    .ConfigureAwait(false)).Value;
-                metadata = DeletedMetadata(deleted, address);
-            }
-            else
-            {
-                var secret = (await _client.GetSecretAsync(address.Name, cancellationToken: cancellationToken)
-                    .ConfigureAwait(false)).Value;
-                metadata = Metadata(secret.Properties, address, true);
-            }
-            cancellationToken.ThrowIfCancellationRequested();
-            return SecretOutcome<AzureLifecycleResult>.Success(
-                new AzureLifecycleResult(operation, AzureLifecycleState.Applied, metadata));
-        }
-        catch (OperationCanceledException)
-        {
-            throw new OperationCanceledException(cancellationToken);
-        }
-        catch (RequestFailedException exception) when (exception.Status == 404)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            return SecretOutcome<AzureLifecycleResult>.Success(
-                new AzureLifecycleResult(operation, AzureLifecycleState.Pending, null));
-        }
-        catch (Exception exception)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            return SecretOutcome<AzureLifecycleResult>.Failure(Status(exception));
-        }
+        // Neither operation may observe a value-bearing bundle. A truncated list is
+        // insufficient evidence of absence or of the latest recovered version.
+        var scope = new AzureInventoryScope(Authority);
+        var result = operation.Kind == AzureLifecycleKind.Delete
+            ? await CollectNativeAsync(_client.GetDeletedSecretsAsync(cancellationToken), scope, "/deletedsecrets",
+                item => DeletedMetadata(item, null), cancellationToken).ConfigureAwait(false)
+            : await CollectNativeAsync(_client.GetPropertiesOfSecretVersionsAsync(address.Name, cancellationToken),
+                scope, $"/secrets/{address.Name}/versions", item => Metadata(item, address, true), cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!result.IsSuccess && result.Status != SecretStatus.Absent)
+            return SecretOutcome<AzureLifecycleResult>.Failure(result.Status, result.RetryAfter, result.Reason);
+        if (result.IsSuccess && !result.Value.IsComplete)
+            return SecretOutcome<AzureLifecycleResult>.Failure(SecretStatus.Unknown);
+
+        AzureSecretMetadata? observed = result.IsSuccess
+            ? result.Value.Items.Where(item => item.Reference.Address is AzureSecretAddress candidate &&
+                string.Equals(candidate.Name, address.Name, StringComparison.OrdinalIgnoreCase))
+                .MaxBy(item => item.CreatedOn ?? DateTimeOffset.MinValue)
+            : null;
+        return SecretOutcome<AzureLifecycleResult>.Success(new AzureLifecycleResult(operation,
+            observed is null ? AzureLifecycleState.Pending : AzureLifecycleState.Applied, observed));
     }
 
     /// <summary>Requests permanent removal of a deleted secret without retrying; provider retention protections remain authoritative.</summary>
@@ -392,16 +316,8 @@ public sealed partial class AzureKeyVaultClient
     public async ValueTask<SecretOutcome<AzurePurgeResult>> PurgeDeletedSecretAsync(
         SecretReference target, MutationReceipt receipt, CancellationToken cancellationToken = default)
     {
-        using var observation = new AzureDiagnostics.Observation(AzureDiagnosticOperation.NativeMutation, _time, cancellationToken, receipt);
-        try
-        {
-            return observation.Record(await PurgeDeletedSecretAsyncCore(target, receipt, cancellationToken).ConfigureAwait(false));
-        }
-        catch (OperationCanceledException)
-        {
-            observation.Cancel();
-            throw;
-        }
+        return await RunAsync(AzureDiagnosticOperation.NativeMutation, token => PurgeDeletedSecretAsyncCore(target, receipt, token),
+            receipt, cancellationToken).ConfigureAwait(false);
     }
 
     private ValueTask<SecretOutcome<AzurePurgeResult>> PurgeDeletedSecretAsyncCore(
@@ -426,16 +342,8 @@ public sealed partial class AzureKeyVaultClient
     public async ValueTask<SecretOutcome<AzureSecretBackup>> BackupSecretAsync(
         SecretReference target, CancellationToken cancellationToken = default)
     {
-        using var observation = new AzureDiagnostics.Observation(AzureDiagnosticOperation.Backup, _time, cancellationToken);
-        try
-        {
-            return observation.Record(await BackupSecretAsyncCore(target, cancellationToken).ConfigureAwait(false));
-        }
-        catch (OperationCanceledException)
-        {
-            observation.Cancel();
-            throw;
-        }
+        return await RunAsync(AzureDiagnosticOperation.Backup, token => BackupSecretAsyncCore(target, token),
+            null, cancellationToken).ConfigureAwait(false);
     }
 
     private async ValueTask<SecretOutcome<AzureSecretBackup>> BackupSecretAsyncCore(
@@ -490,16 +398,8 @@ public sealed partial class AzureKeyVaultClient
     public async ValueTask<SecretOutcome<AzureSecretMetadata>> RestoreSecretBackupAsync(
         AzureRestoreSecretRequest request, MutationReceipt receipt, CancellationToken cancellationToken = default)
     {
-        using var observation = new AzureDiagnostics.Observation(AzureDiagnosticOperation.NativeMutation, _time, cancellationToken, receipt);
-        try
-        {
-            return observation.Record(await RestoreSecretBackupAsyncCore(request, receipt, cancellationToken).ConfigureAwait(false));
-        }
-        catch (OperationCanceledException)
-        {
-            observation.Cancel();
-            throw;
-        }
+        return await RunAsync(AzureDiagnosticOperation.NativeMutation, token => RestoreSecretBackupAsyncCore(request, receipt, token),
+            receipt, cancellationToken).ConfigureAwait(false);
     }
 
     private ValueTask<SecretOutcome<AzureSecretMetadata>> RestoreSecretBackupAsyncCore(
@@ -600,15 +500,12 @@ public sealed partial class AzureKeyVaultClient
                     }
                 }
                 complete = page.ContinuationToken is null && page.Values.Count <= remaining;
-                if (page.ContinuationToken is null || pages == scope.MaximumPages || items.Count == scope.MaximumItems)
-                {
-                    break;
-                }
-                if (!Uri.TryCreate(page.ContinuationToken, UriKind.Absolute, out var next) ||
-                    !SameOrigin(_vault, next) || next.AbsolutePath.TrimEnd('/') != path || !HasSelectedRevision(next))
-                {
+                if (page.ContinuationToken is { } continuation &&
+                    (!Uri.TryCreate(continuation, UriKind.Absolute, out var next) || !SameOrigin(_vault, next) ||
+                    next.AbsolutePath.TrimEnd('/') != path || !_originTransport.MatchesInitialRevision(next)))
                     throw new NativeCoordinateException();
-                }
+                if (page.ContinuationToken is null || pages == scope.MaximumPages || items.Count == scope.MaximumItems)
+                    break;
             }
             return SecretOutcome<AzureNativeInventory>.Success(
                 new AzureNativeInventory(items, startedAt, _time.GetUtcNow(), complete));
@@ -653,9 +550,12 @@ public sealed partial class AzureKeyVaultClient
         {
             return SecretOutcome<T>.Failure(SecretStatus.Unsupported);
         }
+        MutationContext? context = null;
         try
         {
-            var result = await execute(CreateClient(receipt, target, path(address), method, clearTags), address).ConfigureAwait(false);
+            context = new(receipt, target, path(address), method, clearTags);
+            var result = await SendMutationAsync(context,
+                () => execute(_client, address)).ConfigureAwait(false);
             _receipts.Record(receipt, pending ? DispatchEvidence.Pending : DispatchEvidence.Applied);
             cancellationToken.ThrowIfCancellationRequested();
             return SecretOutcome<T>.Success(result);
@@ -667,17 +567,8 @@ public sealed partial class AzureKeyVaultClient
         catch (Exception exception)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            // A definitive service denial/conflict is an outcome, not an inferred capability.
-            if (exception is RequestFailedException { Status: 400 or 403 or 404 or 409 } failure)
-            {
-                if (receipt.Evidence == DispatchEvidence.PossiblyDispatched)
-                {
-                    _receipts.Record(receipt, failure.Status == 409 ? DispatchEvidence.Conflict : DispatchEvidence.Rejected);
-                }
-                return SecretOutcome<T>.Failure(Status(failure));
-            }
-            return SecretOutcome<T>.Failure(receipt.Evidence == DispatchEvidence.PossiblyDispatched
-                ? SecretStatus.Unknown : exception is ObjectDisposedException ? SecretStatus.Invalid : Status(exception));
+
+            return SecretOutcome<T>.Failure(MutationFailure(receipt, context, exception));
         }
     }
 

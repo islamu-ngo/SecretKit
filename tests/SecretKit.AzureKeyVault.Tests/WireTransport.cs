@@ -29,6 +29,18 @@ internal sealed class WireTransport : HttpPipelineTransport
         return _transport.ProcessAsync(message);
     }
 
+    internal static async Task<string> DefaultSdkQueryAsync(Uri vault)
+    {
+        var wire = new WireTransport((_, _) => Task.FromResult(Json(200, "{}")));
+        var options = new Azure.Security.KeyVault.Secrets.SecretClientOptions { Transport = wire };
+        options.Diagnostics.IsLoggingEnabled = false;
+        options.Diagnostics.IsLoggingContentEnabled = false;
+        options.Diagnostics.IsDistributedTracingEnabled = false;
+        var client = new Azure.Security.KeyVault.Secrets.SecretClient(vault, new TestCredential(), options);
+        await client.GetSecretAsync("oracle");
+        return wire.Requests.Single().Query;
+    }
+
     public static HttpResponseMessage Json(int status, string json) =>
         new((HttpStatusCode)status) { Content = new StringContent(json, Encoding.UTF8, "application/json") };
 

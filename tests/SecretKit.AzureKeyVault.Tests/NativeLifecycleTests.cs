@@ -507,8 +507,11 @@ public sealed class NativeLifecycleTests
                 tags = new Dictionary<string, string>()
             }));
         });
-        var sdk = new SecretClient(vault, new TestCredential(),
-            new SecretClientOptions(SecretClientOptions.ServiceVersion.V2025_07_01) { Transport = wire });
+        var options = new SecretClientOptions { Transport = wire };
+        options.Diagnostics.IsLoggingEnabled = false;
+        options.Diagnostics.IsLoggingContentEnabled = false;
+        options.Diagnostics.IsDistributedTracingEnabled = false;
+        var sdk = new SecretClient(vault, new TestCredential(), options);
         var properties = new SecretProperties(new Uri(vault, $"secrets/name-canary/{Version}"));
         if (clear)
         {
@@ -823,13 +826,13 @@ public sealed class NativeLifecycleTests
             {
                 return WireTransport.Json(200, """{"value":"AQIDBA"}""");
             }
-            if (path.EndsWith("/versions", StringComparison.Ordinal))
+            if (path.EndsWith("/versions", StringComparison.Ordinal) || path == "/deletedsecrets")
             {
-                return Collection(request, false);
-            }
-            if (path == "/deletedsecrets")
-            {
-                return Collection(request, true);
+                bool deletedList = path == "/deletedsecrets";
+                if (Mutations > 0) StatusReads++;
+                if (Mutations > 0 && !Ready || !deletedList && Deleted)
+                    return WireTransport.Json(404, "{}");
+                return Collection(request, deletedList);
             }
             StatusReads++;
             if ((Mutations > 0 && !Ready) || (path.StartsWith("/deletedsecrets/", StringComparison.Ordinal) != Deleted))
@@ -841,13 +844,22 @@ public sealed class NativeLifecycleTests
 
         private HttpResponseMessage Collection(HttpRequestMessage request, bool deleted)
         {
-            string? next = ForeignContinuation ? "https://foreign.vault.azure.net/secrets?api-version=2025-07-01"
+            string? next = ForeignContinuation ? new UriBuilder(request.RequestUri!) { Host = "foreign.vault.azure.net" }.Uri.AbsoluteUri
                 : Pages && !request.RequestUri!.Query.Contains("page=2", StringComparison.Ordinal)
-                    ? $"{Vault.GetLeftPart(UriPartial.Authority)}{request.RequestUri.AbsolutePath}?api-version=2025-07-01&page=2"
+                    ? $"{request.RequestUri.AbsoluteUri}&page=2"
                     : null;
+            object row = new
+            {
+                id = Id,
+                attributes = new { enabled = Enabled },
+                tags = Tags,
+                recoveryId = deleted ? $"{(Corruption == "recovery" ? "https://foreign.vault.azure.net/" : Vault.ToString())}deletedsecrets/name-canary" : null,
+                deletedDate = 1_999_999_990,
+                scheduledPurgeDate = 2_001_000_000
+            };
             var response = WireTransport.Json(200, JsonSerializer.Serialize(new
             {
-                value = MultipleRows ? new[] { Bundle(deleted), Bundle(deleted) } : new[] { Bundle(deleted) },
+                value = MultipleRows ? new[] { row, row } : new[] { row },
                 nextLink = next
             }));
             CancelAfterPage?.Cancel();

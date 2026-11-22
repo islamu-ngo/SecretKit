@@ -19,11 +19,12 @@ Signature reference:
 ```csharp
 AzureKeyVaultClient(Uri vaultUri, TokenCredential credential,
     HttpPipelineTransport? transport = null, TimeProvider? timeProvider = null,
-    int maximumResponseBytes = 1024 * 1024)
+    int maximumResponseBytes = 1024 * 1024, TimeSpan? operationTimeout = null)
 ```
 
-The client uses the official Azure `SecretClient`, selecting service revision
-`2025-07-01`. `vaultUri` must be a trusted HTTPS vault origin, default port,
+The client reuses one official Azure `SecretClient` with the pinned SDK's default
+service version. Continuations must match the initial SDK request's revision.
+`vaultUri` must be a trusted HTTPS vault origin, default port,
 without user information, path prefix, query or fragment. The runtime adapter
 accepts public, US government and China vault hostname forms; that syntax
 acceptance is not sovereign-cloud qualification. Private networking retains the
@@ -41,6 +42,10 @@ SDK retries, logging, content logging and distributed tracing are disabled.
 Challenge-resource verification remains enabled. The host must secure any
 supplied transport and its instrumentation. Response bodies and native mutation
 bodies are bounded by `maximumResponseBytes` (1 KiB..16 MiB).
+The optional `operationTimeout` bounds one public operation cooperatively,
+including credential acquisition. Caller cancellation still propagates.
+Hostname, coordinate and material bounds are SecretKit admission policies;
+they do not describe every input the provider might accept.
 
 `AzureSecretAddress(name, version: null)` selects latest material; a version
 selects an exact native version. Names contain 1..127 ASCII letters, digits or
@@ -237,18 +242,13 @@ in an Azure-only codebase:
 - **No Hosting package integration:** `SecretKit.Extensions.Hosting` depends on
   `SecretKit.Infisical` and does not currently register or refresh Azure Key
   Vault runtimes.
-- **Write failure granularity (`SetSecretAsync`):** After `OriginTransport`
-  marks `PossiblyDispatched`, `SetSecretAsyncCore` catches provider exceptions
-  and returns `SecretStatus.Unknown` rather than distinguishing `400`, `401`,
-  `403`, `409`, or `429` status codes
-  ([AzureKeyVaultClient.cs](../../../src/SecretKit.AzureKeyVault/Secrets/AzureKeyVaultClient.cs#L240-L247)).
-- **Lifecycle recovery status read:** `CheckLifecycleStatusAsyncCore` checks
-  recovery completion by calling `SecretClient.GetSecretAsync`
-  ([AzureNativeLifecycle.cs](../../../src/SecretKit.AzureKeyVault/Lifecycle/AzureNativeLifecycle.cs#L360)),
-  which downloads the secret value, requires data-plane `get` permission, and
-  fails with `403` when the recovered secret is disabled.
-- **Per-write client allocation & no SDK timeout knob:** Write/mutation calls
-  construct a `new SecretClient` instance per call and rely on caller
-  cancellation tokens rather than an SDK-level `OperationTimeout` option.
+- **Uncertain mutation outcomes:** Actual service responses with status
+  `400`, `403`, `404` or `409` establish rejection or conflict. A transport
+  exception, post-dispatch `401`, `429` or server failure remains uncertain
+  and never authorizes replay.
+- **Lifecycle observation authority:** Delete and recovery checks use bounded
+  metadata inventories, without fetching secret values. Denial remains denial;
+  incomplete enumeration remains unknown. The observer needs the corresponding
+  metadata-list permissions even when value reads are permitted.
 - **Unverified live Azure behavior:** No live Azure Key Vault data-plane,
   lifecycle, or management suite has executed against an Azure tenant.

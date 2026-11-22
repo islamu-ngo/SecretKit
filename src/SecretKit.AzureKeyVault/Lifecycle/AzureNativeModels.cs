@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json.Serialization;
 using SecretKit.Core;
+using SecretKit.Internal;
 
 namespace SecretKit.AzureKeyVault;
 
@@ -216,7 +217,7 @@ public sealed class AzureSecretBackup : IDisposable
     /// <exception cref="ArgumentException">The backup size is outside the local bound.</exception>
     public static AzureSecretBackup FromBytes(ReadOnlySpan<byte> bytes)
     {
-        if (bytes.Length is < 1 or > 16 * 1024 * 1024)
+        if (bytes.Length is < 1 or > TransferLimits.MaximumBytes)
         {
             throw new ArgumentException("Backup size is outside the supported bound.", nameof(bytes));
         }

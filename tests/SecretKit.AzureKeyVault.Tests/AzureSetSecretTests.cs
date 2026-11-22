@@ -121,7 +121,8 @@ public sealed class AzureSetSecretTests
         await Assert.That(address.Version).IsEqualTo(backend.Versions.Single());
         await Assert.That(material.Reveal()).IsEqualTo("material-canary");
         await Assert.That(credential.Scopes.Count > 0).IsTrue();
-        await Assert.That(backend.ApiVersions.All(version => version == "?api-version=2025-07-01")).IsTrue();
+        var defaultQuery = await WireTransport.DefaultSdkQueryAsync(backend.Vault);
+        await Assert.That(backend.ApiVersions.All(version => version == defaultQuery)).IsTrue();
         foreach (object model in new object[] { request, outcome.Value, outcome.Value.Reference, receipt })
         {
             await Assert.That(JsonSerializer.Serialize(model).Contains("canary")).IsFalse();

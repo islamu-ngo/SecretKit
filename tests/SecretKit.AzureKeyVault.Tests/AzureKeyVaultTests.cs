@@ -101,7 +101,7 @@ public sealed class AzureKeyVaultTests
         using var other = second.Value;
         await Assert.That(read.Material.Reveal()).IsEqualTo("material-canary");
         await Assert.That(wire.Requests[0].AbsolutePath).IsEqualTo($"/secrets/name-canary/{Version}");
-        await Assert.That(wire.Requests[0].Query).IsEqualTo("?api-version=2025-07-01");
+        await Assert.That(wire.Requests[0].Query).IsEqualTo(await WireTransport.DefaultSdkQueryAsync(Vault));
         await Assert.That(read.Observation.Version).IsEqualTo(Version);
         await Assert.That(read.Observation.ObservedAt).IsEqualTo(new FixedTime().GetUtcNow());
         read.Dispose();
@@ -240,7 +240,11 @@ public sealed class AzureKeyVaultTests
         var wire = new WireTransport((request, _) => Task.FromResult(WireTransport.Json(200,
             request.RequestUri!.Query.Contains("skiptoken")
                 ? """{"value":[{"id":"https://unit.vault.azure.net/secrets/second","attributes":{"enabled":false}}]}"""
-                : """{"value":[{"id":"https://unit.vault.azure.net/secrets/name-canary","attributes":{"enabled":true,"exp":2000000000}}],"nextLink":"https://unit.vault.azure.net/secrets?api-version=2025-07-01&skiptoken=next"}""")));
+                : JsonSerializer.Serialize(new
+                {
+                    value = new[] { new { id = $"{Vault}secrets/name-canary", attributes = new { enabled = true, exp = 2000000000 } } },
+                    nextLink = request.RequestUri.AbsoluteUri + "&skiptoken=next"
+                }))));
         var client = new AzureKeyVaultClient(Vault, new TestCredential(), wire, new FixedTime());
         var outcome = await client.InspectAsync(new AzureInventoryScope(client.Authority));
         await Assert.That(outcome.Status).IsEqualTo(SecretStatus.Success);
@@ -257,8 +261,21 @@ public sealed class AzureKeyVaultTests
     [Arguments(10, 1)]
     public async Task InventoryStopsAtPageOrItemBound(int pages, int items)
     {
-        var wire = new WireTransport((_, _) => Task.FromResult(WireTransport.Json(200,
-            """{"value":[{"id":"https://unit.vault.azure.net/secrets/first","attributes":{"enabled":true}},{"id":"https://unit.vault.azure.net/secrets/second","attributes":{"enabled":true}}],"nextLink":"https://unit.vault.azure.net/secrets?skiptoken=next"}""")));
+        var wire = new WireTransport((request, _) =>
+        {
+            var next = new UriBuilder(request.RequestUri!);
+            string query = next.Query.TrimStart('?');
+            next.Query = query.Length == 0 ? "skiptoken=next" : query + "&skiptoken=next";
+            return Task.FromResult(WireTransport.Json(200, JsonSerializer.Serialize(new
+            {
+                value = new[]
+                {
+                    new { id = $"{Vault}secrets/first", attributes = new { enabled = true } },
+                    new { id = $"{Vault}secrets/second", attributes = new { enabled = true } }
+                },
+                nextLink = next.Uri.AbsoluteUri
+            })));
+        });
         var client = new AzureKeyVaultClient(Vault, new TestCredential(), wire);
         var outcome = await client.InspectAsync(new AzureInventoryScope(client.Authority, pages, items));
         await Assert.That(outcome.Value.IsComplete).IsFalse();
@@ -269,8 +286,12 @@ public sealed class AzureKeyVaultTests
     [Test]
     public async Task CrossOriginContinuationIsRejectedBeforeSending()
     {
-        var wire = new WireTransport((_, _) => Task.FromResult(WireTransport.Json(200,
-            """{"value":[],"nextLink":"https://other.vault.azure.net/secrets"}""")));
+        var wire = new WireTransport((request, _) => Task.FromResult(WireTransport.Json(200,
+            JsonSerializer.Serialize(new
+            {
+                value = Array.Empty<object>(),
+                nextLink = new UriBuilder(request.RequestUri!) { Host = "other.vault.azure.net" }.Uri.AbsoluteUri
+            }))));
         var client = new AzureKeyVaultClient(Vault, new TestCredential(), wire);
         var outcome = await client.InspectAsync(new AzureInventoryScope(client.Authority));
         await Assert.That(outcome.Status).IsEqualTo(SecretStatus.Invalid);
