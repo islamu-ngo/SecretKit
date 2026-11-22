@@ -177,7 +177,8 @@ public sealed class InfisicalAuthenticationMaintenance : IHostedService, IHealth
                         HostingTermination.Completed, HostingLifecycleState.RecoveryRequired);
             }
         }
-        catch (OperationCanceledException) when (_stop.IsCancellationRequested) { }
+        catch (OperationCanceledException) when (_stop.IsCancellationRequested ||
+            _session.State == InfisicalTokenSessionState.Stopped) { }
         catch (ObjectDisposedException) when (_session.State == InfisicalTokenSessionState.Stopped) { }
         return new(SecretStatus.Unknown, SecretFailureReason.None,
             HostingTermination.ShutdownCanceled, HostingLifecycleState.Stopped);
@@ -226,7 +227,15 @@ public sealed class InfisicalAuthenticationMaintenance : IHostedService, IHealth
     private async Task StopCoreAsync(Task? worker, TaskCompletionSource completion, HostingDiagnosticStart? started)
     {
         var cleanup = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        Task<bool> bounded = cleanup.Task.WaitAsync(_shutdownTimeout, _session.TimeProvider);
+        Task<bool>? bounded = null;
+        Exception? failure = null;
+        try { bounded = cleanup.Task.WaitAsync(_shutdownTimeout, _session.TimeProvider); }
+        catch (Exception error)
+        {
+            failure = error is OutOfMemoryException or AccessViolationException or StackOverflowException
+                ? error : new InvalidOperationException("Authentication maintenance shutdown failed.");
+        }
+        // Deadline setup failure cannot leave the borrowed session open or abandon cleanup.
         Task sessionStop = _session.StopAsync();
         _ = Task.Run(async () =>
         {
@@ -248,13 +257,15 @@ public sealed class InfisicalAuthenticationMaintenance : IHostedService, IHealth
         });
         var completed = new HostingCompletion(SecretStatus.Unknown, SecretFailureReason.None,
             HostingTermination.Faulted, HostingLifecycleState.Stopped);
-        Exception? failure = null;
         try
         {
-            if (await bounded.ConfigureAwait(false))
-                completed = completed with { Outcome = SecretStatus.Success, Termination = HostingTermination.Completed };
-            else
-                failure = new InvalidOperationException("Authentication maintenance shutdown failed.");
+            if (bounded is not null)
+            {
+                if (await bounded.ConfigureAwait(false))
+                    completed = completed with { Outcome = SecretStatus.Success, Termination = HostingTermination.Completed };
+                else
+                    failure = new InvalidOperationException("Authentication maintenance shutdown failed.");
+            }
         }
         catch (TimeoutException)
         {

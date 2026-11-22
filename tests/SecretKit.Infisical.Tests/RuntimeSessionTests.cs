@@ -372,6 +372,185 @@ public sealed class RuntimeSessionTests
         await Assert.That(runtime.TokenSession.State).IsEqualTo(InfisicalTokenSessionState.Expired);
     }
 
+    [Test]
+    public async Task FatalBootstrapFaultSettlesBothWaitersWithoutAcquisitionReplay()
+    {
+        var clock = new Clock();
+        using var wire = new Wire();
+        var fault = new SyntheticMemoryFault();
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        int acquisitions = 0;
+        var runtime = InfisicalRuntimeSession.CreateDeferred(Options(wire, clock), async _ =>
+        {
+            acquisitions++;
+            await release.Task;
+            throw fault;
+        });
+        var first = runtime.EnsureAuthenticatedAsync().AsTask();
+        var second = runtime.EnsureAuthenticatedAsync().AsTask();
+        release.SetResult();
+        try
+        {
+            await ExpectOriginal(first, fault);
+            await ExpectOriginal(second, fault);
+            await ExpectOriginal(runtime.EnsureAuthenticatedAsync().AsTask(), fault);
+            await Assert.That(acquisitions).IsEqualTo(1);
+            await Assert.That(runtime.OpeningAttempt.LoginReceipt).IsNull();
+            await Assert.That(wire.Paths.IsEmpty).IsTrue();
+        }
+        finally { await ExpectOriginal(runtime.StopAsync(), fault); }
+    }
+
+    [Test]
+    public async Task FatalRenewalAfterDispatchRetainsReceiptAndCannotReplay()
+    {
+        var fault = new SyntheticMemoryFault();
+        using var wire = new Wire { HoldRenewal = true, RenewalFault = fault };
+        var clock = new Clock();
+        using var material = SecretMaterial.FromText("selected-token");
+        var runtime = InfisicalRuntimeSession.CreateFromToken(Options(wire, clock), material,
+            Evidence(clock, InfisicalTokenLifetime.Finite, 3600)).Value;
+        var session = runtime.TokenSession;
+        var first = session.RenewAsync().AsTask();
+        await wire.RenewalEntered.Task.WaitAsync(Bound);
+        var second = session.RenewAsync().AsTask();
+        wire.RenewalRelease.SetResult();
+        try
+        {
+            await ExpectOriginal(first, fault);
+            await ExpectOriginal(second, fault);
+            await Assert.That(session.LastRenewal!.Evidence).IsEqualTo(InfisicalRenewalEvidence.PossiblyDispatched);
+            await Assert.That((await session.RenewAsync()).Status).IsEqualTo(SecretStatus.RecoveryRequired);
+            await Assert.That(wire.Paths.ToArray()).IsEquivalentTo(["/api/v1/auth/token/renew"]);
+        }
+        finally { await ExpectOriginal(runtime.StopAsync(), fault); }
+    }
+
+    [Test]
+    public async Task DirectOpeningDoesNotWrapFatalPolicyClockFault()
+    {
+        using var wire = new Wire();
+        var clock = new Clock();
+        var options = Options(wire, clock);
+        using var material = SecretMaterial.FromText("selected");
+        var fault = new SyntheticMemoryFault();
+        clock.Fatal = fault;
+        await ExpectOriginal(InfisicalRuntimeSession.OpenUniversalAsync(options, material, new()).AsTask(), fault);
+        await Assert.That(wire.Paths.IsEmpty).IsTrue();
+    }
+
+    [Test]
+    [Arguments(3600, "3600.0000005", true)]
+    [Arguments(3600, "3599.9999995", true)]
+    [Arguments(3600, "3600.000002", false)]
+    [Arguments(0, "-0.0000005", false)]
+    [Arguments(0, "-0.0", true)]
+    [Arguments(0, "1e500", false)]
+    public async Task RenewalMaximumToleranceDoesNotRelaxLifetimePolicy(int selected, string reported, bool admitted)
+    {
+        using var wire = new Wire { RenewalMaximum = reported };
+        var clock = new Clock();
+        var lifetime = selected == 0 ? InfisicalTokenLifetime.Periodic : InfisicalTokenLifetime.Finite;
+        using var original = SecretMaterial.FromText("selected-token");
+        await using var runtime = InfisicalRuntimeSession.CreateFromToken(Options(wire, clock, lifetime), original,
+            Evidence(clock, lifetime, selected)).Value;
+        var result = await runtime.TokenSession.RenewAsync();
+        if (admitted)
+        {
+            await Assert.That(result.Value.Evidence).IsEqualTo(InfisicalRenewalEvidence.Applied);
+            using var copy = (await runtime.TokenSession.GetTokenAsync(default)).Value;
+            await Assert.That(copy.Material.Reveal()).IsEqualTo("renewed");
+        }
+        else
+        {
+            await Assert.That(result.Status).IsEqualTo(SecretStatus.Unknown);
+            await Assert.That(runtime.TokenSession.State).IsEqualTo(InfisicalTokenSessionState.RecoveryRequired);
+            await Assert.That(runtime.TokenSession.LastRenewal!.Evidence).IsEqualTo(InfisicalRenewalEvidence.PossiblyDispatched);
+        }
+    }
+
+    [Test]
+    public async Task HeldBootstrapDoesNotLeaveClientAdmissionOpenAfterStopTimeout()
+    {
+        var clock = new Clock();
+        using var wire = new Wire();
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var runtime = InfisicalRuntimeSession.CreateDeferred(Options(wire, clock), async _ =>
+        {
+            entered.SetResult();
+            await release.Task;
+            return SecretMaterial.FromText("late-bootstrap");
+        });
+        var opening = runtime.EnsureAuthenticatedAsync().AsTask();
+        try
+        {
+            await entered.Task.WaitAsync(Bound);
+            var stop = runtime.StopAsync();
+            clock.Advance(TimeSpan.FromSeconds(3));
+            await Assert.That(async () => await stop.WaitAsync(Bound)).Throws<TimeoutException>();
+            var foreign = new SecretReference(new SecretAuthority(), new InfisicalSecretAddress("project", "test", "/", "key"));
+            await Assert.That(async () => await runtime.Client.ReadAsync(foreign)).Throws<ObjectDisposedException>();
+            await Assert.That(wire.Paths.IsEmpty).IsTrue();
+        }
+        finally
+        {
+            release.TrySetResult();
+            await Assert.That(async () => await opening.WaitAsync(Bound)).Throws<OperationCanceledException>();
+        }
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task OpeningTimerDisposalFailureCannotPublishSession(bool fatal)
+    {
+        var clock = new Clock();
+        using var wire = new Wire { HoldLogin = true };
+        var runtime = InfisicalRuntimeSession.CreateDeferred(Options(wire, clock),
+            _ => ValueTask.FromResult(SecretMaterial.FromText("bootstrap")));
+        var memoryFault = new SyntheticMemoryFault();
+        clock.NextTimerDisposalFault = fatal ? memoryFault : new InvalidOperationException("synthetic cleanup fault");
+        var first = runtime.EnsureAuthenticatedAsync().AsTask();
+        try
+        {
+            await wire.LoginEntered.Task.WaitAsync(Bound);
+            var second = runtime.EnsureAuthenticatedAsync().AsTask();
+            wire.LoginRelease.SetResult();
+            if (fatal)
+            {
+                await ExpectOriginal(first, memoryFault);
+                await ExpectOriginal(second, memoryFault);
+                await ExpectOriginal(runtime.EnsureAuthenticatedAsync().AsTask(), memoryFault);
+            }
+            else
+            {
+                await Assert.That((await first.WaitAsync(Bound)).Status).IsEqualTo(SecretStatus.Unavailable);
+                await Assert.That((await second.WaitAsync(Bound)).Status).IsEqualTo(SecretStatus.Unavailable);
+                await Assert.That((await runtime.EnsureAuthenticatedAsync()).Status).IsEqualTo(SecretStatus.Unavailable);
+            }
+            await Assert.That(runtime.IsAuthenticated).IsFalse();
+            await Assert.That(runtime.OpeningAttempt.LoginReceipt!.Evidence).IsEqualTo(DispatchEvidence.Applied);
+            await Assert.That(wire.Paths.ToArray()).IsEquivalentTo(["/api/v1/auth/universal-auth/login"]);
+        }
+        finally
+        {
+            wire.LoginRelease.TrySetResult();
+            if (fatal) await ExpectOriginal(runtime.StopAsync(), memoryFault);
+            else await runtime.StopAsync().WaitAsync(Bound);
+        }
+    }
+
+    private static async Task ExpectOriginal(Task task, SyntheticMemoryFault expected)
+    {
+        SyntheticMemoryFault? actual = null;
+        try { await task.WaitAsync(Bound); }
+        catch (SyntheticMemoryFault fault) { actual = fault; }
+        await Assert.That(ReferenceEquals(actual, expected)).IsTrue();
+    }
+
+    private sealed class SyntheticMemoryFault : OutOfMemoryException;
+
     private static InfisicalRuntimeOptions Options(Wire wire, Clock clock,
         InfisicalTokenLifetime lifetime = InfisicalTokenLifetime.Finite, TimeSpan? period = null,
         string clientId = "client") => new()
@@ -419,6 +598,8 @@ public sealed class RuntimeSessionTests
         internal bool HoldLogin { get; init; }
         internal bool HoldRead { get; init; }
         internal bool HoldRenewal { get; init; }
+        internal Exception? RenewalFault { get; init; }
+        internal string RenewalMaximum { get; init; } = "3600";
         internal bool ThrowOnCancel { get; init; }
         internal bool Disposed { get; private set; }
         internal int MaximumTtl { get; init; } = 3600;
@@ -452,11 +633,12 @@ public sealed class RuntimeSessionTests
                     () => RenewalCancelEntered.TrySetResult());
                 RenewalEntered.TrySetResult();
                 if (HoldRenewal) await RenewalRelease.Task;
+                if (RenewalFault is { } fault) throw fault;
                 cancellationToken.ThrowIfCancellationRequested();
                 return new(HttpStatusCode.OK)
                 {
                     Content = new StringContent(
-                        """{"accessToken":"renewed","tokenType":"Bearer","expiresIn":600,"accessTokenMaxTTL":3600}""")
+                        $$"""{"accessToken":"renewed","tokenType":"Bearer","expiresIn":600,"accessTokenMaxTTL":{{RenewalMaximum}}}""")
                 };
             }
             using var registration = cancellationToken.Register(() =>
@@ -502,8 +684,11 @@ public sealed class RuntimeSessionTests
         private readonly Dictionary<TimeSpan, TaskCompletionSource> _watches = [];
         private DateTimeOffset _now = new(2026, 11, 1, 0, 0, 0, TimeSpan.Zero);
         internal bool Fail { get; set; }
+        internal Exception? Fatal { get; set; }
+        internal Exception? NextTimerDisposalFault;
         public override DateTimeOffset GetUtcNow()
         {
+            if (Fatal is { } fault) throw fault;
             if (Fail) throw new InvalidOperationException("bootstrap-canary");
             lock (_gate) return _now;
         }
@@ -518,7 +703,7 @@ public sealed class RuntimeSessionTests
         }
         public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
         {
-            var timer = new ManualTimer(this, callback, state);
+            var timer = new ManualTimer(this, callback, state, Interlocked.Exchange(ref NextTimerDisposalFault, null));
             lock (_gate)
             {
                 _timers.Add(timer);
@@ -538,7 +723,7 @@ public sealed class RuntimeSessionTests
             }
             foreach (var timer in due) timer.Fire();
         }
-        private sealed class ManualTimer(Clock owner, TimerCallback callback, object? state) : ITimer
+        private sealed class ManualTimer(Clock owner, TimerCallback callback, object? state, Exception? disposalFault) : ITimer
         {
             internal DateTimeOffset Due { get; set; }
             private bool _disposed;
@@ -552,7 +737,16 @@ public sealed class RuntimeSessionTests
                 }
             }
             internal void Fire() => callback(state);
-            public void Dispose() { lock (owner._gate) { _disposed = true; owner._timers.Remove(this); } }
+            public void Dispose()
+            {
+                lock (owner._gate)
+                {
+                    if (_disposed) return;
+                    _disposed = true;
+                    owner._timers.Remove(this);
+                }
+                if (disposalFault is not null) throw disposalFault;
+            }
             public ValueTask DisposeAsync() { Dispose(); return ValueTask.CompletedTask; }
         }
     }

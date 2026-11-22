@@ -83,72 +83,88 @@ public sealed class InfisicalRuntimeSession : IAsyncDisposable
 
     private async Task AuthenticateAsync(TaskCompletionSource<SecretOutcome<InfisicalRuntimeSession>> completion)
     {
-        using var diagnostics = InfisicalDiagnostics.Defer();
-        try { completion.TrySetResult(await AuthenticateCoreAsync().ConfigureAwait(false)); }
+        try
+        {
+            using var diagnostics = InfisicalDiagnostics.Defer();
+            completion.TrySetResult(await AuthenticateCoreAsync().ConfigureAwait(false));
+        }
         catch (OperationCanceledException) { completion.TrySetCanceled(_openingCancellation.Token); }
+        catch (Exception error) when (SessionRetirement.Fatal(error) is { } fatal) { completion.TrySetException(fatal); }
         catch (Exception) { completion.TrySetResult(SecretOutcome<InfisicalRuntimeSession>.Failure(SecretStatus.Unavailable)); }
     }
 
     private async Task<SecretOutcome<InfisicalRuntimeSession>> AuthenticateCoreAsync()
     {
-        using var budget = new InfisicalOperationBudget(_options.Network.OperationTimeout, _time,
-            CancellationToken.None, _openingCancellation.Token);
         InfisicalPeriodicTokenSession? candidate = null;
         try
         {
-            budget.Check();
-            var bootstrap = Interlocked.Exchange(ref _bootstrap, null)!;
-            if (!AdmitsOpeningPolicy(_options))
+            // Keep the candidate local until the bootstrap, login and deadline are all retired.
+            using (var budget = new InfisicalOperationBudget(_options.Network.OperationTimeout, _time,
+                CancellationToken.None, _openingCancellation.Token))
             {
-                return SecretOutcome<InfisicalRuntimeSession>.Failure(SecretStatus.RecoveryRequired);
+                try
+                {
+                    budget.Check();
+                    if (!AdmitsOpeningPolicy(_options))
+                    {
+                        return SecretOutcome<InfisicalRuntimeSession>.Failure(SecretStatus.RecoveryRequired);
+                    }
+                    Func<CancellationToken, ValueTask<SecretMaterial>> bootstrap;
+                    lock (_gate)
+                    {
+                        if (_stopTask is not null) throw new OperationCanceledException(_openingCancellation.Token);
+                        bootstrap = _bootstrap!;
+                        _bootstrap = null;
+                    }
+                    using SecretMaterial secret = await bootstrap(budget.Token).ConfigureAwait(false);
+                    budget.Check();
+                    if (!OpeningAttempt.TryBegin()) throw new InvalidOperationException();
+                    var result = await LoginOnceAsync(_options, secret, OpeningAttempt, budget.Token)
+                        .ConfigureAwait(false);
+                    if (!result.IsSuccess)
+                    {
+                        return result.ConvertFailure<InfisicalRuntimeSession>();
+                    }
+                    using InfisicalUniversalLogin login = result.Value;
+                    budget.Check();
+                    var evidence = login.BindLifetimeEvidence(new()
+                    {
+                        OriginalIssuedAt = _options.OriginalIssuedAt!.Value,
+                        ExpiresAt = login.Token.ExpiresAt!.Value,
+                        Lifetime = _options.Lifetime,
+                        ReportedMaximumTtl = login.AccessTokenMaxTtl,
+                        Period = _options.Period,
+                        AbsoluteLifetimeLimit = _options.AbsoluteLifetimeLimit
+                    });
+                    candidate = new(_options.Origin, login.Token.Material, evidence, _options.RenewBefore,
+                        _options.RequestTimeout, _options.Network, _time);
+                    if (candidate.State is InfisicalTokenSessionState.RecoveryRequired or InfisicalTokenSessionState.Expired)
+                    {
+                        return SecretOutcome<InfisicalRuntimeSession>.Failure(SecretStatus.RecoveryRequired);
+                    }
+                    budget.Check();
+                }
+                catch (OperationCanceledException)
+                {
+                    SecretFailureReason reason = budget.CancellationReason();
+                    return SecretOutcome<InfisicalRuntimeSession>.Failure(
+                        OpeningAttempt.LoginReceipt?.Evidence == DispatchEvidence.PossiblyDispatched
+                            ? SecretStatus.Unknown : SecretStatus.Unavailable, reason: reason);
+                }
             }
-            using SecretMaterial secret = await bootstrap(budget.Token).ConfigureAwait(false);
-            budget.Check();
-            if (!OpeningAttempt.TryBegin()) throw new InvalidOperationException();
-            var result = await LoginOnceAsync(_options, secret, OpeningAttempt, budget.Token)
-                .ConfigureAwait(false);
-            if (!result.IsSuccess)
-            {
-                return result.ConvertFailure<InfisicalRuntimeSession>();
-            }
-            using InfisicalUniversalLogin login = result.Value;
-            budget.Check();
-            var evidence = login.BindLifetimeEvidence(new()
-            {
-                OriginalIssuedAt = _options.OriginalIssuedAt!.Value,
-                ExpiresAt = login.Token.ExpiresAt!.Value,
-                Lifetime = _options.Lifetime,
-                ReportedMaximumTtl = login.AccessTokenMaxTtl,
-                Period = _options.Period,
-                AbsoluteLifetimeLimit = _options.AbsoluteLifetimeLimit
-            });
-            candidate = new(_options.Origin, login.Token.Material, evidence, _options.RenewBefore,
-                _options.RequestTimeout, _options.Network, _time);
-            if (candidate.State is InfisicalTokenSessionState.RecoveryRequired or InfisicalTokenSessionState.Expired)
-            {
-                return SecretOutcome<InfisicalRuntimeSession>.Failure(SecretStatus.RecoveryRequired);
-            }
-            budget.Check();
             lock (_gate)
             {
                 if (_stopTask is not null) throw new OperationCanceledException(_openingCancellation.Token);
-                budget.Token.ThrowIfCancellationRequested();
                 _tokenSession = candidate;
                 candidate = null;
             }
             return SecretOutcome<InfisicalRuntimeSession>.Success(this);
         }
-        catch (OperationCanceledException)
-        {
-            SecretFailureReason reason = budget.CancellationReason();
-            return SecretOutcome<InfisicalRuntimeSession>.Failure(
-                OpeningAttempt.LoginReceipt?.Evidence == DispatchEvidence.PossiblyDispatched
-                    ? SecretStatus.Unknown : SecretStatus.Unavailable, reason: reason);
-        }
         finally
         {
             if (candidate is not null)
-                try { await candidate.DisposeAsync().ConfigureAwait(false); } catch (Exception) { }
+                try { await candidate.DisposeAsync().ConfigureAwait(false); }
+                catch (Exception error) when (SessionRetirement.Fatal(error) is null) { }
         }
     }
 
@@ -220,7 +236,7 @@ public sealed class InfisicalRuntimeSession : IAsyncDisposable
         {
             throw new OperationCanceledException("Runtime opening canceled.", cancellationToken);
         }
-        catch (Exception)
+        catch (Exception error) when (SessionRetirement.Fatal(error) is null)
         {
             if (cancellationToken.IsCancellationRequested)
                 throw new OperationCanceledException("Runtime opening canceled.", cancellationToken);
@@ -231,7 +247,7 @@ public sealed class InfisicalRuntimeSession : IAsyncDisposable
             login?.Dispose();
             if (candidate is not null)
                 try { await candidate.StopAsync().ConfigureAwait(false); }
-                catch (Exception) { }
+                catch (Exception error) when (SessionRetirement.Fatal(error) is null) { }
         }
     }
 
@@ -269,9 +285,10 @@ public sealed class InfisicalRuntimeSession : IAsyncDisposable
             client = new(options.Origin, session, options.Network, options.TimeProvider);
             return SecretOutcome<InfisicalRuntimeSession>.Success(new(client, session, options));
         }
-        catch (Exception)
+        catch (Exception error)
         {
             _ = RetireUnpublishedAsync(client, session);
+            if (SessionRetirement.Fatal(error) is not null) throw;
             throw new InvalidOperationException("Runtime construction failed.");
         }
     }
@@ -297,9 +314,10 @@ public sealed class InfisicalRuntimeSession : IAsyncDisposable
         finally
         {
             try { authentication.Dispose(); }
-            catch (Exception)
+            catch (Exception error)
             {
                 unpublished?.Dispose();
+                if (SessionRetirement.Fatal(error) is not null) throw;
                 throw new InvalidOperationException("Runtime bootstrap cleanup failed.");
             }
         }
@@ -333,51 +351,22 @@ public sealed class InfisicalRuntimeSession : IAsyncDisposable
             if (_stopTask is not null) return _stopTask;
             completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
             _stopTask = completion.Task;
+            _bootstrap = null;
         }
-        _ = CompleteStopAsync(completion);
+        _ = SessionRetirement.CompleteAsync(completion, RetireAsync, _shutdownTimeout, _time);
         return completion.Task;
     }
 
-    private async Task CompleteStopAsync(TaskCompletionSource completion)
+    private async Task<Exception?> RetireAsync()
     {
-        // Register the aggregate deadline before child retirement can execute callbacks.
-        var retired = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        bool retirementStarted = false;
-        try
-        {
-            Task<bool> bounded = retired.Task.WaitAsync(_shutdownTimeout, _time);
-            retirementStarted = true;
-            _ = CompleteRetirementAsync(retired);
-            if (await bounded.ConfigureAwait(false))
-                completion.TrySetResult();
-            else
-                completion.TrySetException(new InvalidOperationException("Runtime shutdown failed."));
-        }
-        catch (TimeoutException)
-        {
-            completion.TrySetException(new TimeoutException("Runtime shutdown timed out."));
-        }
-        catch (Exception)
-        {
-            // Even a failing host clock cannot abandon the owned children's retirement.
-            if (!retirementStarted) _ = CompleteRetirementAsync(retired);
-            completion.TrySetException(new InvalidOperationException("Runtime shutdown failed."));
-        }
-    }
-
-    private async Task CompleteRetirementAsync(TaskCompletionSource<bool> completion)
-    {
-        bool succeeded = true;
-        Interlocked.Exchange(ref _bootstrap, null);
-        try { await _openingCancellation.CancelAsync().ConfigureAwait(false); }
-        catch (Exception) { succeeded = false; }
-        if (_authentication is not null)
-            try { await _authentication.ConfigureAwait(false); }
-            catch (OperationCanceledException) { }
-            catch (Exception) { succeeded = false; }
-        succeeded &= await RetireUnpublishedAsync(Client, _tokenSession).ConfigureAwait(false);
+        // Close both children's admission before waiting on host-controlled bootstrap work.
+        Task<Exception?> children = RetireUnpublishedAsync(Client, _tokenSession);
+        Exception? failure = await SessionRetirement.JoinAsync(_openingCancellation.CancelAsync()).ConfigureAwait(false);
+        failure = await SessionRetirement.JoinAsync(_authentication, failure, allowCancellation: true).ConfigureAwait(false);
+        if (await children.ConfigureAwait(false) is { } childFailure)
+            failure = SessionRetirement.Fatal(childFailure) ?? failure ?? childFailure;
         _openingCancellation.Dispose();
-        completion.TrySetResult(succeeded);
+        return failure;
     }
 
     private sealed class DeferredTokenSource(InfisicalRuntimeSession runtime) : IInfisicalTokenSource
@@ -391,23 +380,17 @@ public sealed class InfisicalRuntimeSession : IAsyncDisposable
         }
     }
 
-    private static async Task<bool> RetireUnpublishedAsync(
-        InfisicalClient? client, InfisicalPeriodicTokenSession? session)
+    private static async Task<Exception?> RetireUnpublishedAsync(
+        InfisicalClient? client, InfisicalPeriodicTokenSession? session, Exception? failure = null)
     {
         Task? clientStop = null;
         Task? sessionStop = null;
-        bool succeeded = true;
         try { clientStop = client?.DisposeAsync().AsTask(); }
-        catch (Exception) { succeeded = false; }
+        catch (Exception error) { failure = SessionRetirement.Fatal(error) ?? failure ?? SessionRetirement.Failure(error); }
         try { sessionStop = session?.StopAsync(); }
-        catch (Exception) { succeeded = false; }
-        if (clientStop is not null)
-            try { await clientStop.ConfigureAwait(false); }
-            catch (Exception) { succeeded = false; }
-        if (sessionStop is not null)
-            try { await sessionStop.ConfigureAwait(false); }
-            catch (Exception) { succeeded = false; }
-        return succeeded;
+        catch (Exception error) { failure = SessionRetirement.Fatal(error) ?? failure ?? SessionRetirement.Failure(error); }
+        failure = await SessionRetirement.JoinAsync(clientStop, failure).ConfigureAwait(false);
+        return await SessionRetirement.JoinAsync(sessionStop, failure).ConfigureAwait(false);
     }
 
     /// <summary>Joins the original retirement result; timeout does not claim eventual cleanup has completed.</summary>
@@ -415,4 +398,56 @@ public sealed class InfisicalRuntimeSession : IAsyncDisposable
 
     /// <summary>Returns a fixed label without credentials or selected coordinates.</summary>
     public override string ToString() => "[InfisicalRuntimeSession]";
+}
+
+// Stop admission is latched by the session; this owner keeps draining after a public timeout.
+internal static class SessionRetirement
+{
+    internal static Exception? Fatal(Exception error)
+    {
+        if (error is OutOfMemoryException or AccessViolationException or StackOverflowException) return error;
+        if (error is AggregateException aggregate)
+            foreach (var cause in aggregate.InnerExceptions)
+                if (Fatal(cause) is { } fatal) return fatal;
+        return null;
+    }
+
+    internal static Exception Failure(Exception error) => Fatal(error) ?? new InvalidOperationException("Session retirement failed.");
+
+    internal static async Task CompleteAsync(TaskCompletionSource completion, Func<Task<Exception?>> drain,
+        TimeSpan timeout, TimeProvider time)
+    {
+        var retired = new TaskCompletionSource<Exception?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        async Task RetireAsync()
+        {
+            try { retired.TrySetResult(await drain().ConfigureAwait(false)); }
+            catch (Exception error) { retired.TrySetResult(Failure(error)); }
+        }
+        Task<Exception?> bounded;
+        try { bounded = retired.Task.WaitAsync(timeout, time); }
+        catch (Exception error)
+        {
+            _ = RetireAsync();
+            completion.TrySetException(Failure(error));
+            return;
+        }
+        _ = RetireAsync();
+        try
+        {
+            if (await bounded.ConfigureAwait(false) is { } error) completion.TrySetException(error);
+            else completion.TrySetResult();
+        }
+        catch (TimeoutException) { completion.TrySetException(new TimeoutException("Session shutdown timed out.")); }
+        catch (Exception error) { completion.TrySetException(Failure(error)); }
+    }
+
+    // Never abandon another owned child because a sibling failed.
+    internal static async Task<Exception?> JoinAsync(Task? pending, Exception? previous = null, bool allowCancellation = false)
+    {
+        if (pending is not null)
+            try { await pending.ConfigureAwait(false); }
+            catch (OperationCanceledException) when (allowCancellation) { }
+            catch (Exception error) { return Fatal(error) ?? previous ?? Failure(error); }
+        return previous;
+    }
 }

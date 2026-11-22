@@ -15,6 +15,27 @@ public sealed class TokenMaintenanceTests
     private static readonly DateTimeOffset Epoch = new(2040, 1, 1, 0, 0, 0, TimeSpan.Zero);
 
     [Test]
+    public async Task StopTimerFailureSettlesAllWaitersAndClosesSessionAdmission()
+    {
+        var time = new ManualTime(Epoch);
+        using var wire = new Wire((_, _) => throw new InvalidOperationException("No dispatch expected."));
+        await using var session = Session(time, wire);
+        var helper = new InfisicalAuthenticationMaintenance(session, TimeSpan.FromSeconds(5));
+        time.TimerFailure = new InvalidOperationException("protected-clock-canary");
+
+        Task first = helper.StopAsync(CancellationToken.None);
+        Task second = helper.StopAsync(CancellationToken.None);
+
+        await Assert.That(second).IsSameReferenceAs(first);
+        InvalidOperationException? failure = await Assert.That(async () =>
+            await first.WaitAsync(TimeSpan.FromSeconds(5))).Throws<InvalidOperationException>();
+        await Assert.That(failure!.ToString().Contains("protected-clock-canary", StringComparison.Ordinal)).IsFalse();
+        await Assert.That(session.State).IsEqualTo(InfisicalTokenSessionState.Stopped);
+        await Assert.That(async () => await session.GetTokenAsync(CancellationToken.None)).Throws<ObjectDisposedException>();
+        await Assert.That(async () => await helper.DisposeAsync()).Throws<InvalidOperationException>();
+    }
+
+    [Test]
     [Arguments(false)]
     [Arguments(true)]
     public async Task BlockedNotificationUsesOriginalDeadlineAndIndependentStopWaiters(bool hosted)
@@ -774,6 +795,7 @@ public sealed class TokenMaintenanceTests
     /// <summary>Exact one-shot and periodic BCL timers; callbacks run outside the clock lock.</summary>
     internal sealed class ManualTime(DateTimeOffset initial) : TimeProvider
     {
+        public Exception? TimerFailure { get; set; }
         private readonly object _gate = new();
         private readonly List<Timer> _timers = [];
         private readonly Dictionary<DateTimeOffset, TaskCompletionSource> _watches = [];
@@ -795,6 +817,11 @@ public sealed class TokenMaintenanceTests
         {
             lock (_gate)
             {
+                if (TimerFailure is { } failure)
+                {
+                    TimerFailure = null;
+                    throw failure;
+                }
                 var timer = new Timer(this, callback, state);
                 _timers.Add(timer);
                 timer.Change(dueTime, period);

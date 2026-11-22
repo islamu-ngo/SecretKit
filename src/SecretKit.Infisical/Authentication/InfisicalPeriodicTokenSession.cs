@@ -333,14 +333,25 @@ public sealed class InfisicalPeriodicTokenSession : IInfisicalTokenSource, IAsyn
         SecretOutcome<InfisicalTokenRenewal> result = SecretOutcome<InfisicalTokenRenewal>.Failure(SecretStatus.Unknown);
         CancellationToken canceled = default;
         bool wasCanceled = false;
-        bool faulted = false;
+        Exception? fault = null;
         using (ownedToken)
         {
             try { result = await RenewCoreAsync(receipt, ownedToken, expiresAt, observation).ConfigureAwait(false); }
             catch (OperationCanceledException exception) { canceled = exception.CancellationToken; wasCanceled = true; }
-            catch (Exception) { FailRecovery(); faulted = true; }
+            catch (Exception error)
+            {
+                // Do not consult a failing host clock again while invalidating the credential.
+                lock (_gate)
+                {
+                    _token?.Dispose();
+                    _token = null;
+                    if (_state is not InfisicalTokenSessionState.Stopped and not InfisicalTokenSessionState.Expired)
+                        _state = InfisicalTokenSessionState.RecoveryRequired;
+                }
+                fault = SessionRetirement.Fatal(error) ?? new InvalidOperationException("Token renewal failed.");
+            }
         }
-        OperationTermination termination = faulted ? OperationTermination.Faulted :
+        OperationTermination termination = fault is not null ? OperationTermination.Faulted :
             observation.Cancellation ?? OperationTermination.Completed;
         var diagnostic = new OperationCompletion(result.Status, termination switch
         {
@@ -361,7 +372,7 @@ public sealed class InfisicalPeriodicTokenSession : IInfisicalTokenSource, IAsyn
         // Settle owned material before releasing waiters. Signal before invoking
         // listeners so a reentrant caller cannot wait on this same completion.
         if (wasCanceled) completion.TrySetCanceled(canceled);
-        else if (faulted) completion.TrySetException(new InvalidOperationException("Token renewal failed."));
+        else if (fault is not null) completion.TrySetException(fault);
         else completion.TrySetResult(result);
         InfisicalDiagnostics.Emit(InfisicalOperation.Renewal, diagnostic, interval);
     }
@@ -429,7 +440,8 @@ public sealed class InfisicalPeriodicTokenSession : IInfisicalTokenSource, IAsyn
                     !double.IsFinite(seconds) || seconds <= _renewBefore.TotalSeconds || seconds > 3153600000 ||
                     !json.TryGetProperty("accessTokenMaxTTL", out var maximum) || maximum.ValueKind != JsonValueKind.Number ||
                     !maximum.TryGetDouble(out double maximumSeconds) ||
-                    maximumSeconds != _lifetime.ReportedMaximumTtl.TotalSeconds ||
+                    !double.IsFinite(maximumSeconds) || maximumSeconds < 0 ||
+                    Math.Abs(maximumSeconds - _lifetime.ReportedMaximumTtl.TotalSeconds) > 1e-6 ||
                     (_lifetime.Lifetime == InfisicalTokenLifetime.Periodic && seconds > _lifetime.Period!.Value.TotalSeconds))
                     return FailRecovery();
                 string text = token.GetString()!;
@@ -525,55 +537,24 @@ public sealed class InfisicalPeriodicTokenSession : IInfisicalTokenSource, IAsyn
             _token = null;
         }
         detached?.Dispose();
-        _ = DrainAsync(pending, completion);
+        _ = SessionRetirement.CompleteAsync(completion, () => DrainAsync(pending), _shutdownTimeout, _time);
         return completion.Task;
     }
 
-    private async Task DrainAsync(Task? pending, TaskCompletionSource completion)
+    private async Task<Exception?> DrainAsync(Task? pending)
     {
-        var cleanup = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        Task<bool> bounded = cleanup.Task.WaitAsync(_shutdownTimeout, _time);
-        Task cancellation = _shutdown.CancelAsync();
-        _ = Task.Run(async () =>
-        {
-            bool succeeded = true;
-            try
-            {
-                try { await cancellation.ConfigureAwait(false); }
-                catch (Exception) { succeeded = false; }
-            }
-            finally
-            {
-                try
-                {
-                    if (pending is not null)
-                        try { await pending.ConfigureAwait(false); }
-                        catch (OperationCanceledException) { }
-                        catch (Exception) { succeeded = false; }
-                }
-                finally
-                {
-                    try { _binding.Dispose(); }
-                    catch (Exception) { succeeded = false; }
-                    finally
-                    {
-                        _shutdown.Dispose();
-                        cleanup.TrySetResult(succeeded);
-                    }
-                }
-            }
-        });
+        var cancellation = _shutdown.CancelAsync();
+        // Leave any cancellation callback's stack before retiring its transport.
+        await Task.CompletedTask.ConfigureAwait(ConfigureAwaitOptions.ForceYielding);
         try
         {
-            if (await bounded.ConfigureAwait(false))
-                completion.TrySetResult();
-            else
-                completion.TrySetException(new InvalidOperationException("Token session shutdown failed."));
+            var failure = await SessionRetirement.JoinAsync(cancellation).ConfigureAwait(false);
+            failure = await SessionRetirement.JoinAsync(pending, failure, allowCancellation: true).ConfigureAwait(false);
+            try { _binding.Dispose(); }
+            catch (Exception error) { failure = SessionRetirement.Fatal(error) ?? failure ?? SessionRetirement.Failure(error); }
+            return failure;
         }
-        catch (TimeoutException)
-        {
-            completion.TrySetException(new TimeoutException("Token session shutdown timed out."));
-        }
+        finally { _shutdown.Dispose(); }
     }
 
     /// <summary>Returns local state without token or deployment details.</summary>
