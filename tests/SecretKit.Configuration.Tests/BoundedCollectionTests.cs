@@ -241,8 +241,10 @@ public sealed class BoundedCollectionTests
         if (fault == 3) reader.BeforeRead = _ => throw new OperationCanceledException("private-canary");
         using var loader = new SecretSnapshotLoader([reader.Select("value")]);
         SecretOutcome<long> result = await loader.RefreshAsync();
-        await Assert.That(result.Status).IsEqualTo(fault == 3 ? SecretStatus.Unavailable : SecretStatus.Invalid);
-        await Assert.That(result.Reason).IsEqualTo(fault == 3 ? SecretFailureReason.TransportFailure :
+        // Invalid UTF-16 now fails inside the reader at material construction,
+        // before it can deliver a SecretRead to the loader.
+        await Assert.That(result.Status).IsEqualTo(fault >= 2 ? SecretStatus.Unavailable : SecretStatus.Invalid);
+        await Assert.That(result.Reason).IsEqualTo(fault >= 2 ? SecretFailureReason.TransportFailure :
             fault == 0 ? SecretFailureReason.AuthorityMismatch : SecretFailureReason.InvalidResponse);
         foreach (var read in reader.Delivered)
             await Assert.That(() => read.Material.Reveal()).Throws<ObjectDisposedException>();

@@ -1,63 +1,76 @@
-using System.Buffers;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Unicode;
 
 namespace SecretKit.Core;
 
-/// <summary>Owns clearable character storage. Explicit exports have independent lifetimes.</summary>
+/// <summary>Owns pinned, clearable UTF-8 storage. Explicit exports have independent lifetimes.</summary>
 /// <remarks>Dispose this owner to clear its array. Disposal cannot erase inputs, earlier copies or exported strings.</remarks>
 public sealed class SecretMaterial : IDisposable
 {
     private readonly Lock _gate = new();
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
-    private char[]? _characters;
+    private byte[]? _utf8;
 
-    private SecretMaterial(char[] characters) => _characters = characters;
+    private SecretMaterial(byte[] utf8) => _utf8 = utf8;
 
     /// <summary>Copies supplied text; neither this object nor disposal can erase the supplied text.</summary>
     /// <param name="text">Characters to copy into independent owned storage.</param>
     /// <returns>A material owner that the caller must dispose.</returns>
-    public static SecretMaterial FromText(ReadOnlySpan<char> text) => new(text.ToArray());
+    /// <exception cref="ArgumentException">The input is malformed UTF-16; rejected characters are not retained in the exception.</exception>
+    public static SecretMaterial FromText(ReadOnlySpan<char> text)
+    {
+        byte[]? buffer = null;
+        try
+        {
+            buffer = GC.AllocateArray<byte>(StrictUtf8.GetByteCount(text), pinned: true);
+            StrictUtf8.GetBytes(text, buffer);
+            var material = new SecretMaterial(buffer);
+            buffer = null;
+            return material;
+        }
+        catch (EncoderFallbackException)
+        {
+            throw new ArgumentException("Material must contain valid UTF-16.", nameof(text));
+        }
+        finally
+        {
+            if (buffer is not null) CryptographicOperations.ZeroMemory(buffer);
+        }
+    }
 
-    /// <summary>Copies UTF-8 input into independent character storage.</summary>
+    /// <summary>Validates and copies UTF-8 input into independent pinned storage.</summary>
     /// <param name="utf8">Encoded text to copy.</param>
     /// <returns>An independently disposable material owner.</returns>
     /// <exception cref="ArgumentException">The input is malformed UTF-8; no rejected input is retained in the exception.</exception>
     public static SecretMaterial FromUtf8(ReadOnlySpan<byte> utf8)
     {
-        char[]? characters = null;
+        if (!Utf8.IsValid(utf8))
+            throw new ArgumentException("Material must contain valid UTF-8.", nameof(utf8));
+        byte[]? buffer = GC.AllocateArray<byte>(utf8.Length, pinned: true);
         try
         {
-            characters = new char[StrictUtf8.GetCharCount(utf8)];
-            StrictUtf8.GetChars(utf8, characters);
-            return new SecretMaterial(characters);
+            utf8.CopyTo(buffer);
+            var material = new SecretMaterial(buffer);
+            buffer = null;
+            return material;
         }
-        catch (DecoderFallbackException)
+        finally
         {
-            if (characters is not null)
-                CryptographicOperations.ZeroMemory(MemoryMarshal.AsBytes(characters.AsSpan()));
-            throw new ArgumentException("Material must contain valid UTF-8.", nameof(utf8));
+            if (buffer is not null) CryptographicOperations.ZeroMemory(buffer);
         }
     }
 
     /// <summary>Gets the encoded payload size without exporting a string.</summary>
     /// <returns>The number of UTF-8 bytes.</returns>
-    /// <exception cref="ArgumentException">Owned text contains invalid UTF-16; no rejected characters are retained in the exception.</exception>
     /// <exception cref="ObjectDisposedException">This owner has been disposed.</exception>
     public int GetUtf8ByteCount()
     {
         lock (_gate)
         {
-            ObjectDisposedException.ThrowIf(_characters is null, this);
-            try
-            {
-                return StrictUtf8.GetByteCount(_characters);
-            }
-            catch (EncoderFallbackException)
-            {
-                throw new ArgumentException("Material must contain valid UTF-16.");
-            }
+            ObjectDisposedException.ThrowIf(_utf8 is null, this);
+            return _utf8.Length;
         }
     }
 
@@ -65,25 +78,16 @@ public sealed class SecretMaterial : IDisposable
     /// <param name="destination">Caller-owned destination.</param>
     /// <param name="bytesWritten">The complete byte count or zero on capacity failure.</param>
     /// <returns>Whether the complete value fitted.</returns>
-    /// <exception cref="ArgumentException">Owned text contains invalid UTF-16. The destination remains unchanged.</exception>
     /// <exception cref="ObjectDisposedException">This owner has been disposed.</exception>
     public bool TryCopyUtf8To(Span<byte> destination, out int bytesWritten)
     {
         lock (_gate)
         {
-            ObjectDisposedException.ThrowIf(_characters is null, this);
+            ObjectDisposedException.ThrowIf(_utf8 is null, this);
             bytesWritten = 0;
-            try
-            {
-                if (StrictUtf8.GetByteCount(_characters) > destination.Length)
-                    return false;
-                bytesWritten = StrictUtf8.GetBytes(_characters, destination);
-                return true;
-            }
-            catch (EncoderFallbackException)
-            {
-                throw new ArgumentException("Material must contain valid UTF-16.");
-            }
+            if (!_utf8.AsSpan().TryCopyTo(destination)) return false;
+            bytesWritten = _utf8.Length;
+            return true;
         }
     }
 
@@ -94,8 +98,19 @@ public sealed class SecretMaterial : IDisposable
     {
         lock (_gate)
         {
-            ObjectDisposedException.ThrowIf(_characters is null, this);
-            return new SecretMaterial((char[])_characters.Clone());
+            ObjectDisposedException.ThrowIf(_utf8 is null, this);
+            byte[]? buffer = GC.AllocateArray<byte>(_utf8.Length, pinned: true);
+            try
+            {
+                _utf8.CopyTo(buffer, 0);
+                var material = new SecretMaterial(buffer);
+                buffer = null;
+                return material;
+            }
+            finally
+            {
+                if (buffer is not null) CryptographicOperations.ZeroMemory(buffer);
+            }
         }
     }
 
@@ -106,8 +121,8 @@ public sealed class SecretMaterial : IDisposable
     {
         lock (_gate)
         {
-            ObjectDisposedException.ThrowIf(_characters is null, this);
-            return new string(_characters);
+            ObjectDisposedException.ThrowIf(_utf8 is null, this);
+            return StrictUtf8.GetString(_utf8);
         }
     }
 
@@ -118,8 +133,8 @@ public sealed class SecretMaterial : IDisposable
     {
         lock (_gate)
         {
-            ObjectDisposedException.ThrowIf(_characters is null, this);
-            return (char[])_characters.Clone();
+            ObjectDisposedException.ThrowIf(_utf8 is null, this);
+            return StrictUtf8.GetChars(_utf8);
         }
     }
 
@@ -164,26 +179,22 @@ public sealed class SecretMaterial : IDisposable
     public TResult Use<TState, TResult>(TState state, SecretSpanFunc<TState, TResult> function)
     {
         ArgumentNullException.ThrowIfNull(function);
-        char[]? snapshot = null;
-        int length = 0;
+        Span<char> snapshot = stackalloc char[256];
         try
         {
             lock (_gate)
             {
-                ObjectDisposedException.ThrowIf(_characters is null, this);
-                length = _characters.Length;
-                snapshot = ArrayPool<char>.Shared.Rent(length);
-                _characters.AsSpan().CopyTo(snapshot);
+                ObjectDisposedException.ThrowIf(_utf8 is null, this);
+                int length = StrictUtf8.GetCharCount(_utf8);
+                if (length > snapshot.Length) snapshot = GC.AllocateArray<char>(length, pinned: true);
+                snapshot = snapshot[..length];
+                StrictUtf8.GetChars(_utf8, snapshot);
             }
-            return function(snapshot.AsSpan(0, length), state);
+            return function(snapshot, state);
         }
         finally
         {
-            if (snapshot is not null)
-            {
-                CryptographicOperations.ZeroMemory(MemoryMarshal.AsBytes(snapshot.AsSpan(0, length)));
-                ArrayPool<char>.Shared.Return(snapshot);
-            }
+            CryptographicOperations.ZeroMemory(MemoryMarshal.AsBytes(snapshot));
         }
     }
 
@@ -223,54 +234,42 @@ public sealed class SecretMaterial : IDisposable
     /// <param name="function">A synchronous callback; the span is valid only during its invocation.</param>
     /// <returns>The callback result. Any copied material becomes caller-owned.</returns>
     /// <exception cref="ArgumentNullException">The callback is null.</exception>
-    /// <exception cref="ArgumentException">Owned text contains invalid UTF-16; no rejected text is retained in the exception.</exception>
     /// <exception cref="ObjectDisposedException">This owner was disposed before the snapshot was taken.</exception>
     /// <remarks>Concurrent or reentrant disposal does not invalidate the callback's snapshot. The snapshot is cleared even if the callback throws.</remarks>
     public TResult UseUtf8<TState, TResult>(TState state, SecretUtf8SpanFunc<TState, TResult> function)
     {
         ArgumentNullException.ThrowIfNull(function);
-        byte[]? snapshot = null;
-        int length = 0;
+        Span<byte> snapshot = stackalloc byte[256];
         try
         {
             lock (_gate)
             {
-                ObjectDisposedException.ThrowIf(_characters is null, this);
-                try
-                {
-                    length = StrictUtf8.GetByteCount(_characters);
-                    snapshot = ArrayPool<byte>.Shared.Rent(length);
-                    StrictUtf8.GetBytes(_characters, snapshot);
-                }
-                catch (EncoderFallbackException)
-                {
-                    throw new ArgumentException("Material must contain valid UTF-16.");
-                }
+                ObjectDisposedException.ThrowIf(_utf8 is null, this);
+                int length = _utf8.Length;
+                if (length > snapshot.Length) snapshot = GC.AllocateArray<byte>(length, pinned: true);
+                snapshot = snapshot[..length];
+                _utf8.AsSpan().CopyTo(snapshot);
             }
-            return function(snapshot.AsSpan(0, length), state);
+            return function(snapshot, state);
         }
         finally
         {
-            if (snapshot is not null)
-            {
-                CryptographicOperations.ZeroMemory(snapshot.AsSpan(0, length));
-                ArrayPool<byte>.Shared.Return(snapshot);
-            }
+            CryptographicOperations.ZeroMemory(snapshot);
         }
     }
 
-    /// <summary>Clears owned characters and prevents further copies or exports; repeated disposal is harmless.</summary>
+    /// <summary>Clears owned UTF-8 bytes and prevents further copies or exports; repeated disposal is harmless.</summary>
     public void Dispose()
     {
         lock (_gate)
         {
-            if (_characters is null)
+            if (_utf8 is null)
             {
                 return;
             }
 
-            CryptographicOperations.ZeroMemory(MemoryMarshal.AsBytes(_characters.AsSpan()));
-            _characters = null;
+            CryptographicOperations.ZeroMemory(_utf8);
+            _utf8 = null;
         }
     }
 

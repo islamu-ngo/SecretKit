@@ -20,7 +20,7 @@ specialized lifecycle operations remain provider-native.
 | `SecretOutcome<T>`, `SecretStatus` | Success-only value access and failure categories; [declarations](../../src/SecretKit.Core/Outcomes/SecretOutcome.cs) |
 | `SecretFailureReason` | Closed material-free failure detail; [declaration](../../src/SecretKit.Core/Outcomes/SecretFailureReason.cs) |
 | `SecretCorrelationId` | Bounded identifier with explicit disclosure; [declaration](../../src/SecretKit.Core/Outcomes/SecretCorrelationId.cs) |
-| `SecretMaterial` | Clearable owned characters and explicit exports; [declaration](../../src/SecretKit.Core/Material/SecretMaterial.cs) |
+| `SecretMaterial` | Pinned, clearable UTF-8 storage and explicit exports; [declaration](../../src/SecretKit.Core/Material/SecretMaterial.cs) |
 | `SecretRead`, `SecretObservation`, `SecretValidity` | Owned read plus value-free observations; [declarations](../../src/SecretKit.Core/Reading/SecretObservation.cs) |
 | `MutationReceipt`, `DispatchEvidence` | Caller-held mutation dispatch evidence; [declarations](../../src/SecretKit.Core/Receipts/MutationReceipt.cs) |
 | `MutationReceiptIssuer` | Adapter-owned instance capability for issuing and advancing local evidence; [declaration](../../src/SecretKit.Core/Receipts/MutationReceiptIssuer.cs) |
@@ -125,25 +125,32 @@ Built-in successful reads return independent owned material.
 
 | `SecretMaterial` member | Ownership |
 | --- | --- |
-| `FromText(ReadOnlySpan<char>)` | Copies input into an owned character array; cannot erase the input |
-| `FromUtf8(ReadOnlySpan<byte>)` | Strictly decodes into independent clearable characters; malformed input throws a sanitized `ArgumentException` |
+| `FromText(ReadOnlySpan<char>)` | Validates UTF-16 eagerly and encodes into owned pinned UTF-8 storage; cannot erase the input |
+| `FromUtf8(ReadOnlySpan<byte>)` | Validates UTF-8 and copies into independent pinned storage; malformed input throws a sanitized `ArgumentException` |
 | `GetUtf8ByteCount()` | Counts encoded payload bytes under the disposal gate without exporting a string |
 | `TryCopyUtf8To(Span<byte>, out int)` | Writes the complete encoding or returns false with zero bytes; caller owns and clears destination |
 | `Copy()` | Returns an independently owned material object; dispose it separately |
 | `Reveal()` | Creates an ordinary managed plaintext string with an independent lifetime |
 | `ExportCharacters()` | Returns an independent array; the caller must clear it |
-| `Dispose()` | Clears owned character storage; safe to call more than once |
+| `Dispose()` | Clears owned UTF-8 storage; safe to call more than once |
 
 Copying, revealing or exporting after disposal throws `ObjectDisposedException`.
 Copies already made survive original disposal. Do not treat the outcome as
 disposable: dispose its successful read.
 
-Empty UTF-8 input is valid. `FromText` preserves characters without normalizing
-or validating them; UTF-8 count/export rejects unpaired UTF-16 surrogates.
-Invalid encoding and insufficient capacity leave the destination unchanged.
+Empty input is valid. `FromText` rejects unpaired UTF-16 surrogates at construction
+without normalizing valid text. Insufficient export capacity leaves the destination unchanged.
 Encoding errors contain neither fallback exceptions nor rejected input.
 Exports racing disposal produce a complete copy or `ObjectDisposedException`.
 Byte counts describe payload size, not total process memory or secure erasure.
+
+The owned UTF-8 array uses the Pinned Object Heap, so compacting garbage collection
+does not relocate it. `Use` and `UseUtf8` borrow independent snapshots taken under
+the disposal gate and invoke callbacks outside that gate. Snapshots of at most
+256 characters or bytes use stack storage; larger snapshots use pinned arrays.
+Both are cleared when the callback returns or throws, without shared array pools.
+Pinning does not erase caller inputs, stack/register copies, TLS buffers, explicit
+exports or process dumps.
 
 This standalone Core fragment demonstrates the array-export boundary with
 synthetic, non-secret text:

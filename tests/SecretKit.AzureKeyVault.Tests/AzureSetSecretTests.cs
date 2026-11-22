@@ -197,15 +197,13 @@ public sealed class AzureSetSecretTests
         using var multibyte = SecretMaterial.FromText(new string('\u00e9', 12801));
         var tooManyBytes = await client.SetSecretAsync(new AzureSetSecretRequest(target, multibyte),
             client.CreateReceipt(target));
-        using var unpaired = SecretMaterial.FromText("canary\ud800");
-        var invalidText = await client.SetSecretAsync(new AzureSetSecretRequest(target, unpaired),
-            client.CreateReceipt(target));
+        await Assert.That(() => SecretMaterial.FromText("canary\ud800")).Throws<ArgumentException>();
         using var disposed = material.Copy();
         disposed.Dispose();
         var unavailableMaterial = await client.SetSecretAsync(new AzureSetSecretRequest(target, disposed),
             client.CreateReceipt(target));
 
-        foreach (var outcome in new[] { foreignOutcome, wrongReceipt, tooLarge, tooManyBytes, invalidText, unavailableMaterial })
+        foreach (var outcome in new[] { foreignOutcome, wrongReceipt, tooLarge, tooManyBytes, unavailableMaterial })
         {
             await Assert.That(outcome.Status).IsEqualTo(SecretStatus.Invalid);
             await Assert.That(JsonSerializer.Serialize(outcome).Contains("canary")).IsFalse();
@@ -414,11 +412,16 @@ public sealed class AzureSetSecretTests
         var client = new AzureKeyVaultClient(backend.Vault, new TestCredential(), backend.Wire);
         var target = Target(client);
         var receipt = client.CreateReceipt(target);
-        using var material = SecretMaterial.FromText(oversized ? new string('\u0800', 10000) : "\ud800");
-
-        var outcome = await client.SetSecretAsync(new AzureSetSecretRequest(target, material), receipt);
-
-        await Assert.That(outcome.Status).IsEqualTo(SecretStatus.Invalid);
+        if (oversized)
+        {
+            using var material = SecretMaterial.FromText(new string('\u0800', 10000));
+            var outcome = await client.SetSecretAsync(new AzureSetSecretRequest(target, material), receipt);
+            await Assert.That(outcome.Status).IsEqualTo(SecretStatus.Invalid);
+        }
+        else
+        {
+            await Assert.That(() => SecretMaterial.FromText("\ud800")).Throws<ArgumentException>();
+        }
         await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.NotDispatched);
         await Assert.That(backend.Wire.Requests.Count).IsEqualTo(0);
     }

@@ -95,10 +95,12 @@ from default formatting/JSON serialization, and explicit reveal boundaries** —
 zero-string GC immunity or enclave memory secrecy:
 
 - [`SecretMaterial`](../../src/SecretKit.Core/Material/SecretMaterial.cs) stores
-  its character buffer in an unpinned `char[]` and rents unpinned
-  `ArrayPool<char>.Shared` / `ArrayPool<byte>.Shared` snapshots during `Use` and
-  `UseUtf8`, so compacting garbage collection can relocate bytes and leave
-  earlier copies in heap pages until overwritten.
+  canonical UTF-8 bytes in a Pinned Object Heap array. `Use` and `UseUtf8` take
+  independent stack snapshots of up to 256 elements or pinned arrays for larger
+  values, invoke callbacks outside the disposal gate, and clear snapshots in
+  `finally`. No shared array pool holds these snapshots. Pinning prevents
+  relocation of these owned arrays; it does not protect caller inputs,
+  stack/register copies, transport buffers or dumps.
 - [`InfisicalClient`](../../src/SecretKit.Infisical/Secrets/InfisicalClient.cs#L224)
   currently decodes JSON secret strings with `.GetString()` before copying into
   `SecretMaterial`, and `InfisicalBearer` materializes a `string` header via
@@ -131,7 +133,8 @@ exclude the property from JSON; fixed formatting, bounded exceptions and SDK
 diagnostics do not export it. Failure conversion preserves the protected object,
 not a logged copy. Provider messages and details are never retained in outcomes.
 
-`FromUtf8` copies strictly decoded text without an intermediate string;
+`FromText` rejects malformed UTF-16 eagerly with a sanitized argument error.
+`FromUtf8` validates and copies encoded bytes without an intermediate string;
 `GetUtf8ByteCount` and `TryCopyUtf8To` permit caller-owned encoded buffers.
 The caller still owns clearing exports. Encoding failures are sanitized fixed
 argument errors without rejected byte/character properties or inner exceptions.

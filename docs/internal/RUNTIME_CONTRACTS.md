@@ -74,12 +74,15 @@ implicit bootstrap callback or re-login policy.
 
 ## Material Ownership And Disposal
 
-Core UTF-8 construction strictly decodes into independent owned character storage.
-UTF-8 count/export validates all owned text before writing caller storage, so
-invalid UTF-16 or insufficient capacity cannot publish a partial secret. Encoding
+Core construction validates UTF-16 or UTF-8 eagerly and retains canonical UTF-8
+in independent Pinned Object Heap storage. UTF-8 count/export uses those validated
+bytes; insufficient capacity cannot publish a partial secret. Encoding
 failures are fixed argument errors without fallback properties or inner exceptions.
 Input, copied material and exported buffers retain independent lifetimes; empty
 text is representable. All exports synchronize with this owner's disposal.
+Callbacks use independent stack snapshots up to 256 elements or pinned arrays,
+execute outside the gate and clear their snapshots in `finally` without pooling.
+Pinning prevents GC relocation of owned arrays, not copies outside this boundary.
 
 The next [runtime adoption increment](RUNTIME_ADOPTION_SECURITY.md) requires
 observable asynchronous app-client retirement outside locks and tests before

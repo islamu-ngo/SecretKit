@@ -93,9 +93,8 @@ public sealed class SecretMaterialSpanTests
         await Assert.That(() => material.Use<int>(_ => throw failure)).Throws<InvalidOperationException>();
         await Assert.That(() => material.UseUtf8<int>(_ => throw failure)).Throws<InvalidOperationException>();
         await Assert.That(material.Use(static span => span.Length)).IsEqualTo(15);
-        using var malformed = SecretMaterial.FromText("material-canary\ud801");
         Exception? error = null;
-        try { malformed.UseUtf8(static span => span.Length); }
+        try { using var malformed = SecretMaterial.FromText("material-canary\ud801"); }
         catch (Exception caught) { error = caught; }
         await Assert.That(error is ArgumentException and not EncoderFallbackException).IsTrue();
         await Assert.That(error?.InnerException is null).IsTrue();

@@ -70,21 +70,20 @@ public sealed class Utf8MaterialTests
     }
 
     [Test]
-    public async Task InvalidUtf16DoesNotWriteOrExposeCredentialFragments()
+    [Arguments("\ud801")]
+    [Arguments("\udc00")]
+    [Arguments("prefix\ud801suffix")]
+    public async Task InvalidUtf16ConstructionDoesNotExposeCredentialFragments(string malformed)
     {
         const string canary = "credential-canary";
-        using SecretMaterial material = SecretMaterial.FromText(canary + '\ud801');
-        byte[] destination = Enumerable.Repeat((byte)17, 128).ToArray();
         Exception? error = null;
-        try { material.TryCopyUtf8To(destination, out _); }
+        try { using SecretMaterial material = SecretMaterial.FromText(canary + malformed); }
         catch (Exception caught) { error = caught; }
         await Assert.That(error is ArgumentException && error is not EncoderFallbackException).IsTrue();
         await Assert.That(error?.InnerException is null).IsTrue();
         await Assert.That(error?.Data.Count).IsEqualTo(0);
         await Assert.That(ContainsCanary(error!, canary)).IsFalse();
         await Assert.That(ContainsCanary(new ArgumentException(canary), canary)).IsTrue();
-        await Assert.That(destination.All(b => b == 17)).IsTrue();
-        await Assert.That(() => material.GetUtf8ByteCount()).Throws<ArgumentException>();
     }
 
     [Test]
