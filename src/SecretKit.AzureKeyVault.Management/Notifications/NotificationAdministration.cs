@@ -8,7 +8,6 @@ namespace SecretKit.AzureKeyVault.Management;
 
 public sealed partial class VaultAdministration
 {
-    private const string NotificationRevision = "2025-02-15";
 
     /// <summary>Reads bounded notification metadata without exporting its full endpoint or delivery attributes.</summary>
     /// <param name="scope">The exact vault event-subscription coordinates.</param>
@@ -20,10 +19,10 @@ public sealed partial class VaultAdministration
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(scope);
-        return Read(scope.ResourceId, async (client, token) => ObserveNotification(scope,
+        return Read(ArmCallTarget.At(ArmMethodContracts.NotificationGet, scope), async (client, token) => ObserveNotification(scope,
             (await client.GetEventSubscriptionResource(new ResourceIdentifier(scope.ResourceId))
                 .GetAsync(token).ConfigureAwait(false)).Value.Data),
-            cancellationToken, revision: NotificationRevision);
+            cancellationToken);
     }
 
     /// <summary>Collects bounded notification metadata for one vault without exporting destinations.</summary>
@@ -37,11 +36,11 @@ public sealed partial class VaultAdministration
         CollectionLimits limits, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(scope);
-        return Collect($"{scope.ResourceId}/providers/Microsoft.EventGrid/eventSubscriptions", limits,
+        return Collect(ArmCallTarget.Below(ArmMethodContracts.NotificationList, scope), limits,
             (client, token) => client.GetEventSubscriptions(new ResourceIdentifier(scope.ResourceId))
                 .GetAllAsync(cancellationToken: token),
             resource => ObserveNotification(new NotificationScope(scope, resource.Data.Name), resource.Data),
-            cancellationToken, NotificationRevision);
+            cancellationToken);
     }
 
     /// <summary>Explicitly acquires protected full webhook endpoint material through the native read action.</summary>
@@ -54,10 +53,10 @@ public sealed partial class VaultAdministration
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(scope);
-        return Read(scope.ResourceId + "/getFullUrl", async (client, token) =>
+        return Read(ArmCallTarget.Below(ArmMethodContracts.NotificationGetFullUrl, scope), async (client, token) =>
             new NotificationFullUrl((await client.GetEventSubscriptionResource(new ResourceIdentifier(scope.ResourceId))
                 .GetFullUriAsync(token).ConfigureAwait(false)).Value.Endpoint),
-            cancellationToken, revision: NotificationRevision, method: RequestMethod.Post);
+            cancellationToken, method: RequestMethod.Post);
     }
 
     /// <summary>Explicitly acquires bounded protected delivery attributes using the native read action.</summary>
@@ -71,7 +70,7 @@ public sealed partial class VaultAdministration
         NotificationScope scope, CollectionLimits limits, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(scope);
-        return Collect(scope.ResourceId + "/getDeliveryAttributes", limits,
+        return Collect(ArmCallTarget.Below(ArmMethodContracts.NotificationGetDeliveryAttributes, scope), limits,
             (client, token) => client.GetEventSubscriptionResource(new ResourceIdentifier(scope.ResourceId))
                 .GetDeliveryAttributesAsync(token), attribute => attribute switch
                 {
@@ -81,7 +80,7 @@ public sealed partial class VaultAdministration
                     DynamicDeliveryAttributeMapping value when value.SourceField is not null =>
                         new NotificationDeliveryAttribute(value.Name, NotificationAttributeKind.Dynamic, value.SourceField),
                     _ => throw new ControlledTransport.BoundaryException()
-                }, cancellationToken, NotificationRevision, RequestMethod.Post);
+                }, cancellationToken, RequestMethod.Post);
     }
 
     /// <summary>Explicit webhook create/update subset, not CAS or conditional creation.</summary>
@@ -97,7 +96,7 @@ public sealed partial class VaultAdministration
     {
         ArgumentNullException.ThrowIfNull(scope);
         ArgumentNullException.ThrowIfNull(configuration);
-        return Mutate(scope, ManagementMutation.CreateOrUpdateNotification, receipt, scope.ResourceId, RequestMethod.Put,
+        return Mutate(scope, ManagementMutation.CreateOrUpdateNotification, receipt, ArmCallTarget.At(ArmMethodContracts.NotificationCreateOrUpdate, scope), RequestMethod.Put,
             [201], async (client, transport, token) =>
             {
                 var data = new EventGridSubscriptionData
@@ -110,7 +109,7 @@ public sealed partial class VaultAdministration
                 bool Validate() => operation.HasValue &&
                     ObserveNotification(scope, operation.Value.Data).ProvisioningState == NativeProvisioningState.Succeeded;
                 return NotificationOperation(scope, operation, transport, Validate);
-            }, cancellationToken, NotificationRevision);
+            }, cancellationToken);
     }
 
     /// <summary>Replaces webhook destination and secret-event filter only; other native settings are omitted.</summary>
@@ -126,7 +125,7 @@ public sealed partial class VaultAdministration
     {
         ArgumentNullException.ThrowIfNull(scope);
         ArgumentNullException.ThrowIfNull(configuration);
-        return Mutate(scope, ManagementMutation.UpdateNotification, receipt, scope.ResourceId, RequestMethod.Patch,
+        return Mutate(scope, ManagementMutation.UpdateNotification, receipt, ArmCallTarget.At(ArmMethodContracts.NotificationUpdate, scope), RequestMethod.Patch,
             [201], async (client, transport, token) =>
             {
                 var patch = new EventGridSubscriptionPatch
@@ -139,7 +138,7 @@ public sealed partial class VaultAdministration
                 bool Validate() => operation.HasValue &&
                     ObserveNotification(scope, operation.Value.Data).ProvisioningState == NativeProvisioningState.Succeeded;
                 return NotificationOperation(scope, operation, transport, Validate);
-            }, cancellationToken, NotificationRevision);
+            }, cancellationToken);
     }
 
     /// <summary>Deletes one notification subscription without automatic replay or a background completion loop.</summary>
@@ -153,7 +152,7 @@ public sealed partial class VaultAdministration
         ManagementReceipt receipt, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(scope);
-        return Mutate(scope, ManagementMutation.DeleteNotification, receipt, scope.ResourceId, RequestMethod.Delete,
+        return Mutate(scope, ManagementMutation.DeleteNotification, receipt, ArmCallTarget.At(ArmMethodContracts.NotificationDelete, scope), RequestMethod.Delete,
             [200, 202, 204], async (client, transport, token) =>
             {
                 var operation = await client.GetEventSubscriptionResource(new ResourceIdentifier(scope.ResourceId))
@@ -162,7 +161,7 @@ public sealed partial class VaultAdministration
                     ? ManagementOperation.Completed(transport, _timeout, _time)
                     : ManagementOperation.From(operation, transport, _timeout, _time);
             },
-            cancellationToken, NotificationRevision);
+            cancellationToken);
     }
 
     private ManagementOperation NotificationOperation(NotificationScope scope,

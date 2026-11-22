@@ -7,6 +7,48 @@ namespace SecretKit.AzureKeyVault.Management.Tests;
 public sealed class NotificationAdministrationTests
 {
     [Test]
+    [Arguments("original")]
+    [Arguments("identifier")]
+    [Arguments("case")]
+    public async Task PollingCannotEnrollAnOperationUrlAbsentFromTheOriginalResponse(string substitution)
+    {
+        string first = "https://management.azure.com" + ScopeAuthorityTests.Id.Split("/providers/")[0] +
+            "/providers/Microsoft.EventGrid/locations/eastus/operationResults/55555555-5555-5555-5555-555555555555/Spring/default?api-version=2025-02-15";
+        string other = substitution == "case"
+            ? first.Replace("Spring", "spring", StringComparison.Ordinal)
+            : first.Replace("55555555-5555-5555-5555-555555555555",
+                "66666666-6666-6666-6666-666666666666", StringComparison.Ordinal);
+        var observed = new List<string>();
+        var backend = new WireBackend((request, _) =>
+        {
+            if (request.Method == HttpMethod.Delete)
+            {
+                var initial = WireBackend.Json(202, "{}");
+                initial.Headers.TryAddWithoutValidation("Location", first);
+                return Task.FromResult(initial);
+            }
+            observed.Add(request.RequestUri!.AbsoluteUri);
+            if (observed.Count != 1) return Task.FromResult(WireBackend.Json(204, ""));
+            var pending = WireBackend.Json(202, """{"status":"InProgress"}""");
+            pending.Headers.TryAddWithoutValidation("Location", substitution == "original" ? first : other);
+            return Task.FromResult(pending);
+        });
+        var client = new VaultAdministration(new Credential(), backend);
+        var target = Scope();
+        var receipt = client.PrepareReceipt(target, ManagementMutation.DeleteNotification);
+        var started = await client.DeleteNotificationAsync(target, receipt);
+
+        var firstCheck = await started.Value.CheckStatusAsync();
+        var secondCheck = await started.Value.CheckStatusAsync();
+
+        await Assert.That(firstCheck).IsEqualTo(substitution == "original" ? SecretStatus.Pending : SecretStatus.Invalid);
+        await Assert.That(secondCheck).IsEqualTo(SecretStatus.Success);
+        await Assert.That(started.Value.State).IsEqualTo(NativeProvisioningState.Succeeded);
+        await Assert.That(observed.SequenceEqual(new[] { first, first })).IsTrue();
+        await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.Pending);
+    }
+
+    [Test]
     public async Task DirectSdkPatchResponseContract()
     {
         var backend = new WireBackend((_, _) => Task.FromResult(WireBackend.Json(201, Resource())));
@@ -119,7 +161,7 @@ public sealed class NotificationAdministrationTests
         await Assert.That(delete.Evidence).IsEqualTo(DispatchEvidence.Applied);
         await Assert.That(exists).IsFalse();
         await Assert.That((await client.GetNotificationAsync(scope)).Status).IsEqualTo(SecretStatus.Absent);
-        await Assert.That(credential.Audiences.All(a => a == "https://management.azure.com/.default")).IsTrue();
+        await Assert.That(credential.Audiences.All(a => a == Azure.ResourceManager.ArmEnvironment.AzurePublicCloud.DefaultScope)).IsTrue();
     }
 
     [Test]
@@ -228,6 +270,34 @@ public sealed class NotificationAdministrationTests
         await Assert.That(result.Value.State).IsEqualTo(status == 202 ? NativeProvisioningState.Pending : NativeProvisioningState.Succeeded);
         await Assert.That(deleted).IsEqualTo(status != 202);
         await Assert.That(receipt.Evidence).IsEqualTo(status == 202 ? DispatchEvidence.Pending : DispatchEvidence.Applied);
+    }
+
+    [Test]
+    [Arguments("Winter2", true)]
+    [Arguments("bad.segment", false)]
+    [Arguments("%57inter", false)]
+    [Arguments("a/b", false)]
+    public async Task DeleteAdmitsOnlyAnIssuedBoundedResultSegment(string segment, bool accepted)
+    {
+        var scope = Scope();
+        string url = "https://management.azure.com" + ScopeAuthorityTests.Id.Split("/providers/")[0] +
+            "/providers/Microsoft.EventGrid/locations/eastus/operationResults/55555555-5555-5555-5555-555555555555/" +
+            segment + "/default?api-version=2025-02-15";
+        var backend = new WireBackend((request, _) =>
+        {
+            if (request.Method == HttpMethod.Get && request.RequestUri!.AbsoluteUri == url)
+                return Task.FromResult(WireBackend.Json(204, ""));
+            if (request.Method != HttpMethod.Delete) throw new InvalidOperationException("Unexpected observation.");
+            var response = WireBackend.Json(202, "");
+            response.Headers.TryAddWithoutValidation("Location", url);
+            return Task.FromResult(response);
+        });
+        var client = new VaultAdministration(new Credential(), backend);
+        var receipt = client.PrepareReceipt(scope, ManagementMutation.DeleteNotification);
+        var result = await client.DeleteNotificationAsync(scope, receipt);
+        await Assert.That(result.Status).IsEqualTo(accepted ? SecretStatus.Success : SecretStatus.Unknown);
+        await Assert.That(receipt.Evidence).IsEqualTo(accepted ? DispatchEvidence.Pending : DispatchEvidence.PossiblyDispatched);
+        if (accepted) await Assert.That(await result.Value.CheckStatusAsync()).IsEqualTo(SecretStatus.Success);
     }
 
     [Test]
@@ -399,6 +469,26 @@ public sealed class NotificationAdministrationTests
             .GetNotificationDeliveryAttributesAsync(Scope(), new CollectionLimits());
         await Assert.That(result.Status).IsEqualTo(SecretStatus.Invalid);
         await Assert.That(result.Items.Count).IsEqualTo(0);
+    }
+
+    [Test]
+    [Arguments("https://127.0.0.1/events")]
+    [Arguments("https://localhost/events")]
+    [Arguments("https://[::1]/events")]
+    [Arguments("https://169.254.169.254/events")]
+    [Arguments("https://[fe80::1]/events")]
+    [Arguments("https://10.0.0.1/events")]
+    [Arguments("https://172.16.0.1/events")]
+    [Arguments("https://192.168.1.1/events")]
+    [Arguments("https://[fc00::1]/events")]
+    [Arguments("https://0.0.0.0/events")]
+    [Arguments("https://[::]/events")]
+    [Arguments("https://[::ffff:127.0.0.1]/events")]
+    [Arguments("https://delivery.example.test:8443/events")]
+    public async Task PublicWebhookCannotTargetPrivateOrNondefaultEndpoints(string endpoint)
+    {
+        await Assert.That(() => new NotificationConfiguration(endpoint,
+            [VaultNotificationEvent.SecretNewVersionCreated])).Throws<ArgumentException>();
     }
 
     [Test]

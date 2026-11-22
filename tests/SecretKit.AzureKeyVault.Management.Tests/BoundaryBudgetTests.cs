@@ -6,6 +6,53 @@ namespace SecretKit.AzureKeyVault.Management.Tests;
 public sealed class BoundaryBudgetTests
 {
     [Test]
+    [Arguments("success")]
+    [Arguments("overflow")]
+    [Arguments("malformed")]
+    [Arguments("canceled")]
+    public async Task ReturnedReadScratchContainsNoResponseBytes(string scenario)
+    {
+        using var canceled = new CancellationTokenSource();
+        var text = scenario switch
+        {
+            "overflow" => new string('a', 1200),
+            "malformed" => "not-json",
+            _ => ScopeAuthorityTests.VaultJson(ScopeAuthorityTests.Id)
+        };
+        var body = new RetainedRead(text, scenario == "canceled" ? canceled : null);
+        var client = new VaultAdministration(new Credential(), new WireBackend((_, _) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(body) })),
+            maximumResponseBytes: 1024);
+        if (scenario == "canceled")
+            await Assert.That(async () => await client.GetVaultAsync(ScopeAuthorityTests.Scope(), canceled.Token))
+                .Throws<OperationCanceledException>();
+        else
+        {
+            var result = await client.GetVaultAsync(ScopeAuthorityTests.Scope());
+            await Assert.That(result.Status == SecretStatus.Success).IsEqualTo(scenario == "success");
+        }
+        await Assert.That(body.Destination.IsEmpty).IsFalse();
+        await Assert.That(body.Destination.Span.ContainsAnyExcept((byte)0)).IsFalse();
+    }
+
+    private sealed class RetainedRead(string text, CancellationTokenSource? cancel) :
+        MemoryStream(System.Text.Encoding.UTF8.GetBytes(text))
+    {
+        public override bool CanSeek => false;
+        internal Memory<byte> Destination { get; private set; }
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            int size = await base.ReadAsync(buffer, cancellationToken);
+            if (size > 0)
+            {
+                Destination = buffer;
+                cancel?.Cancel();
+            }
+            return size;
+        }
+    }
+
+    [Test]
     [Arguments(false)]
     [Arguments(true)]
     public async Task StatusZeroTransportFailureIsUnavailable(bool wrapped)
@@ -80,8 +127,8 @@ public sealed class BoundaryBudgetTests
     [Test]
     [Arguments(403, DispatchEvidence.Rejected, SecretStatus.Denied)]
     [Arguments(409, DispatchEvidence.Conflict, SecretStatus.Conflict)]
-    [Arguments(429, DispatchEvidence.Rejected, SecretStatus.Throttled)]
-    public async Task AuthoritativeRejectionIsNotUnknownOrApplied(int status,
+    [Arguments(429, DispatchEvidence.PossiblyDispatched, SecretStatus.Unknown)]
+    public async Task MutationResponseEvidenceRemainsConservative(int status,
         DispatchEvidence evidence, SecretStatus outcome)
     {
         bool exists = true;

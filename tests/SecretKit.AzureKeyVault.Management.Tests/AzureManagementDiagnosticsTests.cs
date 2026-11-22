@@ -40,7 +40,7 @@ public sealed class AzureManagementDiagnosticsTests
             TimeSpan.FromSeconds(30));
         await Assert.That(published).IsTrue();
         await Assert.That(probe.Spans.Count).IsEqualTo(1);
-        await CheckTags(probe.Spans[0], "Success", "Completed");
+        await CheckTags(probe.Spans[0], "Denied", "Completed");
     }
 
     [Test]

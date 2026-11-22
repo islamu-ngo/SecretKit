@@ -9,9 +9,9 @@ ownership rules below, then check the exact operation's verification scope.
 offline-tested subsets from unverified remote effects and release admission.
 
 Optional, offline-tested administration and audit adapters. Depends inward on
-Core plus the approved `Azure.ResourceManager.KeyVault` 1.4.0 and
-`Azure.Monitor.Query` 1.7.1, `Azure.ResourceManager.Authorization` 1.1.7 and
-`Azure.ResourceManager.EventGrid` 1.1.0. Root solution registration and isolated
+Core and the official Azure SDK packages pinned in
+[Directory.Packages.props](../../Directory.Packages.props), including
+`Azure.Monitor.Query.Logs`. Root solution registration and isolated
 installed-package integration are verified for this implemented subset.
 
 ## Authority and ownership
@@ -22,14 +22,14 @@ with an explicit monitoring credential and transport. Neither can read secret
 content or infer an application's runtime identity. ARM results, access policies,
 name availability and monitoring visibility never prove runtime delivery.
 
-Only Azure public cloud is supported by this package: `management.azure.com`,
-Key Vault ARM `2026-02-01`, scoped Authorization ARM `2022-04-01`; `api.loganalytics.io`, Logs v1 with the official
-public-cloud audience. No caller-selectable endpoint, arbitrary resource ID,
-directory client, raw SDK model, JSON body or KQL executor is exposed. Sovereign
-clouds and live service behavior remain unverified.
-The selected Logs SDK emits the public audience scope
-`https://api.loganalytics.io//.default` (including its native double slash);
-offline tests record this exact SDK behavior rather than assert live token acceptance.
+ARM administration uses the SDK's public-cloud environment. Each method's API
+revision is generated from the exact locked SDK package metadata.
+For audit queries, select `AuditCloud.Public` (default), `USGovernment`, or
+`China` when constructing `AuditDiagnostics`. The selected SDK audience descriptor
+owns the Logs endpoint and requested token scope; SecretKit does not rewrite its host.
+No arbitrary endpoint, audience,
+resource ID, directory client, raw SDK model, JSON body or KQL executor is exposed.
+Controlled routing tests do not qualify live token acceptance, permissions or service effects.
 
 SDK retry count is zero. SDK logging, content logging and distributed tracing
 are disabled. The caller owns credential/transport instrumentation and must
@@ -47,7 +47,7 @@ from default serialization; explicitly inspected native projections are sensitiv
 
 ## Admitted-family inventory
 
-`OperationSupport.Inventory` covers all **34** admitted management families.
+`OperationSupport.Inventory` covers the projected management families.
 Its status numbers describe successful native responses, not measured live
 conformance. All rows keep permission checked and live verified false.
 
@@ -80,9 +80,10 @@ explicit check uses the same SDK handle, with at most two reads per admitted
 check. Native terminal evidence remains distinct from validated final-resource
 success; a terminal state alone does not prove runtime delivery. Cancellation
 of a check neither cancels the remote operation nor rewrites its receipt.
-Notification status headers admit only the exact selected resource path, origin
-and revision. Other Event Grid operation-status URL shapes remain unsupported,
-retaining possible-dispatch uncertainty rather than following arbitrary ARM URLs.
+Notification status headers admit the selected resource path and bounded regional
+DELETE operation URLs at the selected origin and revision. Polling retains exact
+membership in the original response's URL set; later responses cannot add targets.
+Other shapes remain unsupported rather than permitting arbitrary ARM requests.
 
 `NotificationConfiguration` replaces destination and included-event filter on
 update; it omits labels, expiry, retry/dead-letter settings, managed identity,

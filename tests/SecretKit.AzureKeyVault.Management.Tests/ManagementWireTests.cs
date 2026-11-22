@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Net;
-using System.Reflection;
 using System.Text.Json;
 using SecretKit.Core;
 
@@ -8,6 +7,29 @@ namespace SecretKit.AzureKeyVault.Management.Tests;
 
 public sealed class ManagementWireTests
 {
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task CollectionRejectsMalformedRevisionKeysBeforePageLimit(bool doubledDelimiter)
+    {
+        int reads = 0;
+        var backend = new WireBackend((request, _) =>
+        {
+            reads++;
+            string next = doubledDelimiter
+                ? request.RequestUri!.AbsoluteUri.Replace("?", "??", StringComparison.Ordinal)
+                : request.RequestUri!.AbsoluteUri + "&API-VERSION";
+            return Task.FromResult(WireBackend.Json(200,
+                JsonSerializer.Serialize(new { value = Array.Empty<object>(), nextLink = next })));
+        });
+        var client = new VaultAdministration(new Credential(), backend);
+
+        var result = await client.ListVaultsAsync(Scope().ResourceGroup, new CollectionLimits(maximumPages: 1));
+
+        await Assert.That(result.Status).IsEqualTo(SecretStatus.Invalid);
+        await Assert.That(reads).IsEqualTo(1);
+    }
+
     private static VaultScope Scope() => ScopeAuthorityTests.Scope();
     private static VaultConfiguration Configuration() => new("eastus",
         Guid.Parse("22222222-2222-2222-2222-222222222222"), VaultSku.Standard, true, true, 7, false);
@@ -40,7 +62,7 @@ public sealed class ManagementWireTests
         await Assert.That(result.Status).IsEqualTo(SecretStatus.Success);
         await Assert.That(result.Value.ProvisioningState).IsEqualTo(NativeProvisioningState.Succeeded);
         await Assert.That(result.Value.RuntimeDeliveryProven).IsFalse();
-        await Assert.That(credential.Audiences.All(s => s == "https://management.azure.com/.default")).IsTrue();
+        await Assert.That(credential.Audiences.All(s => s == Azure.ResourceManager.ArmEnvironment.AzurePublicCloud.DefaultScope)).IsTrue();
         await Assert.That(activities.Count).IsEqualTo(0);
         await Assert.That(JsonSerializer.Serialize(result.Value).Contains("canary", StringComparison.Ordinal)).IsFalse();
     }
@@ -373,49 +395,12 @@ public sealed class ManagementWireTests
     [Test]
     public async Task ControlledTransportScopesStatusCheckStateAndIsolatesCanceledChecks()
     {
-        Type transportType = typeof(ManagementOperation).Assembly
-            .GetType("SecretKit.AzureKeyVault.Management.ControlledTransport", throwOnError: true)!;
-        const BindingFlags Any = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly;
-        await Assert.That(transportType.GetField("CheckingStatus", Any)).IsNull();
-        await Assert.That(transportType.GetField("StatusRequests", Any)).IsNull();
-        await Assert.That(transportType.GetField("LastOperationState", Any)).IsNull();
-        MethodInfo? beginStatusCheck = transportType.GetMethod("BeginStatusCheck", Any);
-        await Assert.That(beginStatusCheck).IsNotNull();
-
-        object transport = Activator.CreateInstance(
-            transportType,
-            BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance,
-            binder: null,
-            args: [
-                new Azure.Core.Pipeline.HttpClientTransport(),
-                "management.azure.com",
-                "/subscriptions/11111111-1111-1111-1111-111111111111/providers/Microsoft.KeyVault/vaults/vault-canary",
-                Azure.Core.RequestMethod.Get,
-                "2026-02-01",
-                new[] { 200 },
-                1024,
-                null
-            ],
-            culture: null)!;
-        Type scopeType = beginStatusCheck!.ReturnType;
-        MethodInfo tryBeginRequest = scopeType.GetMethod("TryBeginRequest", Any)!;
-        using (var first = (IDisposable)beginStatusCheck.Invoke(transport, null)!)
-        {
-            TargetInvocationException? overlap = await Assert.That(() => { _ = beginStatusCheck.Invoke(transport, null); })
-                .Throws<TargetInvocationException>();
-            await Assert.That(overlap?.InnerException).IsTypeOf<InvalidOperationException>();
-            await Assert.That((bool)tryBeginRequest.Invoke(first, null)!).IsTrue();
-            await Assert.That((bool)tryBeginRequest.Invoke(first, null)!).IsTrue();
-            await Assert.That((bool)tryBeginRequest.Invoke(first, null)!).IsFalse();
-        }
-        using (var second = (IDisposable)beginStatusCheck.Invoke(transport, null)!)
-        {
-            await Assert.That((bool)tryBeginRequest.Invoke(second, null)!).IsTrue();
-        }
-
         string operationUrl = "https://management.azure.com/subscriptions/11111111-1111-1111-1111-111111111111/providers/Microsoft.KeyVault/locations/eastus/operations/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa?api-version=2026-02-01";
         int step = 0;
-        var cancelDuringFinalGet = new CancellationTokenSource();
+        int reads = 0;
+        var firstPoll = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releasePoll = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var cancelDuringFinalGet = new CancellationTokenSource();
         var backend = new WireBackend(async (request, token) =>
         {
             if (request.Method == HttpMethod.Put)
@@ -426,9 +411,16 @@ public sealed class ManagementWireTests
             }
             if (request.RequestUri!.AbsolutePath.EndsWith("/operations/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", StringComparison.Ordinal))
             {
+                Interlocked.Increment(ref reads);
                 step++;
+                if (step == 1)
+                {
+                    firstPoll.SetResult();
+                    await releasePoll.Task.WaitAsync(token);
+                }
                 return WireBackend.Json(200, """{"status":"Succeeded"}""");
             }
+            Interlocked.Increment(ref reads);
             if (step == 1)
             {
                 cancelDuringFinalGet.Cancel();
@@ -446,15 +438,30 @@ public sealed class ManagementWireTests
         ManagementOperation operation = started.Value;
         await Assert.That(operation.State).IsEqualTo(NativeProvisioningState.Pending);
 
-        // First status check polls {"status":"Succeeded"} then cancels during final vault GET:
-        // must throw OperationCanceledException and must NOT falsely promote State to Succeeded.
-        await Assert.That(async () => await operation.CheckStatusAsync(cancelDuringFinalGet.Token))
-            .Throws<OperationCanceledException>();
+        Task<SecretStatus> firstCheck = operation.CheckStatusAsync(cancelDuringFinalGet.Token).AsTask();
+        try
+        {
+            await firstPoll.Task;
+            using var queuedCancellation = new CancellationTokenSource();
+            Task<SecretStatus> queuedCheck = operation.CheckStatusAsync(queuedCancellation.Token).AsTask();
+            queuedCancellation.Cancel();
+            await Assert.That(async () => await queuedCheck).Throws<OperationCanceledException>();
+            await Assert.That(reads).IsEqualTo(1);
+        }
+        finally
+        {
+            releasePoll.TrySetResult();
+            await Assert.That(async () => await firstCheck).Throws<OperationCanceledException>();
+        }
+        await Assert.That(reads).IsEqualTo(2);
         await Assert.That(operation.State).IsEqualTo(NativeProvisioningState.Pending);
 
         // Second un-canceled check must get a clean 2-request budget and reach Succeeded cleanly.
         await Assert.That(await operation.CheckStatusAsync()).IsEqualTo(SecretStatus.Success);
         await Assert.That(operation.State).IsEqualTo(NativeProvisioningState.Succeeded);
+        await Assert.That(reads).IsEqualTo(4);
+        await Assert.That(await operation.CheckStatusAsync()).IsEqualTo(SecretStatus.Success);
+        await Assert.That(reads).IsEqualTo(4);
     }
 
     [Test]

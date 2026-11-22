@@ -34,9 +34,11 @@ public sealed class AzureAuditIngestionCollectorTests
         await Assert.That(result.ResponseComplete).IsTrue();
         await Assert.That(result.Rows.Select(r => r.CorrelationId)).IsEquivalentTo(new Guid?[] { Correlation, OtherCorrelation, Correlation });
         await Assert.That(result.NativeQueryRequestId).IsEqualTo("native-source-query");
-        await Assert.That(fixture.Backend.Uri!.AbsoluteUri).IsEqualTo(AuditIngestionCollector.Origin +
-            (workspace ? $"/v1/workspaces/{Workspace:D}/query" : "/v1" + Vault().ExportResourceId() + "/query"));
-        await Assert.That(fixture.Credential.Scopes.Single()).IsEqualTo("https://api.loganalytics.io//.default");
+        await Assert.That(fixture.Backend.Uri!.GetLeftPart(UriPartial.Authority)).IsEqualTo(
+            Azure.Monitor.Query.Logs.LogsQueryAudience.AzurePublicCloud.ToString().TrimEnd('/'));
+        await Assert.That(fixture.Backend.Uri.AbsolutePath).IsEqualTo(
+            workspace ? $"/v1/workspaces/{Workspace:D}/query" : "/v1" + Vault().ExportResourceId() + "/query");
+        await Assert.That(fixture.Credential.Scopes.Single()).IsEqualTo(AuditDiagnosticsEffects.PublicMonitoringScope);
         await Assert.That(fixture.Backend.Query!.Contains(Vault().ExportResourceId(), StringComparison.Ordinal)).IsTrue();
         await Assert.That(fixture.Backend.Sends).IsEqualTo(1);
         await Assert.That(fixture.Backend.Auth).IsEqualTo("Bearer independent-monitoring");

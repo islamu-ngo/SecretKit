@@ -29,10 +29,12 @@ Core retains no Refit dependency. Exact restored runtime/analyzer transitives
 and package content hashes belong to their generated locks and release gate.
 
 Optional Azure administration uses Azure.ResourceManager.KeyVault 1.4.0 and
-Azure.Monitor.Query 1.7.1. Their NuGet nuspec metadata was inspected on 2026-10-09:
+Azure.Monitor.Query.Logs 1.0.0. Their NuGet nuspec metadata was inspected on
+2026-10-09 and 2026-11-22 respectively:
 both declare MIT and the Azure SDK repository. Recorded source commits are
 75a7ef8ab6eae983be2334991e4584a4f5f91d71 and
-36824c3ca78ab202640254522dd2bf309a18ac2e respectively. These dependencies belong
+a29f72b8ecce0f2058f189b35cd00c833d513ef1 respectively. The Logs package
+requires Azure.Core 1.49.0 or later for both target frameworks. These dependencies belong
 only to the management package, not Core, common reads or application bootstrap.
 Their transitive graph and distribution evidence remain part of the release gate.
 

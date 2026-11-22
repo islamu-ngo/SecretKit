@@ -1,4 +1,6 @@
 using System.Text.Json.Serialization;
+using Azure.ResourceManager.KeyVault;
+using Azure.ResourceManager.Resources;
 using SecretKit.Core;
 
 namespace SecretKit.AzureKeyVault.Management;
@@ -30,7 +32,7 @@ public sealed class SubscriptionScope(Guid subscriptionId) : ManagementScope
     /// <summary>Gets the protected subscription identifier.</summary>
     [JsonIgnore]
     public Guid SubscriptionId { get; } = Identifier(subscriptionId);
-    internal override string ResourceId => $"/subscriptions/{SubscriptionId:D}";
+    internal override string ResourceId => SubscriptionResource.CreateResourceIdentifier(SubscriptionId.ToString("D")).ToString();
 }
 
 /// <summary>A resource group within an explicitly selected subscription.</summary>
@@ -44,7 +46,8 @@ public sealed class ResourceGroupScope(SubscriptionScope subscription, string re
     /// <summary>Gets the protected resource-group name.</summary>
     [JsonIgnore]
     public string ResourceGroup { get; } = Segment(resourceGroup);
-    internal override string ResourceId => $"{Subscription.ResourceId}/resourceGroups/{ResourceGroup}";
+    internal override string ResourceId => ResourceGroupResource.CreateResourceIdentifier(
+        Subscription.SubscriptionId.ToString("D"), ResourceGroup).ToString();
 }
 
 /// <summary>Validated ARM vault coordinates, separate from the secret data-plane origin.</summary>
@@ -58,7 +61,8 @@ public sealed class VaultScope(ResourceGroupScope resourceGroup, string vaultNam
     /// <summary>Gets the protected native vault name.</summary>
     [JsonIgnore]
     public string VaultName { get; } = ValidateName(vaultName);
-    internal override string ResourceId => $"{ResourceGroup.ResourceId}/providers/Microsoft.KeyVault/vaults/{VaultName}";
+    internal override string ResourceId => KeyVaultResource.CreateResourceIdentifier(
+        ResourceGroup.Subscription.SubscriptionId.ToString("D"), ResourceGroup.ResourceGroup, VaultName).ToString();
     /// <summary>Explicitly exports protected coordinates into an ordinary managed string.</summary>
     /// <returns>The ARM resource identifier; the caller owns subsequent disclosure and retention.</returns>
     public string ExportResourceId() => ResourceId;
@@ -91,8 +95,8 @@ public sealed class DeletedVaultScope(SubscriptionScope subscription, string loc
     /// <summary>Gets the protected deleted-vault name.</summary>
     [JsonIgnore]
     public string VaultName { get; } = VaultScope.ValidateName(vaultName);
-    internal override string ResourceId =>
-        $"{Subscription.ResourceId}/providers/Microsoft.KeyVault/locations/{Location}/deletedVaults/{VaultName}";
+    internal override string ResourceId => DeletedKeyVaultResource.CreateResourceIdentifier(
+        Subscription.SubscriptionId.ToString("D"), Location, VaultName).ToString();
 }
 
 /// <summary>Coordinates for an existing vault private-endpoint connection, not the endpoint itself.</summary>
@@ -106,7 +110,9 @@ public sealed class PrivateConnectionScope(VaultScope vault, string connectionNa
     /// <summary>Gets the protected connection name.</summary>
     [JsonIgnore]
     public string ConnectionName { get; } = Segment(connectionName, 128);
-    internal override string ResourceId => $"{Vault.ResourceId}/privateEndpointConnections/{ConnectionName}";
+    internal override string ResourceId => KeyVaultPrivateEndpointConnectionResource.CreateResourceIdentifier(
+        Vault.ResourceGroup.Subscription.SubscriptionId.ToString("D"), Vault.ResourceGroup.ResourceGroup,
+        Vault.VaultName, ConnectionName).ToString();
 }
 
 /// <summary>Local, single-use evidence bound to this client, scope instance and native operation.</summary>

@@ -1,3 +1,5 @@
+using System.Buffers;
+using System.Security.Cryptography;
 using System.Text.Json;
 using Azure;
 using Azure.Core;
@@ -7,19 +9,39 @@ using SecretKit.Core;
 namespace SecretKit.AzureKeyVault.Management;
 
 /// <summary>Last controlled SDK send boundary. Host transport internals remain host responsibility.</summary>
-internal sealed class ControlledTransport(HttpPipelineTransport inner, string host, string path,
+internal sealed class ControlledTransport(HttpPipelineTransport inner, Uri origin, string? path,
     RequestMethod method, string? apiVersion, int[] statuses, int maximumBytes,
     ManagementReceipt? receipt = null) : HttpPipelineTransport
 {
     private readonly Lock _gate = new();
-    private readonly HashSet<string> _statusUrls = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _statusUrls = new(StringComparer.Ordinal);
     private StatusCheckScope? _activeStatusCheck;
     private int _lastStatus;
+    private int? _definitiveMutationStatus;
     private bool _hasContinuation;
+    private string? _sdkRequest;
+
+    internal void CaptureInitialRequest(HttpMessage message)
+    {
+        if (path is not null) return;
+        Uri uri = message.Request.Uri.ToUri();
+        if (!Trusted(uri) || message.Request.Method != method || !Revision(uri))
+            throw new BoundaryException();
+        lock (_gate)
+        {
+            if (_sdkRequest is not null) throw new BoundaryException();
+            _sdkRequest = uri.AbsoluteUri;
+        }
+    }
 
     internal int LastStatus
     {
         get { lock (_gate) return _lastStatus; }
+    }
+
+    internal int? DefinitiveMutationStatus
+    {
+        get { lock (_gate) return _definitiveMutationStatus; }
     }
 
     internal bool HasContinuation
@@ -88,7 +110,9 @@ internal sealed class ControlledTransport(HttpPipelineTransport inner, string ho
     public override async ValueTask ProcessAsync(HttpMessage message)
     {
         var uri = message.Request.Uri.ToUri();
-        bool sameTarget = uri.AbsolutePath.Equals(path, StringComparison.OrdinalIgnoreCase);
+        bool sameTarget = path is null
+            ? string.Equals(uri.AbsoluteUri, _sdkRequest, StringComparison.Ordinal)
+            : uri.AbsolutePath.Equals(path, StringComparison.OrdinalIgnoreCase);
         StatusCheckScope? statusCheck;
         bool knownStatusUrl;
         lock (_gate)
@@ -121,7 +145,17 @@ internal sealed class ControlledTransport(HttpPipelineTransport inner, string ho
 
         await inner.ProcessAsync(message).ConfigureAwait(false);
         int responseStatus = message.Response.Status;
-        lock (_gate) { _lastStatus = responseStatus; }
+        lock (_gate)
+        {
+            _lastStatus = responseStatus;
+            if (!checkingStatus && receipt?.Evidence == DispatchEvidence.PossiblyDispatched &&
+                SecretKit.AzureKeyVault.AzureFailureClassification.IsDefinitiveMutationRejection(responseStatus))
+            {
+                _definitiveMutationStatus = responseStatus;
+                receipt.Record(responseStatus == (int)System.Net.HttpStatusCode.Conflict ?
+                    DispatchEvidence.Conflict : DispatchEvidence.Rejected);
+            }
+        }
         if (checkingStatus && responseStatus >= 400)
         {
             // Do not let the original ARM handle cache an observation failure as its
@@ -157,7 +191,17 @@ internal sealed class ControlledTransport(HttpPipelineTransport inner, string ho
                         throw new BoundaryException();
                     }
 
-                    lock (_gate) { _statusUrls.Add(next.AbsoluteUri); }
+                    bool originallyIssued;
+                    lock (_gate)
+                    {
+                        originallyIssued = _statusUrls.Contains(next.AbsoluteUri);
+                        if (!checkingStatus) _statusUrls.Add(next.AbsoluteUri);
+                    }
+                    if (checkingStatus && !originallyIssued)
+                    {
+                        message.Response.Dispose();
+                        throw new BoundaryException();
+                    }
                 }
             }
         }
@@ -177,7 +221,19 @@ internal sealed class ControlledTransport(HttpPipelineTransport inner, string ho
             try
             {
                 using var bounded = new BudgetStream(stream, maximumBytes);
-                await bounded.CopyToAsync(buffer, message.CancellationToken).ConfigureAwait(false);
+                var scratch = ArrayPool<byte>.Shared.Rent(Math.Min(8192, maximumBytes + 1));
+                try
+                {
+                    int count;
+                    while ((count = await bounded.ReadAsync(scratch.AsMemory(), message.CancellationToken)
+                        .ConfigureAwait(false)) != 0)
+                        buffer.Write(scratch, 0, count);
+                }
+                finally
+                {
+                    CryptographicOperations.ZeroMemory(scratch);
+                    ArrayPool<byte>.Shared.Return(scratch);
+                }
                 buffer.Position = 0;
                 if (apiVersion is not null && responseStatus < 400 && buffer.Length != 0)
                 {
@@ -255,8 +311,9 @@ internal sealed class ControlledTransport(HttpPipelineTransport inner, string ho
         }
     }
 
-    private bool Trusted(Uri uri) => uri.IsAbsoluteUri && uri.Scheme == "https" &&
-        uri.Host.Equals(host, StringComparison.OrdinalIgnoreCase) && uri.IsDefaultPort &&
+    private bool Trusted(Uri uri) => uri.IsAbsoluteUri && uri.Scheme == Uri.UriSchemeHttps &&
+        uri.Scheme == origin.Scheme && uri.Host.Equals(origin.Host, StringComparison.OrdinalIgnoreCase) &&
+        uri.Port == origin.Port &&
         uri.UserInfo.Length == 0 && uri.Fragment.Length == 0;
 
     private bool Revision(Uri uri)
@@ -266,13 +323,22 @@ internal sealed class ControlledTransport(HttpPipelineTransport inner, string ho
             return uri.Query.Length == 0;
         }
 
-        string[] revisions = uri.Query.TrimStart('?').Split('&')
-            .Where(v => v.StartsWith("api-version=", StringComparison.OrdinalIgnoreCase)).ToArray();
-        return revisions.Length == 1 && revisions[0] == $"api-version={apiVersion}";
+        if (uri.Query.Length == 0) return false;
+        string? revision = null;
+        foreach (string parameter in uri.Query[1..].Split('&'))
+        {
+            int separator = parameter.IndexOf('=');
+            string key = separator < 0 ? parameter : parameter[..separator];
+            if (!Uri.UnescapeDataString(key).Equals("api-version", StringComparison.OrdinalIgnoreCase)) continue;
+            if (revision is not null || separator < 0 || separator == parameter.Length - 1) return false;
+            revision = parameter[(separator + 1)..];
+        }
+        return revision == apiVersion;
     }
 
     private bool IsOperationPath(string candidate)
     {
+        if (path is null) return false;
         string[] origin = path.Split('/');
         string[] parts = candidate.Split('/');
         return origin.Length > 2 && parts.Length == 9 &&
@@ -289,8 +355,8 @@ internal sealed class ControlledTransport(HttpPipelineTransport inner, string ho
 
     private bool IsNotificationOperationTarget(Uri candidate, string issued)
     {
-        if (candidate.AbsoluteUri != issued || issued.Contains('%') ||
-            candidate.Query != "?api-version=2025-02-15")
+        if (path is null || candidate.AbsoluteUri != issued || issued.Contains('%') ||
+            candidate.Query != $"?api-version={apiVersion}")
             return false;
         string[] origin = path.Split('/');
         string[] parts = candidate.AbsolutePath.Split('/');
@@ -301,7 +367,7 @@ internal sealed class ControlledTransport(HttpPipelineTransport inner, string ho
             parts[7] == "locations" &&
             parts[8].Length is >= 1 and <= 50 && parts[8].All(char.IsAsciiLetterOrDigit) &&
             (parts[9] == "operationResults" && Guid.TryParseExact(parts[10], "D", out _) &&
-                parts[11] == "Spring" && parts[12] == "default" ||
+                parts[11].Length is >= 1 and <= 50 && parts[11].All(char.IsAsciiLetterOrDigit) && parts[12] == "default" ||
              parts[9] == "operationStatus" && parts[10] == "default" &&
                 parts[11] == "operationId" && Guid.TryParseExact(parts[12], "D", out _));
     }

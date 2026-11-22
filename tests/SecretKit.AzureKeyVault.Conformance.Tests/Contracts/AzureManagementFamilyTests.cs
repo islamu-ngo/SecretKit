@@ -185,7 +185,7 @@ public sealed class AzureManagementFamilyTests
         using var backend = new Backend((_, _) => Task.FromResult(Json(200, body)));
         using var http = new HttpClient(backend);
         using var credential = new SelectedAudienceCredential(new("offline-monitoring", DateTimeOffset.MaxValue,
-            "https://api.loganalytics.io//.default"));
+            AuditDiagnosticsEffects.PublicMonitoringScope));
         var result = await new AuditDiagnostics(credential, new HttpClientTransport(http))
             .QueryAsync(new(Vault(), start, start.AddHours(1)));
         await Assert.That(result.Status).IsEqualTo(SecretStatus.Success);

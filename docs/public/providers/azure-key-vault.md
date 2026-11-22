@@ -33,7 +33,7 @@ normal vault DNS name and TLS validation.
 Accepted suffixes are `.vault.azure.net`, `.vault.usgovcloudapi.net` and
 `.vault.azure.cn`. The data-plane SDK retains challenge-resource verification;
 it does not reuse the ARM or Logs audience. Management and monitoring have their
-own fixed [public-cloud selections](management.md#public-cloud-selection).
+own explicit [cloud selections](management.md#arm-and-audit-cloud-selection).
 Current deployment posture is JIT/net10.0, with no sovereign, trimming or Native
 AOT qualification implied by hostname acceptance.
 

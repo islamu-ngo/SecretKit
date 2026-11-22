@@ -87,12 +87,12 @@ public enum ManagementSupport
 /// <summary>Static contract availability, not permissions, delivery or live conformance evidence.</summary>
 public sealed class OperationSupport
 {
-    private OperationSupport(ManagementOperationFamily operation, ManagementSupport support, string revision,
+    private OperationSupport(ManagementOperationFamily operation, ManagementSupport support, ArmMethodContract? contract,
         IEnumerable<int> statuses)
     {
         Operation = operation;
         Support = support;
-        ApiRevision = revision;
+        ApiRevision = contract?.ApiVersion;
         SuccessfulHttpStatuses = Array.AsReadOnly(statuses.ToArray());
     }
 
@@ -100,8 +100,8 @@ public sealed class OperationSupport
     public ManagementOperationFamily Operation { get; }
     /// <summary>Gets the library's projection scope, not the caller's entitlement.</summary>
     public ManagementSupport Support { get; }
-    /// <summary>Gets the selected native API revision.</summary>
-    public string ApiRevision { get; }
+    /// <summary>Gets the SDK method's ARM API revision, or null for a non-ARM operation.</summary>
+    public string? ApiRevision { get; }
     /// <summary>Gets accepted successful wire statuses; receipt classification still depends on the response.</summary>
     public IReadOnlyList<int> SuccessfulHttpStatuses { get; }
     /// <summary>Always false: static inventory does not inspect the selected identity's permissions.</summary>
@@ -115,15 +115,41 @@ public sealed class OperationSupport
     public static IReadOnlyList<OperationSupport> Inventory { get; } = Array.AsReadOnly(
         Enum.GetValues<ManagementOperationFamily>().Select(operation =>
         {
-            bool rbac = operation is >= ManagementOperationFamily.RoleAssignmentCreate and <= ManagementOperationFamily.RoleDefinitionList;
-            bool notification = operation >= ManagementOperationFamily.NotificationCreateOrUpdate;
-            string revision = operation switch
+            ArmMethodContract? contract = operation switch
             {
-                ManagementOperationFamily.SubscriptionList => "2022-12-01",
-                _ when rbac => "2022-04-01",
-                _ when notification => "2025-02-15",
-                ManagementOperationFamily.AuditQueryWorkspace or ManagementOperationFamily.AuditQueryResource => "v1",
-                _ => "2026-02-01"
+                ManagementOperationFamily.VaultCreateOrUpdate or ManagementOperationFamily.VaultRecover => ArmMethodContracts.VaultCreateOrUpdate,
+                ManagementOperationFamily.VaultUpdate => ArmMethodContracts.VaultUpdate,
+                ManagementOperationFamily.VaultGet => ArmMethodContracts.VaultGet,
+                ManagementOperationFamily.VaultDelete => ArmMethodContracts.VaultDelete,
+                ManagementOperationFamily.VaultGetDeleted => ArmMethodContracts.VaultGetDeleted,
+                ManagementOperationFamily.VaultPurgeDeleted => ArmMethodContracts.VaultPurgeDeleted,
+                ManagementOperationFamily.VaultListByResourceGroup => ArmMethodContracts.VaultListByResourceGroup,
+                ManagementOperationFamily.VaultListBySubscription => ArmMethodContracts.VaultListBySubscription,
+                ManagementOperationFamily.VaultListDeleted => ArmMethodContracts.VaultListDeleted,
+                ManagementOperationFamily.VaultCheckNameAvailability => ArmMethodContracts.VaultCheckNameAvailability,
+                ManagementOperationFamily.AccessPolicyAdd or ManagementOperationFamily.AccessPolicyReplace or
+                    ManagementOperationFamily.AccessPolicyRemove => ArmMethodContracts.AccessPolicyUpdate,
+                ManagementOperationFamily.PrivateConnectionGet => ArmMethodContracts.PrivateConnectionGet,
+                ManagementOperationFamily.PrivateConnectionList => ArmMethodContracts.PrivateConnectionList,
+                ManagementOperationFamily.PrivateConnectionUpdate => ArmMethodContracts.PrivateConnectionUpdate,
+                ManagementOperationFamily.PrivateConnectionDelete => ArmMethodContracts.PrivateConnectionDelete,
+                ManagementOperationFamily.PrivateLinkList => ArmMethodContracts.PrivateLinkList,
+                ManagementOperationFamily.RoleAssignmentCreate => ArmMethodContracts.RoleAssignmentCreate,
+                ManagementOperationFamily.RoleAssignmentGet => ArmMethodContracts.RoleAssignmentGet,
+                ManagementOperationFamily.RoleAssignmentDelete => ArmMethodContracts.RoleAssignmentDelete,
+                ManagementOperationFamily.RoleAssignmentList => ArmMethodContracts.RoleAssignmentList,
+                ManagementOperationFamily.RoleDefinitionGet => ArmMethodContracts.RoleDefinitionGet,
+                ManagementOperationFamily.RoleDefinitionList => ArmMethodContracts.RoleDefinitionList,
+                ManagementOperationFamily.AuditQueryWorkspace or ManagementOperationFamily.AuditQueryResource => null,
+                ManagementOperationFamily.SubscriptionList => ArmMethodContracts.SubscriptionList,
+                ManagementOperationFamily.NotificationCreateOrUpdate => ArmMethodContracts.NotificationCreateOrUpdate,
+                ManagementOperationFamily.NotificationUpdate => ArmMethodContracts.NotificationUpdate,
+                ManagementOperationFamily.NotificationDelete => ArmMethodContracts.NotificationDelete,
+                ManagementOperationFamily.NotificationGet => ArmMethodContracts.NotificationGet,
+                ManagementOperationFamily.NotificationList => ArmMethodContracts.NotificationList,
+                ManagementOperationFamily.NotificationGetFullUrl => ArmMethodContracts.NotificationGetFullUrl,
+                ManagementOperationFamily.NotificationGetDeliveryAttributes => ArmMethodContracts.NotificationGetDeliveryAttributes,
+                _ => throw new InvalidOperationException("No SDK contract binding for the management operation.")
             };
             int[] statuses = operation switch
             {
@@ -140,7 +166,7 @@ public sealed class OperationSupport
             };
             return new OperationSupport(operation,
                 ManagementSupport.BoundedNativeSubset,
-                revision, statuses);
+                contract, statuses);
         }).ToArray());
 
     /// <summary>Returns only the operation and implementation-scope categories.</summary>

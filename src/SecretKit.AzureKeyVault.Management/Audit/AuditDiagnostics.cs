@@ -1,12 +1,25 @@
+using System.Collections.Frozen;
 using System.Globalization;
 using System.Text.Json.Serialization;
 using Azure.Core;
 using Azure.Core.Pipeline;
-using Azure.Monitor.Query;
-using Azure.Monitor.Query.Models;
+using Azure.Monitor.Query.Logs;
+using Azure.Monitor.Query.Logs.Models;
 using SecretKit.Core;
+using SecretKit.Internal;
 
 namespace SecretKit.AzureKeyVault.Management;
+
+/// <summary>Closed selection of the Logs endpoint and its corresponding monitoring audience.</summary>
+public enum AuditCloud
+{
+    /// <summary>Azure public cloud.</summary>
+    Public,
+    /// <summary>Azure US Government.</summary>
+    USGovernment,
+    /// <summary>Azure operated by 21Vianet.</summary>
+    China
+}
 
 /// <summary>A bounded classification of native audit operation names, not proof of a caller's current permissions.</summary>
 public enum AuditOperation
@@ -83,6 +96,11 @@ public sealed class AuditQuery
         }
 
         Vault = vault;
+        var id = new ResourceIdentifier(vault.ResourceId);
+        if (id.ResourceType != Azure.ResourceManager.KeyVault.KeyVaultResource.ResourceType ||
+            id.SubscriptionId != vault.ResourceGroup.Subscription.SubscriptionId.ToString("D") ||
+            id.ResourceGroupName != vault.ResourceGroup.ResourceGroup || id.Name != vault.VaultName)
+            throw new ArgumentException("Invalid audit resource.", nameof(vault));
         Start = start;
         End = end;
         MaximumRows = maximumRows;
@@ -115,7 +133,7 @@ public sealed class AuditQuery
 
     internal string QueryText =>
         $"AzureDiagnostics | where ResourceProvider == 'MICROSOFT.KEYVAULT' and Category == 'AuditEvent' " +
-        $"and _ResourceId =~ '{Vault.ResourceId}' " +
+        LogsQueryClient.CreateQuery($"and _ResourceId =~ {Vault.ResourceId} ") +
         $"| where TimeGenerated >= datetime({Start.UtcDateTime.ToString("O", CultureInfo.InvariantCulture)}) " +
         $"and TimeGenerated < datetime({End.UtcDateTime.ToString("O", CultureInfo.InvariantCulture)}) " +
         $"| project TimeGenerated, OperationName, ResultType, _ResourceId, Category " +
@@ -218,12 +236,14 @@ public sealed class AuditBatchProgress
 }
 
 /// <summary>
-/// Separate explicit monitoring credential. Public cloud v1 only; never uses an administrative
+/// Separate explicit monitoring credential and selected Logs v1 origin; never uses an administrative
 /// credential implicitly or grants runtime reads. Clients and transport/credential telemetry are host-owned.
 /// </summary>
 public sealed class AuditDiagnostics
 {
-    private readonly TokenCredential _credential;
+    private static readonly FrozenDictionary<string, AuditOperation> Operations =
+        Enum.GetValues<AuditOperation>().ToFrozenDictionary(op => op.ToString(), StringComparer.OrdinalIgnoreCase);
+    private readonly LogsQueryClient _client;
     private readonly HttpPipelineTransport _transport;
     private readonly int _maximumBytes;
     private readonly TimeProvider _time;
@@ -233,19 +253,37 @@ public sealed class AuditDiagnostics
     /// <param name="transport">Host-owned transport; external instrumentation remains the host's responsibility.</param>
     /// <param name="maximumResponseBytes">The local response budget, from 1 KiB through 16 MiB.</param>
     /// <param name="timeProvider">The cooperative deadline clock, or the system clock.</param>
+    /// <param name="cloud">Selects a fixed Logs origin and audience; no cross-cloud fallback.</param>
     /// <exception cref="ArgumentNullException">The credential or transport is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">The response budget is invalid.</exception>
     public AuditDiagnostics(TokenCredential monitoringCredential, HttpPipelineTransport transport,
-        int maximumResponseBytes = 1024 * 1024, TimeProvider? timeProvider = null)
+        int maximumResponseBytes = 1024 * 1024, TimeProvider? timeProvider = null, AuditCloud cloud = AuditCloud.Public)
     {
         ArgumentNullException.ThrowIfNull(monitoringCredential);
         ArgumentNullException.ThrowIfNull(transport);
-        if (maximumResponseBytes is < 1024 or > 16 * 1024 * 1024)
+        if (!TransferLimits.IsValidByteBudget(maximumResponseBytes))
         {
             throw new ArgumentOutOfRangeException(nameof(maximumResponseBytes));
         }
 
-        _credential = monitoringCredential;
+        var audience = cloud switch
+        {
+            AuditCloud.Public => LogsQueryAudience.AzurePublicCloud,
+            AuditCloud.USGovernment => LogsQueryAudience.AzureGovernment,
+            AuditCloud.China => LogsQueryAudience.AzureChina,
+            _ => throw new ArgumentOutOfRangeException(nameof(cloud))
+        };
+        var options = new LogsQueryClientOptions(LogsQueryClientOptions.ServiceVersion.V1)
+        {
+            Audience = audience,
+            Transport = new AzureCallPipeline(transport)
+        };
+        options.Diagnostics.IsLoggingEnabled = false;
+        options.Diagnostics.IsLoggingContentEnabled = false;
+        options.Diagnostics.IsDistributedTracingEnabled = false;
+        options.Retry.MaxRetries = 0;
+        options.AddPolicy(new AzureCallPipeline.CapturePolicy(), HttpPipelinePosition.PerCall);
+        _client = new LogsQueryClient(monitoringCredential, options);
         _transport = transport;
         _maximumBytes = maximumResponseBytes;
         _time = timeProvider ?? TimeProvider.System;
@@ -270,19 +308,10 @@ public sealed class AuditDiagnostics
         cancellationToken.ThrowIfCancellationRequested();
         using var deadline = new CancellationTokenSource(query.Timeout, _time);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
-        var path = query.WorkspaceId is { } workspace
-            ? $"/v1/workspaces/{workspace:D}/query" : $"/v1{query.Vault.ResourceId}/query";
-        var options = new LogsQueryClientOptions(LogsQueryClientOptions.ServiceVersion.V1)
-        {
-            Audience = LogsQueryAudience.AzurePublicCloud,
-            Transport = new ControlledTransport(_transport, "api.loganalytics.io", path, RequestMethod.Post,
-                null, [200], _maximumBytes)
-        };
-        options.Diagnostics.IsLoggingEnabled = false;
-        options.Diagnostics.IsLoggingContentEnabled = false;
-        options.Diagnostics.IsDistributedTracingEnabled = false;
-        options.Retry.MaxRetries = 0;
-        var client = new LogsQueryClient(new Uri("https://api.loganalytics.io"), _credential, options);
+        // The typed SDK call owns route construction. Capture its exact initial URI
+        // before credentials and reject any later substitution at dispatch.
+        var route = new ControlledTransport(_transport, _client.Endpoint, null, RequestMethod.Post,
+            null, [200], _maximumBytes);
         var nativeOptions = new LogsQueryOptions
         {
             ServerTimeout = query.Timeout,
@@ -292,12 +321,14 @@ public sealed class AuditDiagnostics
         };
         try
         {
-            var range = new QueryTimeRange(query.Start, query.End);
-            var response = query.WorkspaceId is { } id
-                ? await client.QueryWorkspaceAsync(id.ToString("D"), query.QueryText, range, nativeOptions, linked.Token)
-                    .ConfigureAwait(false)
-                : await client.QueryResourceAsync(new ResourceIdentifier(query.Vault.ResourceId), query.QueryText,
-                    range, nativeOptions, linked.Token).ConfigureAwait(false);
+            var range = new LogsQueryTimeRange(query.Start, query.End);
+            Azure.Response<LogsQueryResult> response;
+            using (AzureCallPipeline.Bind(route))
+                response = query.WorkspaceId is { } id
+                    ? await _client.QueryWorkspaceAsync(id.ToString("D"), query.QueryText, range, nativeOptions, linked.Token)
+                        .ConfigureAwait(false)
+                    : await _client.QueryResourceAsync(new ResourceIdentifier(query.Vault.ResourceId), query.QueryText,
+                        range, nativeOptions, linked.Token).ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
             var native = response.Value;
             if (native.Status == LogsQueryResultStatus.Failure)
@@ -322,19 +353,18 @@ public sealed class AuditDiagnostics
             foreach (var row in table.Rows)
             {
                 linked.Token.ThrowIfCancellationRequested();
-                var timestamp = row.GetDateTimeOffset(0);
-                if (row.Count != 5 || timestamp is null || timestamp < query.Start || timestamp >= query.End ||
-                    timestamp < last || !row.GetString(3).Equals(query.Vault.ResourceId, StringComparison.OrdinalIgnoreCase) ||
+                if (row.Count != 5 || row.GetDateTimeOffset(0) is not { } timestamp ||
+                    row.GetString(1) is not { } operationText || row.GetString(2) is not { } resultText ||
+                    timestamp < query.Start || timestamp >= query.End ||
+                    timestamp < last || !string.Equals(row.GetString(3), query.Vault.ResourceId, StringComparison.OrdinalIgnoreCase) ||
                     row.GetString(4) != "AuditEvent")
                 {
                     return new(SecretStatus.Invalid, [], false, AuditError.InvalidResponse);
                 }
 
                 last = timestamp;
-                var operationText = row.GetString(1);
-                var operation = Enum.TryParse<AuditOperation>(operationText, true, out var parsed) && Enum.IsDefined(parsed)
-                    ? parsed : AuditOperation.Unknown;
-                var result = row.GetString(2) switch
+                var operation = Operations.GetValueOrDefault(operationText, AuditOperation.Unknown);
+                var result = resultText switch
                 {
                     "Success" => AuditResultKind.Success,
                     "Failure" => AuditResultKind.Failure,
@@ -342,10 +372,11 @@ public sealed class AuditDiagnostics
                 };
                 if (events.Count < query.MaximumRows)
                 {
-                    events.Add(new(timestamp.Value, operation, result));
+                    events.Add(new(timestamp, operation, result));
                 }
             }
 
+            linked.Token.ThrowIfCancellationRequested();
             bool partial = native.Status == LogsQueryResultStatus.PartialFailure || native.Error is not null;
             bool overflow = table.Rows.Count > query.MaximumRows;
             return new(SecretStatus.Success, events, !partial && !overflow,
@@ -410,7 +441,12 @@ public sealed class AuditDiagnostics
                 progress.Record(index, new AuditQueryResult(SecretStatus.Unavailable, [], false, AuditError.Deadline));
             }
         }
-        if (deadline.IsCancellationRequested) observation.Cancel(true);
-        observation.Record(deadline.IsCancellationRequested ? SecretStatus.Unavailable : SecretStatus.Success);
+        cancellationToken.ThrowIfCancellationRequested();
+        var results = progress.Results;
+        bool expired = deadline.IsCancellationRequested;
+        var firstFailure = results.FirstOrDefault(item => item?.Status != SecretStatus.Success);
+        if (expired || firstFailure?.Error == AuditError.Deadline) observation.Cancel(true);
+        observation.Record(expired ? SecretStatus.Unavailable : firstFailure?.Status ??
+            (results.Any(item => item?.Error == AuditError.PartialFailure) ? SecretStatus.Unknown : SecretStatus.Success));
     }
 }

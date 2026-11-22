@@ -4,8 +4,8 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Azure.Core;
 using Azure.Core.Pipeline;
-using Azure.Monitor.Query;
-using Azure.Monitor.Query.Models;
+using Azure.Monitor.Query.Logs;
+using Azure.Monitor.Query.Logs.Models;
 using SecretKit.AzureKeyVault.Management;
 
 namespace SecretKit.AzureKeyVault.Conformance.Tests.Admission.Management;
@@ -15,9 +15,6 @@ namespace SecretKit.AzureKeyVault.Conformance.Tests.Admission.Management;
 // request evidence before a service can establish trigger causality.
 internal sealed class AuditIngestionCollector
 {
-    // The pinned 1.7.1 SDK binds AzurePublicCloud to this endpoint. The newer
-    // documented azure.com endpoint is not a silent migration of that contract.
-    internal const string Origin = "https://api.loganalytics.io";
     internal enum Failure { None, Denied, Query, Partial, RowBudget, Boundary, Deadline, Unavailable }
     internal sealed record Limits(int MaximumRows, int MaximumResponseBytes, TimeSpan Timeout);
     internal sealed record Binding([property: JsonIgnore] FixtureSelector Selector,
@@ -100,7 +97,8 @@ internal sealed class AuditIngestionCollector
         options.Diagnostics.IsLoggingEnabled = false;
         options.Diagnostics.IsLoggingContentEnabled = false;
         options.Diagnostics.IsDistributedTracingEnabled = false;
-        var client = new LogsQueryClient(new Uri(Origin), credential, options);
+        var client = new LogsQueryClient(credential, options);
+        boundary.Bind(client.Endpoint);
         string query = "AzureDiagnostics | where ResourceProvider == 'MICROSOFT.KEYVAULT' and Category == 'AuditEvent' " +
             $"and _ResourceId =~ '{resource}' | where TimeGenerated >= datetime({binding.Start.UtcDateTime.ToString("O", CultureInfo.InvariantCulture)}) " +
             $"and TimeGenerated < datetime({binding.End.UtcDateTime.ToString("O", CultureInfo.InvariantCulture)}) " +
@@ -115,7 +113,7 @@ internal sealed class AuditIngestionCollector
                 IncludeStatistics = false,
                 IncludeVisualization = false
             };
-            var range = new QueryTimeRange(binding.Start, binding.End);
+            var range = new LogsQueryTimeRange(binding.Start, binding.End);
             var response = binding.WorkspaceId is { } id
                 ? await client.QueryWorkspaceAsync(id.ToString("D"), query, range, nativeOptions, linked.Token).ConfigureAwait(false)
                 : await client.QueryResourceAsync(new ResourceIdentifier(resource), query, range, nativeOptions, linked.Token).ConfigureAwait(false);
@@ -189,6 +187,8 @@ internal sealed class AuditIngestionCollector
     private sealed class QueryTransport(HttpPipelineTransport inner, string path, Limits limits) : HttpPipelineTransport, IDisposable
     {
         private int sends;
+        private Uri? endpoint;
+        internal void Bind(Uri expected) => endpoint = expected;
         private PooledPayloadBuffer? payloadBuffer;
         private MemoryStream? buffer;
         private Azure.Response? response;
@@ -201,7 +201,7 @@ internal sealed class AuditIngestionCollector
             message.CancellationToken.ThrowIfCancellationRequested();
             Uri uri = message.Request.Uri.ToUri();
             Require(++sends == 1 && uri.Scheme == "https" && uri.IsDefaultPort && uri.UserInfo.Length == 0 &&
-                uri.Fragment.Length == 0 && uri.GetLeftPart(UriPartial.Authority) == Origin &&
+                uri.Fragment.Length == 0 && uri.GetLeftPart(UriPartial.Authority) == endpoint?.GetLeftPart(UriPartial.Authority) &&
                 uri.AbsolutePath.Equals(path, StringComparison.OrdinalIgnoreCase) && uri.Query.Length == 0 &&
                 message.Request.Method == RequestMethod.Post && message.Request.Content is not null);
             message.BufferResponse = false;

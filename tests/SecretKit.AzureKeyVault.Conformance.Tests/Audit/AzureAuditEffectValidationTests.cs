@@ -125,7 +125,7 @@ public sealed class AzureAuditEffectValidationTests
         using var backend = new Backend(body);
         using var http = new HttpClient(backend);
         using var credential = new SelectedAudienceCredential(new("offline-monitoring", DateTimeOffset.MaxValue,
-            "https://api.loganalytics.io//.default"));
+            AuditDiagnosticsEffects.PublicMonitoringScope));
         AuditQueryResult result = await new AuditDiagnostics(credential, new HttpClientTransport(http)).QueryAsync(query);
         AuditDiagnosticsEffects.ValidateResult(result, "result." + mode);
         return result;

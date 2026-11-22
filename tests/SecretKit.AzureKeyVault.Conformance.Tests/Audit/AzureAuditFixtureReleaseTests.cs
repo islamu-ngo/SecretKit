@@ -80,7 +80,7 @@ public sealed class AzureAuditFixtureReleaseTests
 
     private static object Credential(string role) => new { token = role, expiresAt = "2099-01-01T00:00:00Z" };
     private static AudienceToken Monitoring(string role) =>
-        new(role, new(2099, 1, 1, 0, 0, 0, TimeSpan.Zero), "https://api.loganalytics.io//.default");
+        new(role, new(2099, 1, 1, 0, 0, 0, TimeSpan.Zero), AuditDiagnosticsEffects.PublicMonitoringScope);
     private static HttpResponseMessage Json<T>(T value) => new(HttpStatusCode.OK)
     {
         Content = new ByteArrayContent(JsonSerializer.SerializeToUtf8Bytes(value, ManagementAdmission.Json))

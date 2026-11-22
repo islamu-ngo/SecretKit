@@ -177,6 +177,12 @@ SDK-owned connections are reused with a two-minute pooled connection lifetime;
 host-controlled pipelines retain their own pooling and DNS policy. SDK controls
 do not suppress runtime EventSource, profilers, dumps or host instrumentation.
 
+Azure notification webhook destinations additionally require public HTTPS on
+the default port. Literal loopback, unspecified, private, link-local and multicast
+addresses are rejected, including IPv4-mapped IPv6 forms. This is destination
+syntax admission, not DNS-rebinding protection. Operators retain responsibility
+for trusted destination names, DNS resolution and network egress enforcement.
+
 Native operations have independent encoded body budgets: `MaximumRequestBytes`
 defaults to 1 MiB (1 KiB-16 MiB), separate from `MaximumResponseBytes`.
 `OperationTimeout` defaults to 30 seconds and must be positive and at most one

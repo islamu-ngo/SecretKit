@@ -75,7 +75,8 @@ public sealed class ManagementOperation
             }
 
             statusCheck = _transport.BeginStatusCheck();
-            await _update(linked.Token).ConfigureAwait(false);
+            using (AzureCallPipeline.Bind(_transport))
+                await _update(linked.Token).ConfigureAwait(false);
             NativeProvisioningState observedState = statusCheck.OperationState;
             linked.Token.ThrowIfCancellationRequested();
             if (observedState is NativeProvisioningState.Failed or NativeProvisioningState.Canceled or NativeProvisioningState.Pending)

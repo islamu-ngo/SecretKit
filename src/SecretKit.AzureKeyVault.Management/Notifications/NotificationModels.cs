@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using Azure.ResourceManager.EventGrid;
 using Azure.ResourceManager.EventGrid.Models;
 using SecretKit.Core;
 
@@ -14,7 +15,7 @@ public sealed class NotificationScope(VaultScope vault, string subscriptionName)
     /// <summary>Gets the protected native subscription name.</summary>
     [JsonIgnore] public string SubscriptionName { get; } = ValidateName(subscriptionName);
     internal override string ResourceId =>
-        $"{Vault.ResourceId}/providers/Microsoft.EventGrid/eventSubscriptions/{SubscriptionName}";
+        EventSubscriptionResource.CreateResourceIdentifier(Vault.ResourceId, SubscriptionName).ToString();
     private static string ValidateName(string value) =>
         value is not null && value.Length is >= 3 and <= 64 &&
         value.All(c => char.IsAsciiLetterOrDigit(c) || c == '-')
@@ -137,7 +138,7 @@ public sealed class NotificationWebhookAuthentication
 public sealed class NotificationConfiguration : IDisposable
 {
     /// <summary>Copies an HTTPS endpoint, distinct native events and independently owned delivery attributes.</summary>
-    /// <param name="endpointUrl">A bounded absolute HTTPS URL without user information or a fragment.</param>
+    /// <param name="endpointUrl">A bounded public HTTPS URL on the default port, without user information or a fragment. Private and loopback IP literals are rejected; trusted DNS and egress remain operator responsibilities.</param>
     /// <param name="eventTypes">One to three distinct supported secret events.</param>
     /// <param name="deliveryAttributes">Up to ten uniquely named attributes to copy; original attributes remain caller-owned.</param>
     /// <param name="webhookAuthentication">The optional explicit Microsoft Entra delivery binding; null omits authentication fields.</param>
@@ -208,9 +209,9 @@ public sealed class NotificationConfiguration : IDisposable
     internal static void ValidateEndpoint(string? value)
     {
         if (value is null || value.Length is < 1 or > 4096 || value.Any(char.IsControl) ||
-            !Uri.TryCreate(value, UriKind.Absolute, out var uri) || uri.Scheme != "https" ||
-            uri.Host.Length == 0 || uri.UserInfo.Length != 0 || uri.Fragment.Length != 0)
+            !Uri.TryCreate(value, UriKind.Absolute, out var uri))
             throw new ArgumentException("Invalid notification endpoint.");
+        SecretKit.Internal.OriginPolicy.ValidatePublicWebhookEndpoint(uri);
     }
     /// <summary>Disposes the owned endpoint and attribute copies; input objects remain caller-owned.</summary>
     public void Dispose()

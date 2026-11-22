@@ -1,4 +1,5 @@
 using Azure.Core.Pipeline;
+using Azure.Monitor.Query.Logs;
 using SecretKit.AzureKeyVault;
 using SecretKit.AzureKeyVault.Management;
 using SecretKit.Core;
@@ -10,18 +11,25 @@ internal static class AuditDiagnosticsEffects
 {
     private const string Prefix = "a.management.AuditDiagnostics.";
     private const string Type = "SecretKit.AzureKeyVault.Management.";
-    internal static readonly string[] QueryVariants =
+    internal static string PublicMonitoringScope => LogsQueryAudience.AzurePublicCloud.ToString().TrimEnd('/') + "/.default";
+    private static readonly string[] PublicQueryVariants =
     [
         "query.resource", "query.workspace", "result.complete", "result.partial-failure", "result.row-limit",
         "result.deadline", "operation.Unknown", "operation.SecretGet", "operation.SecretList", "operation.SecretSet",
         "operation.SecretDelete", "operation.SecretRecover", "operation.SecretBackup", "operation.SecretRestore", "operation.SecretPurge"
     ];
+    internal static readonly string[] QueryVariants = [.. PublicQueryVariants,
+        "query.resource.us-government", "query.workspace.us-government", "query.resource.china", "query.workspace.china"];
+    private static readonly string[] BatchVariants =
+        ["batch.single", "batch.multiple", "batch.mixed-resource-workspace", "batch.caller-cancellation-progress"];
+    internal static bool HasPublicFixture(string variant) =>
+        PublicQueryVariants.Contains(variant, StringComparer.Ordinal) || BatchVariants.Contains(variant, StringComparer.Ordinal);
     internal static readonly ManagementMember[] Members =
     [
         new(Prefix + "QueryAsync", Type + "AuditDiagnostics.QueryAsync(" + Type + "AuditQuery,System.Threading.CancellationToken)", QueryVariants, false),
         new(Prefix + "QueryBatchAsync", Type + "AuditDiagnostics.QueryBatchAsync(System.Collections.Generic.IReadOnlyList<" + Type +
             "AuditQuery>," + Type + "AuditBatchProgress,System.TimeSpan,System.Threading.CancellationToken)",
-            [.. QueryVariants, "batch.single", "batch.multiple", "batch.mixed-resource-workspace", "batch.caller-cancellation-progress"], false)
+            [.. QueryVariants, .. BatchVariants], false)
     ];
 
     public static void Register(NativeCaseRegistry registry, OwnedAzureEnvironment env,
@@ -50,7 +58,7 @@ internal static class AuditDiagnosticsEffects
                 WorkspaceId != Guid.Empty && MaximumRows is >= 1 and <= 1000 &&
                 QueryTimeout >= TimeSpan.FromSeconds(1) && QueryTimeout <= TimeSpan.FromMinutes(2) &&
                 BatchTimeout >= TimeSpan.FromSeconds(1) && BatchTimeout <= TimeSpan.FromMinutes(2) &&
-                Monitoring.Audience == "https://api.loganalytics.io//.default" &&
+                Monitoring.Audience == PublicMonitoringScope &&
                 DeniedMonitoring.Audience == Monitoring.Audience && Monitoring.Token != DeniedMonitoring.Token &&
                 !string.IsNullOrWhiteSpace(Monitoring.Token) && !string.IsNullOrWhiteSpace(DeniedMonitoring.Token) &&
                 Monitoring.ExpiresAt > DateTimeOffset.UtcNow && DeniedMonitoring.ExpiresAt > DateTimeOffset.UtcNow &&
@@ -97,6 +105,10 @@ internal static class AuditDiagnosticsEffects
         NativeCaseProbe probe, CancellationToken token, Func<ObserverEndpoint, OwnedManagementObserver>? createObserver,
         HttpPipelineTransport? runtimeTransport, HttpPipelineTransport? monitoringTransport, SelectedInvocation? selectedInvocation)
     {
+        // This source can only prepare, trigger, observe and release a Public lease.
+        // A sovereign SDK query alone cannot establish a cloud-bound native effect.
+        if (!HasPublicFixture(definition.Key.Variant))
+            throw new NativeCaseFailureException("missing-prerequisite");
         Input input = ManagementAdmission.Input<Input>(env, "AuditDiagnostics");
         input.Validate();
         FixtureSelector selection = FixtureSelector.For(definition);

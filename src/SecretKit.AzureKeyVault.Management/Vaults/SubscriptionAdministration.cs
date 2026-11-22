@@ -9,7 +9,7 @@ public sealed partial class VaultAdministration
     /// <exception cref="OperationCanceledException">Caller cancellation was observed.</exception>
     public ValueTask<ManagementInventory<SubscriptionObservation>> ListSubscriptionsAsync(
         CollectionLimits? limits = null, CancellationToken cancellationToken = default) =>
-        Collect("/subscriptions", limits ?? new CollectionLimits(),
+        Collect(new ArmCallTarget(ArmMethodContracts.SubscriptionList.RequestPath, ArmMethodContracts.SubscriptionList), limits ?? new CollectionLimits(),
             (client, token) => client.GetSubscriptions().GetAllAsync(token),
-            resource => new SubscriptionObservation(resource.Data), cancellationToken, revision: "2022-12-01");
+            resource => new SubscriptionObservation(resource.Data), cancellationToken);
 }

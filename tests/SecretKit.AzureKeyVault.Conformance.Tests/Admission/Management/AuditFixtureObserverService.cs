@@ -817,6 +817,7 @@ internal sealed class AuditFixtureObserverService : AuditDiagnosticsEffects.Sele
             new[] { selector.Scope, selector.Operation, selector.Variant, selector.Case }
                 .All(s => s is { Length: > 0 and <= 1024 } && !s.Any(char.IsControl)) &&
             AuditDiagnosticsEffects.Members.Any(m => m.Operation == selector.Operation && m.Variants.Contains(selector.Variant)) &&
+            AuditDiagnosticsEffects.HasPublicFixture(selector.Variant) &&
             selector.Case is "selected-contract" or "independent-effect" or "denied-authority" or "cancellation-boundary");
     private static TriggerKind ExpectedKind(FixtureSelector selector) => selector.Variant switch
     {

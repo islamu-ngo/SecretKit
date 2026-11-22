@@ -1,6 +1,7 @@
 using System.Text.Json.Serialization;
 using Azure;
 using Azure.Core;
+using Azure.ResourceManager;
 using Azure.ResourceManager.Authorization;
 using Azure.ResourceManager.Authorization.Models;
 using SecretKit.Core;
@@ -34,7 +35,7 @@ public sealed class RoleAssignmentScope : ManagementScope
         _ => throw new ArgumentException("Invalid role assignment scope.")
     };
     internal override string ResourceId =>
-        $"{Parent.ResourceId}/providers/Microsoft.Authorization/roleAssignments/{AssignmentId:D}";
+        RoleAssignmentResource.CreateResourceIdentifier(Parent.ResourceId, AssignmentId.ToString("D")).ToString();
 }
 
 /// <summary>A role definition addressed within an explicitly selected subscription.</summary>
@@ -49,7 +50,9 @@ public sealed class RoleDefinitionScope(SubscriptionScope subscription, Guid def
     /// <summary>Gets the protected native definition identifier.</summary>
     [JsonIgnore] public Guid DefinitionId { get; } = Identifier(definitionId);
     internal override string ResourceId =>
-        $"{Subscription.ResourceId}/providers/Microsoft.Authorization/roleDefinitions/{DefinitionId:D}";
+        new ResourceIdentifier(Subscription.ResourceId).AppendProviderResource(
+            AuthorizationRoleDefinitionResource.ResourceType.Namespace, AuthorizationRoleDefinitionResource.ResourceType.Type,
+            DefinitionId.ToString("D")).ToString();
 }
 
 /// <summary>Provider-authored assignment metadata, not effective-access evidence.</summary>
@@ -140,7 +143,6 @@ public sealed class RoleDefinitionObservation
 
 public sealed partial class VaultAdministration
 {
-    private const string RoleRevision = "2022-04-01";
 
     /// <summary>Reads one assignment and validates its parent, definition and principal coordinates.</summary>
     /// <param name="scope">The selected assignment at a supported parent scope.</param>
@@ -152,10 +154,10 @@ public sealed partial class VaultAdministration
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(scope);
-        return Read(scope.ResourceId, async (client, token) => ObserveRoleAssignment(scope,
+        return Read(ArmCallTarget.At(ArmMethodContracts.RoleAssignmentGet, scope), async (client, token) => ObserveRoleAssignment(scope,
             (await client.GetRoleAssignmentResource(new ResourceIdentifier(scope.ResourceId))
                 .GetAsync(cancellationToken: token).ConfigureAwait(false)).Value.Data),
-            cancellationToken, revision: RoleRevision);
+            cancellationToken);
     }
 
     /// <summary>Collects bounded at-scope assignments, including the selected vault's resource-group/subscription ancestors.</summary>
@@ -169,7 +171,7 @@ public sealed partial class VaultAdministration
         CollectionLimits limits, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(scope);
-        return Collect($"{scope.ResourceId}/providers/Microsoft.Authorization/roleAssignments", limits,
+        return Collect(ArmCallTarget.Below(ArmMethodContracts.RoleAssignmentList, scope), limits,
             (client, token) => client.GetRoleAssignments(new ResourceIdentifier(scope.ResourceId))
                 .GetAllAsync(filter: "atScope()", cancellationToken: token),
             resource =>
@@ -181,7 +183,7 @@ public sealed partial class VaultAdministration
                     .FirstOrDefault(candidate => string.Equals(resource.Data.Scope, candidate.ResourceId,
                         StringComparison.OrdinalIgnoreCase)) ?? throw new ControlledTransport.BoundaryException();
                 return ObserveRoleAssignment(new RoleAssignmentScope(parent, id), resource.Data);
-            }, cancellationToken, RoleRevision);
+            }, cancellationToken);
     }
 
     /// <summary>Reads a native role definition without evaluating or granting its permissions.</summary>
@@ -194,9 +196,9 @@ public sealed partial class VaultAdministration
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(scope);
-        return Read(scope.ResourceId, async (client, token) => ObserveRoleDefinition(scope,
+        return Read(ArmCallTarget.At(ArmMethodContracts.RoleDefinitionGet, scope), async (client, token) => ObserveRoleDefinition(scope,
             (await client.GetAuthorizationRoleDefinitionResource(new ResourceIdentifier(scope.ResourceId))
-                .GetAsync(token).ConfigureAwait(false)).Value.Data), cancellationToken, revision: RoleRevision);
+                .GetAsync(token).ConfigureAwait(false)).Value.Data), cancellationToken);
     }
 
     /// <summary>Collects bounded native role definitions within a subscription.</summary>
@@ -210,14 +212,14 @@ public sealed partial class VaultAdministration
         CollectionLimits limits, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(scope);
-        return Collect($"{scope.ResourceId}/providers/Microsoft.Authorization/roleDefinitions", limits,
+        return Collect(ArmCallTarget.Below(ArmMethodContracts.RoleDefinitionList, scope), limits,
             (client, token) => client.GetAuthorizationRoleDefinitions(new ResourceIdentifier(scope.ResourceId))
                 .GetAllAsync(cancellationToken: token),
             resource =>
             {
                 if (!Guid.TryParse(resource.Id.Name, out var id)) throw new ControlledTransport.BoundaryException();
                 return ObserveRoleDefinition(new RoleDefinitionScope(scope, id), resource.Data);
-            }, cancellationToken, RoleRevision);
+            }, cancellationToken);
     }
 
     /// <summary>Explicit create/update; never a conditional create or an effective-access claim.</summary>
@@ -241,7 +243,7 @@ public sealed partial class VaultAdministration
             return ValueTask.FromResult(SecretOutcome<RoleAssignmentObservation>.Failure(SecretStatus.Invalid));
         }
 
-        return Mutate(scope, ManagementMutation.CreateRoleAssignment, receipt, scope.ResourceId, RequestMethod.Put,
+        return Mutate(scope, ManagementMutation.CreateRoleAssignment, receipt, ArmCallTarget.At(ArmMethodContracts.RoleAssignmentCreate, scope), RequestMethod.Put,
             [200, 201], async (client, _, token) =>
             {
                 var operation = await client.GetRoleAssignments(new ResourceIdentifier(vault.ResourceId))
@@ -253,7 +255,7 @@ public sealed partial class VaultAdministration
                 if (value.PrincipalId != principalId || !Same(operation.Value.Data.RoleDefinitionId, definition.ResourceId))
                     throw new ControlledTransport.BoundaryException();
                 return value;
-            }, cancellationToken, RoleRevision);
+            }, cancellationToken);
     }
 
     /// <summary>Deletes one vault-scoped assignment without retrying or assuming immediate effective-access revocation.</summary>
@@ -269,23 +271,40 @@ public sealed partial class VaultAdministration
         ArgumentNullException.ThrowIfNull(scope);
         if (scope.Parent is not VaultScope)
             return ValueTask.FromResult(SecretOutcome<ManagementOperation>.Failure(SecretStatus.Invalid));
-        return Mutate(scope, ManagementMutation.DeleteRoleAssignment, receipt, scope.ResourceId, RequestMethod.Delete,
+        var target = ArmCallTarget.At(ArmMethodContracts.RoleAssignmentDelete, scope);
+        return Mutate(scope, ManagementMutation.DeleteRoleAssignment, receipt, target, RequestMethod.Delete,
             [200, 204], async (client, transport, token) =>
             {
-                try
-                {
-                    return ManagementOperation.From(
-                        await client.GetRoleAssignmentResource(new ResourceIdentifier(scope.ResourceId))
-                            .DeleteAsync(WaitUntil.Started, cancellationToken: token).ConfigureAwait(false),
-                        transport, _timeout, _time);
-                }
-                catch (NullReferenceException) when (transport.LastStatus == 204)
-                {
-                    // The pinned SDK dereferences the absent resource model on native 204.
-                    // Only the validated, observed terminal response closes the caller's receipt.
-                    return ManagementOperation.Completed(transport, _timeout, _time);
-                }
-            }, cancellationToken, RoleRevision);
+                await new RoleDeletion(client, scope).SendAsync(target, token).ConfigureAwait(false);
+                return ManagementOperation.Completed(transport, _timeout, _time);
+            }, cancellationToken);
+    }
+
+    // The model-returning DeleteAsync cannot represent an empty 204. Keep the native
+    // pipeline and exact scope, but read this one operation's documented raw response.
+    private sealed class RoleDeletion(ArmClient client, RoleAssignmentScope scope)
+        : ArmResource(client, new ResourceIdentifier(scope.ResourceId))
+    {
+        internal async Task SendAsync(ArmCallTarget target, CancellationToken token)
+        {
+            using var message = Pipeline.CreateMessage();
+            message.Request.Method = RequestMethod.Delete;
+            message.Request.Uri.Reset(Cloud.Endpoint);
+            message.Request.Uri.AppendPath(target.Path, false);
+            message.Request.Uri.AppendQuery("api-version", target.Contract.ApiVersion, true);
+            await Pipeline.SendAsync(message, token).ConfigureAwait(false);
+            var response = message.Response;
+            if (response.Status >= 400) throw new RequestFailedException(response.Status, "Role deletion rejected.");
+            if (response.Status == 204 && (response.ContentStream is null || response.ContentStream.Length == 0)) return;
+            if (response.Status != 200) throw new ControlledTransport.BoundaryException();
+            using var document = System.Text.Json.JsonDocument.Parse(response.Content);
+            var root = document.RootElement;
+            if (!string.Equals(root.GetProperty("id").GetString(), scope.ResourceId, StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(root.GetProperty("properties").GetProperty("scope").GetString(), scope.Parent.ResourceId,
+                    StringComparison.OrdinalIgnoreCase) ||
+                !Guid.TryParse(root.GetProperty("name").GetString(), out var id) || id != scope.AssignmentId)
+                throw new ControlledTransport.BoundaryException();
+        }
     }
 
     private static RoleAssignmentObservation ObserveRoleAssignment(RoleAssignmentScope scope, RoleAssignmentData data)

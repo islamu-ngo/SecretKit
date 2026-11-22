@@ -254,17 +254,29 @@ role definition and notification operations use their dedicated scopes.
 | [RBAC](../../../src/SecretKit.AzureKeyVault.Management/Access/RoleAdministration.cs) | `CreateRoleAssignmentAsync`, `GetRoleAssignmentAsync`, `DeleteRoleAssignmentAsync`, `ListRoleAssignmentsAsync`, `GetRoleDefinitionAsync`, `ListRoleDefinitionsAsync` | Vault-scoped writes, explicit same-subscription definition and principal; selected ancestor metadata is read-only. No custom-role writes or effective-permission proof. |
 | [Notifications](../../../src/SecretKit.AzureKeyVault.Management/Notifications/NotificationAdministration.cs) | `CreateOrUpdateNotificationAsync`, `UpdateNotificationAsync`, `DeleteNotificationAsync`, `GetNotificationAsync`, `ListNotificationsAsync`, `GetNotificationFullUrlAsync`, `GetNotificationDeliveryAttributesAsync` | Named vault-scoped Event Grid subscriptions; HTTPS webhook, three secret event kinds, at most ten static/dynamic delivery headers. No arbitrary destination catalog or delivery proof. |
 
-### Public-cloud selection
+### ARM and audit cloud selection
 
-Only public-cloud administration/monitoring endpoints are selected:
-`management.azure.com` (Key Vault `2026-02-01`, Authorization `2022-04-01`,
-Event Grid `2025-02-15`) and `api.loganalytics.io` (Logs v1).
+Notification webhooks require HTTPS on the default port and reject loopback,
+unspecified, link-local, private and multicast IP literals, including IPv4-mapped
+IPv6 addresses. URLs cannot contain user information or fragments. These checks
+do not resolve DNS or certify remote delivery: operators must restrict trusted
+destinations and enforce DNS, proxy and network egress policy.
+
+Only public-cloud ARM administration is selected, through the SDK's
+`ArmEnvironment.AzurePublicCloud` endpoint and audience. Each operation's
+revision is generated from its exact method metadata in the locked SDK package;
+SecretKit does not maintain an API-version override table.
 This differs from runtime vault hostname acceptance. No arbitrary ARM resource
 ID, endpoint, SDK model, JSON executor or directory administration is exposed.
 
-ARM selects both endpoint and audience `https://management.azure.com`.
-Logs selects endpoint `https://api.loganalytics.io` and
-`LogsQueryAudience.AzurePublicCloud`, independently of administrative authority.
+The `AuditDiagnostics` constructor's `cloud` argument selects the SDK's
+Public, USGovernment or China Logs audience descriptor. The SDK owns the
+corresponding `LogsQueryClient.Endpoint`; SecretKit does not rewrite its host.
+The default is `AuditCloud.Public`. The typed workspace or resource query owns
+route construction. SecretKit freezes that initial request before credentials
+and checks its exact URI and method again at dispatch.
+
+These selections do not change ARM, infer a cloud from the vault, or fall back to another cloud.
 The [ARM client configuration](../../../src/SecretKit.AzureKeyVault.Management/Vaults/VaultAdministration.cs)
 and [Logs client configuration](../../../src/SecretKit.AzureKeyVault.Management/Audit/AuditDiagnostics.cs)
 are the source authority; [scope tests](../../../tests/SecretKit.AzureKeyVault.Management.Tests/ScopeAuthorityTests.cs)
@@ -290,7 +302,7 @@ Notification create/update uses `WaitUntil.Started`: even a start response sayin
 terminal; 202 remains pending. Status URLs must match the selected origin,
 resource path and revision. Notification DELETE also accepts a bounded subset of
 originally issued regional Event Grid `operationResults` and `operationStatus`
-URLs at `2025-02-15`, in the selected subscription/resource group. Other status
+URLs at the original operation's bound revision, in the selected subscription/resource group. Other status
 URL forms remain unsupported. This exception does not broaden PUT/PATCH or
 authorize arbitrary ARM requests; see
 [controlled transport validation](../../../src/SecretKit.AzureKeyVault.Management/Internal/ControlledTransport.cs).

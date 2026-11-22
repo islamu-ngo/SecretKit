@@ -30,7 +30,7 @@ public sealed class SubscriptionAdministrationTests
         await Assert.That(subscriptions.ApiRevision).IsEqualTo("2022-12-01");
         await Assert.That(subscriptions.SuccessfulHttpStatuses).IsEquivalentTo([200]);
         await Assert.That(OperationSupport.Inventory.Where(o => o.Operation >= ManagementOperationFamily.NotificationCreateOrUpdate)
-            .Select(o => o.ApiRevision).Distinct().ToArray()).IsEquivalentTo(["2025-02-15"]);
+            .Select(o => o.ApiRevision).Distinct().ToArray()).IsEquivalentTo(new string?[] { "2025-02-15" });
     }
 
     [Test]
@@ -62,7 +62,7 @@ public sealed class SubscriptionAdministrationTests
         await Assert.That(JsonSerializer.Serialize(result.Items[0])).IsEqualTo("{}");
         await Assert.That(result.Items[0].ToString().Contains(First, StringComparison.Ordinal)).IsFalse();
         await Assert.That(credential.Audiences.Distinct().ToArray())
-            .IsEquivalentTo(["https://management.azure.com/.default"]);
+            .IsEquivalentTo([Azure.ResourceManager.ArmEnvironment.AzurePublicCloud.DefaultScope]);
     }
 
     [Test]

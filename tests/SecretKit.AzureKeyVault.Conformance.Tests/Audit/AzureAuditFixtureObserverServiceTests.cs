@@ -20,6 +20,26 @@ namespace SecretKit.AzureKeyVault.Conformance.Tests;
 public sealed partial class AzureRoleFixtureProvisionerTests
 {
     [Test]
+    [Arguments("query.resource.us-government")]
+    [Arguments("query.workspace.us-government")]
+    [Arguments("query.resource.china")]
+    [Arguments("query.workspace.china")]
+    public async Task PublicAuditFixtureCannotQualifySovereignCases(string variant)
+    {
+        await using var fixture = new AuditServiceFixture(variant);
+        foreach (var member in AuditDiagnosticsEffects.Members)
+            foreach (var requiredCase in new[] { "selected-contract", "denied-authority", "cancellation-boundary", "independent-effect" })
+            {
+                var result = await fixture.RunOriginal(member: member, variant: variant, requiredCase: requiredCase);
+                await Assert.That(result.Passed).IsFalse();
+                await Assert.That(result.ReasonCode).IsEqualTo("missing-prerequisite");
+            }
+        await Assert.That(fixture.ObserverCreated).IsFalse();
+        await Assert.That(async () => await fixture.Prepare(TriggerKind.Set)).Throws<NativeCaseFailureException>();
+        await Assert.That(fixture.Natives.All(n => !n.State.VaultExists)).IsTrue();
+    }
+
+    [Test]
     public async Task AuditSourceRoutesRunOverOwnedHttpsHost()
     {
         using RSA key = RSA.Create(2048);
@@ -504,7 +524,7 @@ public sealed partial class AzureRoleFixtureProvisionerTests
                     new("diagnostic-read", new Credential("diagnostic-read-arm"), Transport("diagnostic-read")),
                     new(65536, TimeSpan.FromSeconds(10)), clock);
                 var collector = new AuditIngestionCollector(new AuditCredential("independent-monitor",
-                    "https://api.loganalytics.io//.default"), Transport("monitor"), new(20, 65536, TimeSpan.FromSeconds(10)), clock);
+                    AuditDiagnosticsEffects.PublicMonitoringScope), Transport("monitor"), new(20, 65536, TimeSpan.FromSeconds(10)), clock);
                 sources.Add(new(Natives[i].Journal, Natives[i].Source, diagnostics, collector,
                     Credentials[i], Transport("runtime")));
             }
@@ -554,7 +574,9 @@ public sealed partial class AzureRoleFixtureProvisionerTests
         internal ValueTask<RoleFixtureRelease.Measurement> Release(AuditDiagnosticsEffects.Lease? lease) =>
             Observer.PostAsync<FixtureSelector, RoleFixtureRelease.Measurement>("audit/release", Selector, default);
 
-        internal async Task<NativeCaseResult> RunOriginal(string? fault = null)
+        internal bool ObserverCreated { get; private set; }
+        internal async Task<NativeCaseResult> RunOriginal(string? fault = null, ManagementMember? member = null,
+            string variant = "query.resource", string requiredCase = "selected-contract")
         {
             using var settings = JsonDocument.Parse(JsonSerializer.Serialize(new
             {
@@ -568,19 +590,21 @@ public sealed partial class AzureRoleFixtureProvisionerTests
                 {
                     ["AuditDiagnostics"] = new AuditDiagnosticsEffects.Input(
                         new(new("https://fixture.invalid/"), "private-owner-capability", TimeSpan.FromSeconds(10)),
-                        new("selected-monitor", DateTimeOffset.MaxValue, "https://api.loganalytics.io//.default"),
-                        new("denied-monitor", DateTimeOffset.MaxValue, "https://api.loganalytics.io//.default"),
+                        new("selected-monitor", DateTimeOffset.MaxValue, AuditDiagnosticsEffects.PublicMonitoringScope),
+                        new("denied-monitor", DateTimeOffset.MaxValue, AuditDiagnosticsEffects.PublicMonitoringScope),
                         Subscription, "fixture-group", "eastus", Tenant, WorkspaceId, TimeSpan.FromSeconds(10),
                         TimeSpan.FromSeconds(10), 20, "selected-audit-value")
                 }
             }, new JsonSerializerOptions(ManagementAdmission.Json) { IgnoreReadOnlyProperties = false }));
             using var environment = OwnedAzureEnvironment.Create(settings.RootElement);
-            var member = AuditDiagnosticsEffects.Members[0];
-            var definition = new NativeCaseDefinition(new("AzureKeyVault", member.Operation, "query.resource",
-                "owned-source", "selected-contract"), member.Member);
+            member ??= AuditDiagnosticsEffects.Members[0];
+            var definition = new NativeCaseDefinition(new("AzureKeyVault", member.Operation, variant,
+                "owned-source", requiredCase), member.Member);
             var registry = new NativeCaseRegistry();
             AuditDiagnosticsEffects.Register(registry, environment, [definition], endpoint =>
-                new(endpoint, new SourceForwarder(async (request, token) =>
+            {
+                ObserverCreated = true;
+                return new(endpoint, new SourceForwarder(async (request, token) =>
                 {
                     bool prepare = request.RequestUri!.AbsolutePath == "/audit/prepare";
                     if (prepare)
@@ -598,7 +622,8 @@ public sealed partial class AzureRoleFixtureProvisionerTests
                         JsonSerializer.Serialize(new AuditDiagnosticsEffects.Lease(
                             new(Guid.NewGuid(), Guid.NewGuid(), "foreign", "https://management.azure.com",
                                 "2026-02-01", DateTimeOffset.UtcNow, []), [], "foreign"), ManagementAdmission.Json));
-                })), Service.RuntimeTransport, selectedMonitoring, Service);
+                }));
+            }, Service.RuntimeTransport, selectedMonitoring, Service);
             return (await NativeCaseRunner.RunAsync(registry, [definition], default)).Single();
         }
         public async ValueTask DisposeAsync()

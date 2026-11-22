@@ -26,39 +26,47 @@
     },
     {
       "file": "src/SecretKit.AzureKeyVault.Management/Access/RoleAdministration.cs",
-      "sha256": "905d93a69d5e69c310232ef101e5a5bec0f1e3f52b3755b461bc4fb8d37dbeda"
+      "sha256": "146130aeb8ca109125725f6808cdfc4ae22efc1f5b43e4dd8cedb8d21644bb77"
     },
     {
       "file": "src/SecretKit.AzureKeyVault.Management/Access/Scopes.cs",
-      "sha256": "6088f907f89a5f0921cbead57206ee2198a8bfaf7aea87bf48f8419919cc764d"
+      "sha256": "3e2cc922112c7cc46399471ef7bbbe21e62551bec2a4fc65b8d726c041d252dd"
     },
     {
       "file": "src/SecretKit.AzureKeyVault.Management/Audit/AuditDiagnostics.cs",
-      "sha256": "818044978b5256f4f3aa0ee8cbdd523cc31c55f34d61c448c56f4c1301a58a2f"
+      "sha256": "527a3f411d1eb7a22987a12745753ff4f3485565d91c27ad8e115a88ede372dc"
+    },
+    {
+      "file": "src/SecretKit.AzureKeyVault.Management/Internal/ArmCallTarget.cs",
+      "sha256": "84eaa365b7d409f569e8a823c413b17bf184fbbe6259d2b1eb1a375ea96e1394"
+    },
+    {
+      "file": "src/SecretKit.AzureKeyVault.Management/Internal/AzureCallPipeline.cs",
+      "sha256": "c0bd9f1c6fdd6f1f4d71ecbb6ab5cd048e5c48989bc44b3e44b6b8e02d878134"
     },
     {
       "file": "src/SecretKit.AzureKeyVault.Management/Internal/AzureManagementDiagnostics.cs",
-      "sha256": "3036fade707d6c39d9c92cf1e343faeea01433d4a75152b1f2007932cbec4884"
+      "sha256": "e890cf7569ff3b3adbb1cf38f3f97a57b042fe96a4874b2234cf3b9ca20be570"
     },
     {
       "file": "src/SecretKit.AzureKeyVault.Management/Internal/ControlledTransport.cs",
-      "sha256": "1f05f32bb174acdb19c291681da079c0fcfd78449ff7b7725a1157eb75d64293"
+      "sha256": "90992163d0bcf86da7d1862fe61ab19ecfe983151f52b67f34f15d147c6121a4"
     },
     {
       "file": "src/SecretKit.AzureKeyVault.Management/Internal/ManagementOperation.cs",
-      "sha256": "bc0e0ccf64b0d8773c66ef0100a7901db4e08c865aa93fa73e35bac7ffbaf1ac"
+      "sha256": "7ca5d1fddbd23e7b6682ff04d2c8dea7067f93a820a0fa244945da0d028d4e65"
     },
     {
       "file": "src/SecretKit.AzureKeyVault.Management/Internal/OperationSupport.cs",
-      "sha256": "7fe91bf4be74ab875187e32b48dd4e29f29d51a208e1947e3438002256560a27"
+      "sha256": "425a8655ff6927a0441091b380083ae9faa4304b24ef9c49075abfaa142ebe3d"
     },
     {
       "file": "src/SecretKit.AzureKeyVault.Management/Notifications/NotificationAdministration.cs",
-      "sha256": "58b8df58c186187981c936d73fe8c2dce8dce7f4e76571ce5e8b5e0f44959563"
+      "sha256": "492aa278aa3cf923289d716ba513dba8823bd8fd3f1281657f3cff3dcdf7c2fa"
     },
     {
       "file": "src/SecretKit.AzureKeyVault.Management/Notifications/NotificationModels.cs",
-      "sha256": "5ef28ae14a8f1821e96a474a83e573d9501e6e2db578e48084aef6d029665818"
+      "sha256": "d0e9af7913242252e361e17e7481149d46d6379705f2c385f0258c3aff4f8678"
     },
     {
       "file": "src/SecretKit.AzureKeyVault.Management/Vaults/NativeModels.cs",
@@ -66,7 +74,7 @@
     },
     {
       "file": "src/SecretKit.AzureKeyVault.Management/Vaults/SubscriptionAdministration.cs",
-      "sha256": "7a71a60662536e6182e95247530e53f68f69a9040360619ab6e7dc04ba5725d2"
+      "sha256": "8b7e853606930d743142fe77552dbfd181d970f150fd472e5ef709842d31d5d0"
     },
     {
       "file": "src/SecretKit.AzureKeyVault.Management/Vaults/SubscriptionObservation.cs",
@@ -74,11 +82,11 @@
     },
     {
       "file": "src/SecretKit.AzureKeyVault.Management/Vaults/VaultAdministration.cs",
-      "sha256": "e1d9b24999a296b3fa6057e2ebd0ff7e5adb9105b1285647629f774932eb5bf0"
+      "sha256": "192669145031f6a8e1c7663a1d536b6bdb65b566e944211d317d4fe28efa1d2b"
     },
     {
       "file": "src/SecretKit.AzureKeyVault.Management/packages.lock.json",
-      "sha256": "6601f2cc289e089cba8ca450c55ff3def9c01b5e610fa3d9c2d66d87f81add0e"
+      "sha256": "885e3ffd1de8a534ce6bf96e4830d716437b575d78315a204d8b692d3ac3c1a0"
     },
     {
       "file": "src/SecretKit.AzureKeyVault/Internal/AzureDiagnostics.cs",
@@ -564,7 +572,11 @@
         "operation.SecretRecover",
         "operation.SecretBackup",
         "operation.SecretRestore",
-        "operation.SecretPurge"
+        "operation.SecretPurge",
+        "query.resource.us-government",
+        "query.workspace.us-government",
+        "query.resource.china",
+        "query.workspace.china"
       ],
       "contract": "implemented-subset",
       "effect": "Independently trigger and observe a known vault AuditEvent then compare bounded resource/workspace query events, time window, operation and result; partial results and deadlines remain incomplete, and batch progress preserves input order.",
@@ -609,6 +621,10 @@
         "operation.SecretBackup",
         "operation.SecretRestore",
         "operation.SecretPurge",
+        "query.resource.us-government",
+        "query.workspace.us-government",
+        "query.resource.china",
+        "query.workspace.china",
         "batch.single",
         "batch.multiple",
         "batch.mixed-resource-workspace",

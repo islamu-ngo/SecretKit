@@ -7,6 +7,119 @@ namespace SecretKit.AzureKeyVault.Management.Tests;
 public sealed class RoleAdministrationTests
 {
     [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task MutationRejectionRequiresAnActualServiceResponse(bool actualRejection)
+    {
+        bool assignmentExists = true;
+        int sends = 0;
+        var backend = new WireBackend((_, _) =>
+        {
+            sends++;
+            if (actualRejection) return Task.FromResult(WireBackend.Json(403, "{}"));
+            assignmentExists = false;
+            throw new Azure.RequestFailedException(403, "transport-failure-after-effect");
+        });
+        var client = new VaultAdministration(new Credential(), backend);
+        var target = Assignment();
+        var receipt = client.PrepareReceipt(target, ManagementMutation.DeleteRoleAssignment);
+
+        var result = await client.DeleteRoleAssignmentAsync(target, receipt);
+
+        await Assert.That(result.Status).IsEqualTo(actualRejection ? SecretStatus.Denied : SecretStatus.Unknown);
+        await Assert.That(receipt.Evidence).IsEqualTo(actualRejection ?
+            DispatchEvidence.Rejected : DispatchEvidence.PossiblyDispatched);
+        await Assert.That(assignmentExists).IsEqualTo(actualRejection);
+        await Assert.That(sends).IsEqualTo(1);
+    }
+
+    [Test]
+    public async Task OverlappingRoleAndVaultDeletesShareAuthenticationButNotEvidence()
+    {
+        var roleEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseRole = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var credential = new OneToken();
+        var backend = new WireBackend(async (request, token) =>
+        {
+            if (request.Method != HttpMethod.Delete) throw new InvalidOperationException("Unexpected request.");
+            var uri = request.RequestUri!;
+            if (uri.AbsolutePath == AssignmentPath && uri.Query == "?api-version=2022-04-01")
+            {
+                roleEntered.SetResult();
+                await releaseRole.Task.WaitAsync(token);
+                return WireBackend.Json(204, "");
+            }
+            if (uri.AbsolutePath == ScopeAuthorityTests.Id && uri.Query == "?api-version=2026-02-01")
+                return WireBackend.Json(403, """{"error":{"code":"Forbidden","message":"Denied"}}""");
+            throw new InvalidOperationException("Scope or revision changed.");
+        });
+        var client = new VaultAdministration(credential, backend);
+        var assignment = Assignment();
+        var vault = ScopeAuthorityTests.Scope();
+        var roleReceipt = client.PrepareReceipt(assignment, ManagementMutation.DeleteRoleAssignment);
+        var vaultReceipt = client.PrepareReceipt(vault, ManagementMutation.DeleteVault);
+        var role = client.DeleteRoleAssignmentAsync(assignment, roleReceipt).AsTask();
+        try
+        {
+            await roleEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            var denied = await client.DeleteVaultAsync(vault, vaultReceipt);
+            await Assert.That(denied.Status).IsEqualTo(SecretStatus.Denied);
+            await Assert.That(vaultReceipt.Evidence).IsEqualTo(DispatchEvidence.Rejected);
+            await Assert.That(roleReceipt.Evidence).IsEqualTo(DispatchEvidence.PossiblyDispatched);
+        }
+        finally { releaseRole.TrySetResult(); }
+        await Assert.That((await role).Value.State).IsEqualTo(NativeProvisioningState.Succeeded);
+        await Assert.That(roleReceipt.Evidence).IsEqualTo(DispatchEvidence.Applied);
+    }
+
+    private sealed class OneToken : Azure.Core.TokenCredential
+    {
+        private int _used;
+        public override Azure.Core.AccessToken GetToken(Azure.Core.TokenRequestContext requestContext,
+            CancellationToken cancellationToken) => throw new InvalidOperationException("Async only.");
+        public override ValueTask<Azure.Core.AccessToken> GetTokenAsync(Azure.Core.TokenRequestContext requestContext,
+            CancellationToken cancellationToken) => Interlocked.Exchange(ref _used, 1) == 0
+                ? ValueTask.FromResult(new Azure.Core.AccessToken("test-token", DateTimeOffset.MaxValue))
+                : throw new InvalidOperationException("Fresh token unavailable.");
+    }
+
+    [Test]
+    [Arguments(true)]
+    [Arguments(false)]
+    public async Task DeleteWithReturnedRoleChecksTheOriginalScope(bool matched)
+    {
+        var client = new VaultAdministration(new Credential(), new WireBackend((_, _) =>
+            Task.FromResult(WireBackend.Json(200, AssignmentJson(matched ? null : "/wrong-scope")))));
+        var scope = Assignment();
+        var receipt = client.PrepareReceipt(scope, ManagementMutation.DeleteRoleAssignment);
+        var deleted = await client.DeleteRoleAssignmentAsync(scope, receipt);
+        await Assert.That(deleted.Status).IsEqualTo(matched ? SecretStatus.Success : SecretStatus.Unknown);
+        await Assert.That(receipt.Evidence).IsEqualTo(matched ? DispatchEvidence.Applied : DispatchEvidence.PossiblyDispatched);
+    }
+
+    [Test]
+    public async Task FaultWhileReadingNoContentDoesNotProveDeletion()
+    {
+        var backend = new WireBackend((_, _) => Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.NoContent)
+        {
+            Content = new StreamContent(new FaultingBody())
+        }));
+        var client = new VaultAdministration(new Credential(), backend);
+        var scope = Assignment();
+        var receipt = client.PrepareReceipt(scope, ManagementMutation.DeleteRoleAssignment);
+        var deleted = await client.DeleteRoleAssignmentAsync(scope, receipt);
+        await Assert.That(deleted.Status).IsEqualTo(SecretStatus.Unknown);
+        await Assert.That(receipt.Evidence).IsEqualTo(DispatchEvidence.PossiblyDispatched);
+    }
+
+    private sealed class FaultingBody : MemoryStream
+    {
+        public override bool CanSeek => false;
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+            => throw new NullReferenceException("Simulated processing fault after status.");
+    }
+
+    [Test]
     public async Task NativeSdkDeleteNoContentBaseline()
     {
         var backend = new WireBackend((_, _) => Task.FromResult(WireBackend.Json(204, "")));
@@ -151,7 +264,7 @@ public sealed class RoleAdministrationTests
         await Assert.That(delete.Evidence).IsEqualTo(DispatchEvidence.Applied);
         await Assert.That(JsonSerializer.Serialize(created.Value)).IsEqualTo("{}");
         await Assert.That(JsonSerializer.Serialize(role.Value)).IsEqualTo("{}");
-        await Assert.That(credential.Audiences.All(a => a == "https://management.azure.com/.default")).IsTrue();
+        await Assert.That(credential.Audiences.All(a => a == Azure.ResourceManager.ArmEnvironment.AzurePublicCloud.DefaultScope)).IsTrue();
     }
 
     [Test]

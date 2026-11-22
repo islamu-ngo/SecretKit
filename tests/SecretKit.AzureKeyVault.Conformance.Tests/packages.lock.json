@@ -201,7 +201,8 @@
       "secretkit.azurekeyvault.management": {
         "type": "Project",
         "dependencies": {
-          "Azure.Monitor.Query": "[1.7.1, )",
+          "Azure.Core": "[1.63.0, )",
+          "Azure.Monitor.Query.Logs": "[1.0.0, )",
           "Azure.ResourceManager.Authorization": "[1.1.7, )",
           "Azure.ResourceManager.EventGrid": "[1.1.0, )",
           "Azure.ResourceManager.KeyVault": "[1.4.0, )",
@@ -233,14 +234,13 @@
           "System.Memory.Data": "10.0.10"
         }
       },
-      "Azure.Monitor.Query": {
+      "Azure.Monitor.Query.Logs": {
         "type": "CentralTransitive",
-        "requested": "[1.7.1, )",
-        "resolved": "1.7.1",
-        "contentHash": "HJnal+BIaBiuiba1p2X5lNyx6I+CnqcjEMNv19R1jtjas5hk9sdUcPmZOLaECFRExFBxLDc2xuLJkXmglFXQbg==",
+        "requested": "[1.0.0, )",
+        "resolved": "1.0.0",
+        "contentHash": "ADXClIhgWGwPFBo3ijOix34lSedWZGWwKD+j3zhJQ1/qeDguKv1jRd+WhtJKmun0887orR9aImbWg0mIb6sIDg==",
         "dependencies": {
-          "Azure.Core": "1.47.1",
-          "System.ClientModel": "1.6.0"
+          "Azure.Core": "1.49.0"
         }
       },
       "Azure.ResourceManager.Authorization": {
