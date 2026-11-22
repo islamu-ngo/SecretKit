@@ -31,7 +31,9 @@ explains validated client generations and leases. Onboarding samples live under
   [troubleshooting](public/troubleshooting.md), and
   [package-only demos](public/demos-and-recovery.md).
 - **Check a claim:** [current preview](public/current-preview.md) and
-  [provider support](public/provider-support.md).
+  [provider support](public/provider-support.md), then
+  [qualification limits](public/qualification-limitations.md) for licensing,
+  missing evidence and publication blockers.
   The [supplemental enterprise hardening profile](internal/compatibility/enterprise-hardening-profile.md)
   separates declared requirements from exact source, installed, native and
   platform evidence without changing historical qualification denominators.

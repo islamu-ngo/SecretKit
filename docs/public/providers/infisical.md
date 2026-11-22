@@ -3,7 +3,7 @@
 > **Audience:** .NET developers and AI coding assistants using `SecretKit.Infisical`
 > **Status:** Implemented subsets; in development, not ready for production
 > **Owner:** SecretKit maintainers
-> **Last verified:** 2026-11-21, source and documentation review; not a new live run
+> **Last verified:** 2026-11-22 qualification-limit documentation reconciliation; source review dated 2026-11-21, not a new live run
 > **SQL lifecycle update:** 2026-11-06, source and controlled offline verification; no new native qualification
 > **Source anchors:** [client](../../../src/SecretKit.Infisical/Secrets/InfisicalClient.cs), [addresses](../../../src/SecretKit.Infisical/Secrets/InfisicalSecretAddress.cs), [tests](../../../tests/SecretKit.Infisical.Tests/)
 
@@ -11,6 +11,13 @@ Use `InfisicalClient` for common secret reads, direct-folder inventory, selected
 shared-secret writes and the native organization/import operations below. Use
 the separate dynamic and rotation clients for their native lifecycle contracts.
 Administration factories live in [the management package](management.md).
+
+Read [qualification limits](../qualification-limitations.md) before relying on
+a feature as live-verified. The recorded playground lacked the Enterprise
+entitlements needed for complete testing; opaque-token principal proof and
+several backend, issuer and observer requirements remain open. SecretKit supports
+only the latest provider release; the recorded v0.167.12 results are dated
+evidence, not a permanent version pin or backward-compatibility promise.
 
 ## Why use `SecretKit.Infisical` instead of `Infisical.Sdk`
 

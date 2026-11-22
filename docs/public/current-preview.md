@@ -3,7 +3,7 @@
 > **Audience:** Application developers and support evaluators
 > **Status:** Implemented development subsets; unpublished, not ready for production
 > **Owner:** SecretKit maintainers
-> **Last verified:** 2026-11-16 (credential-free Linux x64 SDK 10.0.404 source/installed/SBOM validation; native, multi-OS CI, and publication remain open)
+> **Last verified:** 2026-11-22 documentation reconciliation; prior source/installed/SBOM validation remains dated below; native, multi-OS CI and publication remain open
 > **Source anchors:** [Package inputs](../../Directory.Build.props),
 > [local profile](../internal/local/infisical-runtime.json),
 > [project map](../../PROJECTS.md), [support reference](provider-support.md)
@@ -20,6 +20,15 @@ operations and optional runtime composition for Infisical and Azure Key Vault.
 compatibility.** Package presence does not mean complete provider support.
 
 ## Recent source verification
+
+The [current qualification limits](qualification-limitations.md) and
+[November evidence ledger](../internal/compatibility/provider-engineering-2026-11.md)
+reconcile the later v0.167.12 playground, committed SDK fixes, provisioning and
+local/remote installed narratives. No Enterprise license was available for full
+playground qualification. Selected child effects succeeded, but native
+principal/API-revision proofs, licensed and external-resource cases, Azure,
+platform CI and release gates remain open. The following dated increments
+remain historical evidence, not a claim that qualification is complete.
 
 The November 16 offline hardening increment on SDK **10.0.404** (runtime
 **10.0.15**) adopts `.NET 10` `System.Threading.Lock`, pre-operation disposal

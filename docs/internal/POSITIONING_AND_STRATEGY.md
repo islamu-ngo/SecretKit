@@ -125,7 +125,7 @@ Four verified implementation gaps undercut that pitch in the current preview:
      and `InfisicalAuthenticationMaintenance` misses `_session.State == Stopped`
      when catching external session cancellation.
 4. **Solo-maintainer operational risk:** Built by one person on personal time
-   ([README](../../README.md#sustainability)) while carrying heavy internal
+    ([maintainer](../../README.md#core-maintainer)) while carrying heavy internal
    maintenance overhead: hand-authored Refit request-builder interfaces used only
    for route formatting, 43% of `src/` in `SecretKit.Infisical.Management` with
    parallel hand-written JSON schema trees, a 490-line inline MSBuild JSON parser

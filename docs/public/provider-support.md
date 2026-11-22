@@ -3,7 +3,7 @@
 > **Audience:** Developers selecting packages and reviewers assessing support
 > **Status:** Implemented subsets with offline evidence; incomplete live qualification
 > **Owner:** SecretKit maintainers
-> **Last verified:** 2026-11-16 (offline source, installed-archive, and SPDX SBOM review on Linux x64, SDK 10.0.404; live qualification incomplete)
+> **Last verified:** 2026-11-22 documentation reconciliation; earlier Linux source/installed/SBOM evidence retains its original date and scope; live qualification incomplete
 > **Source anchors:** [Projects](../../PROJECTS.md), [package inputs](../../Directory.Build.props),
 > [local profile](../internal/local/infisical-runtime.json), source/test links below
 
@@ -12,6 +12,13 @@
 and [provider guides](providers/README.md) for usage. Tables below describe
 implemented subsets, not complete vendor APIs or permissions granted to a caller.
 Tests linked here are authored evidence surfaces, not a claim they were rerun.
+
+For the current blockers, including the playground's unavailable Enterprise
+entitlements, missing native principal proof and selected failed cases, read
+[qualification limits](qualification-limitations.md). The
+[November ledger](../internal/compatibility/provider-engineering-2026-11.md)
+separates observed effects from strict qualification and records later
+local/remote narrative evidence without replacing historical denominators.
 
 ## Seven packages, separately selected
 

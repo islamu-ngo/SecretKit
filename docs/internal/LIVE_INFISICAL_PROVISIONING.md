@@ -232,6 +232,11 @@ offline result alone.
 | Release qualification | Exact archive, source, platform and native gates owned by existing release tooling |
 
 Community Edition results do not satisfy missing Enterprise entitlements.
+The [qualification limits](../public/qualification-limitations.md) and
+[dated evidence ledger](compatibility/provider-engineering-2026-11.md) record the
+known gaps, including inaccessible licensed-template cleanup witnesses.
+The later local and remote installed narratives passed in their recorded
+scope; neither run establishes complete native family or principal/policy proof.
 Dynamic SQL lifecycle, rotation, replication, other issuers and downstream
 effects retain their separate requirements and failures. No command here
 authorizes publication or establishes complete provider support.
