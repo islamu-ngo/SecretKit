@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using SecretKit.Internal;
 
 namespace SecretKit.Infisical;
 
@@ -70,9 +71,9 @@ public sealed class InfisicalRuntimeOptions
             OrganizationSlug is { } organization &&
                 (organization.Length is < 1 or > 64 || organization.Any(char.IsControl)) ||
             RenewBefore <= TimeSpan.Zero || RenewBefore > TimeSpan.FromDays(1) ||
-            RequestTimeout <= TimeSpan.Zero || RequestTimeout > TimeSpan.FromMinutes(1) ||
-            Network.MaximumResponseBytes is < 1024 or > 16 * 1024 * 1024 ||
-            Network.ShutdownTimeout <= TimeSpan.Zero || Network.ShutdownTimeout > TimeSpan.FromMinutes(1))
+            !TransferLimits.IsValidTimeout(RequestTimeout) ||
+            !TransferLimits.IsValidByteBudget(Network.MaximumResponseBytes) ||
+            !TransferLimits.IsValidTimeout(Network.ShutdownTimeout))
             throw new ArgumentException("Invalid runtime context or budget.");
     }
 

@@ -103,9 +103,10 @@ public sealed partial class InfisicalClient
                 return SecretOutcome<InfisicalStaticChange>.Failure(SecretStatus.Invalid, reason: SecretFailureReason.RequestTooLarge);
             }
 
+            IDisposable operationLease;
             try
             {
-                BeginOperation();
+                operationLease = _operations.Enter();
             }
             catch
             {
@@ -183,7 +184,7 @@ public sealed partial class InfisicalClient
             finally
             {
                 CryptographicOperations.ZeroMemory(payload);
-                EndOperation();
+                operationLease.Dispose();
             }
         }
     }

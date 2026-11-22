@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Refit;
 using SecretKit.Core;
+using SecretKit.Internal;
 
 namespace SecretKit.Infisical;
 
@@ -216,7 +217,7 @@ public sealed partial class InfisicalProofAuthentication : IDisposable
     {
         ArgumentNullException.ThrowIfNull(origin);
         InfisicalTransportBinding.ValidateOrigin(origin, network);
-        if (network.MaximumResponseBytes is < 1024 or > 16 * 1024 * 1024)
+        if (!TransferLimits.IsValidByteBudget(network.MaximumResponseBytes))
             throw new ArgumentException("Invalid authentication response budget.");
         _origin = origin;
         _time = timeProvider ?? TimeProvider.System;

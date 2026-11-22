@@ -37,7 +37,7 @@ administration families. `SecretKit.Infisical` adds:
 **Current preview caveats:** Secret JSON payloads are currently decoded via
 `.GetString()` before entering `SecretMaterial.FromText`
 ([InfisicalClient.cs](../../../src/SecretKit.Infisical/Secrets/InfisicalClient.cs#L224))
-inside an unpinned `char[]` buffer, and multi-edition, external-issuer, SQL
+through an intermediate managed string before entering owned pinned UTF-8 storage, and multi-edition, external-issuer, SQL
 backend and multi-OS live qualification gates remain open.
 
 For an operator workflow, follow [interactive hosts](../interactive-hosts.md).
@@ -65,12 +65,32 @@ it also admits HTTP and retains the host's TLS/routing/retry/diagnostic policy.
 Omission selects `SafeDefault`. The host owns the token source and any supplied
 client/handler; SDK disposal does not dispose or reconfigure them.
 
+Composition adapters can inspect `InfisicalTransportOptions.Client`, `Handler`
+and `IsHostControlled`. These read-only properties are excluded from JSON
+serialization. They do not transfer ownership: a selected client remains
+unchanged, and a selected handler must be wrapped without disposal ownership.
+`CopyRoots()` returns new, caller-owned certificates containing only public
+certificate data. Dispose every returned certificate; changing or disposing a
+copy leaves the selection intact. In SDK-safe mode an empty array selects
+system trust; host-controlled pipelines retain their own trust policy.
+
+Two other composition seams preserve provider semantics without granting
+internal assembly access. `InfisicalErrorResponse.Project` interprets an
+already bounded JSON error body against its HTTP status and a caller-selected
+failure fallback; it performs no I/O, retains no body and exports no native
+message or details. `InfisicalDiagnostics.Defer()` delays completed runtime
+observations until its lexical scope is disposed, so nested runtime observers
+cannot distort a surrounding operation's measured interval. Neither seam
+starts provider work or grants identity or administrative authority.
+
 `InfisicalSecretAddress(projectId, environment, folder, key, version: null,
 resolution: InfisicalResolution.Raw, includeImports: false)` selects a shared
 secret. Folder paths must be absolute without `.`/`..` segments; a supplied
 version must be positive. Bind it with
 `new SecretReference(client.Authority, address)`. The authority is local
 client ownership, not proof of server permission.
+Common and native reads share one operation deadline from credential acquisition
+through response consumption and final result validation.
 
 This integration function declares every input. The caller supplies an already
 selected token source and consumes/disposes a successful result; it never logs

@@ -6,6 +6,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using Refit;
 using SecretKit.Core;
+using SecretKit.Internal;
 
 namespace SecretKit.Infisical;
 
@@ -28,9 +29,8 @@ public sealed partial class InfisicalClient : IInfisicalSecretReader, IAsyncDisp
     private readonly TimeSpan _shutdownTimeout;
     private readonly CancellationTokenSource _shutdown = new();
     private readonly Lock _gate = new();
-    private int _active;
+    private readonly AsyncOperationDrain _operations = new();
     private bool _disposed;
-    private TaskCompletionSource? _drained;
     private Task? _disposeTask;
 
     /// <summary>Creates a fixed-origin client without acquiring credentials; token source and borrowed transport remain host-owned.</summary>
@@ -55,8 +55,8 @@ public sealed partial class InfisicalClient : IInfisicalSecretReader, IAsyncDisp
         ArgumentNullException.ThrowIfNull(network);
         InfisicalTransportBinding.ValidateOrigin(origin, network);
 
-        if (network.MaximumResponseBytes is < 1024 or > 16 * 1024 * 1024 ||
-            network.ShutdownTimeout <= TimeSpan.Zero || network.ShutdownTimeout > TimeSpan.FromMinutes(1))
+        if (!TransferLimits.IsValidByteBudget(network.MaximumResponseBytes) ||
+            !TransferLimits.IsValidTimeout(network.ShutdownTimeout))
         {
             throw new ArgumentException("Invalid response or shutdown budget.", nameof(network));
         }
@@ -97,12 +97,12 @@ public sealed partial class InfisicalClient : IInfisicalSecretReader, IAsyncDisp
         SecretReference reference, CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed(cancellationToken);
-        return await InfisicalOperationBudget.RunAsync(_operationTimeout, _time, cancellationToken,
-            InfisicalOperation.Read, ExecuteAsync, shutdown: _shutdown.Token).ConfigureAwait(false);
+        return await InfisicalOperationBudget.RunWithBudgetAsync(_operationTimeout, _time,
+            InfisicalOperation.Read, ExecuteAsync, shutdown: _shutdown.Token, caller: cancellationToken).ConfigureAwait(false);
 
-        async ValueTask<SecretOutcome<SecretRead>> ExecuteAsync(CancellationToken operationToken)
+        async ValueTask<SecretOutcome<SecretRead>> ExecuteAsync(OperationBudget budget)
         {
-            SecretOutcome<AcquiredRead> outcome = await AcquireReadAsync(reference, false, operationToken)
+            SecretOutcome<AcquiredRead> outcome = await AcquireReadAsync(reference, false, budget)
                 .ConfigureAwait(false);
             return outcome.IsSuccess
                 ? SecretOutcome<SecretRead>.Success(new SecretRead(outcome.Value.Material, outcome.Value.Observation))
@@ -117,12 +117,12 @@ public sealed partial class InfisicalClient : IInfisicalSecretReader, IAsyncDisp
         SecretReference reference, CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed(cancellationToken);
-        return await InfisicalOperationBudget.RunAsync(_operationTimeout, _time, cancellationToken,
-            InfisicalOperation.Read, ExecuteAsync, shutdown: _shutdown.Token).ConfigureAwait(false);
+        return await InfisicalOperationBudget.RunWithBudgetAsync(_operationTimeout, _time,
+            InfisicalOperation.Read, ExecuteAsync, shutdown: _shutdown.Token, caller: cancellationToken).ConfigureAwait(false);
 
-        async ValueTask<SecretOutcome<InfisicalSecretRead>> ExecuteAsync(CancellationToken operationToken)
+        async ValueTask<SecretOutcome<InfisicalSecretRead>> ExecuteAsync(OperationBudget budget)
         {
-            SecretOutcome<AcquiredRead> outcome = await AcquireReadAsync(reference, true, operationToken)
+            SecretOutcome<AcquiredRead> outcome = await AcquireReadAsync(reference, true, budget)
                 .ConfigureAwait(false);
             return outcome.IsSuccess
                 ? SecretOutcome<InfisicalSecretRead>.Success(new InfisicalSecretRead(
@@ -135,25 +135,24 @@ public sealed partial class InfisicalClient : IInfisicalSecretReader, IAsyncDisp
         InfisicalSecretRevision? Revision);
 
     private async ValueTask<SecretOutcome<AcquiredRead>> AcquireReadAsync(
-        SecretReference reference, bool qualifyRevision, CancellationToken cancellationToken)
+        SecretReference reference, bool qualifyRevision, OperationBudget budget)
     {
         ArgumentNullException.ThrowIfNull(reference);
-        cancellationToken.ThrowIfCancellationRequested();
+        budget.Check();
         if (!reference.BelongsTo(Authority) || reference.Address is not InfisicalSecretAddress address ||
             qualifyRevision && (address.Resolution != InfisicalResolution.Raw || address.IncludeImports))
         {
             return SecretOutcome<AcquiredRead>.Failure(SecretStatus.Invalid, reason: SecretFailureReason.AuthorityMismatch);
         }
 
-        using var linked = new InfisicalOperationBudget(_operationTimeout, _time, cancellationToken, _shutdown.Token);
-        BeginOperation();
+        IDisposable operationLease = _operations.Enter();
         try
         {
             using HttpRequestMessage request = await _staticWire.ReadAsync(address.Key, address.ProjectId,
                 address.Environment, address.Folder, "true", "shared",
                 Boolean(address.Resolution == InfisicalResolution.ExpandedReferences),
-                Boolean(address.IncludeImports), address.Version, linked.Token).ConfigureAwait(false);
-            SecretOutcome<JsonDocument> outcome = await ReadDocumentAsync(request, linked).ConfigureAwait(false);
+                Boolean(address.IncludeImports), address.Version, budget.Token).ConfigureAwait(false);
+            SecretOutcome<JsonDocument> outcome = await ReadDocumentAsync(request, budget).ConfigureAwait(false);
             if (!outcome.IsSuccess)
             {
                 return outcome.ConvertFailure<AcquiredRead>();
@@ -196,7 +195,7 @@ public sealed partial class InfisicalClient : IInfisicalSecretReader, IAsyncDisp
             if (provenance != SecretStatus.Success)
                 return SecretOutcome<AcquiredRead>.Failure(provenance);
 
-            linked.Check();
+            budget.Check();
             string? observedVersion = Version(secret);
             if (address.Version is { } requestedVersion &&
                 observedVersion != requestedVersion.ToString(CultureInfo.InvariantCulture))
@@ -219,17 +218,17 @@ public sealed partial class InfisicalClient : IInfisicalSecretReader, IAsyncDisp
             }
 
             var observation = new SecretObservation(reference, observedVersion, _time.GetUtcNow(), SecretValidity.Valid);
-            linked.Check();
+            budget.Check();
             return SecretOutcome<AcquiredRead>.Success(new(
                 SecretMaterial.FromText(value.GetString()!), observation, revision));
         }
         catch (OperationCanceledException)
         {
-            return SecretOutcome<AcquiredRead>.Failure(SecretStatus.Unavailable, reason: linked.CancellationReason());
+            return SecretOutcome<AcquiredRead>.Failure(SecretStatus.Unavailable, reason: budget.CancellationReason());
         }
         finally
         {
-            EndOperation();
+            operationLease.Dispose();
         }
     }
 
@@ -255,7 +254,7 @@ public sealed partial class InfisicalClient : IInfisicalSecretReader, IAsyncDisp
             var selection = new InfisicalInventorySelection(Authority, folder.ProjectId, folder.Environment,
                 folder.Folder, maximumItems: folder.MaximumItems, maximumResponseBytes: _responseLimit);
             var inventory = new InfisicalInventoryContext(selection, linked);
-            BeginOperation();
+            IDisposable operationLease = _operations.Enter();
             try
             {
                 DateTimeOffset startedAt = _time.GetUtcNow();
@@ -284,13 +283,13 @@ public sealed partial class InfisicalClient : IInfisicalSecretReader, IAsyncDisp
             }
             finally
             {
-                EndOperation();
+                operationLease.Dispose();
             }
         }
     }
 
     private async ValueTask<SecretOutcome<JsonDocument>> ReadDocumentAsync(HttpRequestMessage request,
-        InfisicalOperationBudget budget, MutationReceipt? receipt = null, SecretReference? target = null,
+        OperationBudget budget, MutationReceipt? receipt = null, SecretReference? target = null,
         IInfisicalTokenSource? nativeTokens = null, InfisicalBulkReceipt? bulkReceipt = null,
         InfisicalInventoryContext? inventory = null)
     {
@@ -451,7 +450,7 @@ public sealed partial class InfisicalClient : IInfisicalSecretReader, IAsyncDisp
             budget.Check();
             if (payload is { Length: 0 })
                 return SecretOutcome<JsonDocument>.Failure(SecretStatus.Invalid, reason: SecretFailureReason.RequestTooLarge);
-            BeginOperation();
+            IDisposable operationLease = _operations.Enter();
             try
             {
                 using HttpRequestMessage request = await BuildNativeRequestAsync((InfisicalNativeAddress)target.Address,
@@ -459,7 +458,7 @@ public sealed partial class InfisicalClient : IInfisicalSecretReader, IAsyncDisp
                 return await ReadDocumentAsync(request, budget, receipt, target, authority?.Tokens, bulkReceipt)
                     .ConfigureAwait(false);
             }
-            finally { EndOperation(); }
+            finally { operationLease.Dispose(); }
         }
         catch (OperationCanceledException)
         {
@@ -481,27 +480,6 @@ public sealed partial class InfisicalClient : IInfisicalSecretReader, IAsyncDisp
         lock (_gate) ObjectDisposedException.ThrowIf(_disposed, this);
     }
 
-    private void BeginOperation()
-    {
-        lock (_gate)
-        {
-            ObjectDisposedException.ThrowIf(_disposed, this);
-            _active++;
-        }
-    }
-
-    private void EndOperation()
-    {
-        lock (_gate)
-        {
-            _active--;
-            if (_active == 0)
-            {
-                _drained?.TrySetResult();
-            }
-        }
-    }
-
     /// <summary>Stops admission and shares one bounded shutdown result across callers.</summary>
     /// <remarks>Timeout may leave retained cleanup pending until callbacks and active operations finish.
     /// Borrowed transports and token sources are not disposed; remote effects are not rolled back.</remarks>
@@ -518,13 +496,7 @@ public sealed partial class InfisicalClient : IInfisicalSecretReader, IAsyncDisp
             }
 
             _disposed = true;
-            _drained = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            if (_active == 0)
-            {
-                _drained.SetResult();
-            }
-
-            drained = _drained.Task;
+            drained = _operations.Close();
             completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
             _disposeTask = completion.Task;
         }

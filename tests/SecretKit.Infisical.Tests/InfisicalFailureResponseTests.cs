@@ -8,6 +8,19 @@ namespace SecretKit.Infisical.Tests;
 public sealed class InfisicalFailureResponseTests
 {
     [Test]
+    [Arguments("""{"reqId":"one","reqId":"two","error":"PermissionDenied"}""")]
+    [Arguments("""{"error":"BadRequest","err\u006fr":"PermissionDenied","reqId":"one"}""")]
+    public async Task PublicErrorProjectionRejectsAmbiguousEvidenceInCallerParsedJson(string body)
+    {
+        using var document = JsonDocument.Parse(body);
+        var fallback = SecretOutcome<object>.Failure(SecretStatus.Denied);
+
+        var projected = InfisicalErrorResponse.Project(document.RootElement, HttpStatusCode.Forbidden, fallback);
+
+        await Assert.That(projected).IsSameReferenceAs(fallback);
+    }
+
+    [Test]
     [Arguments(400, "BadRequest", SecretFailureReason.ValidationFailed)]
     [Arguments(422, "ValidationFailure", SecretFailureReason.ValidationFailed)]
     [Arguments(401, "UnauthorizedError", SecretFailureReason.AuthenticationRejected)]

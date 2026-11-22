@@ -2,6 +2,7 @@ using System.Buffers;
 using System.Text;
 using System.Text.Json;
 using SecretKit.Infisical;
+using SecretKit.Internal;
 
 namespace SecretKit.Infisical.Tests;
 
@@ -10,14 +11,14 @@ public sealed class RequestSerializationTests
     [Test]
     public async Task OversizedSingleTokenReservationIsRejectedBeforeAllocation()
     {
-        using var buffer = new InfisicalOperationBudget.RequestBuffer(1024);
+        using var buffer = new BoundedRequestBuffer(1024);
         await Assert.That(() => buffer.GetMemory(100_000)).Throws<NotSupportedException>();
     }
 
     [Test]
     public async Task ActualEncodedBytesCannotAdvancePastTheBodyBudget()
     {
-        using var buffer = new InfisicalOperationBudget.RequestBuffer(1024);
+        using var buffer = new BoundedRequestBuffer(1024);
         buffer.GetMemory(4096).Span[..1025].Fill(17);
         await Assert.That(() => buffer.Advance(1025)).Throws<NotSupportedException>();
         await Assert.That(buffer.ToArray().Length).IsEqualTo(0);
@@ -39,7 +40,7 @@ public sealed class RequestSerializationTests
     {
         var pool = new RecordingPool();
         byte[] written;
-        using (var buffer = new InfisicalOperationBudget.RequestBuffer(64 * 1024, pool))
+        using (var buffer = new BoundedRequestBuffer(64 * 1024, pool))
         {
             for (int chunk = 0; chunk < 16; chunk++)
             {
@@ -60,7 +61,7 @@ public sealed class RequestSerializationTests
     public async Task FailedSerializationStillZeroesReservedBytesBeyondTheCommittedCount()
     {
         var pool = new RecordingPool();
-        var buffer = new InfisicalOperationBudget.RequestBuffer(1024, pool);
+        var buffer = new BoundedRequestBuffer(1024, pool);
         await Assert.That(() =>
         {
             using (buffer)

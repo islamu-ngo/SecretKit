@@ -5,6 +5,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using Refit;
 using SecretKit.Core;
+using SecretKit.Internal;
 
 [assembly: InternalsVisibleTo("SecretKit.Hosting.Tests")]
 
@@ -158,9 +159,9 @@ public sealed class InfisicalPeriodicTokenSession : IInfisicalTokenSource, IAsyn
             throw new ArgumentException("Lifetime evidence cannot authorize another token or origin.", nameof(verifiedEvidence));
         InfisicalTransportBinding.ValidateOrigin(origin, network);
         if (renewBefore <= TimeSpan.Zero || renewBefore > TimeSpan.FromDays(1) ||
-            requestTimeout <= TimeSpan.Zero || requestTimeout > TimeSpan.FromMinutes(1) ||
-            network.MaximumResponseBytes is < 1024 or > 16 * 1024 * 1024 ||
-            network.ShutdownTimeout <= TimeSpan.Zero || network.ShutdownTimeout > TimeSpan.FromMinutes(1))
+            !TransferLimits.IsValidTimeout(requestTimeout) ||
+            !TransferLimits.IsValidByteBudget(network.MaximumResponseBytes) ||
+            !TransferLimits.IsValidTimeout(network.ShutdownTimeout))
             throw new ArgumentException("Invalid renewal or network budget.");
 
         _time = timeProvider ?? TimeProvider.System;
@@ -293,7 +294,7 @@ public sealed class InfisicalPeriodicTokenSession : IInfisicalTokenSource, IAsyn
     public async ValueTask<SecretOutcome<InfisicalTokenRenewal>> RenewAsync(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        InfisicalDiagnosticStart? started = InfisicalDiagnostics.Capture(_time);
+        OperationDiagnosticStart? started = InfisicalDiagnostics.Capture(_time);
         DateTimeOffset now = _time.GetUtcNow();
         Task<SecretOutcome<InfisicalTokenRenewal>> task;
         TaskCompletionSource<SecretOutcome<InfisicalTokenRenewal>>? completion = null;
@@ -325,10 +326,10 @@ public sealed class InfisicalPeriodicTokenSession : IInfisicalTokenSource, IAsyn
 
     private async Task CompleteRenewalAsync(TaskCompletionSource<SecretOutcome<InfisicalTokenRenewal>> completion,
         InfisicalTokenRenewal receipt, SecretMaterial ownedToken, DateTimeOffset expiresAt,
-        InfisicalDiagnosticStart? started)
+        OperationDiagnosticStart? started)
     {
         using var deferred = InfisicalDiagnostics.Defer();
-        var observation = new InfisicalOperationObservation();
+        var observation = new OperationObservation();
         SecretOutcome<InfisicalTokenRenewal> result = SecretOutcome<InfisicalTokenRenewal>.Failure(SecretStatus.Unknown);
         CancellationToken canceled = default;
         bool wasCanceled = false;
@@ -339,12 +340,12 @@ public sealed class InfisicalPeriodicTokenSession : IInfisicalTokenSource, IAsyn
             catch (OperationCanceledException exception) { canceled = exception.CancellationToken; wasCanceled = true; }
             catch (Exception) { FailRecovery(); faulted = true; }
         }
-        InfisicalTermination termination = faulted ? InfisicalTermination.Faulted :
-            observation.Cancellation ?? InfisicalTermination.Completed;
-        var diagnostic = new InfisicalOperationCompletion(result.Status, termination switch
+        OperationTermination termination = faulted ? OperationTermination.Faulted :
+            observation.Cancellation ?? OperationTermination.Completed;
+        var diagnostic = new OperationCompletion(result.Status, termination switch
         {
-            InfisicalTermination.DeadlineExceeded => SecretFailureReason.DeadlineExceeded,
-            InfisicalTermination.DependencyCanceled => SecretFailureReason.TransportFailure,
+            OperationTermination.DeadlineExceeded => SecretFailureReason.DeadlineExceeded,
+            OperationTermination.DependencyCanceled => SecretFailureReason.TransportFailure,
             _ => result.Reason
         }, receipt.Evidence switch
         {
@@ -353,7 +354,7 @@ public sealed class InfisicalPeriodicTokenSession : IInfisicalTokenSource, IAsyn
             InfisicalRenewalEvidence.PossiblyDispatched => DispatchEvidence.PossiblyDispatched,
             _ => DispatchEvidence.NotDispatched
         }, termination);
-        InfisicalDiagnosticInterval? interval = InfisicalDiagnostics.Complete(started, _time);
+        OperationDiagnosticInterval? interval = InfisicalDiagnostics.Complete(started, _time);
         // Leave any synchronous cancellation-notification stack before export.
         // StopAsync drains that notification as well as this shared completion.
         await Task.CompletedTask.ConfigureAwait(ConfigureAwaitOptions.ForceYielding);
@@ -366,7 +367,7 @@ public sealed class InfisicalPeriodicTokenSession : IInfisicalTokenSource, IAsyn
     }
 
     private async Task<SecretOutcome<InfisicalTokenRenewal>> RenewCoreAsync(InfisicalTokenRenewal receipt,
-        SecretMaterial ownedToken, DateTimeOffset expiresAt, InfisicalOperationObservation observation)
+        SecretMaterial ownedToken, DateTimeOffset expiresAt, OperationObservation observation)
     {
         DateTimeOffset sentAt = _time.GetUtcNow();
         TimeSpan remaining = expiresAt - sentAt;
@@ -413,7 +414,7 @@ public sealed class InfisicalPeriodicTokenSession : IInfisicalTokenSource, IAsyn
                     var failure = await InfisicalFailureResponse.ReadAsync<InfisicalTokenRenewal>(response,
                         _responseLimit, _time, status, resource: false, cancellationToken: linked.Token).ConfigureAwait(false);
                     _shutdown.Token.ThrowIfCancellationRequested();
-                    if (linked.Expired) observation.ObserveCancellation(InfisicalTermination.DeadlineExceeded);
+                    if (linked.Expired) observation.ObserveCancellation(OperationTermination.DeadlineExceeded);
                     return failure;
                 }
                 using JsonDocument? document = await InfisicalOperationBudget.ReadJsonAsync(

@@ -144,7 +144,7 @@ public sealed class TransportPolicyTests
                 break;
             case "rotation":
                 var authority = new SecretAuthority();
-                using (var client = new InfisicalRotationClient(backend.Origin, authority,
+                await using (var client = new InfisicalRotationClient(backend.Origin, authority,
                     new(authority, tokens, "project"), network))
                     await client.ListAsync(new(authority, new InfisicalRotationScope("project")),
                         cancellationToken: deadline.Token);

@@ -2,81 +2,69 @@ using System.Globalization;
 using System.Net;
 using System.Text.Json;
 using SecretKit.Core;
+using SecretKit.Internal;
 
 namespace SecretKit.Infisical;
 
 internal static class InfisicalFailureResponse
 {
-    internal static async ValueTask<SecretOutcome<T>> ReadAsync<T>(HttpResponseMessage response,
+    internal static ValueTask<SecretOutcome<T>> ReadAsync<T>(HttpResponseMessage response,
         int maximumBytes, TimeProvider time, SecretStatus status, bool resource = true,
-        Action<int>? consumeBytes = null, CancellationToken cancellationToken = default) where T : notnull
+        Action<int>? consumeBytes = null, CancellationToken cancellationToken = default) where T : notnull =>
+        HttpFailureResponse.ReadAsync<T>(response, maximumBytes, time, status,
+            InfisicalErrorResponse.Project<T>, resource, consumeBytes, cancellationToken);
+}
+
+/// <summary>Projects an Infisical error body into closed failure metadata without retaining its message or details.</summary>
+public static class InfisicalErrorResponse
+{
+    /// <summary>Enriches an already selected HTTP failure with an admitted reason, retry advice and protected correlation ID.</summary>
+    /// <remarks>The caller owns and bounds the JSON body and selects the HTTP failure status.
+    /// Invalid or mismatched error envelopes retain the supplied fallback. This method performs no I/O,
+    /// retains no JSON, and never exposes native messages or details. Correlation remains explicitly protected.</remarks>
+    public static SecretOutcome<T> Project<T>(JsonElement root, HttpStatusCode statusCode,
+        SecretOutcome<T> fallback) where T : notnull
     {
-        SecretFailureReason reason = resource && response.StatusCode == HttpStatusCode.NotFound
-            ? SecretFailureReason.NotFoundOrInaccessible : SecretFailureReason.None;
-        TimeSpan? advice = status is SecretStatus.Throttled or SecretStatus.Unavailable
-            ? InfisicalOperationBudget.RetryAfter(response, time) : null;
-        SecretOutcome<T> fallback = SecretOutcome<T>.Failure(status, advice, reason);
-        if (response.IsSuccessStatusCode) return fallback;
-        try
+        ArgumentNullException.ThrowIfNull(fallback);
+        if (fallback.IsSuccess) throw new ArgumentException("An HTTP failure fallback is required.", nameof(fallback));
+        if (root.ValueKind != JsonValueKind.Object) return fallback;
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        foreach (JsonProperty property in root.EnumerateObject())
         {
-            using JsonDocument? document = await InfisicalOperationBudget.ReadJsonAsync(
-                response, maximumBytes, 16, allowDuplicateProperties: false,
-                onChunkRead: consumeBytes is null ? null : chunk =>
-                {
-                    consumeBytes(chunk);
-                    return true;
-                },
-                cancellationToken: cancellationToken).ConfigureAwait(false);
-            if (document is null) return fallback;
-            JsonElement root = document.RootElement;
-            if (root.ValueKind != JsonValueKind.Object) return fallback;
-            foreach (JsonProperty property in root.EnumerateObject())
+            if (!names.Add(property.Name)) return fallback;
+            bool invalid = property.Name switch
             {
-                bool invalid = property.Name switch
-                {
-                    "reqId" or "error" => property.Value.ValueKind != JsonValueKind.String,
-                    "statusCode" => property.Value.ValueKind != JsonValueKind.Number ||
-                        !property.Value.TryGetInt32(out int code) || code != (int)response.StatusCode,
-                    "message" => property.Value.ValueKind is not (JsonValueKind.String or JsonValueKind.Array),
-                    _ => false
-                };
-                if (invalid) return fallback;
-            }
-            string? error = root.TryGetProperty("error", out JsonElement errorField) ? errorField.GetString() : null;
-            if (root.TryGetProperty("message", out JsonElement messageShape) &&
-                messageShape.ValueKind == JsonValueKind.Array &&
-                (error != "ValidationFailure" || (int)response.StatusCode != 422))
-                return fallback;
-            reason = ((int)response.StatusCode, error) switch
-            {
-                (400, "BadRequest") or (422, "ValidationFailure") => SecretFailureReason.ValidationFailed,
-                (401, "UnauthorizedError") => SecretFailureReason.AuthenticationRejected,
-                (403, "PermissionDenied" or "ForbiddenError") => SecretFailureReason.PermissionDenied,
-                _ => reason
+                "reqId" or "error" => property.Value.ValueKind != JsonValueKind.String,
+                "statusCode" => property.Value.ValueKind != JsonValueKind.Number ||
+                    !property.Value.TryGetInt32(out int code) || code != (int)statusCode,
+                "message" => property.Value.ValueKind is not (JsonValueKind.String or JsonValueKind.Array),
+                _ => false
             };
-            SecretCorrelationId? correlation = null;
-            if (root.TryGetProperty("reqId", out JsonElement identifier))
-            {
-                _ = SecretCorrelationId.TryCreate(identifier.GetString(), out correlation);
-            }
-            if (advice is null && status == SecretStatus.Throttled &&
-                response.StatusCode == HttpStatusCode.TooManyRequests &&
-                root.TryGetProperty("message", out JsonElement message) && message.ValueKind == JsonValueKind.String)
-                advice = BodyAdvice(message.GetString()!);
-            cancellationToken.ThrowIfCancellationRequested();
-            return SecretOutcome<T>.Failure(status, advice, reason, correlation);
+            if (invalid) return fallback;
         }
-        catch (OperationCanceledException)
-        {
-            // Detail is optional. The operation owner still enforces caller and
-            // shutdown cancellation; an elapsed detail budget cannot erase HTTP evidence.
+        string? error = root.TryGetProperty("error", out JsonElement errorField) ? errorField.GetString() : null;
+        if (root.TryGetProperty("message", out JsonElement messageShape) &&
+            messageShape.ValueKind == JsonValueKind.Array &&
+            (error != "ValidationFailure" || (int)statusCode != 422))
             return fallback;
-        }
-        catch (Exception error) when (error is JsonException or HttpRequestException or IOException or
-            InvalidOperationException or NotSupportedException)
+        SecretFailureReason reason = ((int)statusCode, error) switch
         {
-            return fallback;
+            (400, "BadRequest") or (422, "ValidationFailure") => SecretFailureReason.ValidationFailed,
+            (401, "UnauthorizedError") => SecretFailureReason.AuthenticationRejected,
+            (403, "PermissionDenied" or "ForbiddenError") => SecretFailureReason.PermissionDenied,
+            _ => fallback.Reason
+        };
+        SecretCorrelationId? correlation = null;
+        if (root.TryGetProperty("reqId", out JsonElement identifier))
+        {
+            _ = SecretCorrelationId.TryCreate(identifier.GetString(), out correlation);
         }
+        TimeSpan? advice = fallback.RetryAfter;
+        if (advice is null && fallback.Status == SecretStatus.Throttled &&
+            statusCode == HttpStatusCode.TooManyRequests &&
+            root.TryGetProperty("message", out JsonElement message) && message.ValueKind == JsonValueKind.String)
+            advice = BodyAdvice(message.GetString()!);
+        return SecretOutcome<T>.Failure(fallback.Status, advice, reason, correlation);
     }
 
     private static TimeSpan? BodyAdvice(string message)

@@ -11,6 +11,47 @@ namespace SecretKit.Package.Tests;
 public sealed class ArchitectureBoundaryTests
 {
     [Test]
+    [Arguments("SecretKit.Core", false)]
+    [Arguments("SecretKit.Infisical", true)]
+    [Arguments("SecretKit.AzureKeyVault", true)]
+    [Arguments("SecretKit.Extensions.Configuration", true)]
+    [Arguments("SecretKit.Extensions.Hosting", true)]
+    [Arguments("SecretKit.Infisical.Management", true)]
+    [Arguments("SecretKit.AzureKeyVault.Management", true)]
+    public async Task CompiledSharedPlumbingStaysPrivateAndOutsideCore(string package, bool consumesSharedSource)
+    {
+        string root = Path.GetFullPath("../../../../../", AppContext.BaseDirectory);
+        using var assembly = File.OpenRead(Path.Combine(root, "src", package,
+            "bin", "Release", "net10.0", package + ".dll"));
+        using var image = new PEReader(assembly, PEStreamOptions.PrefetchMetadata);
+        MetadataReader metadata = image.GetMetadataReader();
+        TypeDefinition[] sharedTypes = metadata.TypeDefinitions.Select(metadata.GetTypeDefinition)
+            .Where(type => metadata.GetString(type.Namespace) is
+                "SecretKit.Internal" or "SecretKit.Telemetry.Internal").ToArray();
+
+        // Shared transport and telemetry remain implementation details of
+        // their consumers; Core must not acquire either responsibility.
+        await Assert.That(sharedTypes.Length != 0).IsEqualTo(consumesSharedSource);
+        await Assert.That(sharedTypes.All(type =>
+            (type.Attributes & TypeAttributes.VisibilityMask) == TypeAttributes.NotPublic)).IsTrue();
+    }
+
+    [Test]
+    public async Task CompiledRuntimeDoesNotGrantManagementInternalAccess()
+    {
+        string root = Path.GetFullPath("../../../../../", AppContext.BaseDirectory);
+        using var assembly = File.OpenRead(Path.Combine(root, "src", "SecretKit.Infisical",
+            "bin", "Release", "net10.0", "SecretKit.Infisical.dll"));
+        using var image = new PEReader(assembly, PEStreamOptions.PrefetchMetadata);
+        MetadataReader metadata = image.GetMetadataReader();
+        string[] friends = metadata.GetAssemblyDefinition().GetCustomAttributes()
+            .Select(metadata.GetCustomAttribute)
+            .Where(attribute => IsFriendAttribute(metadata, attribute))
+            .Select(attribute => FriendName(metadata, attribute)).ToArray();
+        await Assert.That(friends.Contains("SecretKit.Infisical.Management", StringComparer.Ordinal)).IsFalse();
+    }
+
+    [Test]
     [Arguments("SecretKit.Testing")]
     [Arguments("SecretKit.Testing.Infisical")]
     [Arguments("SecretKit.TestHarness")]
@@ -90,14 +131,13 @@ public sealed class ArchitectureBoundaryTests
             .Select(attribute => FriendName(metadata, attribute)).Order(StringComparer.Ordinal).ToArray();
         string[] expected = package switch
         {
-            "SecretKit.Infisical" => ["SecretKit.Hosting.Tests", "SecretKit.Infisical.Management", "SecretKit.Infisical.Tests", "SecretKit.ProviderContract.Tests"],
+            "SecretKit.Infisical" => ["SecretKit.Hosting.Tests", "SecretKit.Infisical.Tests", "SecretKit.ProviderContract.Tests"],
             "SecretKit.Infisical.Management" => ["SecretKit.Infisical.Management.Tests"],
             _ => []
         };
         await Assert.That(friends.SequenceEqual(expected.Order(StringComparer.Ordinal), StringComparer.Ordinal)).IsTrue();
         if (package == "SecretKit.Infisical.Management")
         {
-            await Assert.That(RuntimeManagementDependencyTests.UnapprovedRuntimeReferences(metadata)).IsEmpty();
             string[] publicTypes = metadata.TypeDefinitions
                 .Select(metadata.GetTypeDefinition)
                 .Where(type => (type.Attributes & TypeAttributes.VisibilityMask) is TypeAttributes.Public or TypeAttributes.NestedPublic)

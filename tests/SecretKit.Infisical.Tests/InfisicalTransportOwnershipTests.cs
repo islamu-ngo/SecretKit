@@ -101,14 +101,14 @@ public sealed class InfisicalTransportOwnershipTests
     }
 
     [Test]
-    public async Task SynchronousRotationDisposeDoesNotWaitForShutdownTimerFactory()
+    public async Task RotationDisposeAsyncReturnsItsDrainBeforeShutdownTimerFactoryUnblocks()
     {
         using var caller = new CancellationTokenSource();
         using var tokens = new CallbackTokens();
         using var wire = new CleanupWire();
         var clock = new ShutdownTimerClock(throwOnShutdown: false);
         var authority = new SecretAuthority();
-        using var client = new InfisicalRotationClient(new("https://selected.test"), authority,
+        await using var client = new InfisicalRotationClient(new("https://selected.test"), authority,
             new(authority, tokens, "project"),
             new()
             {
@@ -118,16 +118,18 @@ public sealed class InfisicalTransportOwnershipTests
         var scope = new SecretReference(authority, new InfisicalRotationScope("project"));
         Task<SecretOutcome<InfisicalNativeList<InfisicalRotationProgress>>> pending =
             client.ListAsync(scope, cancellationToken: caller.Token).AsTask();
+        Task? drain = null;
         Task? invocation = null;
         try
         {
             await tokens.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
-            invocation = Task.Run(client.Dispose);
+            invocation = Task.Run(() => { drain = client.DisposeAsync().AsTask(); });
             await clock.FactoryEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
-            // The factory remains blocked until after the synchronous call has returned.
+            // Starting disposal must return the drain without blocking on the host timer factory.
             await invocation.WaitAsync(TimeSpan.FromSeconds(5));
             await Assert.That(clock.FactoryRelease.Task.IsCompleted).IsFalse();
+            await Assert.That(drain!.IsCompleted).IsFalse();
             await Assert.That(async () => await client.ListAsync(scope)).Throws<ObjectDisposedException>();
 
             clock.FactoryRelease.TrySetResult();
@@ -135,7 +137,7 @@ public sealed class InfisicalTransportOwnershipTests
             tokens.CallbackRelease.TrySetResult();
             tokens.OperationRelease.TrySetResult();
             await Assert.That((await pending.WaitAsync(TimeSpan.FromSeconds(5))).Status).IsEqualTo(SecretStatus.Invalid);
-            await client.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+            await drain!.WaitAsync(TimeSpan.FromSeconds(5));
             await Assert.That(wire.Sent).IsFalse();
             await Assert.That(() => tokens.LastCopy!.Reveal()).Throws<ObjectDisposedException>();
         }

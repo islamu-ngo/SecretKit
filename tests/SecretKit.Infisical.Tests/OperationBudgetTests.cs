@@ -11,6 +11,66 @@ public sealed class OperationBudgetTests
     [Arguments(true, false)]
     [Arguments(false, true)]
     [Arguments(true, true)]
+    public async Task ReadUsesOneDeadlineThroughResponseConsumption(bool native, bool cancelCaller)
+    {
+        var clock = new CountingClock();
+        using var body = new StalledBody();
+        using var wire = new FailureEvidenceTests.Wire(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StreamContent(body)
+        });
+        await using var client = new InfisicalClient(new("https://api.test"), new FailureEvidenceTests.Tokens(),
+            new InfisicalNetworkOptions
+            {
+                Transport = InfisicalTransportOptions.HostControlled(wire),
+                OperationTimeout = TimeSpan.FromSeconds(2)
+            }, clock);
+        var reference = FailureEvidenceTests.Reference(client);
+        using var caller = new CancellationTokenSource();
+        var pending = ReadFailureAsync();
+        await body.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        int timersAtBody = clock.Created;
+        if (cancelCaller) caller.Cancel();
+        else clock.Advance(TimeSpan.FromSeconds(2));
+        if (cancelCaller)
+        {
+            var canceled = await Assert.That(async () => await pending).Throws<OperationCanceledException>();
+            await Assert.That(canceled!.CancellationToken).IsEqualTo(caller.Token);
+        }
+        else
+        {
+            var result = await pending;
+            await Assert.That(result.Status).IsEqualTo(SecretStatus.Unavailable);
+            await Assert.That(result.Reason).IsEqualTo(SecretFailureReason.DeadlineExceeded);
+        }
+        await Assert.That(body.Disposed).IsTrue();
+        await Assert.That(timersAtBody).IsEqualTo(1);
+        await Assert.That(clock.Created).IsEqualTo(1);
+
+        async Task<SecretOutcome<object>> ReadFailureAsync() => native
+            ? (await client.ReadNativeAsync(reference, caller.Token)).ConvertFailure<object>()
+            : (await client.ReadAsync(reference, caller.Token)).ConvertFailure<object>();
+    }
+
+    private sealed class CountingClock : TimeProvider
+    {
+        private readonly InfisicalTransportOwnershipTests.ShutdownClock _clock = new();
+        private int _created;
+        internal int Created => Volatile.Read(ref _created);
+        internal void Advance(TimeSpan amount) => _clock.Advance(amount);
+        public override DateTimeOffset GetUtcNow() => _clock.GetUtcNow();
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            Interlocked.Increment(ref _created);
+            return _clock.CreateTimer(callback, state, dueTime, period);
+        }
+    }
+
+    [Test]
+    [Arguments(false, false)]
+    [Arguments(true, false)]
+    [Arguments(false, true)]
+    [Arguments(true, true)]
     public async Task SlowErrorDetailsPreserveHttpRejectionAndCallerCancellation(bool mutation, bool cancelCaller)
     {
         var clock = new InfisicalTransportOwnershipTests.ShutdownClock();
@@ -176,7 +236,7 @@ public sealed class OperationBudgetTests
                         return (await client.ListDefinitionsAsync()).Status;
                 case "rotation":
                     var authority = new SecretAuthority();
-                    using (var client = new InfisicalRotationClient(new("https://api.test"), authority,
+                    await using (var client = new InfisicalRotationClient(new("https://api.test"), authority,
                         new(authority, tokens, "project"), network, clock))
                         return (await client.ListAsync(new(authority, new InfisicalRotationScope("project")))).Status;
                 case "universal":

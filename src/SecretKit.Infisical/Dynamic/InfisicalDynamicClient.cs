@@ -7,6 +7,7 @@ using System.Text.Json.Serialization;
 using Refit;
 using SecretKit.Core;
 using SecretKit.Infisical.Dynamic;
+using SecretKit.Internal;
 
 namespace SecretKit.Infisical;
 
@@ -35,9 +36,8 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
     private readonly Dictionary<Guid, WeakReference<InfisicalDefinitionLifecycle>> _definitions = [];
     private readonly CancellationTokenSource _shutdown = new();
     private readonly TimeSpan _shutdownTimeout;
-    private TaskCompletionSource? _drained;
+    private readonly AsyncOperationDrain _operations = new();
     private Task? _disposeTask;
-    private int _active;
     private bool _disposed;
 
     /// <summary>Creates a fixed-origin, exact-scope client without acquiring credentials or starting lifecycle work.</summary>
@@ -51,7 +51,7 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(scope);
         network ??= new InfisicalNetworkOptions();
         InfisicalTransportBinding.ValidateOrigin(origin, network);
-        if (network.MaximumResponseBytes is < 1024 or > 16 * 1024 * 1024 ||
+        if (!TransferLimits.IsValidByteBudget(network.MaximumResponseBytes) ||
             maximumItems is < 1 or > 1024 || network.ShutdownTimeout <= TimeSpan.Zero ||
             network.ShutdownTimeout > TimeSpan.FromMinutes(1))
         {
@@ -753,6 +753,7 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
         try
         {
             token.ThrowIfCancellationRequested();
+            IDisposable operationLease;
             lock (_gate)
             {
                 ObjectDisposedException.ThrowIf(_disposed, this);
@@ -760,7 +761,7 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
                     _leases.Remove(key);
                 foreach (Guid key in _definitions.Where(pair => !pair.Value.TryGetTarget(out _)).Select(pair => pair.Key).ToArray())
                     _definitions.Remove(key);
-                _active++;
+                operationLease = _operations.Enter();
             }
             try
             {
@@ -838,13 +839,7 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
             }
             finally
             {
-                lock (_gate)
-                {
-                    if (--_active == 0)
-                    {
-                        _drained?.TrySetResult();
-                    }
-                }
+                operationLease.Dispose();
             }
         }
         catch (OperationCanceledException)
@@ -963,12 +958,7 @@ public sealed class InfisicalDynamicClient : IAsyncDisposable
             _disposed = true;
             _leases.Clear();
             _definitions.Clear();
-            _drained = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            if (_active == 0)
-            {
-                _drained.SetResult();
-            }
-            drained = _drained.Task;
+            drained = _operations.Close();
             completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
             _disposeTask = completion.Task;
         }

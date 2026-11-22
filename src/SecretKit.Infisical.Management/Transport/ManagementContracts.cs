@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using SecretKit.Core;
+using SecretKit.Internal;
 
 namespace SecretKit.Infisical.Management;
 
@@ -128,7 +129,7 @@ internal static class ManagementJson
     // only the exact returned copy (owned and cleared by its caller) leaves this method.
     internal static byte[] Serialize(Action<Utf8JsonWriter> write, string subject)
     {
-        using var buffer = new InfisicalOperationBudget.RequestBuffer(BodyBudget);
+        using var buffer = new BoundedRequestBuffer(BodyBudget);
         WriteBounded(buffer, write, subject);
         return buffer.ToArray();
     }
@@ -136,7 +137,7 @@ internal static class ManagementJson
     // The canonical bounded body is hashed in place, so intent material never leaves pooled storage.
     internal static string IntentFingerprint(Action<Utf8JsonWriter> write, string subject = "management intent")
     {
-        using var buffer = new InfisicalOperationBudget.RequestBuffer(BodyBudget);
+        using var buffer = new BoundedRequestBuffer(BodyBudget);
         WriteBounded(buffer, write, subject);
         Span<byte> digest = stackalloc byte[SHA256.HashSizeInBytes];
         SHA256.HashData(buffer.WrittenSpan, digest);

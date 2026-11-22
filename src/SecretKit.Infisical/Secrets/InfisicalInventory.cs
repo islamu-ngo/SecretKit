@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using SecretKit.Core;
+using SecretKit.Internal;
 
 namespace SecretKit.Infisical;
 
@@ -55,9 +56,9 @@ public sealed class InfisicalInventorySelection : SecretInventoryScope
         if (maximumItems is < 1 or > 10000) throw new ArgumentOutOfRangeException(nameof(maximumItems));
         if (maximumFolders is < 1 or > 1000) throw new ArgumentOutOfRangeException(nameof(maximumFolders));
         if (maximumRequests is < 1 or > 1000) throw new ArgumentOutOfRangeException(nameof(maximumRequests));
-        if (maximumResponseBytes is < 1024 or > 16 * 1024 * 1024) throw new ArgumentOutOfRangeException(nameof(maximumResponseBytes));
+        if (!TransferLimits.IsValidByteBudget(maximumResponseBytes)) throw new ArgumentOutOfRangeException(nameof(maximumResponseBytes));
         if (maximumDepth is < 0 or > 20) throw new ArgumentOutOfRangeException(nameof(maximumDepth));
-        if (timeout is { } duration && (duration <= TimeSpan.Zero || duration > TimeSpan.FromMinutes(1)))
+        if (timeout is { } duration && (!TransferLimits.IsValidTimeout(duration)))
             throw new ArgumentOutOfRangeException(nameof(timeout));
         ProjectId = projectId;
         Environment = environment;
@@ -283,7 +284,7 @@ public sealed partial class InfisicalClient
         var ids = new HashSet<Guid>();
         pending.Enqueue(new(selection.Folder, null, 0));
         DateTimeOffset startedAt = _time.GetUtcNow();
-        BeginOperation();
+        IDisposable operationLease = _operations.Enter();
         try
         {
             while (pending.TryDequeue(out InventoryFolder? folder))
@@ -355,7 +356,7 @@ public sealed partial class InfisicalClient
             return SecretOutcome<InfisicalInventory>.Success(new(selection, context.Entries, context.Groups,
                 startedAt, _time.GetUtcNow(), context.Reasons));
         }
-        finally { EndOperation(); }
+        finally { operationLease.Dispose(); }
     }
 
     private sealed record InventoryFolder(string Path, Guid? Id, int Depth);

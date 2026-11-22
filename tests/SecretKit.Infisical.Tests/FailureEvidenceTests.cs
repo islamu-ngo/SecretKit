@@ -118,7 +118,7 @@ public sealed class FailureEvidenceTests
             new("project-canary", "test", "/", Guid.NewGuid()), network);
         var definitions = await dynamicClient.ListDefinitionsAsync();
         var authority = new InfisicalNativeAuthority(client.Authority, tokens, "project-canary");
-        using var rotation = new InfisicalRotationClient(new("https://api.test"), client.Authority, authority, network);
+        await using var rotation = new InfisicalRotationClient(new("https://api.test"), client.Authority, authority, network);
         var rotations = await rotation.ListAsync(new(client.Authority, new InfisicalRotationScope("project-canary")));
         await Assert.That(tags.RetryAfter).IsEqualTo(TimeSpan.FromSeconds(7));
         await Assert.That(imports.RetryAfter).IsEqualTo(TimeSpan.FromSeconds(7));

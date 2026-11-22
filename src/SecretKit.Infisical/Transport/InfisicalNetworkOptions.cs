@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json.Serialization;
+using SecretKit.Internal;
 
 namespace SecretKit.Infisical;
 
@@ -14,10 +15,10 @@ public sealed class InfisicalNetworkOptions
     public bool AllowLoopbackDevelopmentHttp { get; init; }
 
     /// <summary>Maximum accepted response bytes; clients require 1 KiB through 16 MiB.</summary>
-    public int MaximumResponseBytes { get; init; } = 1024 * 1024;
+    public int MaximumResponseBytes { get; init; } = TransferLimits.DefaultBytes;
 
     /// <summary>Maximum encoded request body bytes; clients require 1 KiB through 16 MiB, independently of responses.</summary>
-    public int MaximumRequestBytes { get; init; } = 1024 * 1024;
+    public int MaximumRequestBytes { get; init; } = TransferLimits.DefaultBytes;
 
     /// <summary>Cooperative credential-to-publication deadline; positive and at most one minute.</summary>
     public TimeSpan OperationTimeout { get; init; } = TimeSpan.FromSeconds(30);

@@ -1,4 +1,5 @@
 using System.Security.Cryptography.X509Certificates;
+using System.Text.Json.Serialization;
 
 namespace SecretKit.Infisical;
 
@@ -8,9 +9,17 @@ namespace SecretKit.Infisical;
 public sealed class InfisicalTransportOptions
 {
     private readonly byte[][] _roots;
-    internal HttpClient? Client { get; }
-    internal HttpMessageHandler? Handler { get; }
-    internal bool IsHostControlled => Client is not null || Handler is not null;
+    /// <summary>Gets the borrowed host client, or null for a handler or SDK-safe selection.</summary>
+    /// <remarks>The host retains ownership. Consumers must not dispose or reconfigure it.</remarks>
+    [JsonIgnore]
+    public HttpClient? Client { get; }
+    /// <summary>Gets the borrowed host handler, or null for a client or SDK-safe selection.</summary>
+    /// <remarks>The host retains ownership. Wrapping clients must use disposeHandler: false.</remarks>
+    [JsonIgnore]
+    public HttpMessageHandler? Handler { get; }
+    /// <summary>Gets whether the host selected a pipeline whose networking policy it controls.</summary>
+    [JsonIgnore]
+    public bool IsHostControlled => Client is not null || Handler is not null;
 
     private InfisicalTransportOptions(HttpClient? client = null, HttpMessageHandler? handler = null,
         byte[][]? roots = null) => (Client, Handler, _roots) = (client, handler, roots ?? []);
@@ -51,7 +60,11 @@ public sealed class InfisicalTransportOptions
         return new(handler: handler);
     }
 
-    internal X509Certificate2[] CopyRoots() =>
+    /// <summary>Creates owned copies of the selected public trust roots.</summary>
+    /// <remarks>The caller must dispose every returned certificate. Copies contain no private keys
+    /// and changing or disposing them does not alter this immutable selection.
+    /// In SDK-safe mode an empty array selects system trust; host-controlled trust remains host policy.</remarks>
+    public X509Certificate2[] CopyRoots() =>
         _roots.Select(data => X509CertificateLoader.LoadCertificate(data)).ToArray();
 
     /// <summary>Returns a material-free description, never pipeline or certificate details.</summary>

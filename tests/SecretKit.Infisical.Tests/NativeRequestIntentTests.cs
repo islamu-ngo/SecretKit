@@ -239,7 +239,7 @@ public sealed class NativeRequestIntentTests
         var tokens = new ObservedTokens();
         using var wire = new ObservedWire();
         var authority = new SecretAuthority();
-        using var client = new InfisicalRotationClient(Origin, authority,
+        await using var client = new InfisicalRotationClient(Origin, authority,
             new(authority, tokens, "selected"),
             new() { Transport = InfisicalTransportOptions.HostControlled(wire) });
         var address = new InfisicalRotationAddress("selected", "prod", "/",

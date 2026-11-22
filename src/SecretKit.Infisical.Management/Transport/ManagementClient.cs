@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text.Json;
 using SecretKit.Core;
+using SecretKit.Internal;
 
 namespace SecretKit.Infisical.Management;
 
@@ -14,7 +15,7 @@ namespace SecretKit.Infisical.Management;
 public sealed class ManagementTransport : IDisposable
 {
     private readonly HttpClient _http;
-    private readonly InfisicalTransportBinding _binding;
+    private readonly HttpTransportBinding _binding;
     private readonly ManagementRequestBuilder _requests;
     internal int ResponseLimit { get; }
     internal int RequestLimit { get; }
@@ -40,15 +41,19 @@ public sealed class ManagementTransport : IDisposable
     private ManagementTransport(Uri origin, InfisicalNetworkOptions network, HttpMessageHandler? handler)
     {
         ArgumentNullException.ThrowIfNull(origin);
-        InfisicalTransportBinding.ValidateOrigin(origin, network);
-        if (network.MaximumResponseBytes is < 1024 or > 16 * 1024 * 1024)
+        ArgumentNullException.ThrowIfNull(network.Transport);
+        var selection = new HttpTransportSettings(network.Transport.Client, network.Transport.Handler,
+            network.Transport.CopyRoots, network.Proxy, network.AllowLoopbackDevelopmentHttp,
+            network.MaximumRequestBytes, network.OperationTimeout);
+        HttpTransportBinding.ValidateOrigin(origin, selection);
+        if (!TransferLimits.IsValidByteBudget(network.MaximumResponseBytes))
         {
             throw new ArgumentException("Invalid response byte budget.");
         }
         ResponseLimit = network.MaximumResponseBytes;
         RequestLimit = network.MaximumRequestBytes;
         OperationTimeout = network.OperationTimeout;
-        _binding = new(origin, network, handler);
+        _binding = new(origin, selection, handler);
         _http = _binding.Client;
         _requests = new ManagementRequestBuilder(_binding.Requests);
     }
@@ -114,21 +119,21 @@ public sealed class ManagementClient
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(authority);
         using IDisposable export = InfisicalDiagnostics.Defer();
-        var started = InfisicalDiagnostics.Capture(_time);
-        var observation = new InfisicalOperationObservation();
+        var started = OperationTiming.Capture(_time);
+        var observation = new OperationObservation();
         try
         {
-            return await InfisicalOperationBudget.RunAsync(_transport.OperationTimeout, _time,
-                cancellationToken, null,
-                token => ExecuteOnceAsync(request, authority, grant, receipt, token),
+            return await OperationBudget.RunAsync(_transport.OperationTimeout, _time,
+                budget => ExecuteOnceAsync(request, authority, grant, receipt, budget.Token),
+                observation,
                 () => receipt?.Evidence ?? DispatchEvidence.NotDispatched,
-                observation: observation).ConfigureAwait(false);
+                caller: cancellationToken).ConfigureAwait(false);
         }
         finally
         {
             if (observation.Completion is { } completion)
                 ManagementDiagnostics.Emit(request.OperationId, completion,
-                    InfisicalDiagnostics.Complete(started, _time));
+                    OperationTiming.Complete(started, _time));
         }
     }
 
@@ -169,7 +174,7 @@ public sealed class ManagementClient
             {
                 return SecretOutcome<T>.Failure(SecretStatus.Expired);
             }
-            if (InfisicalBearer.CreateHeader(token.Material) is not { } authorization)
+            if (BearerHeader.CreateHeader(token.Material) is not { } authorization)
             {
                 return SecretOutcome<T>.Failure(SecretStatus.Invalid);
             }
@@ -220,10 +225,10 @@ public sealed class ManagementClient
                     receipt?.Record(DispatchEvidence.Rejected);
                 }
                 cancellationToken.ThrowIfCancellationRequested();
-                return await InfisicalFailureResponse.ReadAsync<T>(response, _transport.ResponseLimit, _time,
-                    status, cancellationToken: cancellationToken).ConfigureAwait(false);
+                return await HttpFailureResponse.ReadAsync<T>(response, _transport.ResponseLimit, _time,
+                    status, InfisicalErrorResponse.Project<T>, cancellationToken: cancellationToken).ConfigureAwait(false);
             }
-            using JsonDocument? document = await InfisicalOperationBudget.ReadJsonAsync(
+            using JsonDocument? document = await BoundedJson.ReadJsonAsync(
                 response, _transport.ResponseLimit, 64, allowDuplicateProperties: false, cancellationToken: cancellationToken).ConfigureAwait(false);
             if (document is null)
             {

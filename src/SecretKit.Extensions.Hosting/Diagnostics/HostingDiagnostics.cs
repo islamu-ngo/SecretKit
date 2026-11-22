@@ -1,6 +1,6 @@
 using System.Diagnostics;
-using System.Diagnostics.Metrics;
 using SecretKit.Core;
+using SecretKit.Telemetry.Internal;
 
 namespace SecretKit.Extensions.Hosting;
 
@@ -41,105 +41,18 @@ internal readonly record struct HostingDiagnosticInterval(DateTime StartUtc, Tim
 
 internal static class HostingDiagnostics
 {
-    private static ActivitySource? _activities;
-    private static Instruments? _instruments;
-    private static readonly AsyncLocal<bool> Emitting = new();
-    private sealed record Instruments(Meter Meter, Counter<long> Operations, Histogram<double> Duration);
+    private static readonly SecretKitTelemetry Telemetry = new("SecretKit.Extensions.Hosting",
+        "hosting.operation", "hosting.operations", "hosting.duration");
 
     internal static void Emit(HostingOperation operation, HostingCompletion completion, HostingDiagnosticInterval? interval)
     {
-        if (interval is not { } measured || Emitting.Value) return;
-        // A synchronous listener can stop the caller's Activity object. Restoring
-        // Activity.Current then rejects that stopped object. Isolate callback
-        // context changes so the caller retains its original AsyncLocal value.
-        bool suppressed = ExecutionContext.IsFlowSuppressed();
-        if (suppressed) ExecutionContext.RestoreFlow();
-        ExecutionContext context;
-        try { context = ExecutionContext.Capture()!; }
-        finally { if (suppressed) ExecutionContext.SuppressFlow(); }
-        ExecutionContext.Run(context, _ =>
+        if (interval is not { } measured) return;
+        TagList tags = new()
         {
-            if (suppressed)
-            {
-                using var flow = ExecutionContext.SuppressFlow();
-                Export(operation, completion, measured);
-            }
-            else Export(operation, completion, measured);
-        }, null);
-    }
-
-    private static void Export(HostingOperation operation, HostingCompletion completion, HostingDiagnosticInterval measured)
-    {
-        Activity? ambient = Activity.Current;
-        Emitting.Value = true;
-        try
-        {
-            TagList tags = new()
-            {
-                { "operation", operation.ToString() }, { "outcome", completion.Outcome.ToString() },
-                { "reason", completion.Reason.ToString() }, { "termination", completion.Termination.ToString() },
-                { "state", completion.State.ToString() }
-            };
-            try
-            {
-                Activity.Current = null;
-                ActivitySource? source = Volatile.Read(ref _activities);
-                if (source is null)
-                {
-                    var created = new ActivitySource("SecretKit.Extensions.Hosting");
-                    source = Interlocked.CompareExchange(ref _activities, created, null) ?? created;
-                    if (!ReferenceEquals(source, created)) created.Dispose();
-                }
-                Activity.Current = null;
-                ActivityContext parent = measured.Parent;
-                if (parent.TraceId == default)
-                    parent = new(ActivityTraceId.CreateRandom(), default, ActivityTraceFlags.None);
-                using Activity? activity = source.CreateActivity("hosting.operation", ActivityKind.Internal,
-                    parent, tags, idFormat: ActivityIdFormat.W3C);
-                if (activity is not null)
-                {
-                    activity.SetStartTime(measured.StartUtc);
-                    activity.SetEndTime(measured.StartUtc + measured.Duration);
-                    Activity.Current = null;
-                    activity.Start();
-                }
-            }
-            catch (Exception) { }
-            Instruments? instruments = Volatile.Read(ref _instruments);
-            try
-            {
-                Activity.Current = null;
-                if (instruments is null)
-                {
-                    var meter = new Meter("SecretKit.Extensions.Hosting");
-                    try
-                    {
-                        var created = new Instruments(meter, meter.CreateCounter<long>("hosting.operations"),
-                            meter.CreateHistogram<double>("hosting.duration", "s"));
-                        instruments = Interlocked.CompareExchange(ref _instruments, created, null) ?? created;
-                        if (!ReferenceEquals(instruments, created)) meter.Dispose();
-                    }
-                    catch { meter.Dispose(); throw; }
-                }
-            }
-            catch (Exception) { }
-            try
-            {
-                Activity.Current = null;
-                instruments?.Operations.Add(1, tags);
-            }
-            catch (Exception) { }
-            try
-            {
-                Activity.Current = null;
-                instruments?.Duration.Record(measured.Duration.TotalSeconds, tags);
-            }
-            catch (Exception) { }
-        }
-        finally
-        {
-            try { Activity.Current = ambient; }
-            finally { Emitting.Value = false; }
-        }
+            { "operation", operation.ToString() }, { "outcome", completion.Outcome.ToString() },
+            { "reason", completion.Reason.ToString() }, { "termination", completion.Termination.ToString() },
+            { "state", completion.State.ToString() }
+        };
+        Telemetry.Emit(tags, measured.StartUtc, measured.Duration, measured.Parent);
     }
 }
