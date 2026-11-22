@@ -199,6 +199,7 @@ public sealed class OidcAuthConfigurationInput
 /// <summary>Host-selected reviewer or template configuration; owns a copy of reviewer material.</summary>
 public sealed class KubernetesAuthConfigurationInput : IDisposable
 {
+    private readonly Lock _gate = new();
     private readonly SecretMaterial? _reviewer;
     private bool _disposed;
     /// <summary>Copies optional reviewer material; caller retains the input material, and must dispose this independent copy.</summary>
@@ -209,7 +210,9 @@ public sealed class KubernetesAuthConfigurationInput : IDisposable
         bool clearTokenReviewerJwt = false, KubernetesTokenReviewMode? tokenReviewMode = null,
         bool? verifyTlsCertificate = null, WorkloadAuthTokenPolicy? policy = null)
     {
-        foreach (string? value in new[] { allowedNames, allowedNamespaces, caCert }) WorkloadAuthJson.Text(value);
+        WorkloadAuthJson.Text(allowedNames);
+        WorkloadAuthJson.Text(allowedNamespaces);
+        WorkloadAuthJson.Text(caCert);
         WorkloadAuthJson.Text(allowedAudience, 1000);
         if (kubernetesHost?.Value is { } host && (host.Length is < 1 or > 255))
             throw new ArgumentException("Invalid Kubernetes host.");
@@ -259,33 +262,44 @@ public sealed class KubernetesAuthConfigurationInput : IDisposable
     [JsonIgnore] public WorkloadAuthTokenPolicy Policy { get; }
     internal void ValidateAttach()
     {
-        if (AllowedNames is null || AllowedNamespaces is null)
-            throw new ArgumentException("Kubernetes attachment requires names and namespaces.");
-        if (TemplateId is { Value: null } || ClearTokenReviewerJwt)
-            throw new ArgumentException("Kubernetes attachment does not accept null template or reviewer.");
+        lock (_gate)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (AllowedNames is null || AllowedNamespaces is null)
+                throw new ArgumentException("Kubernetes attachment requires names and namespaces.");
+            if (TemplateId is { Value: null } || ClearTokenReviewerJwt)
+                throw new ArgumentException("Kubernetes attachment does not accept null template or reviewer.");
+        }
     }
     internal void Write(Utf8JsonWriter writer)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        WorkloadAuthJson.String(writer, "allowedNames", AllowedNames);
-        WorkloadAuthJson.String(writer, "allowedNamespaces", AllowedNamespaces);
-        WorkloadAuthJson.String(writer, "allowedAudience", AllowedAudience);
-        WorkloadAuthJson.String(writer, "caCert", CaCert);
-        WorkloadAuthJson.Nullable(writer, "kubernetesHost", KubernetesHost);
-        WorkloadAuthJson.Nullable(writer, "gatewayId", GatewayId);
-        WorkloadAuthJson.Nullable(writer, "gatewayPoolId", GatewayPoolId);
-        WorkloadAuthJson.Nullable(writer, "templateId", TemplateId);
-        WorkloadAuthJson.WriteSecret(writer, "tokenReviewerJwt", _reviewer);
-        if (_reviewer is null && ClearTokenReviewerJwt) writer.WriteNull("tokenReviewerJwt");
-        if (TokenReviewMode is { } mode) writer.WriteString("tokenReviewMode", mode == KubernetesTokenReviewMode.Api ? "api" : "gateway");
-        if (VerifyTlsCertificate is { } verify) writer.WriteBoolean("verifyTlsCertificate", verify);
-        Policy.Write(writer);
+        lock (_gate)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            WorkloadAuthJson.String(writer, "allowedNames", AllowedNames);
+            WorkloadAuthJson.String(writer, "allowedNamespaces", AllowedNamespaces);
+            WorkloadAuthJson.String(writer, "allowedAudience", AllowedAudience);
+            WorkloadAuthJson.String(writer, "caCert", CaCert);
+            WorkloadAuthJson.Nullable(writer, "kubernetesHost", KubernetesHost);
+            WorkloadAuthJson.Nullable(writer, "gatewayId", GatewayId);
+            WorkloadAuthJson.Nullable(writer, "gatewayPoolId", GatewayPoolId);
+            WorkloadAuthJson.Nullable(writer, "templateId", TemplateId);
+            WorkloadAuthJson.WriteSecret(writer, "tokenReviewerJwt", _reviewer);
+            if (_reviewer is null && ClearTokenReviewerJwt) writer.WriteNull("tokenReviewerJwt");
+            if (TokenReviewMode is { } mode) writer.WriteString("tokenReviewMode", mode == KubernetesTokenReviewMode.Api ? "api" : "gateway");
+            if (VerifyTlsCertificate is { } verify) writer.WriteBoolean("verifyTlsCertificate", verify);
+            Policy.Write(writer);
+        }
     }
     /// <summary>Disposes the independent reviewer copy and prevents further serialization of this input.</summary>
     public void Dispose()
     {
-        _disposed = true;
-        _reviewer?.Dispose();
+        lock (_gate)
+        {
+            if (_disposed) return;
+            _disposed = true;
+            _reviewer?.Dispose();
+        }
     }
     /// <summary>Returns a marker without reviewer material or selectors.</summary>
     public override string ToString() => "[KubernetesAuthConfigurationInput]";

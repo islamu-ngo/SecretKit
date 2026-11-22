@@ -90,6 +90,7 @@ public sealed class LdapAuthSettings
 /// <summary>Two established undiscriminated attachment alternatives. Owns copied bind material.</summary>
 public sealed class LdapAuthConfigurationInput : IDisposable
 {
+    private readonly Lock _gate = new();
     private readonly SecretMaterial? _bindPass;
     private readonly SecretMaterial? _certificate;
     private bool _disposed;
@@ -97,7 +98,9 @@ public sealed class LdapAuthConfigurationInput : IDisposable
         string? searchBase, SecretMaterial? ldapCaCertificate, LdapAuthSettings? settings, bool update)
     {
         ExternalAuthJson.Text(templateId);
-        foreach (var text in new[] { url, bindDN, searchBase }) ExternalAuthJson.Text(text, update ? 1 : 0);
+        ExternalAuthJson.Text(url, update ? 1 : 0);
+        ExternalAuthJson.Text(bindDN, update ? 1 : 0);
+        ExternalAuthJson.Text(searchBase, update ? 1 : 0);
         ExternalAuthJson.Secret(ldapCaCertificate);
         ExternalAuthJson.Secret(bindPass, update ? 1 : 0);
         TemplateId = templateId;
@@ -146,21 +149,28 @@ public sealed class LdapAuthConfigurationInput : IDisposable
     [JsonIgnore] public bool IsUpdate { get; }
     internal void Write(Utf8JsonWriter writer)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        WorkloadAuthJson.String(writer, "templateId", TemplateId);
-        WorkloadAuthJson.String(writer, "url", Url);
-        WorkloadAuthJson.String(writer, "bindDN", BindDN);
-        WorkloadAuthJson.WriteSecret(writer, "bindPass", _bindPass);
-        WorkloadAuthJson.String(writer, "searchBase", SearchBase);
-        WorkloadAuthJson.WriteSecret(writer, "ldapCaCertificate", _certificate);
-        Settings.Write(writer);
+        lock (_gate)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            WorkloadAuthJson.String(writer, "templateId", TemplateId);
+            WorkloadAuthJson.String(writer, "url", Url);
+            WorkloadAuthJson.String(writer, "bindDN", BindDN);
+            WorkloadAuthJson.WriteSecret(writer, "bindPass", _bindPass);
+            WorkloadAuthJson.String(writer, "searchBase", SearchBase);
+            WorkloadAuthJson.WriteSecret(writer, "ldapCaCertificate", _certificate);
+            Settings.Write(writer);
+        }
     }
     /// <summary>Disposes owned bind-password and certificate copies and prevents further serialization.</summary>
     public void Dispose()
     {
-        _disposed = true;
-        _bindPass?.Dispose();
-        _certificate?.Dispose();
+        lock (_gate)
+        {
+            if (_disposed) return;
+            _disposed = true;
+            _bindPass?.Dispose();
+            _certificate?.Dispose();
+        }
     }
     /// <summary>Returns a marker without bind material or connection coordinates.</summary>
     public override string ToString() => "[LdapAuthConfigurationInput]";
@@ -199,6 +209,7 @@ public sealed class OciAuthConfigurationInput
 /// <summary>Host-supplied bundle distribution, never bundle acquisition or issuer provisioning.</summary>
 public sealed class SpiffeTrustBundleInput : IDisposable
 {
+    private readonly Lock _gate = new();
     private readonly SecretMaterial? _bundle;
     private readonly SecretMaterial? _caCert;
     private bool _disposed;
@@ -234,26 +245,36 @@ public sealed class SpiffeTrustBundleInput : IDisposable
     [JsonIgnore] public long? RefreshHintSeconds { get; }
     internal SpiffeTrustBundleInput Copy()
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        return new(_bundle, EndpointUrl, _caCert, RefreshHintSeconds);
+        lock (_gate)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            return new(_bundle, EndpointUrl, _caCert, RefreshHintSeconds);
+        }
     }
     internal void Write(Utf8JsonWriter writer)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        writer.WriteStartObject("trustBundleDistribution");
-        writer.WriteString("profile", EndpointUrl is null ? "static" : "https_web_bundle");
-        WorkloadAuthJson.WriteSecret(writer, "bundle", _bundle);
-        WorkloadAuthJson.String(writer, "endpointUrl", EndpointUrl);
-        WorkloadAuthJson.WriteSecret(writer, "caCert", _caCert);
-        if (RefreshHintSeconds is { } hint) writer.WriteNumber("refreshHintSeconds", hint);
-        writer.WriteEndObject();
+        lock (_gate)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            writer.WriteStartObject("trustBundleDistribution");
+            writer.WriteString("profile", EndpointUrl is null ? "static" : "https_web_bundle");
+            WorkloadAuthJson.WriteSecret(writer, "bundle", _bundle);
+            WorkloadAuthJson.String(writer, "endpointUrl", EndpointUrl);
+            WorkloadAuthJson.WriteSecret(writer, "caCert", _caCert);
+            if (RefreshHintSeconds is { } hint) writer.WriteNumber("refreshHintSeconds", hint);
+            writer.WriteEndObject();
+        }
     }
     /// <summary>Disposes owned bundle and CA copies and prevents further serialization.</summary>
     public void Dispose()
     {
-        _disposed = true;
-        _bundle?.Dispose();
-        _caCert?.Dispose();
+        lock (_gate)
+        {
+            if (_disposed) return;
+            _disposed = true;
+            _bundle?.Dispose();
+            _caCert?.Dispose();
+        }
     }
     /// <summary>Returns a marker without bundle material or endpoint details.</summary>
     public override string ToString() => "[SpiffeTrustBundleInput]";
@@ -262,6 +283,7 @@ public sealed class SpiffeTrustBundleInput : IDisposable
 /// <summary>SPIFFE authentication input owning an independent copy of optional bundle distribution material.</summary>
 public sealed class SpiffeAuthConfigurationInput : IDisposable
 {
+    private readonly Lock _gate = new();
     private readonly SpiffeTrustBundleInput? _distribution;
     private bool _disposed;
     /// <summary>Copies supplied bundle distribution and captures optional selectors; attachment requires all trust fields.</summary>
@@ -269,7 +291,9 @@ public sealed class SpiffeAuthConfigurationInput : IDisposable
         string? allowedAudiences = null, SpiffeTrustBundleInput? trustBundleDistribution = null,
         WorkloadAuthTokenPolicy? policy = null)
     {
-        foreach (var text in new[] { trustDomain, allowedSpiffeIds, allowedAudiences }) ExternalAuthJson.Text(text, 1);
+        ExternalAuthJson.Text(trustDomain, 1);
+        ExternalAuthJson.Text(allowedSpiffeIds, 1);
+        ExternalAuthJson.Text(allowedAudiences, 1);
         TrustDomain = trustDomain;
         AllowedSpiffeIds = allowedSpiffeIds;
         AllowedAudiences = allowedAudiences;
@@ -286,24 +310,34 @@ public sealed class SpiffeAuthConfigurationInput : IDisposable
     [JsonIgnore] public WorkloadAuthTokenPolicy Policy { get; }
     internal void ValidateAttach()
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        if (TrustDomain is null || AllowedSpiffeIds is null || AllowedAudiences is null || _distribution is null)
-            throw new ArgumentException("SPIFFE attachment requires trust domain, IDs, audiences and bundle distribution.");
+        lock (_gate)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (TrustDomain is null || AllowedSpiffeIds is null || AllowedAudiences is null || _distribution is null)
+                throw new ArgumentException("SPIFFE attachment requires trust domain, IDs, audiences and bundle distribution.");
+        }
     }
     internal void Write(Utf8JsonWriter writer)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        WorkloadAuthJson.String(writer, "trustDomain", TrustDomain);
-        WorkloadAuthJson.String(writer, "allowedSpiffeIds", AllowedSpiffeIds);
-        WorkloadAuthJson.String(writer, "allowedAudiences", AllowedAudiences);
-        _distribution?.Write(writer);
-        Policy.Write(writer);
+        lock (_gate)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            WorkloadAuthJson.String(writer, "trustDomain", TrustDomain);
+            WorkloadAuthJson.String(writer, "allowedSpiffeIds", AllowedSpiffeIds);
+            WorkloadAuthJson.String(writer, "allowedAudiences", AllowedAudiences);
+            _distribution?.Write(writer);
+            Policy.Write(writer);
+        }
     }
     /// <summary>Disposes the independent distribution copy and prevents further serialization.</summary>
     public void Dispose()
     {
-        _disposed = true;
-        _distribution?.Dispose();
+        lock (_gate)
+        {
+            if (_disposed) return;
+            _disposed = true;
+            _distribution?.Dispose();
+        }
     }
     /// <summary>Returns a marker without trust selectors or bundle material.</summary>
     public override string ToString() => "[SpiffeAuthConfigurationInput]";
@@ -329,6 +363,7 @@ public sealed class TlsAuthSubjectAltNames
 /// <summary>TLS-certificate authentication input owning an independent CA-material copy.</summary>
 public sealed class TlsCertAuthConfigurationInput : IDisposable
 {
+    private readonly Lock _gate = new();
     private readonly SecretMaterial? _certificate;
     private bool _disposed;
     /// <summary>Copies supplied CA material and captures nullable name constraints; attachment requires a CA.</summary>
@@ -354,28 +389,38 @@ public sealed class TlsCertAuthConfigurationInput : IDisposable
     [JsonIgnore] public WorkloadAuthTokenPolicy Policy { get; }
     internal void ValidateAttach()
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        if (_certificate is null) throw new ArgumentException("TLS attachment requires a CA certificate.");
-        ExternalAuthJson.AttachPolicy(Policy);
+        lock (_gate)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (_certificate is null) throw new ArgumentException("TLS attachment requires a CA certificate.");
+            ExternalAuthJson.AttachPolicy(Policy);
+        }
     }
     internal void Write(Utf8JsonWriter writer)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        WorkloadAuthJson.WriteSecret(writer, "caCertificate", _certificate);
-        WorkloadAuthJson.Nullable(writer, "allowedCommonNames", AllowedCommonNames);
-        if (AllowedSubjectAltNames is not null)
+        lock (_gate)
         {
-            if (AllowedSubjectAltNames.Values is null) writer.WriteNull("allowedSubjectAltNames");
-            else WorkloadAuthJson.Strings(writer, "allowedSubjectAltNames", AllowedSubjectAltNames.Values);
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            WorkloadAuthJson.WriteSecret(writer, "caCertificate", _certificate);
+            WorkloadAuthJson.Nullable(writer, "allowedCommonNames", AllowedCommonNames);
+            if (AllowedSubjectAltNames is not null)
+            {
+                if (AllowedSubjectAltNames.Values is null) writer.WriteNull("allowedSubjectAltNames");
+                else WorkloadAuthJson.Strings(writer, "allowedSubjectAltNames", AllowedSubjectAltNames.Values);
+            }
+            if (VerifyClientCertificateChain is { } verify) writer.WriteBoolean("verifyClientCertificateChain", verify);
+            Policy.Write(writer);
         }
-        if (VerifyClientCertificateChain is { } verify) writer.WriteBoolean("verifyClientCertificateChain", verify);
-        Policy.Write(writer);
     }
     /// <summary>Disposes the owned CA copy and prevents further serialization.</summary>
     public void Dispose()
     {
-        _disposed = true;
-        _certificate?.Dispose();
+        lock (_gate)
+        {
+            if (_disposed) return;
+            _disposed = true;
+            _certificate?.Dispose();
+        }
     }
     /// <summary>Returns a marker without certificate material or name constraints.</summary>
     public override string ToString() => "[TlsCertAuthConfigurationInput]";

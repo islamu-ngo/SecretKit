@@ -152,6 +152,13 @@ approvedSlug)` and `receipt` with `client.CreateReceipt(request)`; keep the
 request alive until the await completes, then dispose it. Approved inputs must
 come from host policy, not be echoed from an untrusted request.
 
+Disposable Kubernetes, LDAP, SPIFFE and TLS-certificate configuration inputs
+serialize or copy their owned material under the same lock used by disposal.
+Disposal between approval-target construction and request construction may
+reject the latter; no partially built request is returned. Once construction
+succeeds, the request owns its payload independently of the input. Dispose
+both the input and the request at their respective lifetime boundaries.
+
 ### Retained factory owner map
 
 Methods here construct requests; `ManagementClient.ExecuteAsync` sends them.
