@@ -1,0 +1,24 @@
+<Project>
+  <!-- No Inputs/Outputs gate: a restored SDK or lock can have an older timestamp. -->
+  <Target Name="GenerateLockedArmContracts" BeforeTargets="CoreCompile" DependsOnTargets="ResolveReferences">
+    <PropertyGroup>
+      <_ArmWork>$(IntermediateOutputPath)ArmContracts/</_ArmWork>
+      <_ArmSources>$(MSBuildThisFileDirectory)</_ArmSources>
+    </PropertyGroup>
+    <MakeDir Directories="$(_ArmWork)" />
+    <ItemGroup>
+      <_ArmSdkRef Include="$(MSBuildBinPath)/NuGet.Packaging.dll;$(MSBuildBinPath)/NuGet.Common.dll;$(MSBuildBinPath)/NuGet.Versioning.dll;$(MSBuildBinPath)/NuGet.Frameworks.dll" />
+      <_ArmFrameworkRef Include="@(ReferencePathWithRefAssemblies)" Condition="'%(ReferencePathWithRefAssemblies.FrameworkReferenceName)' == 'Microsoft.NETCore.App'" />
+      <_ArmCompileRef Include="@(ReferencePathWithRefAssemblies)" Condition="$([System.String]::Copy('%(ReferencePathWithRefAssemblies.NuGetPackageId)').StartsWith('Azure.ResourceManager'))" />
+    </ItemGroup>
+    <Csc Sources="$(_ArmSources)ArmContractReader.cs;$(_ArmSources)Generate.cs" References="@(_ArmFrameworkRef)"
+         TargetType="library" OutputAssembly="$(_ArmWork)ArmContracts.Tool.dll" NoStandardLib="true" Nullable="enable"
+         LangVersion="$(LangVersion)" Deterministic="true" TreatWarningsAsErrors="true" />
+    <WriteLinesToFile File="$(_ArmWork)references.txt" Lines="@(_ArmCompileRef->'%(FullPath)')" Overwrite="true" WriteOnlyWhenDifferent="true" />
+    <Exec Command="dotnet fsi --nologo --warnaserror+ --lib:&quot;$(MSBuildBinPath)&quot; @(_ArmSdkRef->'--reference:&quot;%(FullPath)&quot;', ' ') --reference:&quot;$(_ArmWork)ArmContracts.Tool.dll&quot; --exec &quot;$(_ArmSources)LockedPackage.fsx&quot; &quot;$(ProjectAssetsFile)&quot; &quot;$(MSBuildProjectDirectory)/packages.lock.json&quot; &quot;$(TargetFramework)&quot; &quot;$(_ArmWork)references.txt&quot; &quot;$(_ArmSources)Bindings.txt&quot; &quot;$(_ArmWork)ArmMethodContracts.g.cs&quot;" />
+    <ItemGroup>
+      <Compile Include="$(_ArmWork)ArmMethodContracts.g.cs" />
+      <FileWrites Include="$(_ArmWork)ArmMethodContracts.g.cs;$(_ArmWork)ArmContracts.Tool.dll;$(_ArmWork)references.txt" />
+    </ItemGroup>
+  </Target>
+</Project>
