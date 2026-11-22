@@ -98,7 +98,7 @@
     },
     {
       "file": "src/SecretKit.Infisical.Management/Identities/ExternalIdentityAuthenticationTypes.cs",
-      "sha256": "1fe6b5f67d0391936fc774d14e1c33cc492ae484e6ebb67b410ea0fc36b471f4"
+      "sha256": "d0c319e520b28f9fe9c28dff4051fcbac23fd0923b8f5c2379cc8e43ae4b716c"
     },
     {
       "file": "src/SecretKit.Infisical.Management/Identities/Identities.cs",
@@ -158,7 +158,7 @@
     },
     {
       "file": "src/SecretKit.Infisical.Management/Identities/WorkloadIdentityAuthenticationTypes.cs",
-      "sha256": "b585360e33a75db4be4ef3cf2edad561616336a014afda32c26e5f5e3a373829"
+      "sha256": "d090225d1698c49ec0da0762d5bc9882ead5e976e9f78869ab6b97f4d3d981c8"
     },
     {
       "file": "src/SecretKit.Infisical.Management/Projects/ProjectConnections.cs",
@@ -254,7 +254,7 @@
     },
     {
       "file": "src/SecretKit.Infisical/Authentication/InfisicalPeriodicTokenSession.cs",
-      "sha256": "bb42ad8c43b58eac31f082bfb8a54e047cdd54abf54de91486ffffbadff777db"
+      "sha256": "54f19104fef08b1f2fd73eff6b49dce240df7aacd4a039acf3f7f32b356ed9d2"
     },
     {
       "file": "src/SecretKit.Infisical/Authentication/InfisicalProofAuthentication.cs",
@@ -274,7 +274,7 @@
     },
     {
       "file": "src/SecretKit.Infisical/Authentication/InfisicalRuntimeSession.cs",
-      "sha256": "fe2fbe588dbf465e69f379ff607a7fdb75caa498ddc9ab9f13d464bee2ecd135"
+      "sha256": "cd3f14d473797641fe5d185ed1f782d4dcc1c8f5c6e01504f68c082c110e89aa"
     },
     {
       "file": "src/SecretKit.Infisical/Authentication/InfisicalSuppliedTokenSource.cs",
