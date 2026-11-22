@@ -281,6 +281,17 @@ or downstream qualification for every profile. `AcquireDatabaseAsync` accepts
 only `SqlDatabase` and the exact `DB_USERNAME`/`DB_PASSWORD` result shape; other
 provider result contracts return `ContractNotEstablished`.
 
+Couchbase, OAuth, Kubernetes and IBM API Connect HTTP endpoints use public HTTPS
+validation by default. Their constructors accept an optional
+`trustedEndpointOrigin` from trusted host configuration for an exact private
+HTTPS origin or custom port; Kubernetes's static factory accepts it too.
+This selector is not serialized and is independent of the transport used to
+reach Infisical. Both OAuth destinations are checked. Plaintext, loopback,
+metadata/link-local, unspecified and multicast addresses remain rejected.
+These checks validate URI text, not downstream DNS or provider-side egress.
+TOTP provisioning URLs are protected `otpauth://totp/` data with one nonempty
+secret parameter; they are preserved verbatim and never fetched locally.
+
 Dispose `InfisicalDatabaseLease` and each `CopyCredentials()` result. Prefer
 `UseUsername*`/`UsePassword*` or UTF-8 `UseUsernameUtf8*`/`UsePasswordUtf8*`
 span callbacks on `InfisicalDatabaseCredentials` when integrating with APIs that

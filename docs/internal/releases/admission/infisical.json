@@ -318,7 +318,7 @@
     },
     {
       "file": "src/SecretKit.Infisical/Dynamic/Profiles/InfisicalDynamicProfile.cs",
-      "sha256": "d0db229ea4d552672fadb1c92d2c2fb958986d575dc43370ed161cdcd2d2e422"
+      "sha256": "07b0885e16fd5d5843d0e9675fc55f3207d3af0a57d49a83ce5bbf66b2877b2a"
     },
     {
       "file": "src/SecretKit.Infisical/Dynamic/Profiles/NativeCloudProfiles.cs",
@@ -326,7 +326,7 @@
     },
     {
       "file": "src/SecretKit.Infisical/Dynamic/Profiles/NativeDatabaseProfiles.cs",
-      "sha256": "3858470622c3ae0aaffd8c8a182b0739d0ea12a6fbfe7cd4f73b885eeafc333b"
+      "sha256": "78ea8d97bbde668187a312b46493f1ea3b9ebbf881b6a4dcc34ac7737c564c7a"
     },
     {
       "file": "src/SecretKit.Infisical/Dynamic/Profiles/NativeDynamicDefinitionOptions.cs",
@@ -338,11 +338,11 @@
     },
     {
       "file": "src/SecretKit.Infisical/Dynamic/Profiles/NativeIdentityProfiles.cs",
-      "sha256": "6b889547263dacbfe3c338d442334fb56e6747efc352890b1c8ded454535eb87"
+      "sha256": "98238d5f8e79bfeb65a2b27dbbc8b4f1aea1c718ffccb904550722a296358d16"
     },
     {
       "file": "src/SecretKit.Infisical/Dynamic/Profiles/NativeServiceProfiles.cs",
-      "sha256": "413fb2b823988ae1c00363359b5435dc15ad5891cf0d3cda8d4ee90fe1bb2e4e"
+      "sha256": "6d050b647b1a98c7c38cb78c5f13d6982dca74a7b0715a1313a3839ca1784831"
     },
     {
       "file": "src/SecretKit.Infisical/Dynamic/Profiles/NativeSqlProfiles.cs",

@@ -30,31 +30,33 @@ public sealed class NativeKubernetesDefinitionProfile : InfisicalDynamicProfile
 {
     private NativeKubernetesDefinitionProfile(string nameSpace, string serviceAccountName,
         IReadOnlyList<string> audiences, string? clusterToken, string? url, string? ca,
-        NativeKubernetesAuthentication? authentication, NativeGatewayOptions? gateway, bool? sslEnabled)
+        NativeKubernetesAuthentication? authentication, NativeGatewayOptions? gateway, bool? sslEnabled, Uri? trustedEndpointOrigin)
         : base(InfisicalDynamicProvider.Kubernetes)
     {
         Text("credentialType", "static"); Text("namespace", nameSpace); Text("serviceAccountName", serviceAccountName);
-        Strings("audiences", audiences, true); ClusterAuthority(clusterToken, url, authentication, gateway, sslEnabled);
+        Strings("audiences", audiences, true); ClusterAuthority(clusterToken, url, authentication, gateway, sslEnabled, trustedEndpointOrigin);
         Optional("ca", ca); Flag("sslRejectUnauthorized", true);
     }
     /// <summary>Copies service-account/audience and optional cluster/gateway/TLS inputs without reading host cluster credentials.</summary>
     public static NativeKubernetesDefinitionProfile ForStaticAccount(string nameSpace, string serviceAccountName,
         IReadOnlyList<string> audiences, string? clusterToken = null, string? url = null, string? ca = null,
-        NativeKubernetesAuthentication? authentication = null, NativeGatewayOptions? gateway = null, bool? sslEnabled = null) =>
-        new(nameSpace, serviceAccountName, audiences, clusterToken, url, ca, authentication, gateway, sslEnabled);
+        NativeKubernetesAuthentication? authentication = null, NativeGatewayOptions? gateway = null, bool? sslEnabled = null,
+        Uri? trustedEndpointOrigin = null) =>
+        new(nameSpace, serviceAccountName, audiences, clusterToken, url, ca, authentication, gateway, sslEnabled, trustedEndpointOrigin);
     /// <summary>Copies dynamic role or cluster-role selectors and explicit native authentication inputs.</summary>
     public NativeKubernetesDefinitionProfile(string nameSpace, string role, bool clusterRole,
         IReadOnlyList<string> audiences, string? clusterToken = null, string? url = null, string? ca = null,
-        NativeKubernetesAuthentication? authentication = null, NativeGatewayOptions? gateway = null, bool? sslEnabled = null)
+        NativeKubernetesAuthentication? authentication = null, NativeGatewayOptions? gateway = null, bool? sslEnabled = null,
+        Uri? trustedEndpointOrigin = null)
         : base(InfisicalDynamicProvider.Kubernetes)
     {
         Text("credentialType", "dynamic"); Text("namespace", nameSpace); Text("role", role);
         Text("roleType", clusterRole ? "cluster-role" : "role"); Strings("audiences", audiences, true);
-        ClusterAuthority(clusterToken, url, authentication, gateway, sslEnabled); Optional("ca", ca);
+        ClusterAuthority(clusterToken, url, authentication, gateway, sslEnabled, trustedEndpointOrigin); Optional("ca", ca);
         Flag("sslRejectUnauthorized", true);
     }
     private void ClusterAuthority(string? clusterToken, string? url, NativeKubernetesAuthentication? authentication,
-        NativeGatewayOptions? gateway, bool? sslEnabled)
+        NativeGatewayOptions? gateway, bool? sslEnabled, Uri? trustedEndpointOrigin)
     {
         if (authentication is { } invalid && !Enum.IsDefined(invalid))
         {
@@ -68,11 +70,7 @@ public sealed class NativeKubernetesDefinitionProfile : InfisicalDynamicProfile
                 _ => throw new ArgumentException("Unknown native Kubernetes authentication.")
             });
         Optional("clusterToken", clusterToken);
-        if (url is not null)
-        {
-            if (url.Length == 0) Optional("url", url);
-            else SafeUri("url", url);
-        }
+        Endpoint("url", url, trustedEndpointOrigin, optional: true);
         Options(gateway);
         if (sslEnabled is { } enabled) Flag("sslEnabled", enabled);
     }
@@ -105,12 +103,12 @@ public sealed class NativeIbmApiDefinitionProfile : InfisicalDynamicProfile
     /// <summary>Copies API/client credentials and explicit organization/catalog/application coordinates without I/O.</summary>
     public NativeIbmApiDefinitionProfile(string apiKey, string applicationId, string clientId, string clientSecret,
         string organizationId, string catalogId, string consumerOrganizationId, string instanceUrl,
-        NativeGatewayOptions? gateway = null)
+        NativeGatewayOptions? gateway = null, Uri? trustedEndpointOrigin = null)
         : base(InfisicalDynamicProvider.IbmApiConnect)
     {
         Text("apiKey", apiKey); Text("appId", applicationId); Text("clientId", clientId); Text("clientSecret", clientSecret);
         Text("orgId", organizationId); Text("catalogId", catalogId); Text("consumerOrgId", consumerOrganizationId);
-        SafeUri("instanceUrl", instanceUrl);
+        Endpoint("instanceUrl", instanceUrl, trustedEndpointOrigin);
         Options(gateway);
     }
 }

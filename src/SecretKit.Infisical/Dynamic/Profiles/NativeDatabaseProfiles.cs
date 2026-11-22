@@ -162,9 +162,9 @@ public sealed class NativeCouchbaseDefinitionProfile : InfisicalDynamicProfile
     /// <summary>Copies API authority and cluster selectors; validates the stricter native Couchbase password requirements.</summary>
     public NativeCouchbaseDefinitionProfile(string url, string apiKey, string organizationId, string projectId,
         string clusterId, IReadOnlyList<string> roles, NativeCouchbaseBuckets? buckets = null,
-        NativePasswordRequirements? passwordRequirements = null) : base(InfisicalDynamicProvider.Couchbase)
+        NativePasswordRequirements? passwordRequirements = null, Uri? trustedEndpointOrigin = null) : base(InfisicalDynamicProvider.Couchbase)
     {
-        SafeUri("url", url); Text("auth.apiKey", apiKey); Text("orgId", organizationId);
+        Endpoint("url", url, trustedEndpointOrigin); Text("auth.apiKey", apiKey); Text("orgId", organizationId);
         Text("projectId", projectId); Text("clusterId", clusterId); Strings("roles", roles);
         Options(buckets); PasswordRequirements(passwordRequirements, couchbase: true);
     }

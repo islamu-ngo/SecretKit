@@ -419,6 +419,49 @@ public sealed class DynamicProfileOptionTests
     }
 
     [Test]
+    [Arguments("dynamic")]
+    [Arguments("static")]
+    [Arguments("oauth")]
+    [Arguments("couchbase")]
+    [Arguments("ibm")]
+    public async Task ApprovedPrivateEndpointIsCopiedButTrustSelectionIsNot(string kind)
+    {
+        var origin = new Uri("https://10.0.0.1:6443");
+        string endpoint = origin + "native/path";
+        using InfisicalDynamicProfile profile = kind switch
+        {
+            "dynamic" => new NativeKubernetesDefinitionProfile("ns", "role", true, [],
+                url: endpoint, trustedEndpointOrigin: origin),
+            "static" => NativeKubernetesDefinitionProfile.ForStaticAccount("ns", "account", [],
+                url: endpoint, trustedEndpointOrigin: origin),
+            "oauth" => new NativeOauthDefinitionProfile("client", "test", NativeOauthClientAuthentication.Basic,
+                "https://oauth.test/token", endpoint, trustedEndpointOrigin: origin),
+            "ibm" => new NativeIbmApiDefinitionProfile("key", "app", "id", "test", "org", "catalog", "consumer",
+                endpoint, trustedEndpointOrigin: origin),
+            _ => new NativeCouchbaseDefinitionProfile(endpoint, "test", "org", "project", "cluster", ["role"],
+                trustedEndpointOrigin: origin)
+        };
+        var inputs = await Create(profile);
+        string field = kind switch { "oauth" => "revocationUrl", "ibm" => "instanceUrl", _ => "url" };
+        await Assert.That(inputs.GetProperty(field).GetString()).IsEqualTo(endpoint);
+        await Assert.That(inputs.TryGetProperty("trustedEndpointOrigin", out _)).IsFalse();
+        if (kind == "oauth")
+            await Assert.That(inputs.GetProperty("tokenUrl").GetString()).IsEqualTo("https://oauth.test/token");
+    }
+
+    [Test]
+    public async Task TotpProvisioningTextIsCopiedUnchangedWithoutPublicExposure()
+    {
+        string material = DynamicWireFixture.Material();
+        string value = "otpauth://totp/Fixture%3Alabel?issuer=Fixture&secret=" + material;
+        using var profile = new NativeTotpDefinitionProfile(value);
+        var inputs = await Create(profile);
+        await Assert.That(inputs.GetProperty("url").GetString() == value).IsTrue();
+        await Assert.That(JsonSerializer.Serialize(profile).Contains(material, StringComparison.Ordinal)).IsFalse();
+        await Assert.That(profile.ToString()!.Contains(material, StringComparison.Ordinal)).IsFalse();
+    }
+
+    [Test]
     [Arguments(false)]
     [Arguments(true)]
     public async Task KubernetesPublicOptionalUrlAndTokenCanBeOmitted(bool staticAccount)

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using SecretKit.Core;
+using SecretKit.Internal;
 
 namespace SecretKit.Infisical.Dynamic;
 
@@ -175,14 +176,20 @@ public abstract class InfisicalDynamicProfile : IDisposable
         }
         _arrays.Add(field, values.Select(value => SecretMaterial.FromText(value)).ToArray());
     }
-    private protected void SafeUri(string field, string value, int maximum = 2048)
+    private protected void Endpoint(string field, string? value, Uri? trustedEndpointOrigin, bool optional = false)
     {
-        if (!Uri.TryCreate(value, UriKind.Absolute, out Uri? uri) || uri.UserInfo.Length != 0)
+        try
         {
-            Dispose();
-            throw new ArgumentException("Invalid protected native URI.");
+            Uri? uri = null;
+            if (!(optional && string.IsNullOrEmpty(value)) &&
+                (value is null || value.Length > 2048 || !Uri.TryCreate(value, UriKind.Absolute, out uri) ||
+                 !uri.IsWellFormedOriginalString()))
+                throw new ArgumentException("Invalid protected native endpoint.");
+            OriginPolicy.ValidateDownstreamEndpoint(uri, trustedEndpointOrigin);
         }
-        Text(field, value, maximum);
+        catch (ArgumentException) { Dispose(); throw; }
+        if (optional) Optional(field, value, 2048);
+        else Text(field, value!, 2048);
     }
     internal void WriteInputs(Utf8JsonWriter writer)
     {

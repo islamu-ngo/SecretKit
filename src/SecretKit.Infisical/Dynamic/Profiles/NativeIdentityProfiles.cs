@@ -44,10 +44,33 @@ public sealed class NativeTotpDefinitionProfile : InfisicalDynamicProfile
     public static NativeTotpDefinitionProfile ForManualSecret(string secret,
         NativeTotpAlgorithm algorithm = NativeTotpAlgorithm.Sha1, int? digits = null, int? period = null) =>
         new(secret, algorithm, digits, period);
-    /// <summary>Copies an absolute provisioning URL without URI user-info; no URL is fetched locally.</summary>
+    /// <summary>Copies protected otpauth TOTP provisioning data verbatim; no endpoint is contacted.</summary>
     public NativeTotpDefinitionProfile(string provisioningUrl) : base(InfisicalDynamicProvider.Totp)
     {
-        Text("configType", "url"); SafeUri("url", provisioningUrl);
+        if (provisioningUrl is null || provisioningUrl.Length > 2048 ||
+            !Uri.TryCreate(provisioningUrl, UriKind.Absolute, out var uri) || !uri.IsWellFormedOriginalString() ||
+            uri.Scheme != "otpauth" || uri.Authority != "totp" || uri.UserInfo.Length != 0 || uri.Fragment.Length != 0 ||
+            uri.AbsolutePath.Length < 2 || uri.AbsolutePath.IndexOf('/', 1) >= 0 ||
+            !HasProvisioningSecret(uri.Query.AsSpan()))
+            throw new ArgumentException("Invalid protected TOTP provisioning URI.");
+        Text("configType", "url"); Text("url", provisioningUrl, 2048);
+    }
+
+    private static bool HasProvisioningSecret(ReadOnlySpan<char> query)
+    {
+        if (query.IsEmpty) return false;
+        query = query[1..];
+        bool found = false;
+        foreach (var range in query.Split('&'))
+        {
+            var pair = query[range];
+            int separator = pair.IndexOf('=');
+            var key = separator < 0 ? pair : pair[..separator];
+            if (!Uri.UnescapeDataString(key.ToString()).Equals("secret", StringComparison.Ordinal)) continue;
+            if (found || separator < 0 || separator == pair.Length - 1) return false;
+            found = true;
+        }
+        return found;
     }
 }
 /// <summary>Explicit native OAuth client-secret authentication method.</summary>
@@ -58,7 +81,7 @@ public sealed class NativeOauthDefinitionProfile : InfisicalDynamicProfile
     /// <summary>Copies client authority, absolute token/revocation URLs and at most 20 typed extra parameters.</summary>
     public NativeOauthDefinitionProfile(string clientId, string clientSecret, NativeOauthClientAuthentication method,
         string tokenUrl, string revocationUrl, string? scope = null,
-        IReadOnlyList<NativeOauthExtraParameter>? extraParameters = null) : base(InfisicalDynamicProvider.Oauth2)
+        IReadOnlyList<NativeOauthExtraParameter>? extraParameters = null, Uri? trustedEndpointOrigin = null) : base(InfisicalDynamicProvider.Oauth2)
     {
         if (!Enum.IsDefined(method))
         {
@@ -71,7 +94,8 @@ public sealed class NativeOauthDefinitionProfile : InfisicalDynamicProfile
             NativeOauthClientAuthentication.Post => "client_secret_post",
             _ => throw new ArgumentException("Unknown native OAuth client authentication.")
         });
-        SafeUri("tokenUrl", tokenUrl); SafeUri("revocationUrl", revocationUrl); Optional("scope", scope, 2048);
+        Endpoint("tokenUrl", tokenUrl, trustedEndpointOrigin); Endpoint("revocationUrl", revocationUrl, trustedEndpointOrigin);
+        Optional("scope", scope, 2048);
         ObjectOptions("extraParams", extraParameters, 20);
     }
 }
