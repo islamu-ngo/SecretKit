@@ -55,6 +55,7 @@ public sealed class SecretGenerationCoordinator<TClient> : IAsyncDisposable wher
     private readonly SecretCollectionOptions _collectionOptions;
     private SecretClientGeneration<TClient>? _current;
     private long _desiredRevision;
+    private long _activationRevision;
     private long _observedRevision;
     private bool _enabled;
     private bool _disposed;
@@ -114,7 +115,7 @@ public sealed class SecretGenerationCoordinator<TClient> : IAsyncDisposable wher
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             _enabled = false;
-            _observedRevision = ++_desiredRevision;
+            _observedRevision = _activationRevision = ++_desiredRevision;
             retired = Detach();
             observation = ObserveLocked();
         }
@@ -151,6 +152,7 @@ public sealed class SecretGenerationCoordinator<TClient> : IAsyncDisposable wher
         using var diagnostics = ConfigurationDiagnostics.Defer();
         var started = ConfigurationDiagnostics.Capture(_time);
         long revision;
+        long observedRevision;
         var finished = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         lock (_gate)
         {
@@ -158,6 +160,8 @@ public sealed class SecretGenerationCoordinator<TClient> : IAsyncDisposable wher
             cancellationToken.ThrowIfCancellationRequested();
             if (enable) _enabled = true;
             revision = ++_desiredRevision;
+            if (enable) _activationRevision = revision;
+            observedRevision = _observedRevision;
             _collections.Add(finished.Task);
         }
         // Application readers/validators/disposers must not run under a caller's revision gate.
@@ -172,7 +176,7 @@ public sealed class SecretGenerationCoordinator<TClient> : IAsyncDisposable wher
         try
         {
             lock (_gate)
-                if (_disposed || revision != _desiredRevision) return ObserveLocked();
+                if (_disposed || !IsCurrent()) return ObserveLocked();
             using var loader = new SecretSnapshotLoader(_selections, _time, _collectionOptions);
             SecretOutcome<long> collection = await loader.RefreshObservedAsync(collectionObservation, cancellationToken).ConfigureAwait(false);
             status = collection.Status;
@@ -184,8 +188,8 @@ public sealed class SecretGenerationCoordinator<TClient> : IAsyncDisposable wher
                 deadline = collected + _maxAge;
                 foreach (SecretSelection selection in _selections)
                 {
-                    using SecretRead read = candidate.Read(selection.ConsumerKey);
-                    if (read.Observation.ExpiresAt is { } expiry && expiry < deadline) deadline = expiry;
+                    if (candidate.TryGetObservation(selection.ConsumerKey, out SecretObservation? metadata) &&
+                        metadata.ExpiresAt is { } expiry && expiry < deadline) deadline = expiry;
                 }
                 SecretOutcome<TClient> validation =
                     await _validate(candidate, cancellationToken).ConfigureAwait(false);
@@ -197,7 +201,7 @@ public sealed class SecretGenerationCoordinator<TClient> : IAsyncDisposable wher
             }
             lock (_gate)
             {
-                if (!_disposed && revision == _desiredRevision)
+                if (!_disposed && IsCurrent())
                 {
                     _lastStatus = status;
                     if (status == SecretStatus.Success && enable && _enabled)
@@ -213,9 +217,6 @@ public sealed class SecretGenerationCoordinator<TClient> : IAsyncDisposable wher
                     else if (status != SecretStatus.Success && _policy == SecretGenerationStalePolicy.FailClosed) retired = Detach();
                 }
             }
-            SecretClientGeneration<TClient>? release = retired;
-            retired = null;
-            if (release is not null) await release.ReleaseAsync().ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -225,13 +226,12 @@ public sealed class SecretGenerationCoordinator<TClient> : IAsyncDisposable wher
                 ? ConfigurationTermination.CallerCanceled : ConfigurationTermination.DependencyCanceled;
             lock (_gate)
             {
-                if (!_disposed && revision == _desiredRevision)
+                if (!_disposed && IsCurrent())
                 {
                     _lastStatus = SecretStatus.Unknown;
                     if (_policy == SecretGenerationStalePolicy.FailClosed) retired = Detach();
                 }
             }
-            if (retired is not null) await retired.ReleaseAsync().ConfigureAwait(false);
             throw;
         }
         catch (Exception)
@@ -241,18 +241,25 @@ public sealed class SecretGenerationCoordinator<TClient> : IAsyncDisposable wher
             collectionObservation.Termination = ConfigurationTermination.Faulted;
             lock (_gate)
             {
-                if (!_disposed && revision == _desiredRevision)
+                if (!_disposed && IsCurrent())
                 {
                     _lastStatus = SecretStatus.Unknown;
                     if (_policy == SecretGenerationStalePolicy.FailClosed) retired = Detach();
                 }
             }
-            if (retired is not null) await retired.ReleaseAsync().ConfigureAwait(false);
         }
         finally
         {
             try
             {
+                // Retirement belongs to the old generation. Its normalized
+                // failure is recorded independently and must not enter the
+                // activation failure handler or detach the published client.
+                if (retired is not null)
+                {
+                    try { await retired.ReleaseAsync().ConfigureAwait(false); }
+                    catch (InvalidOperationException) { }
+                }
                 if (client is not null)
                 {
                     var retirement = ConfigurationDiagnostics.Capture(_time);
@@ -272,7 +279,11 @@ public sealed class SecretGenerationCoordinator<TClient> : IAsyncDisposable wher
                         reason = SecretFailureReason.None;
                         collectionObservation.Termination = cancellationToken.IsCancellationRequested
                             ? ConfigurationTermination.CallerCanceled : termination;
-                        lock (_gate) { _retirementFailed = true; _lastStatus = SecretStatus.Unknown; }
+                        lock (_gate)
+                        {
+                            _retirementFailed = true;
+                            if (IsCurrent()) _lastStatus = SecretStatus.Unknown;
+                        }
                     }
                     finally
                     {
@@ -289,7 +300,7 @@ public sealed class SecretGenerationCoordinator<TClient> : IAsyncDisposable wher
                 finished.TrySetResult();
                 ConfigurationState state;
                 lock (_gate)
-                    state = _disposed || revision != _desiredRevision ? ConfigurationState.Superseded :
+                    state = _disposed || !IsCurrent() ? ConfigurationState.Superseded :
                         ObserveLocked().Freshness switch
                         {
                             SecretGenerationFreshness.Fresh => ConfigurationState.Fresh,
@@ -303,6 +314,12 @@ public sealed class SecretGenerationCoordinator<TClient> : IAsyncDisposable wher
         }
         // Rejected-candidate cleanup can change health; do not return a pre-cleanup snapshot.
         lock (_gate) return ObserveLocked();
+
+        // Called under _gate. Checks can supersede older checks, but only an
+        // activation, disable or disposal can supersede an activation. A check
+        // cannot overwrite the state of a generation published after it began.
+        bool IsCurrent() => enable ? revision == _activationRevision :
+            revision == _desiredRevision && observedRevision == _observedRevision;
     }
 
     private SecretGenerationObservation ObserveLocked()
@@ -311,7 +328,7 @@ public sealed class SecretGenerationCoordinator<TClient> : IAsyncDisposable wher
             _time.GetUtcNow() >= _current.Deadline ? SecretGenerationFreshness.DeadlineElapsed :
             _lastStatus == SecretStatus.Success ? SecretGenerationFreshness.Fresh : SecretGenerationFreshness.Stale;
         return new(_desiredRevision, _observedRevision, _enabled,
-            _enabled && !_retirementFailed && _current is not null && freshness != SecretGenerationFreshness.DeadlineElapsed,
+            _enabled && _current is not null && freshness != SecretGenerationFreshness.DeadlineElapsed,
             _lastStatus, freshness, _current?.CollectedAt, _current?.Deadline);
     }
 
@@ -327,7 +344,11 @@ public sealed class SecretGenerationCoordinator<TClient> : IAsyncDisposable wher
         lock (_gate)
         {
             _generations.Remove(generation);
-            if (failed) { _retirementFailed = true; _lastStatus = SecretStatus.Unknown; }
+            if (failed)
+            {
+                _retirementFailed = true;
+                if (_current is null) _lastStatus = SecretStatus.Unknown;
+            }
         }
     }
 
@@ -349,7 +370,7 @@ public sealed class SecretGenerationCoordinator<TClient> : IAsyncDisposable wher
             {
                 _disposed = true;
                 _enabled = false;
-                ++_desiredRevision;
+                _activationRevision = ++_desiredRevision;
                 retired = Detach();
                 pending = _collections.Concat(_generations.Select(generation => generation.Completion)).ToArray();
             }

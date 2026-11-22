@@ -1,3 +1,4 @@
+using SecretKit.Internal;
 namespace SecretKit.Extensions.Configuration;
 
 /// <summary>Explicit work and payload bounds for one serialized collection.</summary>
@@ -5,7 +6,7 @@ public sealed class SecretCollectionOptions
 {
     /// <summary>Sets collection bounds. Timeout begins after serialized admission.</summary>
     public SecretCollectionOptions(int maximumConcurrency = 1, int maximumSelections = 1000,
-        int maximumMaterialBytes = 16 * 1024 * 1024, TimeSpan? collectionTimeout = null)
+        int maximumMaterialBytes = TransferLimits.MaximumBytes, TimeSpan? collectionTimeout = null)
     {
         if (maximumConcurrency is < 1 or > 32)
             throw new ArgumentOutOfRangeException(nameof(maximumConcurrency), "Concurrency must be from 1 through 32.");

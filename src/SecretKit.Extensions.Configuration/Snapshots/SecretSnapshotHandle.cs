@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using SecretKit.Core;
 
 namespace SecretKit.Extensions.Configuration;
@@ -51,6 +52,20 @@ public sealed class SecretSnapshotHandle : IDisposable
         {
             ObjectDisposedException.ThrowIf(_storage is null, this);
             return _storage.ReadOutcome(consumerKey);
+        }
+    }
+
+    /// <summary>Inspects immutable provider metadata without copying or exporting material.</summary>
+    /// <returns>True for a present selection; false with null metadata for an absent optional selection.</returns>
+    /// <exception cref="ObjectDisposedException">This handle was disposed.</exception>
+    /// <exception cref="ArgumentException">The key is not part of this generation.</exception>
+    public bool TryGetObservation(string consumerKey, [NotNullWhen(true)] out SecretObservation? observation)
+    {
+        ArgumentNullException.ThrowIfNull(consumerKey);
+        lock (_gate)
+        {
+            ObjectDisposedException.ThrowIf(_storage is null, this);
+            return _storage.TryGetObservation(consumerKey, out observation);
         }
     }
 
@@ -124,6 +139,16 @@ internal sealed class SecretSnapshotGeneration
             SecretRead? read = _entries[key];
             return read is null ? SecretOutcome<SecretRead>.Failure(SecretStatus.Absent) :
                 SecretOutcome<SecretRead>.Success(new SecretRead(read.Material.Copy(), read.Observation));
+        }
+    }
+
+    internal bool TryGetObservation(string key, [NotNullWhen(true)] out SecretObservation? observation)
+    {
+        lock (_gate)
+        {
+            ValidateKey(key);
+            observation = _entries[key]?.Observation;
+            return observation is not null;
         }
     }
 

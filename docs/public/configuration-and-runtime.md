@@ -146,11 +146,16 @@ or `Absent` for a declared optional absence. Dispose a successful result's value
 disposed handles remain misuse. `Count` counts present selections;
 `SelectionCount` includes declared absent selections.
 
+`handle.TryGetObservation(consumerKey, out observation)` inspects the immutable
+provider metadata without cloning material or allocating a read. It returns
+false and null for a declared optional absence. Unknown keys and disposed handles
+still throw. The generation coordinator uses this path to inspect expiry.
+
 Replacing or disposing the loader releases its ownership of the old storage,
 but handles keep it alive. Disposing a handle is idempotent and prevents further
 reads through that handle; copies already returned remain valid until their own
 disposal. Dispose handles promptly rather than retaining retired generations
-indefinitely. SDK-owned character buffers clear on final release; this cannot
+indefinitely. SDK-owned UTF-8 buffers clear on final release; this cannot
 erase upstream parser strings or caller-created plaintext.
 
 `Generation`, `CollectionStartedAt`, `CollectionCompletedAt`, `Count` and `SelectionCount` describe
@@ -182,6 +187,11 @@ client until its original maximum age or earlier supplied expiry. Inspect
 `LastStatus` alongside `Freshness` and `UsableUntil`: an active stale generation
 does not make a denied read or failed application validation successful.
 `CheckAgainAsync` never activates the validated candidate or extends that deadline.
+It cannot supersede an in-flight `EnableAsync`, and a check begun before a new
+generation is published cannot overwrite that generation's observation.
+Retirement failure of an older client is recorded separately from collection
+failure: the healthy replacement remains acquirable, while coordinator disposal
+still reports the unresolved cleanup failure with a bounded exception.
 An acquired lease checks the deadline before each execution; running work retains
 its ownership until completion and is not forcibly interrupted at expiry.
 

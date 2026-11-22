@@ -113,200 +113,228 @@ public sealed class SecretSnapshotLoader : IDisposable
     {
         cancellationToken.ThrowIfCancellationRequested();
         await _collection.WaitAsync(cancellationToken).ConfigureAwait(false);
-        var candidate = new Dictionary<string, SecretRead?>(StringComparer.Ordinal);
-        var slots = new Task<(SecretOutcome<SecretRead> Outcome, ConfigurationTermination Termination)>?[_options.MaximumConcurrency];
-        DateTimeOffset started = _time.GetUtcNow();
-        using var deadline = new CancellationTokenSource(_options.CollectionTimeout, _time);
-        using var collection = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
-        int terminal = 0;
-        int admitted = 0;
-        int reduced = 0;
-        int materialBytes = 0;
-        SecretOutcome<long>? failure = null;
         try
         {
-            lock (_gate) ObjectDisposedException.ThrowIf(_disposed, this);
-            while (admitted < _selections.Length && admitted < slots.Length &&
-                   Volatile.Read(ref terminal) == 0 && !collection.IsCancellationRequested)
+            var candidate = new Dictionary<string, SecretRead?>(StringComparer.Ordinal);
+            var slots = new Task<(SecretOutcome<SecretRead> Outcome, ConfigurationTermination Termination)>?[_options.MaximumConcurrency];
+            DateTimeOffset started = _time.GetUtcNow();
+            using var deadline = new CancellationTokenSource(_options.CollectionTimeout, _time);
+            using var collection = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
+            int terminal = 0;
+            int admitted = 0;
+            int reduced = 0;
+            int materialBytes = 0;
+            SecretOutcome<long>? failure = null;
+            try
             {
-                slots[admitted] = ReadAsync(_selections[admitted]);
-                admitted++;
-            }
-
-            while (reduced < admitted)
-            {
-                int slot = reduced % slots.Length;
-                SecretSelection selection = _selections[reduced];
-                var delivery = await slots[slot]!.ConfigureAwait(false);
-                SecretOutcome<SecretRead> outcome = delivery.Outcome;
-                slots[slot] = null;
-                reduced++;
-                if (!outcome.IsSuccess)
+                lock (_gate) ObjectDisposedException.ThrowIf(_disposed, this);
+                while (admitted < _selections.Length && admitted < slots.Length &&
+                       Volatile.Read(ref terminal) == 0 && !collection.IsCancellationRequested)
                 {
-                    if (outcome.Status == SecretStatus.Absent && selection.PresencePolicy == SecretPresencePolicy.Optional)
-                    {
-                        if (failure is null) candidate.Add(selection.ConsumerKey, null);
-                    }
-                    else if (failure is null)
-                    {
-                        failure = outcome.ConvertFailure<long>();
-                        observation.Termination = delivery.Termination;
-                        Interlocked.Exchange(ref terminal, 1);
-                    }
+                    slots[admitted] = ReadAsync(_selections[admitted]);
+                    admitted++;
                 }
-                else
+
+                while (reduced < admitted)
                 {
-                    using SecretRead delivered = outcome.Value;
-                    if (failure is null && !collection.IsCancellationRequested)
+                    int slot = reduced % slots.Length;
+                    SecretSelection selection = _selections[reduced];
+                    var delivery = await slots[slot]!.ConfigureAwait(false);
+                    SecretOutcome<SecretRead> outcome = delivery.Outcome;
+                    slots[slot] = null;
+                    reduced++;
+                    if (!outcome.IsSuccess)
                     {
-                        try
+                        if (outcome.Status == SecretStatus.Absent && selection.PresencePolicy == SecretPresencePolicy.Optional)
                         {
-                            int bytes = delivered.Material.GetUtf8ByteCount();
-                            if (bytes > _options.MaximumMaterialBytes - materialBytes)
-                            {
-                                failure = SecretOutcome<long>.Failure(SecretStatus.Invalid,
-                                    reason: SecretFailureReason.CollectionLimitExceeded);
-                                Interlocked.Exchange(ref terminal, 1);
-                            }
-                            else
-                            {
-                                candidate.Add(selection.ConsumerKey,
-                                    new SecretRead(delivered.Material.Copy(), delivered.Observation));
-                                materialBytes += bytes;
-                            }
+                            if (failure is null) candidate.Add(selection.ConsumerKey, null);
                         }
-                        catch (Exception error) when (error is ArgumentException or ObjectDisposedException)
+                        else if (failure is null)
                         {
-                            failure = SecretOutcome<long>.Failure(SecretStatus.Invalid,
-                                reason: SecretFailureReason.InvalidResponse);
+                            failure = outcome.ConvertFailure<long>();
+                            observation.Termination = delivery.Termination;
                             Interlocked.Exchange(ref terminal, 1);
                         }
                     }
+                    else
+                    {
+                        using SecretRead delivered = outcome.Value;
+                        if (failure is null && !collection.IsCancellationRequested)
+                        {
+                            try
+                            {
+                                int bytes = delivered.Material.GetUtf8ByteCount();
+                                if (bytes > _options.MaximumMaterialBytes - materialBytes)
+                                {
+                                    failure = SecretOutcome<long>.Failure(SecretStatus.Invalid,
+                                        reason: SecretFailureReason.CollectionLimitExceeded);
+                                    Interlocked.Exchange(ref terminal, 1);
+                                }
+                                else
+                                {
+                                    candidate.Add(selection.ConsumerKey,
+                                        new SecretRead(delivered.Material.Copy(), delivered.Observation));
+                                    materialBytes += bytes;
+                                }
+                            }
+                            catch (Exception error) when (error is ArgumentException or ObjectDisposedException)
+                            {
+                                failure = SecretOutcome<long>.Failure(SecretStatus.Invalid,
+                                    reason: SecretFailureReason.InvalidResponse);
+                                Interlocked.Exchange(ref terminal, 1);
+                            }
+                        }
+                    }
+
+                    // Reuse only the slot just reduced. Later completions cannot move the window.
+                    if (admitted < _selections.Length && Volatile.Read(ref terminal) == 0 &&
+                        !collection.IsCancellationRequested)
+                    {
+                        slots[admitted % slots.Length] = ReadAsync(_selections[admitted]);
+                        admitted++;
+                    }
                 }
 
-                // Reuse only the slot just reduced. Later completions cannot move the window.
-                if (admitted < _selections.Length && Volatile.Read(ref terminal) == 0 &&
-                    !collection.IsCancellationRequested)
-                {
-                    slots[admitted % slots.Length] = ReadAsync(_selections[admitted]);
-                    admitted++;
-                }
-            }
-
-            cancellationToken.ThrowIfCancellationRequested();
-            if (deadline.IsCancellationRequested)
-                return Fail(SecretStatus.Unavailable, reason: SecretFailureReason.DeadlineExceeded);
-            if (failure is not null) return Fail(failure.Status, failure.RetryAfter, failure.Reason, failure.CorrelationId);
-
-            lock (_gate)
-            {
-                ObjectDisposedException.ThrowIf(_disposed, this);
-                DateTimeOffset completed = _time.GetUtcNow();
-                foreach (SecretSelection selection in _selections)
-                {
-                    SecretRead? read = candidate[selection.ConsumerKey];
-                    if (read is null) continue;
-                    if (!ReferenceEquals(read.Observation.Reference, selection.Reference))
-                        return Fail(SecretStatus.Invalid, reason: SecretFailureReason.AuthorityMismatch);
-                    if (read.Observation.Validity != SecretValidity.Valid)
-                        return Fail(read.Observation.Validity == SecretValidity.Expired ?
-                            SecretStatus.Expired : SecretStatus.Invalid);
-                    if (read.Observation.ExpiresAt is { } expiry && expiry <= completed)
-                        return Fail(SecretStatus.Expired);
-                }
                 cancellationToken.ThrowIfCancellationRequested();
                 if (deadline.IsCancellationRequested)
                     return Fail(SecretStatus.Unavailable, reason: SecretFailureReason.DeadlineExceeded);
-                var next = new SecretSnapshotGeneration(++_generation, candidate, started, completed);
-                SecretSnapshotGeneration? old = _current;
-                _current = next;
-                candidate = new Dictionary<string, SecretRead?>(StringComparer.Ordinal);
-                _lastAttempt = new SecretCollectionAttempt(started, completed, SecretStatus.Success);
-                old?.Release();
-                return SecretOutcome<long>.Success(_generation);
-            }
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            lock (_gate)
-                _lastAttempt = new SecretCollectionAttempt(started, _time.GetUtcNow(), SecretStatus.Unknown,
-                    wasCanceled: true);
-            throw;
-        }
-        finally
-        {
-            foreach (var slot in slots)
-            {
-                if (slot is null) continue;
-                var delivery = await slot.ConfigureAwait(false);
-                SecretOutcome<SecretRead> outcome = delivery.Outcome;
-                if (outcome.IsSuccess) outcome.Value.Dispose();
-            }
-            foreach (SecretRead? read in candidate.Values) read?.Dispose();
-            _collection.Release();
-        }
+                if (failure is not null) return Fail(failure.Status, failure.RetryAfter, failure.Reason, failure.CorrelationId);
 
-        async Task<(SecretOutcome<SecretRead> Outcome, ConfigurationTermination Termination)> ReadAsync(SecretSelection selection)
-        {
-            SecretOutcome<SecretRead> outcome;
-            var termination = ConfigurationTermination.Completed;
-            try
-            {
-                outcome = await selection.Reader.ReadAsync(selection.Reference, collection.Token).ConfigureAwait(false);
-                if (outcome is null)
-                    outcome = SecretOutcome<SecretRead>.Failure(SecretStatus.Invalid,
-                        reason: SecretFailureReason.InvalidResponse);
-            }
-            catch (Exception error)
-            {
-                // Caller/deadline precedence is applied after all started work has settled.
-                termination = error is OperationCanceledException
-                    ? ConfigurationTermination.DependencyCanceled : ConfigurationTermination.Faulted;
-                outcome = SecretOutcome<SecretRead>.Failure(SecretStatus.Unavailable,
-                    reason: SecretFailureReason.TransportFailure);
-            }
-            if (outcome.IsSuccess)
-            {
-                SecretRead read = outcome.Value;
-                if (!ReferenceEquals(read.Observation.Reference, selection.Reference))
+                lock (_gate)
                 {
-                    read.Dispose();
-                    outcome = SecretOutcome<SecretRead>.Failure(SecretStatus.Invalid,
-                        reason: SecretFailureReason.AuthorityMismatch);
-                }
-                else
-                {
-                    bool expired = read.Observation.Validity == SecretValidity.Expired ||
-                        (read.Observation.Validity == SecretValidity.Valid &&
-                            read.Observation.ExpiresAt is { } expiry && expiry <= _time.GetUtcNow());
-                    if (read.Observation.Validity != SecretValidity.Valid || expired)
+                    ObjectDisposedException.ThrowIf(_disposed, this);
+                    DateTimeOffset completed = _time.GetUtcNow();
+                    foreach (SecretSelection selection in _selections)
                     {
-                        read.Dispose();
-                        outcome = SecretOutcome<SecretRead>.Failure(expired ? SecretStatus.Expired : SecretStatus.Invalid);
+                        SecretRead? read = candidate[selection.ConsumerKey];
+                        if (read is null) continue;
+                        if (!ReferenceEquals(read.Observation.Reference, selection.Reference))
+                            return Fail(SecretStatus.Invalid, reason: SecretFailureReason.AuthorityMismatch);
+                        if (read.Observation.Validity != SecretValidity.Valid)
+                            return Fail(read.Observation.Validity == SecretValidity.Expired ?
+                                SecretStatus.Expired : SecretStatus.Invalid);
+                        if (read.Observation.ExpiresAt is { } expiry && expiry <= completed)
+                            return Fail(SecretStatus.Expired);
+                    }
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (deadline.IsCancellationRequested)
+                        return Fail(SecretStatus.Unavailable, reason: SecretFailureReason.DeadlineExceeded);
+                    var next = new SecretSnapshotGeneration(++_generation, candidate, started, completed);
+                    SecretSnapshotGeneration? old = _current;
+                    _current = next;
+                    candidate = new Dictionary<string, SecretRead?>(StringComparer.Ordinal);
+                    _lastAttempt = new SecretCollectionAttempt(started, completed, SecretStatus.Success);
+                    old?.Release();
+                    return SecretOutcome<long>.Success(_generation);
+                }
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                lock (_gate)
+                    _lastAttempt = new SecretCollectionAttempt(started, _time.GetUtcNow(), SecretStatus.Unknown,
+                        wasCanceled: true);
+                throw;
+            }
+            finally
+            {
+                foreach (var slot in slots)
+                {
+                    if (slot is null) continue;
+                    try
+                    {
+                        var delivery = await slot.ConfigureAwait(false);
+                        SecretOutcome<SecretRead> outcome = delivery.Outcome;
+                        if (outcome.IsSuccess) outcome.Value.Dispose();
+                    }
+                    catch (Exception)
+                    {
+                        // A failed slot must not prevent draining the remaining owners.
+                    }
+                }
+                foreach (SecretRead? read in candidate.Values)
+                {
+                    try { read?.Dispose(); }
+                    catch (Exception)
+                    {
+                        // Continue releasing every candidate even if one cleanup fails.
                     }
                 }
             }
-            if (!outcome.IsSuccess &&
-                !(outcome.Status == SecretStatus.Absent && selection.PresencePolicy == SecretPresencePolicy.Optional))
-                Interlocked.Exchange(ref terminal, 1);
-            return (outcome, termination);
-        }
 
-        SecretOutcome<long> Fail(SecretStatus status, TimeSpan? retryAfter = null,
-            SecretFailureReason reason = SecretFailureReason.None, SecretCorrelationId? correlationId = null)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (deadline.IsCancellationRequested)
+            async Task<(SecretOutcome<SecretRead> Outcome, ConfigurationTermination Termination)> ReadAsync(SecretSelection selection)
             {
-                observation.Termination = ConfigurationTermination.DeadlineExceeded;
-                status = SecretStatus.Unavailable;
-                retryAfter = null;
-                reason = SecretFailureReason.DeadlineExceeded;
-                correlationId = null;
+                SecretOutcome<SecretRead> outcome;
+                var termination = ConfigurationTermination.Completed;
+                try
+                {
+                    outcome = await selection.Reader.ReadAsync(selection.Reference, collection.Token).ConfigureAwait(false);
+                    if (outcome is null)
+                        outcome = SecretOutcome<SecretRead>.Failure(SecretStatus.Invalid,
+                            reason: SecretFailureReason.InvalidResponse);
+                }
+                catch (Exception error)
+                {
+                    // Caller/deadline precedence is applied after all started work has settled.
+                    termination = error is OperationCanceledException
+                        ? ConfigurationTermination.DependencyCanceled : ConfigurationTermination.Faulted;
+                    outcome = SecretOutcome<SecretRead>.Failure(SecretStatus.Unavailable,
+                        reason: SecretFailureReason.TransportFailure);
+                }
+                if (outcome.IsSuccess)
+                {
+                    SecretRead read = outcome.Value;
+                    try
+                    {
+                        if (!ReferenceEquals(read.Observation.Reference, selection.Reference))
+                        {
+                            read.Dispose();
+                            outcome = SecretOutcome<SecretRead>.Failure(SecretStatus.Invalid,
+                                reason: SecretFailureReason.AuthorityMismatch);
+                        }
+                        else
+                        {
+                            bool expired = read.Observation.Validity == SecretValidity.Expired ||
+                                (read.Observation.Validity == SecretValidity.Valid &&
+                                    read.Observation.ExpiresAt is { } expiry && expiry <= _time.GetUtcNow());
+                            if (read.Observation.Validity != SecretValidity.Valid || expired)
+                            {
+                                read.Dispose();
+                                outcome = SecretOutcome<SecretRead>.Failure(expired ? SecretStatus.Expired : SecretStatus.Invalid);
+                            }
+                        }
+                    }
+                    catch
+                    {
+                        read.Dispose();
+                        throw;
+                    }
+                }
+                if (!outcome.IsSuccess &&
+                    !(outcome.Status == SecretStatus.Absent && selection.PresencePolicy == SecretPresencePolicy.Optional))
+                    Interlocked.Exchange(ref terminal, 1);
+                return (outcome, termination);
             }
-            lock (_gate)
-                _lastAttempt = new SecretCollectionAttempt(started, _time.GetUtcNow(), status, retryAfter, reason: reason);
-            return SecretOutcome<long>.Failure(status, retryAfter, reason, correlationId);
+
+            SecretOutcome<long> Fail(SecretStatus status, TimeSpan? retryAfter = null,
+                SecretFailureReason reason = SecretFailureReason.None, SecretCorrelationId? correlationId = null)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (deadline.IsCancellationRequested)
+                {
+                    observation.Termination = ConfigurationTermination.DeadlineExceeded;
+                    status = SecretStatus.Unavailable;
+                    retryAfter = null;
+                    reason = SecretFailureReason.DeadlineExceeded;
+                    correlationId = null;
+                }
+                lock (_gate)
+                    _lastAttempt = new SecretCollectionAttempt(started, _time.GetUtcNow(), status, retryAfter, reason: reason);
+                return SecretOutcome<long>.Failure(status, retryAfter, reason, correlationId);
+            }
+        }
+        finally
+        {
+            _collection.Release();
         }
     }
 

@@ -333,7 +333,7 @@ public sealed class ActivationRevisionTests
     }
 
     [Test]
-    public async Task FreshCheckSupersedesBlockedEnableWithoutActivatingEitherCandidate()
+    public async Task FreshCheckPreservesBlockedEnableAndDisposesOnlyCheckCandidate()
     {
         var entered = RuntimeFixture.Signal();
         var release = RuntimeFixture.Signal();
@@ -345,18 +345,25 @@ public sealed class ActivationRevisionTests
         };
         await using var coordinator = fixture.Create();
         Task<SecretGenerationObservation> enable = coordinator.EnableAsync().AsTask();
-        await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
-        fixture.BeforeValidation = null;
-        fixture.Value = "test-check-candidate";
-
-        SecretGenerationObservation checkedAgain = await coordinator.CheckAgainAsync();
-        release.SetResult();
+        SecretGenerationObservation checkedAgain;
+        try
+        {
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            fixture.BeforeValidation = null;
+            fixture.Value = "test-check-candidate";
+            checkedAgain = await coordinator.CheckAgainAsync();
+        }
+        finally { release.TrySetResult(); }
         await enable.WaitAsync(TimeSpan.FromSeconds(10));
 
         await Assert.That(checkedAgain.LastStatus).IsEqualTo(SecretStatus.Success);
-        await Assert.That(coordinator.Acquire()).IsNull();
+        await using SecretGenerationLease<IRuntimeIntegrationClient>? lease = coordinator.Acquire();
+        await Assert.That(lease).IsNotNull();
+        await Assert.That(await lease!.ExecuteAsync(static (client, token) => client.ExecuteAsync(token)))
+            .IsEqualTo("test-old-candidate");
         await Assert.That(fixture.Clients.Count).IsEqualTo(2);
-        await Assert.That(fixture.Clients.All(client => client.Disposed)).IsTrue();
+        await Assert.That(fixture.Clients.Single(client => client.Identity == "test-old-candidate").Disposed).IsFalse();
+        await Assert.That(fixture.Clients.Single(client => client.Identity == "test-check-candidate").Disposed).IsTrue();
     }
 
     [Test]
