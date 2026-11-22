@@ -12,6 +12,15 @@ public sealed class RotationOutcomeTests
     private const string OtherId = "7dd128d5-fedd-445f-aaef-6aec4bb35335";
 
     [Test]
+    public async Task RotationShutdownRequiresAsyncDisposal()
+    {
+        var contract = typeof(InfisicalRotationClient);
+        await Assert.That(typeof(IAsyncDisposable).IsAssignableFrom(contract)).IsTrue();
+        await Assert.That(typeof(IDisposable).IsAssignableFrom(contract)).IsFalse();
+        await Assert.That(contract.GetMethod("Dispose", Type.EmptyTypes)).IsNull();
+    }
+
+    [Test]
     [Arguments(false)]
     [Arguments(true)]
     public async Task AcquisitionFaultIsSanitizedBeforeAnyDispatch(bool io)
@@ -24,7 +33,7 @@ public sealed class RotationOutcomeTests
             ? new IOException("protected-acquisition-canary")
             : new HttpRequestException("protected-acquisition-canary")
         };
-        using var client = Client(http, tokens);
+        await using var client = Client(http, tokens);
         var target = Target(client);
         var receipt = new InfisicalRotationReceipt(target, InfisicalRotationAction.RotateSecrets);
         await Assert.That((await client.RotateSecretsAsync(target, receipt)).Status).IsEqualTo(SecretStatus.Unknown);
@@ -46,7 +55,7 @@ public sealed class RotationOutcomeTests
             OnAcquire = cancellation.Cancel,
             AcquisitionFault = new OperationCanceledException("protected-cancellation-canary")
         };
-        using var client = Client(http, tokens);
+        await using var client = Client(http, tokens);
         var target = Target(client);
         var receipt = new InfisicalRotationReceipt(target, InfisicalRotationAction.RotateSecrets);
         try
@@ -83,7 +92,7 @@ public sealed class RotationOutcomeTests
                 OnAcquire = () => entered.TrySetResult(),
                 PendingAcquisition = acquisition.Task
             };
-            using var client = Client(http, tokens);
+            await using var client = Client(http, tokens);
             var target = Target(client);
             var receipt = new InfisicalRotationReceipt(target, operation == "automatic" ?
                 InfisicalRotationAction.EnableAutomaticRotation : InfisicalRotationAction.RotateSecrets);
@@ -128,7 +137,7 @@ public sealed class RotationOutcomeTests
             using var wire = new RotationWire(profile);
             using var http = new HttpClient(wire);
             using var tokens = new Tokens();
-            var client = Client(http, tokens);
+            await using var client = Client(http, tokens);
             var target = Target(client, profile);
             var initial = (await client.GetAsync(target)).Value;
             await Assert.That(initial.Address.Profile).IsEqualTo(profile);
@@ -165,7 +174,7 @@ public sealed class RotationOutcomeTests
         using var wire = new RotationWire { Status = status };
         using var http = new HttpClient(wire);
         using var tokens = new Tokens();
-        var client = Client(http, tokens);
+        await using var client = Client(http, tokens);
         var target = Target(client);
         var observed = (await client.GetAsync(target)).Value;
         await Assert.That(observed.NativeStatus).IsEqualTo(status);
@@ -180,7 +189,7 @@ public sealed class RotationOutcomeTests
         using var wire = new RotationWire { ListCount = 2 };
         using var http = new HttpClient(wire);
         using var tokens = new Tokens();
-        var client = Client(http, tokens);
+        await using var client = Client(http, tokens);
         var scope = new SecretReference(client.Authority, new InfisicalRotationScope("private-project"));
         var result = (await client.ListAsync(scope, 1)).Value;
         await Assert.That(result.IsComplete).IsFalse();
@@ -197,7 +206,7 @@ public sealed class RotationOutcomeTests
         using var wire = new RotationWire();
         using var http = new HttpClient(wire);
         using var tokens = new Tokens { Forbidden = true };
-        var client = Client(http, tokens);
+        await using var client = Client(http, tokens);
         var target = Target(client);
         var trigger = new InfisicalRotationReceipt(target, InfisicalRotationAction.RotateSecrets);
         var sameCoordinates = Target(client);
@@ -214,7 +223,7 @@ public sealed class RotationOutcomeTests
         await Assert.That((await client.GetAsync(otherProject)).Status).IsEqualTo(SecretStatus.Invalid);
         var otherInstance = new SecretReference(new SecretAuthority(), target.Address);
         await Assert.That((await client.GetAsync(otherInstance)).Status).IsEqualTo(SecretStatus.Invalid);
-        var scoped = Client(http, tokens, environment: "different-env", path: "/different-path");
+        await using var scoped = Client(http, tokens, environment: "different-env", path: "/different-path");
         await Assert.That((await scoped.GetAsync(Target(scoped))).Status).IsEqualTo(SecretStatus.Invalid);
         await Assert.That((await scoped.ListAsync(new(scoped.Authority, new InfisicalRotationScope("private-project")))).Status)
             .IsEqualTo(SecretStatus.Invalid);
@@ -243,7 +252,7 @@ public sealed class RotationOutcomeTests
         using var wire = new RotationWire { ResponseCode = code };
         using var http = new HttpClient(wire);
         using var tokens = new Tokens();
-        var client = Client(http, tokens);
+        await using var client = Client(http, tokens);
         var target = Target(client);
         var receipt = new InfisicalRotationReceipt(target, InfisicalRotationAction.RotateSecrets);
         await Assert.That((await client.RotateSecretsAsync(target, receipt)).Status).IsEqualTo(expected);
@@ -257,6 +266,8 @@ public sealed class RotationOutcomeTests
     [Arguments("projectId", "\"wrong-project\"")]
     [Arguments("id", "\"7dd128d5-fedd-445f-aaef-6aec4bb35335\"")]
     [Arguments("type", "\"redis-credentials\"")]
+    [Arguments("type", "\"POSTGRES-CREDENTIALS\"")]
+    [Arguments("type", "\"unknown-provider-profile\"")]
     [Arguments("environment", "{\"slug\":\"other-env\"}")]
     [Arguments("folder", "{\"path\":\"/other\"}")]
     [Arguments("rotationStatus", "null")]
@@ -267,7 +278,7 @@ public sealed class RotationOutcomeTests
         using var wire = new RotationWire { ReplacementField = field, Replacement = replacement };
         using var http = new HttpClient(wire);
         using var tokens = new Tokens();
-        var client = Client(http, tokens);
+        await using var client = Client(http, tokens);
         var target = Target(client);
         var receipt = new InfisicalRotationReceipt(target, InfisicalRotationAction.RotateSecrets);
         await Assert.That((await client.RotateSecretsAsync(target, receipt)).Status).IsEqualTo(SecretStatus.Unknown);
@@ -283,7 +294,7 @@ public sealed class RotationOutcomeTests
         using var wire = new RotationWire { Oversized = true, KnownLength = knownLength };
         using var http = new HttpClient(wire);
         using var tokens = new Tokens();
-        var client = Client(http, tokens, responseLimit: 1024);
+        await using var client = Client(http, tokens, responseLimit: 1024);
         var target = Target(client);
         var receipt = new InfisicalRotationReceipt(target, InfisicalRotationAction.RotateSecrets);
         await Assert.That((await client.RotateSecretsAsync(target, receipt)).Status).IsEqualTo(SecretStatus.Unknown);
@@ -301,7 +312,7 @@ public sealed class RotationOutcomeTests
         using var wire = new RotationWire { RawBody = body };
         using var http = new HttpClient(wire);
         using var tokens = new Tokens();
-        var client = Client(http, tokens);
+        await using var client = Client(http, tokens);
         var target = Target(client);
         var receipt = new InfisicalRotationReceipt(target, InfisicalRotationAction.RotateSecrets);
         await Assert.That((await client.RotateSecretsAsync(target, receipt)).Status).IsEqualTo(SecretStatus.Unknown);
@@ -314,7 +325,7 @@ public sealed class RotationOutcomeTests
         using var wire = new RotationWire { LoseResponse = true };
         using var http = new HttpClient(wire);
         using var tokens = new Tokens();
-        var client = Client(http, tokens);
+        await using var client = Client(http, tokens);
         var target = Target(client);
         var receipt = new InfisicalRotationReceipt(target, InfisicalRotationAction.RotateSecrets);
         await Assert.That((await client.RotateSecretsAsync(target, receipt)).Status).IsEqualTo(SecretStatus.Unknown);
@@ -334,7 +345,7 @@ public sealed class RotationOutcomeTests
         using var wire = new RotationWire { HoldResponse = true };
         using var http = new HttpClient(wire);
         using var tokens = new Tokens();
-        var client = Client(http, tokens);
+        await using var client = Client(http, tokens);
         var target = Target(client);
         var before = new InfisicalRotationReceipt(target, InfisicalRotationAction.RotateSecrets);
         using var alreadyCanceled = new CancellationTokenSource();
@@ -360,7 +371,7 @@ public sealed class RotationOutcomeTests
         using var wire = new RotationWire { HoldResponse = true };
         using var http = new HttpClient(wire);
         using var tokens = new Tokens();
-        var client = Client(http, tokens);
+        await using var client = Client(http, tokens);
         var target = Target(client);
         var receipt = new InfisicalRotationReceipt(target, InfisicalRotationAction.RotateSecrets);
         var first = client.RotateSecretsAsync(target, receipt).AsTask();
@@ -377,7 +388,7 @@ public sealed class RotationOutcomeTests
         using var wire = new RotationWire();
         using var http = new HttpClient(wire);
         using var tokens = new Tokens();
-        var client = Client(http, tokens);
+        await using var client = Client(http, tokens);
         var target = Target(client);
         var progress = (await client.GetAsync(target)).Value;
         string serialized = JsonSerializer.Serialize(progress) + JsonSerializer.Serialize(target) +
@@ -401,7 +412,7 @@ public sealed class RotationOutcomeTests
         using var wire = new RotationWire { IgnoreSetting = true };
         using var http = new HttpClient(wire);
         using var tokens = new Tokens();
-        var client = Client(http, tokens);
+        await using var client = Client(http, tokens);
         var target = Target(client);
         var receipt = new InfisicalRotationReceipt(target, InfisicalRotationAction.DisableAutomaticRotation);
         await Assert.That((await client.SetAutomaticRotationAsync(target, false, receipt)).Status).IsEqualTo(SecretStatus.Unknown);
@@ -444,7 +455,7 @@ public sealed class RotationOutcomeTests
         using var http = new HttpClient(wire);
         using var cancellation = new CancellationTokenSource();
         using var tokens = new Tokens { OnIssued = cancellation.Cancel };
-        var client = Client(http, tokens);
+        await using var client = Client(http, tokens);
         var target = Target(client);
         var receipt = new InfisicalRotationReceipt(target, InfisicalRotationAction.RotateSecrets);
         await Assert.That(async () => await client.RotateSecretsAsync(target, receipt,
@@ -471,11 +482,11 @@ public sealed class RotationOutcomeTests
             "handler" => new() { Transport = InfisicalTransportOptions.HostControlled(wire) },
             _ => new() { Transport = InfisicalTransportOptions.HostControlled(http) }
         };
-        using var client = new InfisicalRotationClient(new("https://rotation.example"), authority,
+        await using var client = new InfisicalRotationClient(new("https://rotation.example"), authority,
             new(authority, tokens, "private-project"), network);
         var target = Target(client);
-        client.Dispose();
-        client.Dispose();
+        await client.DisposeAsync();
+        await client.DisposeAsync();
         await Assert.That(async () => await client.ListAsync(new(authority,
             new InfisicalRotationScope("private-project")))).Throws<ObjectDisposedException>();
         await Assert.That(async () => await client.GetAsync(target)).Throws<ObjectDisposedException>();
@@ -503,13 +514,14 @@ public sealed class RotationOutcomeTests
         using var wire = new RotationWire { HoldResponse = true };
         using var http = new HttpClient(wire);
         using var tokens = new Tokens();
-        using var client = Client(http, tokens);
+        await using var client = Client(http, tokens);
         var target = Target(client);
         var receipt = new InfisicalRotationReceipt(target, InfisicalRotationAction.RotateSecrets);
         var pending = client.RotateSecretsAsync(target, receipt).AsTask();
         await wire.Committed.Task.WaitAsync(TimeSpan.FromSeconds(10));
-        client.Dispose();
+        Task stop = client.DisposeAsync().AsTask();
         wire.Release.SetResult();
+        await stop.WaitAsync(TimeSpan.FromSeconds(10));
         var result = await pending.WaitAsync(TimeSpan.FromSeconds(10));
         await Assert.That(result.IsSuccess).IsTrue();
         await Assert.That(receipt.Effect).IsEqualTo(InfisicalRotationEffect.AcceptedPending);
@@ -523,13 +535,15 @@ public sealed class RotationOutcomeTests
         using var wire = new RotationWire();
         using var http = new HttpClient(wire);
         InfisicalRotationClient? selected = null;
-        using var tokens = new Tokens { OnIssued = () => selected!.Dispose() };
-        using var client = Client(http, tokens);
+        Task? stop = null;
+        using var tokens = new Tokens { OnIssued = () => stop = selected!.DisposeAsync().AsTask() };
+        await using var client = Client(http, tokens);
         selected = client;
         var target = Target(client);
         var receipt = new InfisicalRotationReceipt(target, InfisicalRotationAction.RotateSecrets);
 
         SecretOutcome<InfisicalRotationProgress> result = await client.RotateSecretsAsync(target, receipt);
+        await stop!.WaitAsync(TimeSpan.FromSeconds(10));
 
         await Assert.That(result.Status).IsEqualTo(SecretStatus.Invalid);
         await Assert.That(receipt.Dispatch).IsEqualTo(InfisicalRotationDispatch.NotDispatched);
@@ -543,7 +557,7 @@ public sealed class RotationOutcomeTests
         using var wire = new RotationWire { HoldResponse = true };
         using var tokens = new Tokens();
         var authority = new SecretAuthority();
-        using var client = new InfisicalRotationClient(new("https://rotation.example"), authority,
+        await using var client = new InfisicalRotationClient(new("https://rotation.example"), authority,
             new(authority, tokens, "private-project"),
             new() { Transport = InfisicalTransportOptions.HostControlled(wire) });
         var target = Target(client);
@@ -552,8 +566,9 @@ public sealed class RotationOutcomeTests
         try
         {
             await wire.Committed.Task.WaitAsync(TimeSpan.FromSeconds(10));
-            client.Dispose();
+            Task stop = client.DisposeAsync().AsTask();
             wire.Release.TrySetResult();
+            await stop.WaitAsync(TimeSpan.FromSeconds(10));
 
             SecretOutcome<InfisicalRotationProgress> result = await pending.WaitAsync(TimeSpan.FromSeconds(10));
 
@@ -573,9 +588,9 @@ public sealed class RotationOutcomeTests
         using var wire = new RotationWire();
         using var http = new HttpClient(wire);
         using var tokens = new Tokens { Forbidden = true };
-        using var client = Client(http, tokens);
+        await using var client = Client(http, tokens);
         var target = Target(client);
-        client.Dispose();
+        await client.DisposeAsync();
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
 
@@ -593,7 +608,7 @@ public sealed class RotationOutcomeTests
         using var tokens = new Tokens();
         var clock = new InfisicalTransportOwnershipTests.ShutdownClock();
         var authority = new SecretAuthority();
-        using var client = new InfisicalRotationClient(new("https://rotation.example"), authority,
+        var client = new InfisicalRotationClient(new("https://rotation.example"), authority,
             new(authority, tokens, "private-project"),
             new()
             {
@@ -633,15 +648,13 @@ public sealed class RotationOutcomeTests
     }
 
     [Test]
-    [Arguments(false)]
-    [Arguments(true)]
-    public async Task ShutdownBoundsBlockedTokenCallbacksAndPreservesEventualCleanup(bool synchronous)
+    public async Task ShutdownBoundsBlockedTokenCallbacksAndPreservesEventualCleanup()
     {
         using var wire = new RotationWire();
         using var tokens = new InfisicalTransportOwnershipTests.CallbackTokens();
         var clock = new InfisicalTransportOwnershipTests.ShutdownClock();
         var authority = new SecretAuthority();
-        using var client = new InfisicalRotationClient(new("https://rotation.example"), authority,
+        var client = new InfisicalRotationClient(new("https://rotation.example"), authority,
             new(authority, tokens, "private-project"),
             new()
             {
@@ -653,7 +666,6 @@ public sealed class RotationOutcomeTests
         try
         {
             await tokens.Entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
-            if (synchronous) client.Dispose();
             stop = client.DisposeAsync().AsTask();
             await tokens.CallbackEntered.Task.WaitAsync(TimeSpan.FromSeconds(10));
             await clock.ShutdownArmed.Task.WaitAsync(TimeSpan.FromSeconds(10));
@@ -700,7 +712,7 @@ public sealed class RotationOutcomeTests
         var clock = new InfisicalTransportOwnershipTests.ShutdownClock();
         using var tokens = new Tokens();
         var authority = new SecretAuthority();
-        using var client = new InfisicalRotationClient(new($"http://127.0.0.1:{port}"), authority,
+        var client = new InfisicalRotationClient(new($"http://127.0.0.1:{port}"), authority,
             new(authority, tokens, "private-project"),
             new() { AllowLoopbackDevelopmentHttp = true, ShutdownTimeout = TimeSpan.FromSeconds(5) }, clock);
         var target = Target(client);
@@ -763,17 +775,18 @@ public sealed class RotationOutcomeTests
             OnAcquire = () => entered.TrySetResult(),
             PendingAcquisition = acquisition.Task
         };
-        using var client = Client(http, tokens);
+        await using var client = Client(http, tokens);
         var target = Target(client);
         var receipt = new InfisicalRotationReceipt(target, InfisicalRotationAction.RotateSecrets);
         Task<SecretOutcome<InfisicalRotationProgress>> pending = client.RotateSecretsAsync(target, receipt).AsTask();
         await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        client.Dispose();
+        Task stop = client.DisposeAsync().AsTask();
         acquisition.SetException(io
             ? new IOException("protected-acquisition-canary")
             : new HttpRequestException("protected-acquisition-canary"));
 
         SecretOutcome<InfisicalRotationProgress> result = await pending.WaitAsync(TimeSpan.FromSeconds(5));
+        await stop.WaitAsync(TimeSpan.FromSeconds(5));
 
         await Assert.That(result.Status).IsEqualTo(SecretStatus.Invalid);
         await Assert.That(receipt.Dispatch).IsEqualTo(InfisicalRotationDispatch.NotDispatched);
@@ -787,7 +800,7 @@ public sealed class RotationOutcomeTests
         using var tokens = new Tokens();
         var clock = new InfisicalTransportOwnershipTests.ShutdownClock();
         var authority = new SecretAuthority();
-        using var client = new InfisicalRotationClient(new("https://rotation.example"), authority,
+        await using var client = new InfisicalRotationClient(new("https://rotation.example"), authority,
             new(authority, tokens, "private-project"),
             new()
             {

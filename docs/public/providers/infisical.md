@@ -338,9 +338,9 @@ Construct `InfisicalRotationClient(trustedOrigin, authority, administration,
 network: null)` with a matching `InfisicalNativeAuthority`. It defaults to safe
 networking; `network.MaximumResponseBytes` selects the byte budget and
 `network.Transport` selects any explicit host-controlled pipeline. Construction
-performs no I/O. `Dispose()` closes admission immediately and schedules eventual
-owned cleanup without blocking on host callbacks. Prefer `await DisposeAsync()`
-to await drain within `network.ShutdownTimeout` (positive, at most one minute).
+performs no I/O. Use `await using` or await `DisposeAsync()`; there is no synchronous
+disposal method. Disposal closes admission immediately and awaits drain within
+`network.ShutdownTimeout` (positive, at most one minute).
 New uncancelled calls throw `ObjectDisposedException` before credentials;
 already-cancelled callers retain cancellation precedence. An earlier call that
 loses dispatch reservation returns `Invalid` with an undispatched receipt.
@@ -348,7 +348,7 @@ Reserved requests may settle under their original caller/deadline budget.
 A shutdown timeout throws `TimeoutException` and leaves cleanup pending until
 operations and callbacks actually return. Repeated disposal shares the original
 bounded result. Borrowed clients, handlers and token sources remain host-owned;
-neither disposal path undoes provider effects.
+Disposal does not undo provider effects.
 `InfisicalRotationAddress` selects project, environment, path, native profile
 and rotation UUID. The profile enum routes existing operations; it does not
 provide configuration schemas for every profile.

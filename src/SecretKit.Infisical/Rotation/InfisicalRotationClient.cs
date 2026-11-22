@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using Refit;
 using SecretKit.Core;
+using SecretKit.Internal;
 
 namespace SecretKit.Infisical;
 
@@ -12,7 +13,7 @@ namespace SecretKit.Infisical;
 /// HTTP, TLS, retries and logging policy is not enforced by the SDK.
 /// Construction performs no I/O. No polling, runtime refresh or consumer activation is performed.
 /// </summary>
-public sealed class InfisicalRotationClient : IDisposable, IAsyncDisposable
+public sealed class InfisicalRotationClient : IAsyncDisposable
 {
     private readonly Uri _origin;
     private readonly HttpClient _transport;
@@ -25,9 +26,8 @@ public sealed class InfisicalRotationClient : IDisposable, IAsyncDisposable
     private readonly Lock _gate = new();
     private readonly CancellationTokenSource _shutdown = new();
     private readonly TimeSpan _shutdownTimeout;
-    private TaskCompletionSource? _drained;
+    private readonly AsyncOperationDrain _operations = new();
     private Task? _disposeTask;
-    private int _active;
     private bool _disposed;
 
     /// <summary>Creates a fixed-origin rotation client bound to explicit local and administrative authority, without I/O.</summary>
@@ -40,8 +40,8 @@ public sealed class InfisicalRotationClient : IDisposable, IAsyncDisposable
         ArgumentNullException.ThrowIfNull(administration);
         network ??= new();
         InfisicalTransportBinding.ValidateOrigin(trustedOrigin, network);
-        if (network.MaximumResponseBytes is < 1024 or > 16 * 1024 * 1024 ||
-            network.ShutdownTimeout <= TimeSpan.Zero || network.ShutdownTimeout > TimeSpan.FromMinutes(1))
+        if (!TransferLimits.IsValidByteBudget(network.MaximumResponseBytes) ||
+            !TransferLimits.IsValidTimeout(network.ShutdownTimeout))
         {
             throw new ArgumentException("Invalid native response budget.");
         }
@@ -64,10 +64,6 @@ public sealed class InfisicalRotationClient : IDisposable, IAsyncDisposable
     /// <summary>The exact local authority required by rotation references; not a server permission grant.</summary>
     public SecretAuthority Authority { get; }
 
-    /// <summary>Closes admission immediately and schedules cleanup after accepted operations exit.</summary>
-    /// <remarks>Does not block on host callbacks or revoke remote credentials. Borrowed resources remain host-owned.</remarks>
-    public void Dispose() => _ = BeginShutdown();
-
     /// <summary>Closes admission and awaits the original bounded shutdown attempt.</summary>
     /// <remarks>Reserved operations may settle. A timeout ends only this wait; owned cleanup still awaits actual drain.</remarks>
     /// <exception cref="TimeoutException">The configured shutdown bound elapsed before cleanup finished.</exception>
@@ -81,9 +77,7 @@ public sealed class InfisicalRotationClient : IDisposable, IAsyncDisposable
         {
             if (_disposeTask is not null) return _disposeTask;
             _disposed = true;
-            _drained = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            if (_active == 0) _drained.SetResult();
-            drained = _drained.Task;
+            drained = _operations.Close();
             completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
             _disposeTask = completion.Task;
         }
@@ -260,11 +254,7 @@ public sealed class InfisicalRotationClient : IDisposable, IAsyncDisposable
     {
         using var deferred = InfisicalDiagnostics.Defer();
         cancellationToken.ThrowIfCancellationRequested();
-        lock (_gate)
-        {
-            ObjectDisposedException.ThrowIf(_disposed, this);
-            _active++;
-        }
+        IDisposable operationLease = _operations.Enter();
         try
         {
             // Shutdown applies to pre-dispatch admission only. Reserved sends keep their caller/deadline budget.
@@ -273,10 +263,7 @@ public sealed class InfisicalRotationClient : IDisposable, IAsyncDisposable
         }
         finally
         {
-            lock (_gate)
-            {
-                if (--_active == 0) _drained?.TrySetResult();
-            }
+            operationLease.Dispose();
         }
     }
 
@@ -538,16 +525,42 @@ public sealed class InfisicalRotationClient : IDisposable, IAsyncDisposable
 
     internal static bool TryProfile(string wire, out InfisicalRotationProfile profile)
     {
-        foreach (var candidate in Enum.GetValues<InfisicalRotationProfile>())
+        InfisicalRotationProfile? selected = wire switch
         {
-            if (WireProfile(candidate) == wire)
-            {
-                profile = candidate;
-                return true;
-            }
-        }
-        profile = default;
-        return false;
+            "auth0-client-secret" => InfisicalRotationProfile.Auth0ClientSecret,
+            "aws-iam-user-secret" => InfisicalRotationProfile.AwsIamUserSecret,
+            "azure-client-secret" => InfisicalRotationProfile.AzureClientSecret,
+            "cloudflare-api-token" => InfisicalRotationProfile.CloudflareApiToken,
+            "cloudflare-r2-access-key" => InfisicalRotationProfile.CloudflareR2AccessKey,
+            "convex-access-key" => InfisicalRotationProfile.ConvexAccessKey,
+            "databricks-service-principal-secret" => InfisicalRotationProfile.DatabricksServicePrincipalSecret,
+            "datadog-api-key" => InfisicalRotationProfile.DatadogApiKey,
+            "datadog-application-key-secret" => InfisicalRotationProfile.DatadogApplicationKeySecret,
+            "dbt-service-token" => InfisicalRotationProfile.DbtServiceToken,
+            "fireworks-api-key" => InfisicalRotationProfile.FireworksApiKey,
+            "gcp-service-account-key" => InfisicalRotationProfile.GcpServiceAccountKey,
+            "hp-ilo-local-account" => InfisicalRotationProfile.HpIloLocalAccount,
+            "ldap-password" => InfisicalRotationProfile.LdapPassword,
+            "litellm-api-key" => InfisicalRotationProfile.LitellmApiKey,
+            "mongodb-credentials" => InfisicalRotationProfile.MongodbCredentials,
+            "mssql-credentials" => InfisicalRotationProfile.MssqlCredentials,
+            "mysql-credentials" => InfisicalRotationProfile.MysqlCredentials,
+            "okta-client-secret" => InfisicalRotationProfile.OktaClientSecret,
+            "open-router-api-key" => InfisicalRotationProfile.OpenRouterApiKey,
+            "openai-service-account" => InfisicalRotationProfile.OpenaiServiceAccount,
+            "oracledb-credentials" => InfisicalRotationProfile.OracledbCredentials,
+            "postgres-credentials" => InfisicalRotationProfile.PostgresCredentials,
+            "redis-credentials" => InfisicalRotationProfile.RedisCredentials,
+            "salesforce-oauth-credentials" => InfisicalRotationProfile.SalesforceOauthCredentials,
+            "snowflake-user-key-pair" => InfisicalRotationProfile.SnowflakeUserKeyPair,
+            "stripe-api-key" => InfisicalRotationProfile.StripeApiKey,
+            "supabase-api-key" => InfisicalRotationProfile.SupabaseApiKey,
+            "unix-linux-local-account" => InfisicalRotationProfile.UnixLinuxLocalAccount,
+            "windows-local-account" => InfisicalRotationProfile.WindowsLocalAccount,
+            _ => null
+        };
+        profile = selected.GetValueOrDefault();
+        return selected.HasValue;
     }
 
     internal static string WireProfile(InfisicalRotationProfile profile) => profile switch

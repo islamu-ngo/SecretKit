@@ -68,7 +68,7 @@ public sealed class MySqlSecretRotationTests
             using var wire = new NativeWire();
             using var http = new HttpClient(wire);
             var clientAuthority = new SecretAuthority();
-            using var native = new InfisicalRotationClient(new Uri("https://management.test"),
+            await using var native = new InfisicalRotationClient(new Uri("https://management.test"),
                 clientAuthority, new(clientAuthority, new Tokens(), Project, "dev", "/"),
                 new() { Transport = InfisicalTransportOptions.HostControlled(http) });
             var target = new SecretReference(clientAuthority, Address());
