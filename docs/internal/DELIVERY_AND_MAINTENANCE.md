@@ -194,6 +194,12 @@ publication remain open external gates.
 
 ## Admission Policy Is Not A Populated Registry
 
+Local verification cohorts build independent originals in separate artifact
+directories. Their pack steps use one MSBuild worker because concurrent packing
+stalls the pinned SBOM integration on the verified Linux SDK. SBOM generation,
+archive digest verification and independent rebuild comparison remain required;
+the ordinary build retains its normal parallelism.
+
 After building the affected provider projects in Release, refresh their owned
 handwritten source inventory from the repository root:
 

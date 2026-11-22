@@ -47,8 +47,10 @@ public static class VerificationCohort
                 "-p:PathMap=" + work + "=/__secretkit_build__"];
             await Run(["restore", "SecretKit.slnx", "--locked-mode", .. properties]);
             await Run(["build", "SecretKit.slnx", "-c", "Release", "--no-restore", "--tl:off", .. properties]);
+            // Concurrent pack tasks stall the pinned SBOM integration. Serialize
+            // packing while preserving independent builds and every SBOM check.
             await Run(["pack", "SecretKit.slnx", "-c", "Release", "--no-build", "--no-restore",
-                "--output", packages, "--tl:off", .. properties]);
+                "--output", packages, "--tl:off", "-m:1", .. properties]);
             string prefix = build == "first" ? "" : "rebuild-";
             foreach (string id in Manifest.PackageIds)
                 foreach ((string extension, string folder, string local) in new[]
