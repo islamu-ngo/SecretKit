@@ -434,7 +434,7 @@
     },
     {
       "file": "src/SecretKit.Infisical/Secrets/InfisicalSecretAddress.cs",
-      "sha256": "5f05274aa508132c1e2ab1f07ac88df3863b52d1d6622629c5a810ef364e5104"
+      "sha256": "9efb4ceba7997fc91f143b5b5b2f512a9860238b774d06fab29f95e31412faba"
     },
     {
       "file": "src/SecretKit.Infisical/Secrets/InfisicalSecretRead.cs",

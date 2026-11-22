@@ -487,7 +487,7 @@ public sealed class InfisicalReadTests
     [Test]
     public async Task SensitiveCoordinatesAreNotFormattedOrSerialized()
     {
-        string canary = NewMaterial();
+        const string canary = "protected-coordinate-canary";
         var address = new InfisicalSecretAddress(canary, canary, "/" + canary, canary);
 
         string json = JsonSerializer.Serialize(address);

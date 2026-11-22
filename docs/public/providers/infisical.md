@@ -85,8 +85,10 @@ starts provider work or grants identity or administrative authority.
 
 `InfisicalSecretAddress(projectId, environment, folder, key, version: null,
 resolution: InfisicalResolution.Raw, includeImports: false)` selects a shared
-secret. Folder paths must be absolute without `.`/`..` segments; a supplied
-version must be positive. Bind it with
+secret. Each coordinate is bounded to 1,024 characters. Project, environment and
+key are nonempty segments; folder paths are absolute without empty or traversal
+segments. Control characters, backslashes and percent escapes are rejected.
+A supplied version must be positive. Bind it with
 `new SecretReference(client.Authority, address)`. The authority is local
 client ownership, not proof of server permission.
 Common and native reads share one operation deadline from credential acquisition

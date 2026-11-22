@@ -15,7 +15,7 @@ public enum InfisicalResolution
 /// <summary>Native v4 coordinates; expansion and import lookup are explicit provider operations.</summary>
 public sealed class InfisicalSecretAddress : SecretAddress
 {
-    /// <summary>Selects protected native coordinates, optional positive version and explicit expansion/import behavior.</summary>
+    /// <summary>Selects canonical protected coordinates of at most 1,024 characters, optional positive version and explicit expansion/import behavior.</summary>
     public InfisicalSecretAddress(string projectId, string environment, string folder, string key,
         int? version = null, InfisicalResolution resolution = InfisicalResolution.Raw,
         bool includeImports = false)
@@ -24,13 +24,16 @@ public sealed class InfisicalSecretAddress : SecretAddress
         ArgumentException.ThrowIfNullOrWhiteSpace(environment);
         ArgumentException.ThrowIfNullOrWhiteSpace(folder);
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
-        if (!folder.StartsWith('/') || folder.Split('/').Any(part => part is "." or ".."))
+        if (!InfisicalInventorySelection.CanonicalPath(folder))
         {
-            throw new ArgumentException("An absolute provider folder is required.", nameof(folder));
+            throw new ArgumentException("A canonical absolute provider folder is required.", nameof(folder));
         }
 
-        if (key is "." or "..")
-            throw new ArgumentException("A secret key cannot be a traversal segment.", nameof(key));
+        if (projectId.Length > 1024 || environment.Length > 1024 || key.Length > 1024 ||
+            !InfisicalInventorySelection.Segment(projectId) ||
+            !InfisicalInventorySelection.Segment(environment) ||
+            !InfisicalInventorySelection.Segment(key))
+            throw new ArgumentException("Canonical protected coordinates are required.");
         if (version is <= 0)
             throw new ArgumentOutOfRangeException(nameof(version), "A positive version is required.");
         if (!Enum.IsDefined(resolution))
